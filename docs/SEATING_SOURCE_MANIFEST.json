@@ -1,0 +1,719 @@
+{
+  "source": "classroom_seating_studio_v6_24_step1b_validation_hardened_2026-10-04.zip",
+  "source_sha256": "1a3344f5e2c6cd4b5b1367b4cff4e779034c0b7f765665509e96f34e075ab282",
+  "byte_identical": true,
+  "files": [
+    {
+      "path": "seating/app.js",
+      "sha256": "2ce7be2e3ab1ed2bc37e121e5eee20056a75d5bec1194b8d5e09fecd52e54583"
+    },
+    {
+      "path": "seating/assets/playback/board.png",
+      "sha256": "c1a711fdc8d34ab606af0acb9ffd320f65013d02dba1f6523edeeb220302f30a"
+    },
+    {
+      "path": "seating/assets/playback/chair.png",
+      "sha256": "cf97a59dee4186d2e831a82446b424de792b1bb2fdfffe037d2da34471393ea0"
+    },
+    {
+      "path": "seating/assets/playback/current_teacher_sheet.png",
+      "sha256": "b0ea9f863df53bed2df1a72de1f974802bc02b7696a3f0b6abef568e84b755b6"
+    },
+    {
+      "path": "seating/assets/playback/desk.png",
+      "sha256": "d4eda1f5dfa4b4036736c12295abe77b9a35ed7989f191cddff8c3bcb49b3b4a"
+    },
+    {
+      "path": "seating/assets/playback/floor.png",
+      "sha256": "20ec9f590211121046efe0df98939189e7616432601ebfd6e0f0ac6d589f5d22"
+    },
+    {
+      "path": "seating/assets/playback/topband.png",
+      "sha256": "da365f20896147a141f98317560cc18b40c635be27d2c3ccd4ecdff4c72d5c03"
+    },
+    {
+      "path": "seating/assets/playback/wall_fill.png",
+      "sha256": "23423f07c5586fff21f1e3b03cbb0f85ff2f76e4eb5e77673b5cb1b3fecc7982"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_blue.png",
+      "sha256": "2cb3435afa520f8a791fcfaf66da8fa56ef535550f22380832426a8b61c84394"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_green.png",
+      "sha256": "476fc663af7d4dfeb4ed38d36e853a5f843da61b81d724c971ffa7cac7924977"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_orange.png",
+      "sha256": "4b063092e790196c3b5ccaace7e05e2fc4192f09a95fa91f6653807d7a9c22e6"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_purple.png",
+      "sha256": "4205ae04839d6ec289dd564073eedfc4f3cf0e66890f1be6b7d9a755addde62c"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_red.png",
+      "sha256": "45a9122f553a61f4ba762c3207dca5f5925ffb2e7fde172146411139e7985cc2"
+    },
+    {
+      "path": "seating/assets/students/boy1_black_yellow.png",
+      "sha256": "23477a9081d657b2156b65531fd5349d765c5057d5bea60409638e8f5b211200"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_blue.png",
+      "sha256": "5931d92e3854ddce961b0ec9b190cd835004de066ac2b6cb1a6bef95191a6b1f"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_green.png",
+      "sha256": "2d58c8c95668fcc71d9808c37e769900f07e3bca0e03f74660e52337ec10db09"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_orange.png",
+      "sha256": "1dc27970d00103962b108dc561907f5934ca8b5119f35845566db74e618a51f1"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_purple.png",
+      "sha256": "2a3440c045c60faaaa6c0f03de5408895703fd79f0732e0d065ec4b01ae7ee9e"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_red.png",
+      "sha256": "f5cda900712c9f4cd6177006a8eca38fa2e325fca0812205d73e076d7672340c"
+    },
+    {
+      "path": "seating/assets/students/boy1_brown_yellow.png",
+      "sha256": "8d09c924c742ba84faae69a87ac6ca8527d184692c9eae82e9c220973a2a1d9d"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_blue.png",
+      "sha256": "84f22b28f953eb0a76aaa4d33671c8a1eb15910b2dae31b9d0ed5bcb0e7901bb"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_green.png",
+      "sha256": "55d7991e7fb8f329d8c5f9313284c28849ae62abac18a194ba9dee3d0d64c4b9"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_orange.png",
+      "sha256": "4ecdfb19a3fded8f8fa4c62f6120c2e3e6d6e1b1eb15e9245b85edb4869557c8"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_purple.png",
+      "sha256": "374ceff45c8c217d792316f2e178037109e3a074bc24eb1278412c2917e2abce"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_red.png",
+      "sha256": "e92b96c052476045ffdda8a7a6ecdec686056c92f5e13cf01f04fc3653994614"
+    },
+    {
+      "path": "seating/assets/students/boy2_black_yellow.png",
+      "sha256": "60519dcd8b17eca5a0161c86ef8635631400d7021579e9d7e1c93dd4422eebc6"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_blue.png",
+      "sha256": "e3244f9c601b403481bb7969b779dcf0fb1a57c076bb6d88256c54467e893344"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_green.png",
+      "sha256": "0802138deb674e525e4f560e4311c87d6c6760c7a1a20545b0a64385b4cf9012"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_orange.png",
+      "sha256": "d4321aa6c85e17c401e5bd2e3486e2e96f0b0615099d6fac126c7678d575ac6e"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_purple.png",
+      "sha256": "9e9ba863375a4452c8e0afa96bfbdfaa7dab41292c2ab698d543744fb84d2028"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_red.png",
+      "sha256": "a7e01e94d85376b5fd1e367db221557c3c2ef7075a939fbb1d29cbd3754594cf"
+    },
+    {
+      "path": "seating/assets/students/boy2_brown_yellow.png",
+      "sha256": "ad0e8366877d1284766a2992a83edf173da3ec4d7cf28a743d16a72ee593f34e"
+    },
+    {
+      "path": "seating/assets/students/girl_black_blue.png",
+      "sha256": "afb53625288962e52b60763b6b500fb081463998e0324c4dd573f886bd3d33c9"
+    },
+    {
+      "path": "seating/assets/students/girl_black_green.png",
+      "sha256": "8b102cd6950d7eafe4acf314b9b79fd76e1dd08e59734ed0b0bbe226562e74da"
+    },
+    {
+      "path": "seating/assets/students/girl_black_orange.png",
+      "sha256": "d338aada9a3ef3118e0629f69ea58cc77658677e5ef9da279c3324b1a846937d"
+    },
+    {
+      "path": "seating/assets/students/girl_black_purple.png",
+      "sha256": "16a48121e481738dd56a6026844695454a74d762a5c7693bd57af74c278d4862"
+    },
+    {
+      "path": "seating/assets/students/girl_black_red.png",
+      "sha256": "d0fd335a5523d494b6757eda8581aac1bfa505f06e90ba49a7131173e18d4425"
+    },
+    {
+      "path": "seating/assets/students/girl_black_yellow.png",
+      "sha256": "b8f510b7924be78c87f03ca808fba213feb3044868e84a2978029a7c7b285137"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_blue.png",
+      "sha256": "5e23c7b6b3f476ee86b96e380e1a8a3947d9c1ede8f1afac1bc45a641520cc52"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_green.png",
+      "sha256": "5257f45c5ace65019da3f8a582497e5a6c60c00bbd7cbd638062513436d09ff4"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_orange.png",
+      "sha256": "148d0d63a726f238ab67e010c3b2c308e74a48a0a4c778c22652d7b7bf802a8e"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_purple.png",
+      "sha256": "30049c47b48a5816a64d50a56d1bfec9668f0694eeba48551a719aa666339e72"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_red.png",
+      "sha256": "53ea9bbb4ba4d505e322710f588d312285261498f574d19fd7ef58d49dfedec6"
+    },
+    {
+      "path": "seating/assets/students/girl_brown_yellow.png",
+      "sha256": "def032b24e032071697e898314709eac162e9d0befb0b27027312902a7454bde"
+    },
+    {
+      "path": "seating/assets/students/prin_black_blue.png",
+      "sha256": "bf805997ccace89c72cf5be5fcee7fb31d13d940232f9cb06105edcafe94bb5c"
+    },
+    {
+      "path": "seating/assets/students/prin_black_green.png",
+      "sha256": "c6cb104c18052beafae44fe8230d4cda2595995048dcbfbe8fc5b72adc69f347"
+    },
+    {
+      "path": "seating/assets/students/prin_black_orange.png",
+      "sha256": "21897aea93f7291ec7ff572a374d7fcc6298a93a1f00e3aa6b3a80ebb31aa160"
+    },
+    {
+      "path": "seating/assets/students/prin_black_purple.png",
+      "sha256": "1136ec38de60c9a3477d8fd67811974f72885d28eae827a761d9497fdef66dbe"
+    },
+    {
+      "path": "seating/assets/students/prin_black_red.png",
+      "sha256": "effba581e597838ead5f981ad130fe753b595ef28985d52fb307fcddb1e4f1c9"
+    },
+    {
+      "path": "seating/assets/students/prin_black_yellow.png",
+      "sha256": "d1949bafe68a06d3b83da6e5132a88d035851022795338e388a2656c54a2492f"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_blue.png",
+      "sha256": "bc4a05837aa8a3fdefa273d6336d4c2acb33b326c48d22d72f476297feec7f23"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_green.png",
+      "sha256": "44680ca74835fdd5b18288ac477f5db1972fcb877680cb0c249dafe04879f70e"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_orange.png",
+      "sha256": "d4256eb12ddbcd4cdbf43eb321c5c9b7aef7cbb77630ee0469f99b5f674feb4c"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_purple.png",
+      "sha256": "c838df7402994033d4a348773491714f2595ecbe0ec3ea92b29b7806888bf62d"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_red.png",
+      "sha256": "c2f509971d722b3ca876633014668809c73a5a5d63a445610563784aa2aa70ca"
+    },
+    {
+      "path": "seating/assets/students/prin_brown_yellow.png",
+      "sha256": "02449ffa85b2c7de21da8c1681ad3de13ef61683158cd552c43907a1a5abfd1d"
+    },
+    {
+      "path": "seating/assets/students/student_character_assets.json",
+      "sha256": "7cbb7c69056d8e0930b050838f661674ec73517c3a429cfa0869c021420cf9a1"
+    },
+    {
+      "path": "seating/assets/students/trav_black_blue.png",
+      "sha256": "90ce486520009c18ade2e40d22f528fe283589a816427a378f3c688d75f1f2b9"
+    },
+    {
+      "path": "seating/assets/students/trav_black_green.png",
+      "sha256": "d1ffac8124460f92f75396a39f61ea77b3dfc6312c996c5661c1005da85e4476"
+    },
+    {
+      "path": "seating/assets/students/trav_black_orange.png",
+      "sha256": "4158b333de3bc8490a2dd255092c7afba5e37cbfec5525c28477b8df76833e92"
+    },
+    {
+      "path": "seating/assets/students/trav_black_purple.png",
+      "sha256": "adb3c6adcdd80d575c1ea4b67fa155d19c41b30381e8b05982bac731c7d5e675"
+    },
+    {
+      "path": "seating/assets/students/trav_black_red.png",
+      "sha256": "14037c7d2586fe37a68327d04edd2104391d1dad69c316932c827772cbc10230"
+    },
+    {
+      "path": "seating/assets/students/trav_black_yellow.png",
+      "sha256": "a04afc7e7cd58a344ec5b0a78689559d1b91f354bf4f57a87867cc05a1cee0bf"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_blue.png",
+      "sha256": "9e277d30c99121789420cafd227ddf1da107ff8dba4b5339d6a5282372724434"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_green.png",
+      "sha256": "1e5f2f0f0e9244cdc6841caff049c47c1de8745ad70d3ca04a0ba061b86fb55b"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_orange.png",
+      "sha256": "8fa6678482e7f3c76b9cf6604f9c16d691a8cddbd0fc2c099ddb4b2a99366c0b"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_purple.png",
+      "sha256": "9039392e75aae786102912465f1f04e167b50848261f70646158ca1b72b57f27"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_red.png",
+      "sha256": "a1c7422081429b669c1c4c64dc870f94f5b361e4552244eca872a79dd41aabb7"
+    },
+    {
+      "path": "seating/assets/students/trav_brown_yellow.png",
+      "sha256": "bd7c9841e02c95b1c6cebba0f1f9271d483600d77c1c1a8f5d3837ad31fafa62"
+    },
+    {
+      "path": "seating/assets/teacher/beard_01.png",
+      "sha256": "9eff0efee257e9c2a6cc06e18224c69e6b79054fbb208ee20110a586c96d50be"
+    },
+    {
+      "path": "seating/assets/teacher/beard_02.png",
+      "sha256": "0cc29328722b4287a366c084bc2e145f671a2194baf3a2af5118b430ff7b65f9"
+    },
+    {
+      "path": "seating/assets/teacher/beard_03.png",
+      "sha256": "3440be06382d97feafdc1bcb5a1032696f25e6d3bb4d78edec87e1d7003e6d4b"
+    },
+    {
+      "path": "seating/assets/teacher/beard_04.png",
+      "sha256": "b8335d09f19eab00f4ddea2bb1937279b322c523eedcb1dc96667f8e85fe74cf"
+    },
+    {
+      "path": "seating/assets/teacher/beard_05.png",
+      "sha256": "46ccbd61f0ca2a767d7727589a24a4049bbc386578ad604a214347bf8472cca2"
+    },
+    {
+      "path": "seating/assets/teacher/beard_06.png",
+      "sha256": "8e6542f11344243d29cb45f033b791de6ee9506926ffb7d80eff800654b6c127"
+    },
+    {
+      "path": "seating/assets/teacher/beard_07.png",
+      "sha256": "1e2c2f739fd2d51784dbc3f245eb77ee58a91d54c816bd36a1cfbb5e397e9ee5"
+    },
+    {
+      "path": "seating/assets/teacher/beard_08.png",
+      "sha256": "f2178117d085cc43a3739a597a13328176a342581fc8d794635a39ec882bc0a7"
+    },
+    {
+      "path": "seating/assets/teacher/f_eyes_01.png",
+      "sha256": "7c30d65d8a82a39d0f28dbaa1b09e36e828060a4bca63b99de34b649858ec890"
+    },
+    {
+      "path": "seating/assets/teacher/f_eyes_02.png",
+      "sha256": "244dd28357760bdabd17ac646a885be55cfbb4d2d4e7d8d08a7f31804c65abe4"
+    },
+    {
+      "path": "seating/assets/teacher/f_eyes_03.png",
+      "sha256": "b10224c8d82caa3fd8c5a8eb23a94a32db8c29c90ae29f24de21a685b6e34004"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_0_back.png",
+      "sha256": "b54762e32aebe8a1f81a585757c0fb4de9a40ab1a82676c1169d623241b88f0a"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_0_front.png",
+      "sha256": "02a8866267326d330e9b06818d1f9bdb80b469ad1dba47cf69f740f963e4b831"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_1_back.png",
+      "sha256": "53e21bf37ef7a40faf1960f5179f967e7160445fb4586a1537899eaab9128c1f"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_1_front.png",
+      "sha256": "8c8687fff190906d4bb645cf6267ca8be730d572cbe5894d596d5c1dd0329515"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_2_back.png",
+      "sha256": "2597bf26910af5727a4e0b0ebaec3eb45ea46645eede2d3f914ff4268693910b"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_01_2_front.png",
+      "sha256": "c9fd294534df126c64536c6638df7b3c772e22713f60047d608587f25a79dcb0"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_0_back.png",
+      "sha256": "dc16bbd549ddbe84c04b7bb9d248cae6016b3365975c9d0bb74f6b28e6c99c14"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_0_front.png",
+      "sha256": "de60b338ace8877766ad76075cd7628635fa5778492a2665c4cb0262b673c162"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_1_back.png",
+      "sha256": "a2b2c0a9a4a02d36682fb72e77c43e0df8d76a6e60379725b684e415c2ec365d"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_1_front.png",
+      "sha256": "af892e45a2622ccdaa2ee005a6d737c353f7a0513209ecbfd06fbf8028a09f93"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_2_back.png",
+      "sha256": "e4b0da72fe99dca24fef4d433ec312f12824ad52649eafa406540c382d21f39e"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_02_2_front.png",
+      "sha256": "2c0a552364b0db533eba6d58826a3e7358f17f8220196aec2fc000f62fa27f85"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_0_back.png",
+      "sha256": "6f66ffd023d177fd74adc017b483eb2b70633d84398a5813430120d8d2dd5290"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_0_front.png",
+      "sha256": "dbe9e37f24bf6212739ce2c0b9b0589a8c603af5fd8eb2e93fcb047499c32956"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_1_back.png",
+      "sha256": "48e5401ba3381263b3046df897ae78a181b5148645ce7eb883c777e4263c9474"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_1_front.png",
+      "sha256": "909215dba3003a802ac346cf28de100cba2f28cdc78925e030266324e43eaa6e"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_2_back.png",
+      "sha256": "d6a12bf61f180e6bb24a89c5ff4d623f05a150c76b5ef10ff0811ea9dcfb8ad9"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_03_2_front.png",
+      "sha256": "122fc6e4d2c114fa0e372fc70a44be32d7222445ed45e7545540977ab6db4c3d"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_04_0_front.png",
+      "sha256": "6980259db2faf2d5c8bcf0ce22d172642121ce2b79a11b7c6664c6c817fcef48"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_04_1_front.png",
+      "sha256": "50367e290bb640d2484d8f265cfb3ce4632d0ad2f2bd496cfd37a14860228872"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_04_2_front.png",
+      "sha256": "e652c59b376f957f17a85f3f9bc8616713398c2b217ee3d1818623bec7d35c0d"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_0_back.png",
+      "sha256": "23a1755970e5c67c499ea85ae0841bdd72043dbf5076f2f19f05b198d6d7773b"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_0_front.png",
+      "sha256": "3a1d02af554bb0fa92cc06b9e3e0627b7bc616f89be1a1cfa06bb3b551116089"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_1_back.png",
+      "sha256": "e6d229fb3ccb0eeccf0fa4299af4c72723d3d07607efda0895cd96185d655dd3"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_1_front.png",
+      "sha256": "89c9828816d14cb9ab969a1598064067a3eadda3ccc79bc837c484bbe2adb3d2"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_2_back.png",
+      "sha256": "8d7abb86887725b861aa29e37bc42d75c99273c87923e8b756cbc637c540f4b5"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_05_2_front.png",
+      "sha256": "6e2b5442e15144db310af8d72994ec3d1027be26fb53e8b102e8a6b2e6f9c98e"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_0_back.png",
+      "sha256": "62c93a8261203979a5aba4809548a90f7d992b531191c96ded76b537c767f6f4"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_0_front.png",
+      "sha256": "7060f720c77a5a359a0fbdce5bc633577b723a39110c0849bab00ddd150ac69d"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_1_back.png",
+      "sha256": "064c4f13527d19a047bbddf666ac653dd522deb0c44a94423b10df6d96298fa0"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_1_front.png",
+      "sha256": "efbc5274087bb7b541be06cd6131010e8146a9d538becf3f999a38a99e726640"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_2_back.png",
+      "sha256": "bd33ab073c5bf88519bcc897b73c38c5b12f7266c3296372ae6d8cdc1a54826a"
+    },
+    {
+      "path": "seating/assets/teacher/f_hair_06_2_front.png",
+      "sha256": "5a8816106464a535027ab086134a5c5d9503f885f783a5b8de295aac585dfbcf"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_01.png",
+      "sha256": "3dee5820556287809ac278f2e6da0d1658d6c363e257992d8c41411931f5fab7"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_02.png",
+      "sha256": "9ec9bcffd3ab6361c63f9cf6f4abbc2cf6d85fddae146113ba71af815f1bf82c"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_03.png",
+      "sha256": "4e341cc2ef9c8a83387b58808487344abb4a64b5cc437883bd188b19f2755138"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_04.png",
+      "sha256": "978420d6590caf8a2dc2a858578bce29d32e933697c494635a277a78001a522a"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_05.png",
+      "sha256": "a121b5532194aa5d2d91436fdb56eef5a788cab7238ca20c5355915a3a7e1b8a"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_06.png",
+      "sha256": "d10c2cbc6d950f44ade2d738f86d221e38a37901b9da8cfd1719172663d44547"
+    },
+    {
+      "path": "seating/assets/teacher/f_outfit_07.png",
+      "sha256": "2302560da43d59c860356261a813748ac29643abbaa9b817102b53abc2a14e7b"
+    },
+    {
+      "path": "seating/assets/teacher/f_skin_01.png",
+      "sha256": "7a015d601be897f6864bd26256e87e760dbe087e42f2562ef7166e3bd731f4f6"
+    },
+    {
+      "path": "seating/assets/teacher/f_skin_02.png",
+      "sha256": "2a2ed5882adb81714408ff2165691829e0109f8a20d9271b39296fcaaf7b2a30"
+    },
+    {
+      "path": "seating/assets/teacher/f_skin_03.png",
+      "sha256": "1541671e2b52d8d34dd24bf97074c07d49ef93de57280a61a058f559960392d3"
+    },
+    {
+      "path": "seating/assets/teacher/f_skin_04.png",
+      "sha256": "c43bcb82d2474b4d296e0add82362dc33d850ab582901b274b6b6b340a337652"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_01.png",
+      "sha256": "569044b3fe943770c057b4659bff46a0d8472cd660716530b905d9367b460154"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_02.png",
+      "sha256": "02c847b1be2ae0c550945bebd4653c4d265558e2d07b548b275e369c1e12d545"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_03.png",
+      "sha256": "8833611587a34bd07562394bf1850f8cad04212f5a5f8e7b540ec60b26a67e9d"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_04.png",
+      "sha256": "7795e0706607fda7ec56cffbe3589bc65f68277b9d2f5c1cd38b9955142ed140"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_05.png",
+      "sha256": "55c97dd7e4ac166c3a5d0d48bce390cae969e3e95d8491b2cd14f3fe895ceed5"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_06.png",
+      "sha256": "5d5db627c11c2b4c046b6e173f584961cab7601d600380f8b550182e9788a025"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_07.png",
+      "sha256": "c23f31a3b469f47d3f1e56dc2b406e0b1103baddaef46b40a64f6180892f3eed"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_08.png",
+      "sha256": "da7b32df3ca84a9bd03654a0422a0eb72ec8a2d116f9de750bb6125a86558eae"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_09.png",
+      "sha256": "b4cc47bd58a35f0c84e459b14a44d1751772c4f009dceae6296b51ea0a5afba4"
+    },
+    {
+      "path": "seating/assets/teacher/glasses_10.png",
+      "sha256": "a97a311126dbb20edbb59b83ec5f8ceae2b292cd5dcd14aea0b8a30584241f73"
+    },
+    {
+      "path": "seating/assets/teacher/m_eyes_01.png",
+      "sha256": "e4f172cfbb7b5de5885e37f8a78653ea1f088486a03452fe6f9c65222fa05705"
+    },
+    {
+      "path": "seating/assets/teacher/m_eyes_02.png",
+      "sha256": "7666115531d33f641fbefb1baf36824750ed6af2eb658f457fd73b53c6bc7fd6"
+    },
+    {
+      "path": "seating/assets/teacher/m_eyes_03.png",
+      "sha256": "eadea926d0ff1da71aff045844d3f25c0685ccc077ee9d3b4331cac855e0e485"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_01_0_front.png",
+      "sha256": "5dcdb9468fc1ff2d4446fda770194f8e90f5e4009f8b3878239bfceceaf66589"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_01_1_front.png",
+      "sha256": "2bf2f60a8e1995b8d0f37d798f52c9c4ae457a0daa2e1914dae17d9ee46a435e"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_01_2_front.png",
+      "sha256": "f4395efd8e3b70c4737a3ac3e375aeb851b2cde6bb0bbf2eefa24d43a7b9cfaa"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_0_back.png",
+      "sha256": "ba73a61316283958d11f8fc1edb91e868ff075209e64ce8e4f4806db06db6ec0"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_0_front.png",
+      "sha256": "1dfcc01bd124ab57a03c5769b9952f32edc4447cc7638c1bd98a965370f1cc31"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_1_back.png",
+      "sha256": "36a4fe2c665ecaeef6bbf11ec25898e095fc57bd5768355d4079fc6d61f38b73"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_1_front.png",
+      "sha256": "a09f7319fa69ea05358efa4fc72fd2085feaaf211737daf4e4c5e14a2d8b07e8"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_2_back.png",
+      "sha256": "4014daadb08436950973b523da3e65d072a6b24e839d7ebae05c2860f9c0a24c"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_02_2_front.png",
+      "sha256": "42856abea2887d75c0b53e79284890407321877960c8e541c7613267ae123377"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_0_back.png",
+      "sha256": "5e3e1a16b83f884a4b7267de5c6e2417ed31e5535ef5cdd0c73f3b18ebc67a78"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_0_front.png",
+      "sha256": "40f770d0c6b80eb83ea8b8ecd9ebb34c42ac2a2e40abe1de8e08ce3b9017410c"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_1_back.png",
+      "sha256": "b76d478512f496e45088b00aec9b05bc5e4da2649437f13144500daac59afdd6"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_1_front.png",
+      "sha256": "dfd8532a526ec72888e59ffb81c9665425890dd7098a05c6a3121cc207756fd8"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_2_back.png",
+      "sha256": "ac6cc825d1fa9275d436fc69ae92e79588e0d228fc1cca2821b1436fe8e5874b"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_03_2_front.png",
+      "sha256": "ea2f321fc8a5f1d16fe1fc56eb2d08b941a0468864ccd551c6a63716dd6d3433"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_0_back.png",
+      "sha256": "979489a053518263c2dffb35d19d537642f8aa38474911932514e73f2515c155"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_0_front.png",
+      "sha256": "683ffef8fe6982ea3ebfaec05c7b73862ca60e9c1255cc52635106b1f374acf6"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_1_back.png",
+      "sha256": "075363814afea32221104b8af358610a1147c149c7755f603246f28c82f62f5a"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_1_front.png",
+      "sha256": "739e693df408236ed1ff1b3ab4afb04e70f0e60ccc4e9adfc7a396893847ef50"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_2_back.png",
+      "sha256": "85a5ade7035158f27e796781e849c188d87c2a7c37f7e5ce48c76f0effb41397"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_04_2_front.png",
+      "sha256": "a47897c2e7ee65973b4dacc601e87e2924a3f5177ffa573143ec1935b692de01"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_05_0_front.png",
+      "sha256": "09635ee8f408f55940d406535cc0a1fa748df3ac3382cb3eaf6b4a6028870b66"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_05_1_front.png",
+      "sha256": "a27a0c7255c971df74b1992d93b6145c37ad75cb89afb2cdca98405b07613ee9"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_05_2_front.png",
+      "sha256": "13f5621cc3e23bf628e9d2b17c6d62bef9884fd9a452b3f1758d6edc6db49264"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_06_0_front.png",
+      "sha256": "1dc48709ac85ae0e3978de3b8b9ccb327cb06b4bcce942bf97ec17148a84d961"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_06_1_front.png",
+      "sha256": "f8548aee2fef3b74d1fc4415fc544824a03156167e1fcafbf0f10ec94ca92cf8"
+    },
+    {
+      "path": "seating/assets/teacher/m_hair_06_2_front.png",
+      "sha256": "76cac2f2dd4a98969c422d1ac1e16647e4bce7e96b622b26d13f3cd4ad0bbaeb"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_01.png",
+      "sha256": "ede12ac73221c9b0839a563c0fe15d9b6b59863d1497799a990341bab6dbf492"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_02.png",
+      "sha256": "9fa14042e04222905c40892767947d04bc8d2033e272a5ac8c47aba5388e0949"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_03.png",
+      "sha256": "16b8e68bbda839b1c35de8d8baf2f6da1c761e42bcbb197b9c83bcf7b215884e"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_04.png",
+      "sha256": "e6ce12b0528e40c086669125623faa3371510db46a98103bd0b74ccd9ef97f08"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_05.png",
+      "sha256": "0c5c91e86af46844ed1331b301bf647899c71269fbc7c525c8899f50f1da1de9"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_06.png",
+      "sha256": "d8f422c5138f40ebfaeee7f6b294ce72e144c41df7cff25d0f9e2a79de369911"
+    },
+    {
+      "path": "seating/assets/teacher/m_outfit_07.png",
+      "sha256": "e625b5b07565a1c73923aa3f80fe61b3313e724d72e652de50af80fed2879a8f"
+    },
+    {
+      "path": "seating/assets/teacher/m_skin_01.png",
+      "sha256": "6a0532bbec75624ccba4e3bfa480d2ebdece64cf57608335f818f2e324af6121"
+    },
+    {
+      "path": "seating/assets/teacher/m_skin_02.png",
+      "sha256": "9a5747f1e2d2570d1acbeea4bea09e9d409eb9d70a148486b15e68655d8c2805"
+    },
+    {
+      "path": "seating/assets/teacher/m_skin_03.png",
+      "sha256": "7bcd464ae85a6ac0f9ca41a558f2481977261651818aceb4ddd2198d3dffac41"
+    },
+    {
+      "path": "seating/assets/teacher/m_skin_04.png",
+      "sha256": "9fe0cf58b9f476bb26d3c0ecb2b2a287d2f88dce735e2834eb8416652faf7536"
+    },
+    {
+      "path": "seating/assets/teacher/teacher_avatar_assets.json",
+      "sha256": "550a348e9effbd9cd343a06207849d1fefdf96bcc44c8943dae4475b4293c01c"
+    },
+    {
+      "path": "seating/index.html",
+      "sha256": "9a745e770936b712f6b7b2d7cc01765db765446f379970cf437ea5111c9bfb0b"
+    },
+    {
+      "path": "seating/styles.css",
+      "sha256": "f6d9d0e87de75eeb642b58475fcd93dcefcda9e9ce20ebfbc6591a0a603e92c3"
+    }
+  ]
+}
