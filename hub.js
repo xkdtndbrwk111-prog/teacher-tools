@@ -2,16 +2,17 @@
 
 /*
  * Teacher Tools Hub
- * STEP 3A
+ * STEP 3A — visual card prototype
  *
  * 역할:
  * - 상단 애플리케이션 런처만 담당
  * - Feedback 데이터 처리는 feedback.js가 담당
  *
- * 보안/구조:
- * - 외부 서비스는 HTTPS Production URL만 허용
- * - 내부 서비스는 현재 repository 하위 상대경로만 허용
- * - development 앱은 URL이 있어도 절대 링크로 만들지 않음
+ * 카드 미디어:
+ * - 정지 상태는 preview 영상의 첫 프레임 poster
+ * - pointer hover가 가능한 환경에서만 영상 재생
+ * - mouseleave 시 0초로 되돌려 poster와 자연스럽게 연결
+ * - 모바일/터치 및 reduced-motion 환경에서는 정지 이미지 유지
  */
 
 const APPS = [
@@ -23,7 +24,11 @@ const APPS = [
     status: "active",
     url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
     icon: "game",
-    color: "coral"
+    color: "coral",
+    media: {
+      poster: "./assets/hub/cards/mario-game-poster-v1.webp",
+      video: "./assets/hub/cards/mario-game-preview-v1.mp4"
+    }
   },
 
   {
@@ -34,7 +39,8 @@ const APPS = [
     status: "active",
     url: "https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec",
     icon: "folder",
-    color: "amber"
+    color: "amber",
+    media: null
   },
 
   {
@@ -45,7 +51,8 @@ const APPS = [
     status: "active",
     url: "./seating/",
     icon: "seats",
-    color: "green"
+    color: "green",
+    media: null
   },
 
   {
@@ -56,7 +63,8 @@ const APPS = [
     status: "development",
     url: null,
     icon: "spark",
-    color: "muted"
+    color: "muted",
+    media: null
   },
 
   {
@@ -67,7 +75,8 @@ const APPS = [
     status: "development",
     url: null,
     icon: "people",
-    color: "muted"
+    color: "muted",
+    media: null
   }
 ];
 
@@ -170,18 +179,82 @@ function createIcon(iconName) {
   return wrapper;
 }
 
+function createMedia(app, badgeText) {
+  const media = document.createElement("div");
+  media.className = "app-media";
+
+  const fallback = document.createElement("div");
+  fallback.className = "app-media-fallback";
+  fallback.append(createIcon(app.icon));
+  media.append(fallback);
+
+  if (
+    app.media &&
+    typeof app.media.poster === "string" &&
+    typeof app.media.video === "string"
+  ) {
+    media.classList.add("has-preview");
+
+    const video = document.createElement("video");
+    video.className = "app-preview-video";
+    video.poster = app.media.poster;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.setAttribute("aria-hidden", "true");
+
+    const source = document.createElement("source");
+    source.src = app.media.video;
+    source.type = "video/mp4";
+    video.append(source);
+
+    const canHover = window.matchMedia(
+      "(hover: hover) and (pointer: fine)"
+    );
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    );
+
+    if (canHover.matches && !reduceMotion.matches) {
+      media.addEventListener("mouseenter", () => {
+        video.play().catch(() => {});
+      });
+
+      media.addEventListener("mouseleave", () => {
+        video.pause();
+
+        try {
+          video.currentTime = 0;
+        } catch (_error) {
+          /* metadata가 아직 준비되지 않은 경우 무시 */
+        }
+      });
+    }
+
+    media.append(video);
+  }
+
+  const shade = document.createElement("span");
+  shade.className = "app-media-shade";
+  shade.setAttribute("aria-hidden", "true");
+
+  const badge = document.createElement("span");
+  badge.className = "badge media-badge";
+  badge.textContent = badgeText;
+
+  media.append(shade, badge);
+
+  return media;
+}
+
 function createAppCard(app) {
   const href = navigationUrl(app);
 
   const isDevelopment =
     app.status === "development";
 
-  /*
-   * href가 있을 때만 anchor 생성.
-   *
-   * development 앱은 URL이 실수로 추가되어도
-   * navigationUrl()이 null을 반환하므로 article 상태를 유지한다.
-   */
   const card = document.createElement(
     href ? "a" : "article"
   );
@@ -205,26 +278,25 @@ function createAppCard(app) {
     );
   }
 
-  const top = document.createElement("div");
-  top.className = "card-top";
-
-  const icon = createIcon(app.icon);
-
-  const badge = document.createElement("span");
-  badge.className = "badge";
+  let badgeText = "링크 설정 필요";
 
   if (isDevelopment) {
-    badge.textContent = "개발 중";
+    badgeText = "개발 중";
   } else if (href) {
-    badge.textContent = "사용 가능";
-  } else {
-    badge.textContent = "링크 설정 필요";
+    badgeText = "사용 가능";
   }
 
-  top.append(icon, badge);
+  const media = createMedia(app, badgeText);
+
+  const content = document.createElement("div");
+  content.className = "app-card-content";
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "app-title-row";
 
   const title = document.createElement("h3");
   title.textContent = app.title;
+  titleRow.append(title);
 
   const description = document.createElement("p");
   description.textContent = app.description;
@@ -251,11 +323,15 @@ function createAppCard(app) {
     action.append(arrow);
   }
 
-  card.append(
-    top,
-    title,
+  content.append(
+    titleRow,
     description,
     action
+  );
+
+  card.append(
+    media,
+    content
   );
 
   return card;
