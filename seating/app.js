@@ -2672,7 +2672,7 @@ function bindUI(){
     else if(mod&&event.key.toLowerCase()==="y"){event.preventDefault();redoAction()}
   });
 }
-function renderTopTitle(){$("topClassTitle").textContent=`${classState.className||"우리 반"} · 자리배치 Studio V6.24`;$("className").value=classState.className||"우리 반"}
+function renderTopTitle(){$("topClassTitle").textContent=`${classState.className||"우리 반"} · 자리배치 매니저 V1.00`;$("className").value=classState.className||"우리 반"}
 function init(){
   bindUI();bindRules();bindAvatar();renderStudentsInput();renderTopTitle();applyStudioCollapse();renderLayout();renderStudentStrip();renderStudentInspector();renderGroups();renderHistory();renderGroupPalette();activateDock("student");
   if(window.ResizeObserver){new ResizeObserver(()=>fitEditorGrid()).observe($("editorWrap"))}
