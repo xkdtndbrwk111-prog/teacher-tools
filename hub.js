@@ -26,8 +26,8 @@ const APPS = [
     icon: "game",
     color: "coral",
     media: {
-      poster: "./assets/hub/cards/mario-game-poster-v1.webp",
-      video: "./assets/hub/cards/mario-game-preview-v1.mp4"
+      poster: "./assets/hub/cards/mario-game-poster-v2.webp",
+      video: "./assets/hub/cards/mario-game-preview-v2.mp4"
     }
   },
 
