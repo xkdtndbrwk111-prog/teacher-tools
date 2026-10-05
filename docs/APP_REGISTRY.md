@@ -1,23 +1,88 @@
 # App registry
 
-유일한 서비스 설정 위치는 `hub.js`의 `APPS`입니다. 카드 HTML은 registry에서 생성됩니다.
+Teacher Tools Hub의 애플리케이션 launcher 설정은 `hub.js`의 `APPS` 배열이 Source of Truth입니다.
+
+Feedback은 STEP 3A부터 launcher app이 아니라 Hub 자체 기능이므로 `APPS`에 포함하지 않습니다.
+
+## Registry fields
 
 | 필드 | 계약 |
 |---|---|
-| id | 변경하지 않는 고유 식별자 |
-| title | 한국어 표시 이름 |
-| description | 짧은 도구 설명 |
-| type | internal 또는 external |
-| status | active 또는 development만 사용 |
-| url | 확인된 주소 또는 null |
-| icon, color | Hub 내부 아이콘·색상 표시 키 |
+| `id` | 변경하지 않는 고유 식별자 |
+| `title` | 화면에 표시할 이름 |
+| `description` | 짧은 도구 설명 |
+| `type` | `internal` 또는 `external` |
+| `status` | `active` 또는 `development` |
+| `url` | 확인된 주소 또는 `null` |
+| `icon` | Hub 내부 고정 SVG icon key |
+| `color` | Hub 카드 style key |
 
-active + 유효 URL이면 실제 anchor를 생성합니다. 내부 URL은 `./seating/`처럼 저장소 기준 상대 경로여야 하며 동일 origin·기준 경로 안에서만 이동합니다. 외부 URL은 HTTPS만 허용합니다. 이동은 같은 탭에서 이루어집니다.
+## Current apps
 
-active + null/잘못된 URL이면 ‘링크 설정 필요’로 표시합니다. 제품 상태를 development로 바꾸지 않습니다. article로 렌더링하며 클릭·키보드 이동 핸들러나 tabindex를 부여하지 않습니다.
+현재 launcher에는 정확히 다음 5개 앱만 존재합니다.
 
-development이면 URL 유무와 관계없이 article을 생성하며 ‘개발 중’을 표시합니다. 현재 Project C와 role-manager의 URL은 반드시 null로 유지합니다. 실제 출시 검증 후에만 status와 url을 바꾸고 Hub를 재게시하세요.
+| id | 상태 | 종류 | 연결 |
+|---|---|---|---|
+| `mario-game` | active | external | Project A Production |
+| `mario-manager` | active | external | Project B Production |
+| `seating` | active | internal | `./seating/` |
+| `project-c` | development | external | `null` |
+| `role-manager` | development | internal | `null` |
 
-외부 연결값: `mario-game.url` = Project A 게임, `mario-manager.url` = Project B Manager, `feedback.url` = 기존 Feedback Board. 임의 주소, secret, 인증 token, 학급 데이터, Feedback product/source query를 추가하지 마세요.
+`feedback` app entry는 존재하지 않습니다.
 
-Hub는 인증·storage·API 호출을 수행하지 않습니다. 아이콘은 자체 SVG이며 외부 폰트·runtime JS·분석 도구가 없습니다.
+## Navigation rules
+
+`active` 상태이며 유효한 URL이 있을 때만 실제 `<a>` 요소를 생성합니다.
+
+외부 앱은 HTTPS만 허용합니다.
+
+내부 앱은 `./seating/`처럼 현재 repository 기준 상대 경로만 허용하며, 동일 origin과 repository base path 안에서만 이동합니다.
+
+유효하지 않은 URL은 링크로 만들지 않습니다.
+
+`development` 상태 앱은 URL이 실수로 추가되어도 실제 링크를 생성하지 않습니다. 항상 비대화형 `<article>`로 렌더링합니다.
+
+현재 다음 두 앱은 반드시 비활성 상태를 유지합니다.
+
+- `project-c`
+- `role-manager`
+
+## Production app mapping
+
+### Mario Game
+
+`mario-game`
+
+Project A Production deployment로 연결합니다.
+
+### Mario Manager
+
+`mario-manager`
+
+Project B Production deployment로 연결합니다.
+
+### Seating Manager
+
+`seating`
+
+Hub repository 내부의:
+
+`./seating/`
+
+으로 연결합니다.
+
+## Feedback contract
+
+Feedback은 별도 application launcher card가 아닙니다.
+
+Hub 하단에 직접 렌더링되는 **Teacher Tools 공용 Feedback Board**입니다.
+
+구조:
+
+```text
+Teacher Tools Hub
+    ↓
+feedback.js
+    ↓
+Production Supabase public RPC
