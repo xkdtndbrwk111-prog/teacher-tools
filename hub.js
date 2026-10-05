@@ -23,6 +23,7 @@ const APPS = [
     type: "external",
     status: "active",
     url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
+    launchMode: "qr",
     icon: "game",
     color: "coral",
     media: {
@@ -267,28 +268,173 @@ function createMedia(app, badgeText) {
   return media;
 }
 
+
+let lastFocusedBeforeQr = null;
+
+function ensureQrModal() {
+  let modal = document.getElementById("mario-qr-modal");
+
+  if (modal) {
+    return modal;
+  }
+
+  modal = document.createElement("div");
+  modal.id = "mario-qr-modal";
+  modal.className = "qr-modal";
+  modal.hidden = true;
+  modal.innerHTML = `
+    <div class="qr-modal-backdrop" data-qr-close></div>
+    <section
+      class="qr-modal-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mario-qr-title"
+    >
+      <button
+        class="qr-modal-close"
+        type="button"
+        aria-label="QR 코드 닫기"
+        data-qr-close
+      >
+        ×
+      </button>
+
+      <p class="qr-modal-kicker">STUDENT JOIN</p>
+      <h2 id="mario-qr-title">마리오 게임 학생 접속</h2>
+      <p class="qr-modal-guide">
+        학생들이 카메라로 QR 코드를 스캔하면 바로 마리오 게임으로 이동합니다.
+      </p>
+
+      <a
+        class="qr-modal-link"
+        data-qr-link
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="마리오 게임 열기"
+      >
+        <img
+          src="./assets/hub/cards/mario-game-join-qr-v1.svg"
+          alt="마리오 게임 학생 접속 QR 코드"
+          width="560"
+          height="560"
+        >
+      </a>
+
+      <p class="qr-modal-note">
+        QR 코드를 클릭해도 마리오 게임으로 이동합니다.
+      </p>
+    </section>
+  `;
+
+  document.body.append(modal);
+
+  modal.addEventListener("click", event => {
+    const closeTarget = event.target.closest("[data-qr-close]");
+
+    if (closeTarget) {
+      closeQrModal();
+    }
+  });
+
+  document.addEventListener("keydown", event => {
+    if (
+      event.key === "Escape" &&
+      !modal.hidden
+    ) {
+      closeQrModal();
+    }
+  });
+
+  return modal;
+}
+
+function openQrModal(app) {
+  const href = navigationUrl(app);
+
+  if (!href) {
+    return;
+  }
+
+  const modal = ensureQrModal();
+  const link = modal.querySelector("[data-qr-link]");
+  const closeButton = modal.querySelector(".qr-modal-close");
+
+  if (link) {
+    link.href = href;
+  }
+
+  lastFocusedBeforeQr =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+  modal.hidden = false;
+  document.body.classList.add("qr-modal-open");
+
+  if (closeButton instanceof HTMLElement) {
+    closeButton.focus();
+  }
+}
+
+function closeQrModal() {
+  const modal = document.getElementById("mario-qr-modal");
+
+  if (!modal || modal.hidden) {
+    return;
+  }
+
+  modal.hidden = true;
+  document.body.classList.remove("qr-modal-open");
+
+  if (lastFocusedBeforeQr instanceof HTMLElement) {
+    lastFocusedBeforeQr.focus();
+  }
+
+  lastFocusedBeforeQr = null;
+}
+
 function createAppCard(app) {
   const href = navigationUrl(app);
 
   const isDevelopment =
     app.status === "development";
 
+  const usesQr =
+    app.launchMode === "qr" &&
+    Boolean(href);
+
   const card = document.createElement(
-    href ? "a" : "article"
+    usesQr
+      ? "button"
+      : href
+        ? "a"
+        : "article"
   );
 
   card.className = [
     "app-card",
     app.color,
     isDevelopment ? "development" : "",
-    href ? "available" : ""
+    href ? "available" : "",
+    usesQr ? "qr-launch-card" : ""
   ]
     .filter(Boolean)
     .join(" ");
 
   card.dataset.appId = app.id;
 
-  if (href) {
+  if (usesQr) {
+    card.type = "button";
+    card.setAttribute(
+      "aria-label",
+      `${app.title} 학생 접속 QR 코드 열기`
+    );
+    card.setAttribute("aria-haspopup", "dialog");
+
+    card.addEventListener("click", () => {
+      openQrModal(app);
+    });
+  } else if (href) {
     card.href = href;
     card.setAttribute(
       "aria-label",
@@ -300,14 +446,16 @@ function createAppCard(app) {
 
   if (isDevelopment) {
     badgeText = "개발 중";
+  } else if (usesQr) {
+    badgeText = "학생 접속";
   } else if (href) {
     badgeText = "사용 가능";
   }
 
   const media = createMedia(app, badgeText);
 
-  const content = document.createElement("div");
-  content.className = "app-card-content";
+  const cardContent = document.createElement("div");
+  cardContent.className = "app-card-content";
 
   const titleRow = document.createElement("div");
   titleRow.className = "app-title-row";
@@ -326,6 +474,8 @@ function createAppCard(app) {
 
   if (isDevelopment) {
     label.textContent = "준비하고 있어요";
+  } else if (usesQr) {
+    label.textContent = "학생 접속 QR 열기";
   } else if (href) {
     label.textContent = "도구 열기";
   } else {
@@ -336,12 +486,12 @@ function createAppCard(app) {
 
   if (href) {
     const arrow = document.createElement("span");
-    arrow.textContent = "↗";
+    arrow.textContent = usesQr ? "▣" : "↗";
     arrow.setAttribute("aria-hidden", "true");
     action.append(arrow);
   }
 
-  content.append(
+  cardContent.append(
     titleRow,
     description,
     action
@@ -349,7 +499,7 @@ function createAppCard(app) {
 
   card.append(
     media,
-    content
+    cardContent
   );
 
   return card;
