@@ -40,7 +40,10 @@ const APPS = [
     url: "https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec",
     icon: "folder",
     color: "amber",
-    media: null
+    media: {
+      poster: "./assets/hub/cards/mario-manager-hover-poster-v1.webp",
+      video: "./assets/hub/cards/mario-manager-hover-preview-v1.mp4"
+    }
   },
 
   {
@@ -52,7 +55,10 @@ const APPS = [
     url: "./seating/",
     icon: "seats",
     color: "green",
-    media: null
+    media: {
+      poster: "./assets/hub/cards/seating-hover-poster-v1.webp",
+      video: "./assets/hub/cards/seating-hover-preview-v1.mp4"
+    }
   },
 
   {
