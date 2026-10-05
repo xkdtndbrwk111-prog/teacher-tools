@@ -1,58 +1,248 @@
-# Deployment — STEP 2 준비 문서
+# Deployment — STEP 3A
 
-현재 단계에서는 게시하지 않습니다. Pages 활성화, DNS, custom domain, PR merge를 수행하지 않습니다.
+현재 단계에서는 GitHub Pages를 공개 배포하지 않습니다.
 
-## 예정 경로
+STEP 3A의 목적은 다음과 같습니다.
 
-- Hub: `https://<owner>.github.io/teacher-tools/`
-- Seating: `https://<owner>.github.io/teacher-tools/seating/`
+- Hub UI 재구성
+- Project A / Project B Production 링크 연결
+- Feedback launcher card 제거
+- Hub 하단에 Production Feedback Board 내장
+- `/seating/` 승인본 유지
 
-일반 Project Pages의 repository prefix를 전제로 합니다. Hub는 `./hub.css`, `./hub.js`, `./seating/`을 사용하고 Seating은 기존 상대 경로를 유지합니다. `/seating/`처럼 origin-root 경로로 바꾸지 마세요.
+`main` merge와 GitHub Pages 활성화는 STEP 3A 검토 완료 후 별도로 진행합니다.
 
-## 외부 URL
+## 예정 공개 경로
 
-`hub.js` 상단 APPS의 다음 항목만 수정하세요.
+Hub:
 
-1. `id: "mario-game"`의 url → 확인된 Project A Production 게임 URL
-2. `id: "mario-manager"`의 url → 확인된 Project B Manager URL
-3. `id: "feedback"`의 url → 확인된 Feedback Production URL
+`https://xkdtndbrwk111-prog.github.io/teacher-tools/`
 
-모두 처음에는 null입니다. 실제 HTTPS 주소를 확인하기 전에는 그대로 두세요. 제품은 active를 유지합니다. 테스트에 가짜 URL을 운영 설정으로 넣지 마세요. Feedback product/source 추가는 후속 Project B 작업입니다.
+Seating:
 
-## 추후 승인된 게시 절차
+`https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/`
 
-1. STEP 2 PR 검토와 별도 merge/출시 승인을 받습니다.
-2. 승인된 커밋이 main에 있는지 확인합니다.
-3. GitHub Settings → Pages → Build and deployment에서 Deploy from a branch를 선택합니다.
-4. main, `/ (root)`를 선택하여 게시합니다.
-5. GitHub가 표시하는 주소에서 아래 검증을 수행합니다.
+일반 GitHub Project Pages의 repository prefix를 전제로 합니다.
 
-정적 파일을 그대로 게시하므로 별도 workflow 파일, build 도구가 필요하지 않습니다. GitHub 자체 게시 과정은 플랫폼에서 관리합니다. Hub와 Seating 파일을 모두 포함한 사이트 전체를 게시하세요.
+Hub는 다음 상대경로를 사용합니다.
 
-## 로컬 및 게시 후 체크리스트
+- `./hub.css`
+- `./hub.js`
+- `./feedback.js`
+- `./seating/`
 
-부모 폴더에서 `python3 -m http.server 8000` 실행 후 `/teacher-tools/` 경로에서 테스트합니다. file:// 테스트로 대체하지 마세요.
+repository subpath가 유지되어야 하므로 내부 링크를 `/seating/` 같은 origin-root 절대경로로 바꾸지 않습니다.
 
-- Hub 로딩, console 오류, desktop/tablet/mobile 배치와 가로 넘침
-- 키보드 focus와 Seating 이동
-- Project C, Roles, 미설정 외부 카드의 클릭·Enter·touch 이동 없음
-- `/teacher-tools/seating/` 직접 접속 및 새로고침
-- HTML/CSS/JS, 학생 sprite, 교사 avatar, playback PNG 정상 로딩
-- 학급 이름 등 변경 후 저장·새로고침 복원
-- 새 배치, 확정, undo/redo, 히스토리
-- JSON Export/Import 후 상태 복원, 손상된 파일 거절
-- 학생 공개 화면, 즉시 완료, 간단 자리표, JPG 다운로드
-- 불필요한 외부 network 요청 없음
-- 실제 외부 URL 제공 후 게임/매니저/Feedback 이동 및 로그인 흐름 확인
+## Current Production connections
+
+### Project A
+
+Mario Game은 확인된 Project A Production Apps Script URL로 연결합니다.
+
+설정 위치:
+
+`hub.js`
+
+### Project B
+
+Mario Manager는 확인된 Project B Production Apps Script URL로 연결합니다.
+
+설정 위치:
+
+`hub.js`
+
+### Feedback
+
+Feedback은 별도 외부 페이지로 이동하지 않습니다.
+
+Hub의 `feedback.js`가 Production Supabase의 공개 read RPC를 직접 호출합니다.
+
+사용 RPC:
+
+- `feedback_list_posts_v2`
+- `feedback_get_thread_v2`
+
+Production Supabase project ref:
+
+`rhtyktjebiunkchddxvg`
+
+Browser code에는 publishable key만 포함합니다.
+
+`service_role`, database password, JWT signing secret, HMAC secret 또는 기타 server credential을 GitHub Pages에 포함하면 안 됩니다.
+
+## Feedback deployment boundary
+
+STEP 3A Feedback은 read-only입니다.
+
+Hub에서 지원:
+
+- 게시글 목록
+- 공지
+- 게시글 본문
+- 댓글
+- 게시글 pagination
+- 댓글 pagination
+- 새로고침
+- 오류 및 retry state
+
+Hub에서 지원하지 않음:
+
+- 게시글 작성
+- 댓글 작성
+- 수정
+- 삭제
+- 로그인
+- OWNER moderation
+
+Feedback write path와 Project B authentication relay는 변경하지 않습니다.
+
+Supabase schema, RPC, RLS도 STEP 3A 범위에서 변경하지 않습니다.
+
+## Seating freeze
+
+`seating/`은 승인된 STEP 1B 산출물입니다.
+
+Source ZIP:
+
+`classroom_seating_studio_v6_24_step1b_validation_hardened_2026-10-04.zip`
+
+Source SHA-256:
+
+`1a3344f5e2c6cd4b5b1367b4cff4e779034c0b7f765665509e96f34e075ab282`
+
+STEP 3A에서는 `/seating/` 내부 파일을 수정하지 않습니다.
+
+배포 전 기존 manifest와 비교하여 byte-identical 상태를 유지했는지 확인합니다.
+
+## Local test
+
+저장소의 부모 폴더에서:
+
+`python3 -m http.server 8000`
+
+실행 후 다음 주소에서 테스트합니다.
+
+Hub:
+
+`http://localhost:8000/teacher-tools/`
+
+Seating:
+
+`http://localhost:8000/teacher-tools/seating/`
+
+`file://` 방식으로 테스트하지 않습니다.
+
+## Pre-merge validation
+
+STEP 3A PR merge 전에 다음 항목을 확인합니다.
+
+### Hub
+
+- Hub 로딩 시 JavaScript console error 없음
+- Mario Game 카드가 Project A Production으로 이동
+- Mario Manager 카드가 Project B Production으로 이동
+- Seating 카드가 `./seating/`으로 이동
+- Project C는 클릭, Enter, touch로 이동하지 않음
+- Role Manager는 클릭, Enter, touch로 이동하지 않음
+- Feedback launcher card가 존재하지 않음
+
+### Feedback
+
+- Hub 본체는 Feedback API 상태와 관계없이 먼저 표시됨
+- Production 게시글 목록 표시
+- 첫 게시글 자동 선택
+- 게시글 본문 표시
+- 댓글 표시
+- 공지 badge 표시
+- 게시글 더 보기 동작
+- 댓글 더 보기 동작
+- 새로고침 동작
+- API 실패 시 Hub launcher는 계속 사용 가능
+- 오류 메시지와 retry 동작 확인
+- 사용자 작성 내용이 HTML로 실행되지 않음
+
+### Responsive
+
+다음 폭에서 확인합니다.
+
+- 1280px
+- 768px
+- 390px
+- 320px
+
+Desktop / tablet에서는 Feedback list와 detail이 2-pane으로 표시됩니다.
+
+Mobile에서는 1-column으로 전환되고 가로 overflow가 없어야 합니다.
+
+### Seating regression
+
+다음 기존 기능을 최소 smoke test합니다.
+
+- `/teacher-tools/seating/` 직접 접속
+- 새로고침
+- 학급 데이터 저장 및 복원
+- 새 배치 생성
+- 배치 확정
+- undo / redo
+- history
+- Export / Import
+- 손상된 Import 거절
+- 학생 공개 화면
+- 간단 자리표
+- JPG 다운로드
+- avatar / sprite / playback asset 로딩
+
+STEP 3A에서는 Seating 동작 자체를 변경하지 않습니다.
+
+## GitHub Pages release procedure
+
+STEP 3A 검토 완료 후에만 진행합니다.
+
+1. `codex/step3a-hub-feedback` PR을 검토합니다.
+2. 승인 후 `main`에 merge합니다.
+3. merge commit SHA를 기록합니다.
+4. GitHub repository의 Settings → Pages로 이동합니다.
+5. Build and deployment에서 `Deploy from a branch`를 선택합니다.
+6. branch는 `main`, folder는 `/ (root)`를 선택합니다.
+7. GitHub Pages 공개 주소가 생성될 때까지 기다립니다.
+8. 실제 공개 주소에서 Hub와 Seating을 다시 smoke test합니다.
+9. Production Feedback RPC가 실제 Pages origin에서도 정상 동작하는지 확인합니다.
+
+별도 build workflow, npm build, framework deploy는 필요하지 않습니다.
 
 ## Rollback
 
-배포 전에 마지막 정상 commit SHA를 기록합니다. 문제 발생 시 별도 복구 브랜치에서 문제를 만든 커밋을 `git revert <bad-commit>`으로 되돌리고 복구 PR을 검토·merge한 뒤 동일 Pages 경로에 게시합니다. 여러 커밋이면 최신부터 역순으로 revert합니다. merge commit은 mainline을 확인한 담당자가 처리합니다. main 강제 push로 이력을 지우지 않습니다.
+배포 전에 마지막 정상 commit SHA를 기록합니다.
 
-복구 결과의 **전체 사이트 파일**이 이전 정상 커밋과 일치하는지 확인하고 Hub·Seating을 재검증합니다. 코드 rollback은 localStorage를 되돌리지 않습니다. 미래의 schema 변경 후 구버전 코드 복구 시 데이터 호환성 검토가 선행되어야 합니다. STEP 2에서는 Seating schema를 변경하지 않았습니다.
+문제 발생 시 main을 force push하지 않습니다.
 
-## 데이터와 도메인
+별도 복구 branch에서 문제를 만든 commit을 `git revert`하고 복구 PR을 생성합니다.
 
-학급 데이터는 사용자 브라우저의 `teacher-tools.seating.state.v1`에 저장됩니다. Hub는 읽거나 업로드하지 않습니다. namespace는 같은 origin 내 보안 격리를 제공하지 않습니다.
+복구 후 다음을 다시 확인합니다.
 
-host/protocol/port 변경은 새로운 origin이며 기존 localStorage가 자동 이전되지 않습니다. 기존 주소를 유지한 상태에서 JSON Export → 새 주소에서 Import하는 전환 기간을 제공합니다. 리디렉션만으로 데이터가 이전되지 않습니다. 백업에는 학급 정보가 있으므로 사용자가 직접 보관하도록 안내합니다.
+- Hub
+- Production external links
+- Feedback
+- Seating
+
+코드 rollback은 browser localStorage 데이터를 rollback하지 않습니다.
+
+향후 Seating schema가 변경된 뒤 구버전 코드를 복구해야 하는 경우에는 데이터 호환성 검토가 선행되어야 합니다.
+
+## Data and origin
+
+Seating 학급 데이터는 browser localStorage의:
+
+`teacher-tools.seating.state.v1`
+
+에 저장됩니다.
+
+Hub는 해당 데이터를 읽거나 업로드하지 않습니다.
+
+같은 origin의 애플리케이션은 기술적으로 동일한 browser storage 영역에 접근할 수 있으므로 namespace는 보안 경계가 아닙니다.
+
+host, protocol 또는 port가 바뀌면 새로운 origin이 됩니다.
+
+기존 localStorage는 새 origin으로 자동 이전되지 않습니다.
+
+주소를 변경해야 할 경우 기존 Seating 주소에서 JSON Export 후 새 주소에서 Import하는 전환 절차를 사용합니다.
