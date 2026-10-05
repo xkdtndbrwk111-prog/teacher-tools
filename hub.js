@@ -201,13 +201,24 @@ function createMedia(app, badgeText) {
     video.muted = true;
     video.loop = true;
     video.playsInline = true;
-    video.preload = "metadata";
+    video.preload = "none";
     video.setAttribute("aria-hidden", "true");
 
-    const source = document.createElement("source");
-    source.src = app.media.video;
-    source.type = "video/mp4";
-    video.append(source);
+    let sourceAttached = false;
+
+    function attachSourceOnce() {
+      if (sourceAttached) {
+        return;
+      }
+
+      const source = document.createElement("source");
+      source.src = app.media.video;
+      source.type = "video/mp4";
+      video.append(source);
+
+      sourceAttached = true;
+      video.load();
+    }
 
     const canHover = window.matchMedia(
       "(hover: hover) and (pointer: fine)"
@@ -219,6 +230,7 @@ function createMedia(app, badgeText) {
 
     if (canHover.matches && !reduceMotion.matches) {
       media.addEventListener("mouseenter", () => {
+        attachSourceOnce();
         video.play().catch(() => {});
       });
 
