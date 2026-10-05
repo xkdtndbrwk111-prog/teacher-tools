@@ -3,21 +3,348 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="수업과 학급 운영에 필요한 도구를 한곳에서 만나세요.">
+  <meta
+    name="description"
+    content="수업과 학급 운영에 필요한 Teacher Tools를 한곳에서 만나세요."
+  >
   <title>Teacher Tools · 선생님의 도구함</title>
-  <link rel="icon" href="./assets/hub/favicon.svg" type="image/svg+xml">
+
+  <link
+    rel="icon"
+    href="./assets/hub/favicon.svg"
+    type="image/svg+xml"
+  >
   <link rel="stylesheet" href="./hub.css">
+
   <script src="./hub.js" defer></script>
+  <script src="./feedback.js" defer></script>
 </head>
+
 <body>
-  <a class="skip-link" href="#tools">도구 목록으로 건너뛰기</a>
+  <a class="skip-link" href="#tools">
+    도구 목록으로 건너뛰기
+  </a>
+
   <div class="shell">
-    <header class="site-header"><a class="brand" href="./" aria-label="Teacher Tools 홈"><span class="brand-mark" aria-hidden="true">T<span>t</span></span>Teacher Tools</a><span class="header-note">선생님의 도구함</span></header>
+
+    <header class="site-header">
+      <a
+        class="brand"
+        href="./"
+        aria-label="Teacher Tools 홈"
+      >
+        <span class="brand-mark" aria-hidden="true">
+          T<span>t</span>
+        </span>
+        Teacher Tools
+      </a>
+
+      <span class="header-note">
+        선생님의 도구함
+      </span>
+    </header>
+
     <main>
-      <div class="intro"><p class="eyebrow">수업 준비부터 학급 운영까지</p><h1>오늘 필요한 도구를 꺼내세요.</h1><p>각 도구로 바로 이동하고, 새로운 도구도 만나보세요.</p></div>
-      <section id="tools" aria-labelledby="tools-heading" tabindex="-1"><div class="section-heading"><h2 id="tools-heading">도구 모음</h2><span>Teacher Tools Hub</span></div><div id="app-grid" class="app-grid"></div><noscript><p class="noscript">도구 목록을 보려면 JavaScript를 켜주세요. <a href="./seating/">자리배치 매니저 바로가기</a></p></noscript></section>
+
+      <section class="intro">
+        <p class="eyebrow">
+          수업 준비부터 학급 운영까지
+        </p>
+
+        <h1>
+          오늘 필요한 도구를 꺼내세요.
+        </h1>
+
+        <p>
+          수업과 학급 운영에 필요한 도구를 한곳에서 빠르게 사용할 수 있습니다.
+        </p>
+      </section>
+
+      <section
+        id="tools"
+        class="tools-section"
+        aria-labelledby="tools-heading"
+        tabindex="-1"
+      >
+
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">
+              TOOLS
+            </p>
+
+            <h2 id="tools-heading">
+              수업 · 학급 도구
+            </h2>
+          </div>
+
+          <span>
+            Teacher Tools Hub
+          </span>
+        </div>
+
+        <div
+          id="app-grid"
+          class="app-grid"
+        ></div>
+
+        <noscript>
+          <p class="noscript">
+            도구 목록을 보려면 JavaScript를 켜주세요.
+            <a href="./seating/">
+              자리배치 매니저 바로가기
+            </a>
+          </p>
+        </noscript>
+
+      </section>
+
+      <section
+        id="feedback"
+        class="feedback-section"
+        aria-labelledby="feedback-heading"
+      >
+
+        <div class="feedback-section-head">
+
+          <div>
+            <p class="section-kicker">
+              FEEDBACK
+            </p>
+
+            <h2 id="feedback-heading">
+              Teacher Tools 피드백 게시판
+            </h2>
+
+            <p>
+              오류나 개선 의견을 함께 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <div class="feedback-head-actions">
+            <span class="feedback-readonly-badge">
+              읽기 전용
+            </span>
+
+            <button
+              id="feedback-refresh-btn"
+              class="feedback-control-button"
+              type="button"
+            >
+              새로고침
+            </button>
+          </div>
+
+        </div>
+
+        <div
+          id="feedback-global-error"
+          class="feedback-global-error"
+          hidden
+          role="status"
+        >
+          <span id="feedback-global-error-text">
+            게시판을 불러오지 못했습니다.
+          </span>
+
+          <button
+            id="feedback-global-retry-btn"
+            type="button"
+          >
+            다시 시도
+          </button>
+        </div>
+
+        <div class="feedback-board">
+
+          <section
+            class="feedback-list-pane"
+            aria-label="피드백 게시글 목록"
+          >
+
+            <div class="feedback-pane-head">
+              <div>
+                <h3>
+                  최근 의견
+                </h3>
+
+                <p>
+                  Teacher Tools 사용자들의 의견입니다.
+                </p>
+              </div>
+            </div>
+
+            <div
+              id="feedback-list-loading"
+              class="feedback-state"
+            >
+              게시글을 불러오는 중...
+            </div>
+
+            <div
+              id="feedback-list-empty"
+              class="feedback-state"
+              hidden
+            >
+              아직 등록된 의견이 없습니다.
+            </div>
+
+            <div
+              id="feedback-list-error"
+              class="feedback-state feedback-state-error"
+              hidden
+            >
+              게시글 목록을 불러오지 못했습니다.
+            </div>
+
+            <div
+              id="feedback-list"
+              class="feedback-list"
+              hidden
+            ></div>
+
+            <button
+              id="feedback-more-btn"
+              class="feedback-more-button"
+              type="button"
+              hidden
+            >
+              게시글 더 보기
+            </button>
+
+          </section>
+
+          <section
+            class="feedback-detail-pane"
+            aria-label="선택한 피드백 게시글"
+          >
+
+            <div
+              id="feedback-detail-placeholder"
+              class="feedback-detail-placeholder"
+            >
+              <strong>
+                의견을 선택해 주세요.
+              </strong>
+
+              <span>
+                왼쪽 목록에서 글을 선택하면 내용과 댓글이 표시됩니다.
+              </span>
+            </div>
+
+            <div
+              id="feedback-detail-loading"
+              class="feedback-state"
+              hidden
+            >
+              글을 불러오는 중...
+            </div>
+
+            <div
+              id="feedback-detail-error"
+              class="feedback-state feedback-state-error"
+              hidden
+            >
+              글을 불러오지 못했습니다.
+            </div>
+
+            <article
+              id="feedback-thread"
+              class="feedback-thread"
+              hidden
+            >
+
+              <header class="feedback-thread-head">
+
+                <div class="feedback-thread-title-row">
+                  <span
+                    id="feedback-thread-notice"
+                    class="feedback-notice-badge"
+                    hidden
+                  >
+                    공지
+                  </span>
+
+                  <h3 id="feedback-thread-title"></h3>
+                </div>
+
+                <div
+                  id="feedback-thread-meta"
+                  class="feedback-thread-meta"
+                ></div>
+
+              </header>
+
+              <div
+                id="feedback-thread-body"
+                class="feedback-thread-body"
+              ></div>
+
+              <section
+                class="feedback-comments"
+                aria-labelledby="feedback-comments-heading"
+              >
+
+                <div class="feedback-comments-head">
+                  <h4 id="feedback-comments-heading">
+                    댓글
+                  </h4>
+                </div>
+
+                <div
+                  id="feedback-comments-empty"
+                  class="feedback-state"
+                  hidden
+                >
+                  아직 댓글이 없습니다.
+                </div>
+
+                <div
+                  id="feedback-comments-list"
+                  class="feedback-comments-list"
+                ></div>
+
+                <button
+                  id="feedback-comments-more-btn"
+                  class="feedback-more-button"
+                  type="button"
+                  hidden
+                >
+                  댓글 더 보기
+                </button>
+
+              </section>
+
+            </article>
+
+          </section>
+
+        </div>
+
+        <div class="feedback-write-note">
+          <strong>
+            의견 작성 기능은 준비 중입니다.
+          </strong>
+
+          <span>
+            현재 허브에서는 게시글과 댓글을 읽을 수 있습니다.
+          </span>
+        </div>
+
+      </section>
+
     </main>
-    <footer><span>수업에 집중할 수 있도록, 필요한 도구만.</span><span>Teacher Tools</span></footer>
+
+    <footer>
+      <span>
+        수업에 집중할 수 있도록, 필요한 도구만.
+      </span>
+
+      <span>
+        Teacher Tools
+      </span>
+    </footer>
+
   </div>
 </body>
-</html>
+</html>4
