@@ -5,6 +5,7 @@
 (() => {
   const ACTION = "CREATE_POST";
   const READY = "READY_FOR_AUTH";
+  const TERMINAL_STATES = new Set(["CANCELLED", "SUPERSEDED"]);
   const PRODUCTS = Object.freeze([
     "HUB",
     "PROJECT_A",
@@ -95,11 +96,21 @@
   function readPendingIntent() {
     const value = readJson(STORAGE_KEYS.pending, null);
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const requestId = String(value.requestId || "");
     if (
       value.action !== ACTION ||
       value.state !== READY ||
-      !UUID_V4.test(String(value.requestId || ""))
+      !UUID_V4.test(requestId)
     ) {
+      return null;
+    }
+    const isTerminal = terminalIntents().some(
+      intent =>
+        String(intent.requestId) === requestId &&
+        TERMINAL_STATES.has(intent.state)
+    );
+    if (isTerminal) {
+      removeStored(STORAGE_KEYS.pending);
       return null;
     }
     if (
@@ -115,7 +126,7 @@
 
     return {
       action: ACTION,
-      requestId: value.requestId,
+      requestId,
       product: value.product,
       title: value.title,
       body: value.body,
