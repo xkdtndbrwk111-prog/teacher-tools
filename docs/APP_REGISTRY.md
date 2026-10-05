@@ -82,6 +82,60 @@ Hub 하단에 직접 렌더링되는 **Teacher Tools 공용 Feedback Board**입�
 
 ```text
 Teacher Tools Hub
+```
+
+현재 read RPC:
+
+`feedback_list_posts_v2`  
+`feedback_get_thread_v2`
+
+Feedback에서 사용하는 Production Supabase project ref:
+
+`rhtyktjebiunkchddxvg`
+
+Browser code에는 publishable key만 사용할 수 있습니다.
+
+다음을 Hub repository에 저장하면 안 됩니다.
+
+- `service_role`
+- database password
+- JWT signing secret
+- Apps Script server secret
+- HMAC secret
+- owner credential
+
+STEP 3A의 Feedback은 read-only입니다.
+
+지원:
+
+- 게시글 목록
+- 공지
+- 게시글 본문
+- 댓글
+- pagination
+- refresh
+- error / retry state
+
+미지원:
+
+- 글쓰기
+- 댓글 작성
+- 수정
+- 삭제
+- 로그인
+- OWNER moderation
+
+사용자 작성 데이터는 HTML로 해석하지 않고 `textContent` 또는 안전한 DOM node 생성 방식으로 렌더링합니다.
+
+## Separation boundary
+
+Hub는 Project A, Project B, Project C의 source code를 포함하지 않습니다.
+
+외부 프로젝트의 인증, backend, game logic을 Hub에 복사하지 않습니다.
+
+Seating만 Hub repository 내부 앱으로 배포됩니다.
+
+Feedback은 기존 Production Supabase public-read contract를 소비할 뿐, Supabase schema, RPC, RLS 또는 Project B mutation/auth relay를 변경하지 않습니다.
     ↓
 feedback.js
     ↓
