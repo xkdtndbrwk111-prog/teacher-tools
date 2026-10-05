@@ -34,7 +34,7 @@ const APPS = [
 
   {
     id: "mario-manager",
-    title: "마리오 매니저",
+    title: "퀴즈 매니저",
     description: "마리오 게임에서 사용할 문제와 카트리지를 관리",
     type: "external",
     status: "active",
@@ -186,7 +186,7 @@ function createIcon(iconName) {
   return wrapper;
 }
 
-function createMedia(app, badgeText) {
+function createMedia(app, badgeText, hoverTarget) {
   const media = document.createElement("div");
   media.className = "app-media";
 
@@ -235,13 +235,17 @@ function createMedia(app, badgeText) {
       "(prefers-reduced-motion: reduce)"
     );
 
-    if (canHover.matches && !reduceMotion.matches) {
-      media.addEventListener("mouseenter", () => {
+    if (
+      canHover.matches &&
+      !reduceMotion.matches &&
+      hoverTarget instanceof HTMLElement
+    ) {
+      hoverTarget.addEventListener("mouseenter", () => {
         attachSourceOnce();
         video.play().catch(() => {});
       });
 
-      media.addEventListener("mouseleave", () => {
+      hoverTarget.addEventListener("mouseleave", () => {
         video.pause();
 
         try {
@@ -452,7 +456,7 @@ function createAppCard(app) {
     badgeText = "사용 가능";
   }
 
-  const media = createMedia(app, badgeText);
+  const media = createMedia(app, badgeText, card);
 
   const cardContent = document.createElement("div");
   cardContent.className = "app-card-content";
