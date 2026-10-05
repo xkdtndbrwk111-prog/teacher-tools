@@ -13,11 +13,11 @@ const HAIR_COLORS=["brown","black"];
 const OUTFIT_COLORS=["green","blue","red","yellow","purple","orange"];
 
 function assetSrc(path){
-  return (window.__EMBEDDED_ASSETS&&window.__EMBEDDED_ASSETS[path])||path;
+  return (window.__EMBEDDED_ASSETS&&(window.__EMBEDDED_ASSETS[path]||window.__EMBEDDED_ASSETS[path.replace("../shared/assets/","assets/")]))||path;
 }
 
-const DESK_SRC=assetSrc("assets/playback/desk.png");
-const CHAIR_SRC=assetSrc("assets/playback/chair.png");
+const DESK_SRC=assetSrc("../shared/assets/playback/desk.png");
+const CHAIR_SRC=assetSrc("../shared/assets/playback/chair.png");
 const USABLE_TYPES=new Set(["seat","male","female"]);
 const BALANCE_LABEL={none:"미지정",A:"빼어남",B:"우수함",C:"아름다움"};
 const GROUP_COLORS=["#0f766e","#2563eb","#7c3aed","#ea580c","#16a34a","#db2777","#0891b2","#a16207","#475569","#dc2626","#4f46e5","#65a30d"];
@@ -40,7 +40,7 @@ function studentSheetForIndex(index){
   const character=CHARACTERS[index%CHARACTERS.length];
   const hair=HAIR_COLORS[Math.floor(index/CHARACTERS.length)%HAIR_COLORS.length];
   const outfit=OUTFIT_COLORS[Math.floor(index/(CHARACTERS.length*HAIR_COLORS.length))%OUTFIT_COLORS.length];
-  return assetSrc(`assets/students/${character}_${hair}_${outfit}.png`);
+  return assetSrc(`../shared/assets/students/${character}_${hair}_${outfit}.png`);
 }
 function stableStudentHash(student,index=0){
   const text=`${student.id||""}|${student.name||""}|${index}`;
@@ -56,10 +56,10 @@ function studentVisualFor(student,index){
   const character=pool[h%pool.length];
   const hair=HAIR_COLORS[(h>>>4)%HAIR_COLORS.length];
   const outfit=OUTFIT_COLORS[(h>>>9)%OUTFIT_COLORS.length];
-  return assetSrc(`assets/students/${character}_${hair}_${outfit}.png`);
+  return assetSrc(`../shared/assets/students/${character}_${hair}_${outfit}.png`);
 }
-function avatarItems(prefix,count,label){return Array.from({length:count},(_,i)=>({label:`${label} ${i+1}`,src:assetSrc(`assets/teacher/${prefix}_${String(i+1).padStart(2,"0")}.png`)}))}
-function hairItems(prefix,backs){const labels=["갈색","금발","검정"];return Array.from({length:6},(_,i)=>({label:`헤어 ${i+1}`,colors:[0,1,2].map(color=>({label:labels[color],front:assetSrc(`assets/teacher/${prefix}_hair_${String(i+1).padStart(2,"0")}_${color}_front.png`),back:backs.includes(i+1)?assetSrc(`assets/teacher/${prefix}_hair_${String(i+1).padStart(2,"0")}_${color}_back.png`):null}))}))}
+function avatarItems(prefix,count,label){return Array.from({length:count},(_,i)=>({label:`${label} ${i+1}`,src:assetSrc(`../shared/assets/teacher/${prefix}_${String(i+1).padStart(2,"0")}.png`)}))}
+function hairItems(prefix,backs){const labels=["갈색","금발","검정"];return Array.from({length:6},(_,i)=>({label:`헤어 ${i+1}`,colors:[0,1,2].map(color=>({label:labels[color],front:assetSrc(`../shared/assets/teacher/${prefix}_hair_${String(i+1).padStart(2,"0")}_${color}_front.png`),back:backs.includes(i+1)?assetSrc(`../shared/assets/teacher/${prefix}_hair_${String(i+1).padStart(2,"0")}_${color}_back.png`):null}))}))}
 const AVATAR_CFG={
   female:{skins:avatarItems("f_skin",4,"피부"),eyes:avatarItems("f_eyes",3,"눈"),hairs:hairItems("f",[1,2,3,5,6]),outfits:avatarItems("f_outfit",7,"여성 복장")},
   male:{skins:avatarItems("m_skin",4,"피부"),eyes:avatarItems("m_eyes",3,"눈"),hairs:hairItems("m",[2,3,4]),outfits:avatarItems("m_outfit",7,"남성 복장")},

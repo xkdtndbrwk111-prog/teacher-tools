@@ -1,0 +1,122 @@
+{
+  "source": "V15T STUDENT CHARACTER PALETTE",
+  "characterIds": [
+    "boy1",
+    "boy2",
+    "girl",
+    "trav",
+    "prin"
+  ],
+  "hairColors": [
+    "brown",
+    "black"
+  ],
+  "outfitColors": [
+    "green",
+    "blue",
+    "red",
+    "yellow",
+    "purple",
+    "orange"
+  ],
+  "notes": {
+    "boy1": "남자아이 1",
+    "boy2": "남자아이 2 / 남자 헤어스타일 추가형",
+    "girl": "여자아이 1",
+    "trav": "여자 모험가 머리 + 여자아이1 몸체",
+    "prin": "공주 머리/왕관 + 여자아이1 몸체",
+    "hairRule": "모든 캐릭터 갈색/검정. 여자 모험가·공주 금발 제외."
+  },
+  "variants": {
+    "boy1": {
+      "brown": {
+        "green": "./boy1_brown_green.png",
+        "blue": "./boy1_brown_blue.png",
+        "red": "./boy1_brown_red.png",
+        "yellow": "./boy1_brown_yellow.png",
+        "purple": "./boy1_brown_purple.png",
+        "orange": "./boy1_brown_orange.png"
+      },
+      "black": {
+        "green": "./boy1_black_green.png",
+        "blue": "./boy1_black_blue.png",
+        "red": "./boy1_black_red.png",
+        "yellow": "./boy1_black_yellow.png",
+        "purple": "./boy1_black_purple.png",
+        "orange": "./boy1_black_orange.png"
+      }
+    },
+    "boy2": {
+      "brown": {
+        "green": "./boy2_brown_green.png",
+        "blue": "./boy2_brown_blue.png",
+        "red": "./boy2_brown_red.png",
+        "yellow": "./boy2_brown_yellow.png",
+        "purple": "./boy2_brown_purple.png",
+        "orange": "./boy2_brown_orange.png"
+      },
+      "black": {
+        "green": "./boy2_black_green.png",
+        "blue": "./boy2_black_blue.png",
+        "red": "./boy2_black_red.png",
+        "yellow": "./boy2_black_yellow.png",
+        "purple": "./boy2_black_purple.png",
+        "orange": "./boy2_black_orange.png"
+      }
+    },
+    "girl": {
+      "brown": {
+        "green": "./girl_brown_green.png",
+        "blue": "./girl_brown_blue.png",
+        "red": "./girl_brown_red.png",
+        "yellow": "./girl_brown_yellow.png",
+        "purple": "./girl_brown_purple.png",
+        "orange": "./girl_brown_orange.png"
+      },
+      "black": {
+        "green": "./girl_black_green.png",
+        "blue": "./girl_black_blue.png",
+        "red": "./girl_black_red.png",
+        "yellow": "./girl_black_yellow.png",
+        "purple": "./girl_black_purple.png",
+        "orange": "./girl_black_orange.png"
+      }
+    },
+    "trav": {
+      "brown": {
+        "green": "./trav_brown_green.png",
+        "blue": "./trav_brown_blue.png",
+        "red": "./trav_brown_red.png",
+        "yellow": "./trav_brown_yellow.png",
+        "purple": "./trav_brown_purple.png",
+        "orange": "./trav_brown_orange.png"
+      },
+      "black": {
+        "green": "./trav_black_green.png",
+        "blue": "./trav_black_blue.png",
+        "red": "./trav_black_red.png",
+        "yellow": "./trav_black_yellow.png",
+        "purple": "./trav_black_purple.png",
+        "orange": "./trav_black_orange.png"
+      }
+    },
+    "prin": {
+      "brown": {
+        "green": "./prin_brown_green.png",
+        "blue": "./prin_brown_blue.png",
+        "red": "./prin_brown_red.png",
+        "yellow": "./prin_brown_yellow.png",
+        "purple": "./prin_brown_purple.png",
+        "orange": "./prin_brown_orange.png"
+      },
+      "black": {
+        "green": "./prin_black_green.png",
+        "blue": "./prin_black_blue.png",
+        "red": "./prin_black_red.png",
+        "yellow": "./prin_black_yellow.png",
+        "purple": "./prin_black_purple.png",
+        "orange": "./prin_black_orange.png"
+      }
+    }
+  }
+}

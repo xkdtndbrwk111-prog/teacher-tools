@@ -6,6 +6,7 @@ const APPS = [
   { id: "mario-game", title: "마리오 게임", description: "수업 문제를 게임으로 진행하는 퀴즈 게임", type: "external", status: "active", url: null, icon: "game", color: "coral" },
   { id: "mario-manager", title: "마리오 매니저", description: "마리오 게임에서 사용할 문제와 카트리지를 관리", type: "external", status: "active", url: null, icon: "folder", color: "amber" },
   { id: "seating", title: "자리배치 매니저", description: "학급 조건을 반영해 새로운 자리배치를 생성", type: "internal", status: "active", url: "./seating/", icon: "seats", color: "green" },
+  { id: "hanja", title: "한자 학습 매니저", description: "우리 반 학생들과 한자·한자어 문제를 풀어요", type: "internal", status: "active", url: "./hanja/", icon: "folder", color: "amber" },
   { id: "feedback", title: "피드백", description: "Teacher Tools의 오류와 개선 의견 전달", type: "external", status: "active", url: null, icon: "message", color: "blue" },
   { id: "project-c", title: "Project C", description: "새로운 실시간 수업 게임", type: "external", status: "development", url: null, icon: "spark", color: "muted" },
   { id: "role-manager", title: "1인1역 배치 매니저", description: "학급 역할을 배정하는 도구", type: "internal", status: "development", url: null, icon: "people", color: "muted" }
