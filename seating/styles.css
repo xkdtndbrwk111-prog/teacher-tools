@@ -592,7 +592,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 /* V6.25 regression fixes: keep the two studio rows tight and make sticky student header opaque. */
 .studio{overflow:hidden}
-.workspace-column,.tool-dock{height:100%;min-height:0;align-self:stretch}
+.workspace-column,.tool-dock{min-height:0;align-self:stretch}
 .workspace-column{overflow:hidden}
 .workspace{height:0;flex:1 1 0;min-height:0}
 .tool-dock{overflow:hidden}
