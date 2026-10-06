@@ -399,7 +399,23 @@ $("newEntry").onclick=()=>{resetForm();panel("data");$("hanzi").focus()};$("canc
 $("reveal").onclick=()=>{if(!session||session.locked)return;session.revealed=true;$("answer").textContent="정답: "+revealAnswerText(session.q);$("answer").classList.remove("hidden");$("judgement").classList.remove("hidden");$("reveal").classList.add("hidden")};$("correct").onclick=()=>judge(true);$("wrong").onclick=()=>judge(false);$("meaningOverlay").onclick=()=>{if(!session||!session.locked||$("meaningOverlay").classList.contains("hidden")||session.q?.entry.type!=="word")return;advanceAfterCorrect()};
 $("endGame").onclick=()=>{clearTimeout(advanceTimer);clearCelebration();$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";document.querySelector(".question-modal").classList.remove("complete");session=null;$("game").classList.add("hidden");$("manager").classList.remove("hidden");refreshRoster()};
 $("importXlsx").onclick=()=>$("xlsxFile").click();$("xlsxFile").onchange=async ev=>{const file=ev.target.files[0];if(!file)return;try{if(!window.XLSX)throw Error("XLSX 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.");const wb=XLSX.read(await file.arrayBuffer());const rows=importWorkbook(wb);const replace=confirm(`총 ${rows.length}개를 읽었습니다.\n\n확인 = 현재 한자 데이터를 모두 지우고 전체 교체\n취소 = 기존 데이터에 병합`);if(replace)db=rows;else{const keys=new Set(db.map(e=>`${e.type}|${e.text}`));let added=0;for(const r of rows){const k=`${r.type}|${r.text}`;if(!keys.has(k)){db.push(r);keys.add(k);added++}}notify(`${added}개 항목을 병합했습니다. 중복 한자는 유지했습니다.`)}if(!save())throw Error("저장에 실패했습니다.");renderDb()}catch(e){notify(e.message)}finally{ev.target.value=""}};
-$("exportXlsx").onclick=()=>{try{if(!window.XLSX)throw Error("XLSX 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.");const wb=XLSX.utils.book_new();const single=db.filter(e=>e.type==="single").map(e=>({"한자":e.text,"훈":e.meaning,"음":e.reading,"사용":e.enabled?"사용":"제외","출제빈도":frequencyLabel(e.weight),"출제비중":e.weight}));const words=db.filter(e=>e.type==="word").map(e=>({"한자어":e.text,"읽기":e.reading,"뜻":e.meaning,"사용":e.enabled?"사용":"제외","출제빈도":frequencyLabel(e.weight),"출제비중":e.weight}));XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(single),"단일 한자");XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(words),"한자어");XLSX.writeFile(wb,"한자_학습_데이터.xlsx")}catch(e){notify(e.message)}};
+function makeExportSheet(rows,headers,widths){
+ const sheet=XLSX.utils.aoa_to_sheet([headers]);
+ if(rows.length)XLSX.utils.sheet_add_json(sheet,rows,{header:headers,skipHeader:true,origin:"A2"});
+ sheet["!cols"]=widths.map(w=>({wch:w}));
+ return sheet;
+}
+$("exportXlsx").onclick=()=>{try{
+ if(!window.XLSX)throw Error("XLSX 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.");
+ const wb=XLSX.utils.book_new();
+ const singleHeaders=["한자","훈","음","사용","출제빈도","출제비중"];
+ const wordHeaders=["한자어","읽기","뜻","사용","출제빈도","출제비중"];
+ const single=db.filter(e=>e.type==="single").map(e=>({"한자":e.text,"훈":e.meaning,"음":e.reading,"사용":e.enabled?"사용":"제외","출제빈도":frequencyLabel(e.weight),"출제비중":e.weight}));
+ const words=db.filter(e=>e.type==="word").map(e=>({"한자어":e.text,"읽기":e.reading,"뜻":e.meaning,"사용":e.enabled?"사용":"제외","출제빈도":frequencyLabel(e.weight),"출제비중":e.weight}));
+ XLSX.utils.book_append_sheet(wb,makeExportSheet(single,singleHeaders,[12,18,18,12,16,12]),"단일 한자");
+ XLSX.utils.book_append_sheet(wb,makeExportSheet(words,wordHeaders,[16,20,28,12,16,12]),"한자어");
+ XLSX.writeFile(wb,"한자_학습_데이터.xlsx");
+}catch(e){notify(e.message)}};
 load();resetForm();renderDb();refreshRoster();
 window.addEventListener("storage",e=>{if(e.key===STUDENT_STORAGE_KEY||e.key===null){if(!session)refreshRoster();else notify("학생명단이 변경되었습니다. 현재 수업은 시작할 때의 명단으로 계속합니다.")}if(e.key===KEY||e.key===null){storageBlocked=true;$("saveStatus").textContent="다른 탭에서 변경됨 · 새로고침 필요";notify("다른 탭의 한자 데이터가 변경되었습니다. 새로고침해 주세요.")}});
 window.addEventListener("resize",fitHanjaRoom);
