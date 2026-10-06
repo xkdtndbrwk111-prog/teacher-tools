@@ -635,7 +635,6 @@ function updateAxisControls(){
 function renderLayout(){
   const ctx=currentRenderContext(),{rows,cols,cells}=ctx.layout,studentMap=new Map(ctx.students.map(s=>[s.id,s])),occupied=new Map(ctx.assignments.map(a=>[a.seatId,a.studentId]));
   const root=$("layoutGrid");
-  $("rows").value=classState.layout.rows;$("cols").value=classState.layout.cols;
   root.style.gridTemplateColumns=`repeat(${cols},var(--editor-cell-w))`;
   root.style.gridTemplateRows=`repeat(${rows},var(--editor-cell-h))`;
   root.innerHTML="";
@@ -2161,7 +2160,7 @@ function buildPlaybackRoom(){
     seat.dataset.seatId=cell.id;
     seat.style.left=`${cell.col*seatW}px`;
     seat.style.top=`${cell.row*(seatH+10)}px`;
-    seat.innerHTML=`<img class="desk" src="${DESK_SRC}" alt=""><div class="student"><div class="speech-bubble"></div><div class="sprite"></div></div><img class="chair" src="${CHAIR_SRC}" alt=""><div class="seat-name" title="${escapeHtml(student?.name||"")}">${escapeHtml(student?.name||"")}</div>`;
+    seat.innerHTML=`<img class="desk" src="${DESK_SRC}" alt=""><div class="student"><div class="speech-bubble"></div><div class="sprite"></div><div class="student-glasses-layer"></div></div><img class="chair" src="${CHAIR_SRC}" alt=""><div class="seat-name" title="${escapeHtml(student?.name||"")}">${escapeHtml(student?.name||"")}</div>`;
     if(student){
       const sheet=student.visual||studentSheetForIndex(studentIndexes.get(student.id)),sprite=seat.querySelector(".student .sprite");
       setBg(sprite,sheet);
@@ -2173,7 +2172,11 @@ function buildPlaybackRoom(){
   hidePlaybackAll();
 }
 function framePos(dir,frame){const row={down:0,left:1,right:2,up:3}[dir];return `${-frame*85}px ${-row*85}px`}
-function setWalkerFrame(w,dir,frame){w.querySelector(".sprite").style.backgroundPosition=framePos(dir,frame)}
+function setWalkerFrame(w,dir,frame){
+  const pos=framePos(dir,frame);
+  const sprite=w.querySelector(".sprite");if(sprite)sprite.style.backgroundPosition=pos;
+  const glasses=w.querySelector(".student-glasses-layer");if(glasses)glasses.style.backgroundPosition=pos;
+}
 
 function playbackTeacherPoint(){
   const el=$("playbackTeacher"),room=$("room");if(!el||!room)return{x:playbackRoomWidth/2,y:267};
@@ -2338,7 +2341,7 @@ function handleSeatSpeech(s){
     showStudentSpeech(target,"뒷자리 좋아~",1700);
   }
 }
-function showSeat(s){const student=s.seat.querySelector(".student");student.querySelector(".sprite").style.backgroundPosition="-77px -231px";student.classList.add("visible");s.seat.querySelector(".seat-name").classList.add("visible")}
+function showSeat(s){const student=s.seat.querySelector(".student");student.querySelector(".sprite").style.backgroundPosition="-77px -231px";const g=student.querySelector(".student-glasses-layer");if(g)g.style.backgroundPosition="-77px -231px";student.classList.add("visible");s.seat.querySelector(".seat-name").classList.add("visible")}
 function hidePlaybackAll(){
   $("room").querySelectorAll(".student,.seat-name").forEach(e=>e.classList.remove("visible"));
   $("room").querySelectorAll(".speech-bubble").forEach(e=>e.classList.remove("show"));
@@ -2402,7 +2405,7 @@ function preparePlaybackStartState(){
     ghost.className="history-start-student";
     ghost.dataset.studentId=s.id;
     ghost.dataset.historyStart=s.id;
-    ghost.innerHTML='<div class="sprite"></div>';
+    ghost.innerHTML='<div class="sprite"></div><div class="student-glasses-layer"></div>';
     setBg(ghost.querySelector(".sprite"),s.sheet);
 
     const name=document.createElement("div");
@@ -2478,7 +2481,7 @@ async function animateOne(s,index,speed,runId,plan){
 
   const mul=.92+Math.random()*.2,w=document.createElement("div");
   w.className="walker";
-  w.innerHTML=`<div class="speech-bubble"></div><div class="sprite"></div><div class="tag">${escapeHtml(s.name)}</div>`;
+  w.innerHTML=`<div class="speech-bubble"></div><div class="sprite"></div><div class="student-glasses-layer"></div><div class="tag">${escapeHtml(s.name)}</div>`;
   setBg(w.querySelector(".sprite"),s.sheet);
   $("room").appendChild(w);
 
@@ -2497,7 +2500,7 @@ async function animateOne(s,index,speed,runId,plan){
 
     const launch=document.createElement("div");
     launch.className="launch-sprite-overlay";
-    launch.innerHTML='<div class="sprite"></div>';
+    launch.innerHTML='<div class="sprite"></div><div class="student-glasses-layer"></div>';
     setBg(launch.querySelector(".sprite"),s.sheet);
     $("room").appendChild(launch);
     launch.style.left=`${visualStart.x}px`;
@@ -2716,9 +2719,7 @@ function handleExternalStorageChange(event){
 }
 
 /* Studio panel collapse */
-function applyStudioCollapse(){const studio=document.querySelector(".studio");studio.classList.toggle("dock-collapsed",Boolean(classState.ui?.dockCollapsed));studio.classList.toggle("student-collapsed",Boolean(classState.ui?.studentStripCollapsed));$("toggleDock").textContent=classState.ui?.dockCollapsed?"도구 열기":"◀";$("toggleDock").setAttribute("aria-label",classState.ui?.dockCollapsed?"오른쪽 도구창 펼치기":"오른쪽 도구창 접기");$("toggleDock").title=classState.ui?.dockCollapsed?"오른쪽 도구창 펼치기":"오른쪽 도구창 접기";$("toggleStudentStrip").textContent=classState.ui?.studentStripCollapsed?"학생창 펼치기 ▼":"학생창 접기 ▲";$("toggleStudentStrip").setAttribute("aria-label",classState.ui?.studentStripCollapsed?"학생 목록 펼치기":"학생 목록 접기");requestAnimationFrame(fitEditorGrid)}
-function toggleDock(){classState.ui.dockCollapsed=!classState.ui.dockCollapsed;saveState();applyStudioCollapse()}
-function toggleStudentStrip(){classState.ui.studentStripCollapsed=!classState.ui.studentStripCollapsed;saveState();applyStudioCollapse()}
+function applyStudioCollapse(){requestAnimationFrame(fitEditorGrid)}
 
 /* UI bindings */
 function bindUI(){
