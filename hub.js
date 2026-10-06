@@ -63,6 +63,18 @@ const APPS = [
   },
 
   {
+    id: "hanja",
+    title: "한자 학습 매니저",
+    description: "우리 반 학생들과 한자·한자어 문제를 풀어요",
+    type: "internal",
+    status: "active",
+    url: "./hanja/",
+    icon: "folder",
+    color: "amber",
+    media: null
+  },
+
+  {
     id: "project-c",
     title: "Project C",
     description: "새로운 실시간 수업 게임",
