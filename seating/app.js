@@ -2164,8 +2164,10 @@ function buildPlaybackRoom(){
     if(student){
       const sheet=student.visual||studentSheetForIndex(studentIndexes.get(student.id)),sprite=seat.querySelector(".student .sprite");
       setBg(sprite,sheet);
+      const glasses=student.glasses||"none",glassesLayer=seat.querySelector(".student-glasses-layer"),glassesSrc=studentGlassesSrc(glasses);
+      if(glassesSrc)setBg(glassesLayer,glassesSrc);else glassesLayer.style.backgroundImage="none";
       sprite.style.setProperty("--bob-delay",`${(-.13*((studentIndexes.get(student.id)*3)%9)).toFixed(2)}s`);
-      playbackStudents.push({id:student.id,name:student.name,sheet,seat,cell,previousSeatId:previousByStudent.get(student.id)||null});
+      playbackStudents.push({id:student.id,name:student.name,sheet,glasses,seat,cell,previousSeatId:previousByStudent.get(student.id)||null});
     }
     root.appendChild(seat);
   });
@@ -2407,6 +2409,7 @@ function preparePlaybackStartState(){
     ghost.dataset.historyStart=s.id;
     ghost.innerHTML='<div class="sprite"></div><div class="student-glasses-layer"></div>';
     setBg(ghost.querySelector(".sprite"),s.sheet);
+    const ghostGlasses=studentGlassesSrc(s.glasses);if(ghostGlasses)setBg(ghost.querySelector(".student-glasses-layer"),ghostGlasses);
 
     const name=document.createElement("div");
     name.className="seat-name history-start-name visible";
@@ -2483,6 +2486,7 @@ async function animateOne(s,index,speed,runId,plan){
   w.className="walker";
   w.innerHTML=`<div class="speech-bubble"></div><div class="sprite"></div><div class="student-glasses-layer"></div><div class="tag">${escapeHtml(s.name)}</div>`;
   setBg(w.querySelector(".sprite"),s.sheet);
+  const walkerGlasses=studentGlassesSrc(s.glasses);if(walkerGlasses)setBg(w.querySelector(".student-glasses-layer"),walkerGlasses);
   $("room").appendChild(w);
 
   // The normal moving student container NEVER rises above the desk.
@@ -2502,6 +2506,7 @@ async function animateOne(s,index,speed,runId,plan){
     launch.className="launch-sprite-overlay";
     launch.innerHTML='<div class="sprite"></div><div class="student-glasses-layer"></div>';
     setBg(launch.querySelector(".sprite"),s.sheet);
+    const launchGlasses=studentGlassesSrc(s.glasses);if(launchGlasses)setBg(launch.querySelector(".student-glasses-layer"),launchGlasses);
     $("room").appendChild(launch);
     launch.style.left=`${visualStart.x}px`;
     launch.style.top=`${visualStart.y}px`;
