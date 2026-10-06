@@ -1,12 +1,211 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>한자 학습 매니저</title><link rel="icon" href="../assets/hub/favicon.svg"><link rel="stylesheet" href="../seating/styles.css"><link rel="stylesheet" href="styles.css"></head><body>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>한자 학습 매니저</title>
+<link rel="icon" href="../assets/hub/favicon.svg">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
 <section id="manager" class="screen teacher-screen">
-<header class="studio-topbar"><div class="brand-block"><strong>한자 학습 매니저</strong><span id="saveStatus">한자와 한자어로 만드는 우리 반 수업</span></div><div class="top-actions"><a href="../" class="hub-link">도구 홈</a><button id="start" class="success">문제 출제 ▶</button></div></header>
-<div class="studio"><main class="workspace-column"><section class="workspace-toolbar"><div class="toolbar-group"><button class="toolbtn on" data-type="single">단일 한자</button><button class="toolbtn" data-type="word">한자어</button></div><span id="dbSummary" class="assignment-status"></span></section><section class="workspace database"><div class="db-heading"><div><h1 id="dbTitle">단일 한자</h1><p>등록한 데이터에서 매 문제를 새로 만듭니다.</p></div><button id="newEntry" class="primary">＋ 새 항목</button></div><div id="entries" class="entry-grid"></div><p id="emptyDb">오른쪽 도구창에서 첫 한자를 등록해 주세요.</p></section></main>
-<aside class="tool-dock"><nav class="dock-tabs"><button class="dock-tab on" data-panel="data">데이터</button><button class="dock-tab" data-panel="questions">문제 설정</button></nav><div class="dock-body">
-<section id="dataPanel"><div class="dock-title"><h2 id="editTitle">한자 등록</h2><span>입력 후 저장을 눌러 주세요.</span></div><form id="entryForm"><label><span id="textLabel">한자</span><input id="hanzi" required autocomplete="off"></label><label><span id="meaningLabel">훈</span><input id="meaning" required></label><label><span id="readingLabel">음</span><input id="reading" required></label><label>출제비중<input id="weight" type="number" min="0.01" max="100" step="any" value="1" required></label><label class="check"><input id="enabled" type="checkbox" checked>출제에 사용</label><button class="primary full" type="submit">저장</button><button id="cancelEdit" class="ghost full" type="button">새 항목으로 전환</button></form><p class="dock-help">단일 한자는 입력 중 글자 수를 제한하지 않습니다. 저장할 때 검사합니다.</p>
-<div class="sheet-tools"><strong>스프레드시트 일괄 관리</strong><p>엑셀에서 한자·한자어를 편집한 뒤 다시 불러올 수 있습니다.</p><a class="sheet-btn" href="./hanja_manager_import_template.xlsx" download>빈 양식 다운로드 (.xlsx)</a><button id="exportSheet" class="sheet-btn" type="button">현재 데이터 다운로드 (.xlsx)</button><button id="importSheet" class="sheet-btn" type="button">스프레드시트 업로드</button><input id="sheetFile" class="hidden" type="file" accept=".xlsx,.xls"><label>업로드 방식<select id="importMode"><option value="merge">기존 데이터와 병합</option><option value="replace">전체 교체</option></select></label><p class="dock-help">병합은 같은 한자/한자어를 업로드 값으로 갱신하고 새 항목을 추가합니다. 전체 교체는 업로드 파일의 데이터만 남깁니다.</p></div></section>
-<section id="questionsPanel" class="hidden"><div class="dock-title"><h2>문제 매니저</h2><span>학생 한 명씩 연속으로 진행합니다.</span></div><form id="settingsForm"><label>출제 대상<select id="target"><option value="mixed">혼합</option><option value="single">단일 한자</option><option value="word">한자어</option></select></label><label>문제 방향<select id="direction"><option value="forward">한자 → 훈음·읽기</option><option value="reverse">훈음·읽기 → 한자</option><option value="both">양방향</option></select></label><label>진행 방식<select id="mode"><option value="choice">객관식</option><option value="manual">수동 판정</option></select></label><label>학생 1명당 연속 문제 수<input id="perStudent" type="number" min="1" max="50" value="3" required></label><label>객관식 보기 수<select id="choices"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label></form><p class="dock-help">시작할 때 학생 순서를 한 번 섞습니다. 같은 종류의 등록 데이터로 오답 보기를 만들며, 서로 다른 답이 부족하면 보기 수가 줄어듭니다.</p></section>
-</div></aside>
-<section class="student-strip"><div class="student-strip-head"><div><strong>이번 수업 학생</strong><span id="rosterSummary"></span></div><a class="hub-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-add">명단 새로 읽기</button></div><div id="studentCards" class="student-cards"></div></section></div></section>
-<section id="game" class="screen hidden"><header class="studio-topbar"><div class="brand-block"><strong>한자 교실</strong><span id="progress"></span></div><button id="endGame" class="ghost">관리 화면으로</button></header><main class="classroom"><img class="classroom-top" src="../shared/assets/playback/topband.png" alt=""><img class="classroom-board" src="../shared/assets/playback/board.png" alt="교실 칠판"><div class="game-content"><section class="question-modal" aria-label="현재 문제"><span id="questionType"></span><h1 id="prompt"></h1><div id="options"></div><div id="manual"><button id="reveal" class="primary">정답 발표</button><p id="answer" class="hidden"></p><div id="judgement" class="hidden"><button id="correct" class="success">○ 정답</button><button id="wrong" class="danger">✕ 오답</button></div></div><p id="feedback" role="status" aria-live="polite"></p></section><div id="currentStudent"><div id="gameSprite" class="hanja-sprite"></div><strong id="studentName"></strong></div></div></main></section>
-<div id="notice" role="status" aria-live="polite" class="hidden"></div><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script type="module" src="app.js"></script></body></html>
+  <header class="studio-topbar">
+    <div class="brand-block">
+      <strong>한자 학습 매니저</strong>
+      <span id="saveStatus">한자와 한자어로 만드는 우리 반 수업</span>
+    </div>
+    <div class="top-actions">
+      <a href="../" class="hub-link">도구 홈</a>
+      <button id="start" class="success">문제 출제 ▶</button>
+    </div>
+  </header>
+
+  <div class="studio">
+    <main class="workspace-column">
+      <section class="workspace-toolbar">
+        <div class="toolbar-group">
+          <button class="toolbtn on" data-type="single">단일 한자</button>
+          <button class="toolbtn" data-type="word">한자어</button>
+        </div>
+        <span id="dbSummary" class="assignment-status"></span>
+      </section>
+
+      <section class="workspace database">
+        <div class="db-heading">
+          <div>
+            <h1 id="dbTitle">단일 한자</h1>
+            <p>등록한 한자·한자어 데이터에서 매 문제를 새로 만듭니다.</p>
+          </div>
+          <div class="db-actions">
+            <button id="importXlsx" class="ghost">XLSX 가져오기</button>
+            <button id="exportXlsx" class="ghost">XLSX 내보내기</button>
+            <button id="newEntry" class="primary">＋ 새 항목</button>
+            <input id="xlsxFile" type="file" accept=".xlsx,.xls" hidden>
+          </div>
+        </div>
+        <div id="entries" class="entry-grid"></div>
+        <p id="emptyDb" class="empty-message">오른쪽 도구창에서 첫 한자를 등록해 주세요.</p>
+      </section>
+    </main>
+
+    <aside class="tool-dock">
+      <nav class="dock-tabs">
+        <button class="dock-tab on" data-panel="data">데이터</button>
+        <button class="dock-tab" data-panel="questions">문제 설정</button>
+      </nav>
+      <div class="dock-body">
+        <section id="dataPanel">
+          <div id="singleEditPanel">
+            <div class="dock-title">
+              <h2 id="editTitle">한자 등록</h2>
+              <span>카드를 클릭하면 바로 상세 설정을 수정합니다. Shift+클릭하면 여러 항목을 선택합니다.</span>
+            </div>
+            <form id="entryForm">
+              <label><span id="textLabel">한자</span><input id="hanzi" required autocomplete="off"></label>
+              <label><span id="meaningLabel">훈</span><input id="meaning" required></label>
+              <label><span id="readingLabel">음</span><input id="reading" required></label>
+              <label class="frequency-control">출제 빈도
+                <div class="frequency-slider-row">
+                  <input id="weight" type="range" min="0" max="100" step="20" value="60">
+                  <output id="weightLabel" for="weight">보통 · 60</output>
+                </div>
+                <div class="frequency-scale"><span>사용 안 함</span><span>매우 높음</span></div>
+              </label>
+              <p class="frequency-help">0은 출제하지 않습니다. 빈도가 높을수록 카드도 밝게 표시됩니다.</p>
+              <button class="primary full" type="submit">저장</button>
+              <button id="cancelEdit" class="ghost full" type="button">새 항목으로 전환</button>
+            </form>
+            <p class="dock-help">단일 한자는 입력 중 글자 수를 제한하지 않고 저장할 때 한 글자인지 검사합니다.</p>
+          </div>
+
+          <div id="bulkEditPanel" class="hidden">
+            <div class="dock-title">
+              <h2><span id="bulkCount">0</span>개 항목 일괄 설정</h2>
+              <span>Shift+클릭으로 선택을 추가하거나 해제할 수 있습니다.</span>
+            </div>
+            <label class="frequency-control">선택 항목 출제 빈도
+              <div class="frequency-slider-row">
+                <input id="bulkWeight" type="range" min="0" max="100" step="20" value="60">
+                <output id="bulkWeightLabel" for="bulkWeight">보통 · 60</output>
+              </div>
+              <div class="frequency-scale"><span>사용 안 함</span><span>매우 높음</span></div>
+            </label>
+            <p id="bulkHint" class="frequency-help">슬라이더를 놓으면 선택한 모든 항목에 같은 빈도가 적용됩니다.</p>
+            <button id="bulkDelete" class="danger full" type="button">선택 항목 삭제</button>
+            <button id="clearSelection" class="ghost full" type="button">다중 선택 해제</button>
+          </div>
+        </section>
+
+        <section id="questionsPanel" class="hidden">
+          <div class="dock-title">
+            <h2>문제 매니저</h2>
+            <span>학생 한 명이 설정한 문제 수를 모두 푼 뒤 다음 학생으로 넘어갑니다.</span>
+          </div>
+          <form id="settingsForm">
+            <label>출제 대상
+              <select id="target"><option value="mixed">혼합</option><option value="single">단일 한자</option><option value="word">한자어</option></select>
+            </label>
+            <label>문제 방향
+              <select id="direction"><option value="forward">한자 → 훈음 / 읽기</option><option value="reverse">훈음 / 읽기 → 한자</option><option value="both">양방향 혼합</option></select>
+            </label>
+            <label>진행 방식
+              <select id="mode"><option value="choice">객관식</option><option value="manual">수동 판정</option></select>
+            </label>
+            <label>학생 1명당 연속 문제 수<input id="perStudent" type="number" min="1" max="50" value="3" required></label>
+            <label>객관식 보기 수
+              <select id="choices"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select>
+            </label>
+          </form>
+          <p class="dock-help">학생 순서는 수업 시작 때 한 번만 섞습니다. 오답은 같은 학생·같은 문제에서 다시 시도합니다.</p>
+        </section>
+      </div>
+    </aside>
+
+    <section class="student-strip">
+      <div class="student-strip-head">
+        <div><strong>이번 수업 학생</strong><span id="rosterSummary"></span></div>
+        <div class="strip-actions"><a class="hub-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-add" type="button">명단 새로 읽기</button></div>
+      </div>
+      <div id="studentCards" class="student-cards"></div>
+    </section>
+  </div>
+</section>
+
+<section id="game" class="screen hidden">
+  <header class="studio-topbar game-topbar">
+    <div class="brand-block"><strong>한자 교실</strong><span id="progress"></span></div>
+    <button id="endGame" class="ghost">관리 화면으로</button>
+  </header>
+
+  <main class="game-viewport">
+    <div id="hanjaRoomShell" class="room-shell">
+      <div id="hanjaRoom" class="room">
+        <div class="wall-extension" aria-hidden="true"></div>
+        <div class="door-corridor" aria-hidden="true"></div>
+        <img class="topband" src="../shared/assets/playback/topband.png" alt="">
+        <div class="floor"></div>
+        <img class="board" src="../shared/assets/playback/board.png" alt="교실 칠판">
+
+        <div class="decor-seats" aria-hidden="true">
+          <div class="decor-seat" style="left:120px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:360px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:600px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:840px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1120px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1360px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1600px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1840px;top:650px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:120px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:360px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:600px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:840px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1120px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1360px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1600px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+          <div class="decor-seat" style="left:1840px;top:880px"><img class="decor-desk" src="../shared/assets/playback/desk.png"><img class="decor-chair" src="../shared/assets/playback/chair.png"></div>
+        </div>
+
+        <section class="quiz-stage">
+          <div class="question-modal">
+            <div id="questionCounter" class="question-counter">문제 1 / 3</div>
+
+            <div id="currentStudent" class="student-side">
+              <div id="correctOverlay" class="correct-overlay hidden">O</div>
+              <div id="gameSprite" class="hanja-sprite game-student-sprite"></div>
+              <strong id="studentName"></strong>
+            </div>
+
+            <div class="question-side">
+              <span id="questionType"></span>
+              <h1 id="questionPrompt"></h1>
+              <p id="questionInstruction"></p>
+              <div id="options"></div>
+              <div id="manual" class="hidden">
+                <button id="reveal" class="primary">정답 발표</button>
+                <p id="answer" class="hidden"></p>
+                <div id="judgement" class="hidden">
+                  <button id="correct" class="success">○ 정답</button>
+                  <button id="wrong" class="danger">✕ 오답</button>
+                </div>
+              </div>
+              <p id="feedback" role="status" aria-live="polite"></p>
+            </div>
+
+            <div id="meaningOverlay" class="meaning-overlay hidden" aria-live="polite">
+              <span>뜻</span>
+              <strong id="meaningOverlayText"></strong>
+            </div>
+          </div>
+        </section>
+
+        <div id="celebrationParticles" class="celebration-particles" aria-hidden="true"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<div id="notice" role="status" aria-live="polite" class="hidden"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
