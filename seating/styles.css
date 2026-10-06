@@ -589,3 +589,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   background-repeat:no-repeat!important;background-size:231px 308px!important;background-position:-77px -231px!important;
   image-rendering:pixelated!important;pointer-events:none!important
 }
+
+/* V6.25 regression fixes: keep the two studio rows tight and make sticky student header opaque. */
+.studio{overflow:hidden}
+.workspace-column,.tool-dock{min-height:0;align-self:stretch}
+.workspace-column{overflow:hidden}
+.workspace{height:0;flex:1 1 0;min-height:0}
+.tool-dock{overflow:hidden}
+.student-strip{height:158px;box-sizing:border-box;align-self:stretch}
+.student-name-sticky{
+  margin:-12px -12px 10px;
+  padding:12px 12px 10px;
+  background:#eef3f9;
+  border-bottom:1px solid #cbd5e1;
+  box-shadow:0 4px 8px rgba(15,23,42,.08);
+}
