@@ -15,6 +15,7 @@
         <span id="saveStatus">브라우저 저장 · 확인 중…</span>
       </div>
       <div class="top-actions">
+        <a class="ghost hub-home-link" href="../" aria-label="도구 홈으로 이동">⌂ 도구 홈</a>
         <div class="undo-actions" aria-label="실행 취소 및 다시 실행">
           <button id="undoButton" class="ghost undo-button" type="button" disabled title="실행 취소 (Ctrl/⌘+Z)">↶ 실행 취소</button>
           <button id="redoButton" class="ghost undo-button" type="button" disabled title="다시 실행 (Ctrl/⌘+Shift+Z)">↷ 다시 실행</button>
@@ -39,7 +40,7 @@
             <button class="toolbtn" data-tool="male" type="button">남</button>
             <button class="toolbtn" data-tool="female" type="button">여</button>
             <button class="toolbtn" data-tool="aisle" type="button">통로</button>
-            <button class="toolbtn" data-tool="unused" type="button">사용 안 함</button>
+            <button class="toolbtn" data-tool="unused" type="button">빈 자리</button>
           </div>
           <div class="toolbar-spacer"></div>
           <div id="assignmentStatus" class="assignment-status">새 배치를 만들어 주세요.</div>
@@ -67,20 +68,17 @@
       </main>
 
       <aside id="toolDock" class="tool-dock">
-        <button id="toggleDock" class="dock-collapse-handle" type="button" aria-label="오른쪽 도구창 접기">◀ 도구</button>
         <nav class="dock-tabs" aria-label="교사 도구">
-          <button class="dock-tab on" data-tab="student" type="button">학생</button>
+          <button class="dock-tab" data-tab="student" type="button">학생</button>
           <button class="dock-tab" data-tab="groups" type="button">좌석·모둠</button>
           <button class="dock-tab" data-tab="rules" type="button">규칙</button>
           <button class="dock-tab" data-tab="teacher" type="button">교사</button>
           <button class="dock-tab" data-tab="history" type="button">히스토리</button>
-          <button class="dock-tab" data-tab="settings" type="button">설정</button>
         </nav>
 
         <div class="dock-body">
           <section class="dock-panel" data-panel="student">
             <div class="dock-title"><h2>학생 비공개 속성</h2><span>선택한 학생만 편집합니다.</span></div>
-            <div class="privacy-note">⚠ 교사용 비공개 정보입니다. 학생 공개 화면/JPG에는 전달되지 않습니다.</div>
             <div id="studentInspector"></div>
           </section>
 
@@ -98,7 +96,7 @@
                 <button id="saveGroup" class="primary" type="button">저장</button>
                 <button id="cancelGroup" class="ghost" type="button">취소</button>
               </div>
-              <p class="help">중앙 좌석을 클릭하거나 드래그해 선택하세요. 통로/사용 안 함은 선택할 수 없습니다.</p>
+              <p class="help">중앙 좌석을 클릭하거나 드래그해 선택하세요. 통로/빈 자리은 선택할 수 없습니다.</p>
             </div>
             <div id="groupList" class="group-list"></div>
           </section>
@@ -173,23 +171,22 @@
             <div id="historyList" class="history-list"></div>
           </section>
 
-          <section class="dock-panel hidden" data-panel="settings">
-            <div class="dock-title"><h2>학급 · 레이아웃 설정</h2><span>저장 상태는 화면 상단에서 확인하세요.</span></div>
+          <section class="dock-panel" data-panel="settings">
+            <div class="dock-title"><h2>설정</h2><span>학급 명단과 기본 설정을 관리합니다.</span></div>
             <div id="storageAlert" class="storage-alert hidden" role="alert">
               <span id="storageAlertText"></span>
               <button id="reloadStorage" class="hidden" type="button">최신 데이터 다시 불러오기</button>
             </div>
+            <label class="field">학생 명단 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
+            <button id="applyStudents" class="primary full" type="button">명단 적용</button>
+            <hr>
             <label class="field">학급 이름<input id="className" maxlength="30" placeholder="우리 반"></label>
-            <div class="settings-grid">
-              <label class="field">가로 칸<input id="cols" type="number" min="2" max="12" value="8"></label>
-              <label class="field">세로 칸<input id="rows" type="number" min="2" max="12" value="4"></label>
-            </div>
-            <div class="settings-hint">행·열 숫자를 바꾸면 즉시 적용됩니다. 중앙 작업영역 오른쪽/아래의 + · − 버튼으로도 한 줄씩 조절할 수 있습니다.</div>
             <button id="resetLayout" class="danger full" type="button">레이아웃 초기화</button>
+            <div class="settings-hint">행·열은 중앙 작업영역의 + · − 버튼에서 바로 조절합니다.</div>
             <hr>
             <section class="data-transfer" aria-labelledby="dataTransferTitle">
               <strong id="dataTransferTitle">데이터 백업 · 복구</strong>
-              <p>현재 학급의 명단, 속성, 좌석, 모둠, 규칙, 아바타와 히스토리를 하나의 JSON 파일로 보관합니다.</p>
+              <p>현재 학급의 명단, 속성, 좌석, 모둠, 규칙, 캐릭터와 히스토리를 하나의 JSON 파일로 보관합니다.</p>
               <div class="data-transfer-actions">
                 <button id="exportJson" class="ghost" type="button">JSON으로 내보내기</button>
                 <button id="importJson" class="ghost" type="button">JSON 불러오기</button>
@@ -197,6 +194,7 @@
               </div>
               <div id="dataTransferStatus" class="data-transfer-status" aria-live="polite">불러오기는 파일을 먼저 검사한 뒤 교체 여부를 확인합니다.</div>
             </section>
+          </section>
             <hr>
             <label class="field">학생 명단 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
             <button id="applyStudents" class="primary full" type="button">명단 적용</button>
@@ -216,7 +214,6 @@
             <button id="addStudent" class="strip-add" type="button">＋ 학생 추가</button>
             <label class="target-student-count">총원 <input id="targetStudentCount" type="number" min="0" max="60" inputmode="numeric" aria-label="학급 총원">명</label>
             <button id="fillStudentCount" class="strip-add target-fill" type="button">총원 맞추기</button>
-            <button id="toggleStudentStrip" class="strip-collapse" type="button" aria-label="학생 목록 접기">학생창 접기 ▲</button>
           </div>
         </div>
         <div id="studentCards" class="student-cards"></div>
