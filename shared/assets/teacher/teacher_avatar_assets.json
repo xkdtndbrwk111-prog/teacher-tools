@@ -1,0 +1,460 @@
+{
+  "female": {
+    "label": "여자 선생님",
+    "skins": [
+      {
+        "label": "밝은 피부",
+        "src": "./f_skin_01.png"
+      },
+      {
+        "label": "아이보리",
+        "src": "./f_skin_02.png"
+      },
+      {
+        "label": "중간 피부",
+        "src": "./f_skin_03.png"
+      },
+      {
+        "label": "짙은 피부",
+        "src": "./f_skin_04.png"
+      }
+    ],
+    "eyes": [
+      {
+        "label": "눈 A",
+        "src": "./f_eyes_01.png"
+      },
+      {
+        "label": "눈 B",
+        "src": "./f_eyes_02.png"
+      },
+      {
+        "label": "눈 C",
+        "src": "./f_eyes_03.png"
+      }
+    ],
+    "hairs": [
+      {
+        "label": "헤어 001",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_01_0_front.png",
+            "back": "./f_hair_01_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_01_1_front.png",
+            "back": "./f_hair_01_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_01_2_front.png",
+            "back": "./f_hair_01_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 003",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_02_0_front.png",
+            "back": "./f_hair_02_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_02_1_front.png",
+            "back": "./f_hair_02_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_02_2_front.png",
+            "back": "./f_hair_02_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 005",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_03_0_front.png",
+            "back": "./f_hair_03_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_03_1_front.png",
+            "back": "./f_hair_03_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_03_2_front.png",
+            "back": "./f_hair_03_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 009",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_04_0_front.png",
+            "back": null
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_04_1_front.png",
+            "back": null
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_04_2_front.png",
+            "back": null
+          }
+        ]
+      },
+      {
+        "label": "헤어 012",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_05_0_front.png",
+            "back": "./f_hair_05_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_05_1_front.png",
+            "back": "./f_hair_05_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_05_2_front.png",
+            "back": "./f_hair_05_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 015",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./f_hair_06_0_front.png",
+            "back": "./f_hair_06_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./f_hair_06_1_front.png",
+            "back": "./f_hair_06_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./f_hair_06_2_front.png",
+            "back": "./f_hair_06_2_back.png"
+          }
+        ]
+      }
+    ],
+    "outfits": [
+      {
+        "label": "일반복 1",
+        "src": "./f_outfit_01.png"
+      },
+      {
+        "label": "일반복 2",
+        "src": "./f_outfit_02.png"
+      },
+      {
+        "label": "수트 A · 검정",
+        "src": "./f_outfit_03.png"
+      },
+      {
+        "label": "수트 A · 흰색",
+        "src": "./f_outfit_04.png"
+      },
+      {
+        "label": "수트 A · 청록",
+        "src": "./f_outfit_05.png"
+      },
+      {
+        "label": "수트 B · 검정",
+        "src": "./f_outfit_06.png"
+      },
+      {
+        "label": "수트 B · 흰색",
+        "src": "./f_outfit_07.png"
+      }
+    ]
+  },
+  "male": {
+    "label": "남자 선생님",
+    "skins": [
+      {
+        "label": "밝은 피부",
+        "src": "./m_skin_01.png"
+      },
+      {
+        "label": "아이보리",
+        "src": "./m_skin_02.png"
+      },
+      {
+        "label": "중간 피부",
+        "src": "./m_skin_03.png"
+      },
+      {
+        "label": "짙은 피부",
+        "src": "./m_skin_04.png"
+      }
+    ],
+    "eyes": [
+      {
+        "label": "눈 A",
+        "src": "./m_eyes_01.png"
+      },
+      {
+        "label": "눈 B",
+        "src": "./m_eyes_02.png"
+      },
+      {
+        "label": "눈 C",
+        "src": "./m_eyes_03.png"
+      }
+    ],
+    "hairs": [
+      {
+        "label": "헤어 001",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_01_0_front.png",
+            "back": null
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_01_1_front.png",
+            "back": null
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_01_2_front.png",
+            "back": null
+          }
+        ]
+      },
+      {
+        "label": "헤어 003",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_02_0_front.png",
+            "back": "./m_hair_02_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_02_1_front.png",
+            "back": "./m_hair_02_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_02_2_front.png",
+            "back": "./m_hair_02_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 006",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_03_0_front.png",
+            "back": "./m_hair_03_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_03_1_front.png",
+            "back": "./m_hair_03_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_03_2_front.png",
+            "back": "./m_hair_03_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 009",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_04_0_front.png",
+            "back": "./m_hair_04_0_back.png"
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_04_1_front.png",
+            "back": "./m_hair_04_1_back.png"
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_04_2_front.png",
+            "back": "./m_hair_04_2_back.png"
+          }
+        ]
+      },
+      {
+        "label": "헤어 012",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_05_0_front.png",
+            "back": null
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_05_1_front.png",
+            "back": null
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_05_2_front.png",
+            "back": null
+          }
+        ]
+      },
+      {
+        "label": "헤어 014",
+        "colors": [
+          {
+            "label": "갈색",
+            "front": "./m_hair_06_0_front.png",
+            "back": null
+          },
+          {
+            "label": "금발",
+            "front": "./m_hair_06_1_front.png",
+            "back": null
+          },
+          {
+            "label": "검정",
+            "front": "./m_hair_06_2_front.png",
+            "back": null
+          }
+        ]
+      }
+    ],
+    "outfits": [
+      {
+        "label": "일반복 1",
+        "src": "./m_outfit_01.png"
+      },
+      {
+        "label": "일반복 2",
+        "src": "./m_outfit_02.png"
+      },
+      {
+        "label": "수트 A · 검정",
+        "src": "./m_outfit_03.png"
+      },
+      {
+        "label": "수트 A · 흰색",
+        "src": "./m_outfit_04.png"
+      },
+      {
+        "label": "수트 A · 청록",
+        "src": "./m_outfit_05.png"
+      },
+      {
+        "label": "수트 B · 검정",
+        "src": "./m_outfit_06.png"
+      },
+      {
+        "label": "수트 B · 흰색",
+        "src": "./m_outfit_07.png"
+      }
+    ]
+  },
+  "glasses": [
+    {
+      "label": "없음",
+      "src": null
+    },
+    {
+      "label": "안경 1",
+      "src": "./glasses_01.png"
+    },
+    {
+      "label": "안경 2",
+      "src": "./glasses_02.png"
+    },
+    {
+      "label": "안경 3",
+      "src": "./glasses_03.png"
+    },
+    {
+      "label": "안경 4",
+      "src": "./glasses_04.png"
+    },
+    {
+      "label": "안경 5",
+      "src": "./glasses_05.png"
+    },
+    {
+      "label": "안경 6",
+      "src": "./glasses_06.png"
+    },
+    {
+      "label": "안경 7",
+      "src": "./glasses_07.png"
+    },
+    {
+      "label": "안경 8",
+      "src": "./glasses_08.png"
+    },
+    {
+      "label": "안경 9",
+      "src": "./glasses_09.png"
+    },
+    {
+      "label": "안경 10",
+      "src": "./glasses_10.png"
+    }
+  ],
+  "beards": [
+    {
+      "label": "없음",
+      "src": null
+    },
+    {
+      "label": "수염 1",
+      "src": "./beard_01.png"
+    },
+    {
+      "label": "수염 2",
+      "src": "./beard_02.png"
+    },
+    {
+      "label": "수염 3",
+      "src": "./beard_03.png"
+    },
+    {
+      "label": "수염 4",
+      "src": "./beard_04.png"
+    },
+    {
+      "label": "수염 5",
+      "src": "./beard_05.png"
+    },
+    {
+      "label": "수염 6",
+      "src": "./beard_06.png"
+    },
+    {
+      "label": "수염 7",
+      "src": "./beard_07.png"
+    },
+    {
+      "label": "수염 8",
+      "src": "./beard_08.png"
+    }
+  ]
+}
