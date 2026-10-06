@@ -163,14 +163,14 @@ function migrateState(saved){
   state.layout=normalizeLayout(saved?.layout,base);
   const validSeatIds=new Set(state.layout.cells.filter(isUsable).map(c=>c.id));
   const rawStudents=Array.isArray(saved?.students)?saved.students:base.students;
-  state.students=rawStudents.map(s=>({
+  state.students=rawStudents.map((s,index)=>({
     id:s.id||nextStudentId(),
     name:String(s.name||"학생"),
     gender:["male","female"].includes(s.gender)?s.gender:"none",
     balanceLevel:["A","B","C"].includes(s.balanceLevel)?s.balanceLevel:"none",
     apartFrom:Array.isArray(s.apartFrom)?[...new Set(s.apartFrom)].slice(0,3):[],
     fixedSeatId:validSeatIds.has(s.fixedSeatId)?s.fixedSeatId:null,
-    visual:normalizedStudentVisual(s,0)
+    visual:normalizedStudentVisual(s,index)
   }));
   const ids=new Set(state.students.map(s=>s.id));
   state.students.forEach(s=>s.apartFrom=s.apartFrom.filter(id=>ids.has(id)&&id!==s.id).slice(0,3));
@@ -661,11 +661,11 @@ function renderLayout(){
         el.ondragleave=()=>el.classList.remove("drop-target");
         el.ondrop=event=>{event.preventDefault();el.classList.remove("drop-target");assignFixedSeat(event.dataTransfer.getData("application/x-student-id")||event.dataTransfer.getData("text/plain"),cell.id)};
       }
-    }else el.innerHTML=`<span class="cell-label">${cell.type==="aisle"?"통로":"사용 안 함"}</span>`;
+    }else el.innerHTML=`<span class="cell-label">${cell.type==="aisle"?"통로":"빈 자리"}</span>`;
     root.appendChild(el);
   });
   const counts={seat:0,male:0,female:0,aisle:0,unused:0};cells.forEach(c=>counts[c.type]=(counts[c.type]||0)+1);
-  $("layoutStats").innerHTML=`<div class="stat">사용 가능 <b>${counts.seat+counts.male+counts.female}</b></div><div class="stat">남학생석 <b>${counts.male}</b></div><div class="stat">여학생석 <b>${counts.female}</b></div><div class="stat">통로 <b>${counts.aisle}</b></div><div class="stat">사용 안 함 <b>${counts.unused}</b></div>${ctx.groups.length?`<div class="stat">모둠 <b>${ctx.groups.length}</b></div>`:""}`;
+  $("layoutStats").innerHTML=`<div class="stat">사용 가능 <b>${counts.seat+counts.male+counts.female}</b></div><div class="stat">남학생석 <b>${counts.male}</b></div><div class="stat">여학생석 <b>${counts.female}</b></div><div class="stat">통로 <b>${counts.aisle}</b></div><div class="stat">빈 자리 <b>${counts.unused}</b></div>${ctx.groups.length?`<div class="stat">모둠 <b>${ctx.groups.length}</b></div>`:""}`;
   updateAxisControls();requestAnimationFrame(fitEditorGrid);
 }
 function beginPaint(index){
