@@ -32,6 +32,45 @@ function syncEditorMode(){
 }
 
 let db=[],settings={...defaults},type="single",editId=null,selectedIds=new Set(),lastSelectedId=null,students=[],excluded=new Set(),session=null,advanceTimer=null,noticeTimer=null,audio=null,lastRaw=null,storageBlocked=false;
+const HANJA_GLASSES=[
+ {id:"none",color:null},{id:"red",color:null},{id:"black",color:[45,48,54]},
+ {id:"brown",color:[112,67,42]},{id:"navy",color:[45,70,110]},
+ {id:"pink",color:[196,79,112]},{id:"gray",color:[105,112,122]}
+];
+const hanjaGlassesDataUrls=new Map();
+function hanjaGlassesSrc(id){
+ if(!id||id==="none")return null;
+ if(id==="red")return "../shared/assets/teacher/glasses_02.png";
+ return hanjaGlassesDataUrls.get(id)||null;
+}
+function refreshHanjaGlassesLayers(){
+ document.querySelectorAll("[data-hanja-glasses]").forEach(el=>{
+  const src=hanjaGlassesSrc(el.dataset.hanjaGlasses);
+  el.style.setProperty("--student-glasses-image",src?`url("${src}")`:"none");
+ });
+}
+function ensureHanjaGlassesAssets(){
+ if(hanjaGlassesDataUrls.size)return;
+ const img=new Image();
+ img.onload=()=>{
+  HANJA_GLASSES.filter(g=>g.color).forEach(item=>{
+   const canvas=document.createElement("canvas");canvas.width=96;canvas.height=128;
+   const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0);
+   const image=ctx.getImageData(0,0,96,128),d=image.data,[tr,tg,tb]=item.color;
+   for(let i=0;i<d.length;i+=4){
+    if(d[i+3]===0)continue;
+    const r=d[i],g=d[i+1],b=d[i+2];
+    const isRedFrame=r>g*1.28&&r>b*1.28&&r-g>24&&r-b>24;
+    if(!isRedFrame)continue;
+    const lum=(r+g+b)/765,f=.70+lum*.38;
+    d[i]=Math.min(255,tr*f);d[i+1]=Math.min(255,tg*f);d[i+2]=Math.min(255,tb*f);
+   }
+   ctx.putImageData(image,0,0);hanjaGlassesDataUrls.set(item.id,canvas.toDataURL("image/png"));
+  });
+  refreshHanjaGlassesLayers();
+ };
+ img.src="../shared/assets/teacher/glasses_02.png";
+}
 
 function notify(message){$("notice").textContent=message;$("notice").classList.remove("hidden");clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").classList.add("hidden"),5000)}
 function shuffle(items,random=Math.random){const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
@@ -196,7 +235,7 @@ function refreshRoster(){try{students=[...readStudents()];$("start").disabled=fa
 function renderStudents(){
  $("studentCards").replaceChildren();$("rosterSummary").textContent=`참가 ${students.filter(s=>!excluded.has(s.id)).length} / ${students.length}명`;
  if(!students.length){const p=document.createElement("p");p.textContent="자리배치 매니저에서 학생명단을 먼저 저장해 주세요.";$("studentCards").append(p);return}
- for(const s of students){const b=document.createElement("button");b.className="hanja-student";b.setAttribute("aria-pressed",String(!excluded.has(s.id)));const sprite=document.createElement("div");sprite.className="hanja-sprite";sprite.style.backgroundImage=`url("${s.sprite}")`;const name=document.createElement("span");name.textContent=s.name;const st=document.createElement("small");st.textContent=excluded.has(s.id)?"제외":"참가";b.append(sprite,name,st);b.onclick=()=>{excluded.has(s.id)?excluded.delete(s.id):excluded.add(s.id);renderStudents()};$("studentCards").append(b)}
+ for(const s of students){const b=document.createElement("button");b.className="hanja-student";b.setAttribute("aria-pressed",String(!excluded.has(s.id)));const sprite=document.createElement("div");sprite.className="hanja-sprite";sprite.style.backgroundImage=`url("${s.sprite}")`;sprite.dataset.hanjaGlasses=s.visual?.glasses||"none";const glassesSrc=hanjaGlassesSrc(sprite.dataset.hanjaGlasses);sprite.style.setProperty("--student-glasses-image",glassesSrc?`url("${glassesSrc}")`:"none");const name=document.createElement("span");name.textContent=s.name;const st=document.createElement("small");st.textContent=excluded.has(s.id)?"제외":"참가";b.append(sprite,name,st);b.onclick=()=>{excluded.has(s.id)?excluded.delete(s.id):excluded.add(s.id);renderStudents()};$("studentCards").append(b)}refreshHanjaGlassesLayers()
 }
 function readSettings(){return validateSettings({target:$("target").value,direction:$("direction").value,mode:$("mode").value,perStudent:Number($("perStudent").value),choices:Number($("choices").value)})}
 function answerFor(e,d){if(d==="reverse")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
@@ -316,7 +355,7 @@ function nextQuestion(){
  session.q=makeQuestion(session.db,session.settings,session.lastId);session.lastId=session.q.id;session.locked=false;session.revealed=false;renderQuestion();
 }
 function renderQuestion(){
- const s=session.students[session.studentIndex],q=session.q;document.querySelector(".question-modal").classList.remove("complete");$("questionCounter").textContent=`문제 ${session.solved+1} / ${session.settings.perStudent}`;$("progress").textContent=`학생 ${session.studentIndex+1}/${session.students.length} · ${s.name} 문제 ${session.solved+1}/${session.settings.perStudent}`;$("questionType").textContent=questionLabel(q.entry,q.direction);$("questionPrompt").textContent=q.prompt;$("questionInstruction").textContent=instructionFor(q.entry,q.direction);$("feedback").textContent="";$("currentStudent").classList.remove("hidden");$("studentName").textContent=s.name;$("gameSprite").style.backgroundImage=`url("${s.sprite}")`;$("gameSprite").classList.remove("jump");$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("options").replaceChildren();$("manual").classList.toggle("hidden",session.settings.mode!=="manual");$("answer").classList.add("hidden");$("judgement").classList.add("hidden");$("reveal").classList.remove("hidden");$("reveal").disabled=false;$("correct").disabled=false;$("wrong").disabled=false;
+ const s=session.students[session.studentIndex],q=session.q;document.querySelector(".question-modal").classList.remove("complete");$("questionCounter").textContent=`문제 ${session.solved+1} / ${session.settings.perStudent}`;$("progress").textContent=`학생 ${session.studentIndex+1}/${session.students.length} · ${s.name} 문제 ${session.solved+1}/${session.settings.perStudent}`;$("questionType").textContent=questionLabel(q.entry,q.direction);$("questionPrompt").textContent=q.prompt;$("questionInstruction").textContent=instructionFor(q.entry,q.direction);$("feedback").textContent="";$("currentStudent").classList.remove("hidden");$("studentName").textContent=s.name;$("gameSprite").style.backgroundImage=`url("${s.sprite}")`;$("gameSprite").dataset.hanjaGlasses=s.visual?.glasses||"none";{const gs=hanjaGlassesSrc($("gameSprite").dataset.hanjaGlasses);$("gameSprite").style.setProperty("--student-glasses-image",gs?`url("${gs}")`:"none")}refreshHanjaGlassesLayers();$("gameSprite").classList.remove("jump");$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("options").replaceChildren();$("manual").classList.toggle("hidden",session.settings.mode!=="manual");$("answer").classList.add("hidden");$("judgement").classList.add("hidden");$("reveal").classList.remove("hidden");$("reveal").disabled=false;$("correct").disabled=false;$("wrong").disabled=false;
  if(session.settings.mode==="choice")q.options.forEach((option,index)=>{const b=document.createElement("button");const num=document.createElement("span"),txt=document.createElement("span");num.className="choice-number";num.textContent=String(index+1);txt.className="choice-text";txt.textContent=option;b.append(num,txt);if(Array.from(option).length>6)b.classList.add("compact-choice");b.onclick=()=>judge(option===q.answer,b);$("options").append(b)});$("options").classList.toggle("hidden",session.settings.mode!=="choice")
 }
 function advanceAfterCorrect(){
@@ -476,6 +515,10 @@ $("exportXlsx").onclick=()=>{try{
  XLSX.utils.book_append_sheet(wb,makeExportSheet(wordHeaders,words,[16,20,28,16]),"한자어");
  XLSX.writeFile(wb,"한자_학습_데이터.xlsx");
 }catch(e){notify(e.message)}};
-load();resetForm();renderDb();refreshRoster();
+load();resetForm();renderDb();ensureHanjaGlassesAssets();refreshRoster();
 window.addEventListener("storage",e=>{if(e.key===STUDENT_STORAGE_KEY||e.key===null){if(!session)refreshRoster();else notify("학생명단이 변경되었습니다. 현재 수업은 시작할 때의 명단으로 계속합니다.")}if(e.key===KEY||e.key===null){storageBlocked=true;$("saveStatus").textContent="다른 탭에서 변경됨 · 새로고침 필요";notify("다른 탭의 한자 데이터가 변경되었습니다. 새로고침해 주세요.")}});
+const refreshRosterIfIdle=()=>{if(!session)refreshRoster()};
+window.addEventListener("pageshow",refreshRosterIfIdle);
+window.addEventListener("focus",refreshRosterIfIdle);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")refreshRosterIfIdle()});
 window.addEventListener("resize",fitHanjaRoom);
