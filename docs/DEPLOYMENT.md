@@ -15,9 +15,8 @@
 
 1. `id: "mario-game"`의 url → 확인된 Project A Production 게임 URL
 2. `id: "mario-manager"`의 url → 확인된 Project B Manager URL
-3. `id: "feedback"`의 url → 확인된 Feedback Production URL
 
-모두 처음에는 null입니다. 실제 HTTPS 주소를 확인하기 전에는 그대로 두세요. 제품은 active를 유지합니다. 테스트에 가짜 URL을 운영 설정으로 넣지 마세요. Feedback product/source 추가는 후속 Project B 작업입니다.
+모두 처음에는 null입니다. 실제 HTTPS 주소를 확인하기 전에는 그대로 두세요. 제품은 active를 유지합니다. 테스트에 가짜 URL을 운영 설정으로 넣지 마세요. Feedback 게시판은 Hub 내장이며 TEST/Production 전환은 `feedback-transport.js`와 `feedback-auth-bridge.js` 설정으로 합니다.
 
 ## 추후 승인된 게시 절차
 

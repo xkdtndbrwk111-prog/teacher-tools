@@ -15,10 +15,24 @@
  */
 (function installFeedbackBoardFb1_(){
   const $=id=>document.getElementById(id);
-  let previewLoaded=false;
-  let feedbackPreviewItemsFb1_=[];
-  let feedbackPreviewResizeTimerFb1_=0;
-  let feedbackPreviewResizeObserverFb1_=null;
+  const transport=window.TeacherToolsFeedbackTransport;
+
+  /* HUB: Creator/OWNER come from the Project B session bridge. The opaque
+     creatorTag stands in for Project B's page token everywhere the board
+     only compares or fingerprints it; it carries no authority. */
+  function feedbackBridgeSnapshotV3_(){
+    const bridge=transport&&transport.bridge();
+    return bridge?bridge.snapshot():null;
+  }
+  function creatorSessionTokenV3_(){
+    const snap=feedbackBridgeSnapshotV3_();
+    return snap&&snap.state==='CONNECTED'&&snap.creator
+      ?String(snap.creatorTag||''):'';
+  }
+  function feedbackOwnerSessionV3_(){
+    const snap=feedbackBridgeSnapshotV3_();
+    return !!(snap&&snap.state==='CONNECTED'&&snap.owner);
+  }
   let boardLoaded=false;
   let boardItems=[];
   let boardNoticesV16=[];
@@ -31,14 +45,13 @@
   let threadRequestSeq=0;
   let boardListRequestSeq=0;
   let boardFirstPageRefreshPromise=null;
-  let previewRefreshPromise=null;
   let feedbackActiveMutationV3=null;
   let feedbackMutationTransportCountV3=0;
   let feedbackLastMutationSummaryV3=null;
 
   let feedbackOwnerAuthEpochV3=0;
   let feedbackOwnerAvailableSnapshotV3=
-    !!(managerAccess&&managerAccess.isOwner);
+    feedbackOwnerSessionV3_();
   let feedbackOwnerContextSeqV3=0;
   let feedbackOwnerContextWaitingSeqV3=0;
   let feedbackOwnerContextV3={post:null,comments:{}};
@@ -87,7 +100,7 @@
     '작성 중인 내용은 보존되어 있으니 확인 후 다시 저장해 주세요.';
 
   let feedbackAuthEpoch=0;
-  let feedbackAuthTokenSnapshot=String(creatorSessionToken||'').trim();
+  let feedbackAuthTokenSnapshot=String(creatorSessionTokenV3_()||'').trim();
   let capabilityRequestSeq=0;
   let threadWaitingSeq=0;
   let capabilityWaitingSeq=0;
@@ -147,6 +160,7 @@
       targetId:String(draft&&draft.targetId||''),
       title:String(draft&&draft.title||''),
       body:String(draft&&draft.body||''),
+      product:String(draft&&draft.product||''),
       editorContextId:String(draft&&draft.editorContextId||''),
       draftRevision:Number(draft&&draft.draftRevision||0),
       savedAt:Number(now==null?Date.now():now)
@@ -172,6 +186,7 @@
       targetId:String(draft.targetId||''),
       title:String(draft.title||''),
       body:String(draft.body||''),
+      product:String(draft.product||''),
       editorContextId:String(draft.editorContextId||''),
       draftRevision:Number(draft.draftRevision||0),
       savedAt:Number(draft.savedAt||0)
@@ -233,20 +248,14 @@
   }
 
   async function feedbackAuthFingerprintV3_(token){
+    /* HUB: the bridge's creatorTag is already Project B's
+       sha256('SMQ_FEEDBACK_SESSION_V3|'+token) fingerprint. */
     const value=String(token||'').trim();
-    if(!value||!window.crypto||!window.crypto.subtle)return '';
-    const digest=await window.crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode('SMQ_FEEDBACK_SESSION_V3|'+value)
-    );
-    return 'sha256:'+Array.from(new Uint8Array(digest))
-      .slice(0,16)
-      .map(b=>b.toString(16).padStart(2,'0'))
-      .join('');
+    return /^sha256:[0-9a-f]{32}$/.test(value)?value:'';
   }
 
   async function prepareFeedbackPendingEnvelopeV3_(operation,targetId,expectedRevision,normalizedPayload){
-    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionToken);
+    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionTokenV3_());
     if(!fingerprint)throw new Error('FEEDBACK_AUTH_CONTEXT_UNCERTAIN');
     return persistFeedbackPendingV3_(sessionStorage,{
       requestId:feedbackUuidV4V3_(),
@@ -291,7 +300,7 @@
   }
 
   async function assessStoredFeedbackPendingV3_(){
-    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionToken);
+    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionTokenV3_());
     let pending=null;
     try{
       const envelope=feedbackPhase1ReadEnvelopeV3_(sessionStorage);
@@ -321,7 +330,7 @@
   }
 
   async function feedbackPendingReplayEnvelopeV3_(){
-    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionToken);
+    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionTokenV3_());
     const pending=loadFeedbackPendingV3_(sessionStorage,fingerprint);
     if(!pending||pending.replayable!==true){
       throw new Error('FEEDBACK_PENDING_REPLAY_NOT_SAFE');
@@ -431,7 +440,7 @@
   }
 
   function syncFeedbackAuthEpochV3_(reason){
-    const token=String(creatorSessionToken||'').trim();
+    const token=String(creatorSessionTokenV3_()||'').trim();
     if(token===feedbackAuthTokenSnapshot)return feedbackAuthEpoch;
     const boundary=executeFeedbackAuthBoundaryTransitionV3_(
       feedbackAuthTokenSnapshot,
@@ -465,7 +474,7 @@
     syncFeedbackAuthEpochV3_('REQUEST_SNAPSHOT');
     return {
       authEpoch:feedbackAuthEpoch,
-      tokenSnapshot:String(creatorSessionToken||'').trim(),
+      tokenSnapshot:String(creatorSessionTokenV3_()||'').trim(),
       selectedPostId:String(selectedPostId||''),
       seq:Number(seq),
       waitingFor:String(waitingFor||''),
@@ -489,7 +498,7 @@
     const waitingSeq=kind==='CAPABILITY'?capabilityWaitingSeq:threadWaitingSeq;
     return feedbackResponseGuardPureV3_(request,{
       authEpoch:feedbackAuthEpoch,
-      tokenSnapshot:String(creatorSessionToken||'').trim(),
+      tokenSnapshot:String(creatorSessionTokenV3_()||'').trim(),
       selectedPostId:String(selectedPostId||''),
       seq:waitingSeq,
       modalOpen:feedbackModalOpenV3_(),
@@ -515,9 +524,11 @@
     const mode=feedbackEditorStateV3.mode;
     const title=feedbackNormalizeTitleV3_($('feedbackEditorTitleInput')?.value||'');
     const body=feedbackNormalizeBodyV3_($('feedbackEditorBodyInput')?.value||'');
+    const postMode=mode==='CREATE_POST'||mode==='UPDATE_POST';
     return {
-      title:(mode==='CREATE_POST'||mode==='UPDATE_POST')?title:'',
-      body
+      title:postMode?title:'',
+      body,
+      product:postMode?String($('feedbackEditorProductSelect')?.value||''):''
     };
   }
 
@@ -541,8 +552,10 @@
     const submit=$('feedbackEditorSubmitBtn');
     if(submit){
       const titleRequired=mode==='CREATE_POST'||mode==='UPDATE_POST';
+      const productMissing=titleRequired&&
+        !String($('feedbackEditorProductSelect')?.value||'');
       submit.disabled=!FEEDBACK_MUTATION_WIRING_ENABLED||
-        bodyCount<1||bodyCount>bodyMax||
+        bodyCount<1||bodyCount>bodyMax||productMissing||
         (titleRequired&&(titleCount<1||titleCount>FEEDBACK_EDITOR_LIMITS_V3.title));
     }
   }
@@ -559,6 +572,8 @@
     const titleField=$('feedbackEditorTitleField');
     const postMode=mode==='CREATE_POST'||mode==='UPDATE_POST';
     if(titleField)titleField.hidden=!postMode;
+    const productField=$('feedbackEditorProductField');
+    if(productField)productField.hidden=!postMode;
     const heading=$('feedbackEditorTitle');
     if(heading){
       heading.textContent={
@@ -580,6 +595,7 @@
       targetId:feedbackEditorStateV3.targetId,
       title:payload.title,
       body:payload.body,
+      product:payload.product,
       editorContextId:feedbackEditorStateV3.editorContextId,
       draftRevision:feedbackEditorStateV3.draftRevision
     });
@@ -592,6 +608,7 @@
     const body=$('feedbackEditorBodyInput');
     if(title)title.value=draft.title;
     if(body)body.value=draft.body;
+    if(draft.product)renderFeedbackProductOptionsV3_(draft.product);
     if(draft.editorContextId){
       feedbackEditorStateV3.editorContextId=draft.editorContextId;
     }
@@ -610,15 +627,16 @@
     if(!['CREATE_POST','UPDATE_POST','CREATE_COMMENT','UPDATE_COMMENT'].includes(action))return false;
     const target=String(targetId||'');
 
-    if(!String(creatorSessionToken||'').trim()){
+    if(!String(creatorSessionTokenV3_()||'').trim()){
       writeFeedbackDraftV3_(sessionStorage,{
         action,targetId:target,
         title:String(seed&&seed.title||''),
         body:String(seed&&seed.body||''),
+        product:String(seed&&seed.product||''),
         editorContextId:'',
         draftRevision:0
       });
-      window.SMQFeedbackMutationAuthV2?.ensure?.(action,target);
+      feedbackConnectSessionV3_({action,targetId:target});
       return false;
     }
 
@@ -636,6 +654,7 @@
     const body=$('feedbackEditorBodyInput');
     if(title)title.value=String(seed&&seed.title||'');
     if(body)body.value=String(seed&&seed.body||'');
+    renderFeedbackProductOptionsV3_(String(seed&&seed.product||''));
     restoreFeedbackDraftToEditorV3_(action,target);
     renderFeedbackEditorV3_();
     setTimeout(()=>postModeFocusFeedbackV3_(action),0);
@@ -682,19 +701,10 @@
     ].includes(String(code||''));
   }
 
-  function feedbackServerCallV3_(name,args){
-    return new Promise((resolve,reject)=>{
-      const runner=google.script.run
-        .withSuccessHandler(resolve)
-        .withFailureHandler(err=>{
-          const code=feedbackMutationErrorCodeV3_(err);
-          const out=new Error(code);
-          out.deterministic=feedbackMutationIsDeterministicV3_(code);
-          out.unknownResult=!out.deterministic;
-          reject(out);
-        });
-      runner[String(name)](...(Array.isArray(args)?args:[]));
-    });
+  function feedbackServerCallV3_(op,args){
+    /* HUB: Project B session bridge; errors carry the same
+       deterministic/unknownResult flags as the google.script.run path. */
+    return transport.call(String(op),args||{});
   }
 
   function feedbackRelayMutationV3_(envelope,token){
@@ -707,25 +717,29 @@
     );
     const requestId=String(envelope&&envelope.requestId||'');
     const creatorToken=String(token||'');
+    /* HUB: the Creator token stays in Project B; creatorToken here is only
+       the session fingerprint and is not transmitted. */
+    void creatorToken;
     const map={
-      CREATE_POST:['createFeedbackPostSupabaseV3',[
-        creatorToken,requestId,payload.title,payload.body
-      ]],
-      UPDATE_POST:['updateFeedbackPostSupabaseV3',[
-        creatorToken,requestId,target,revision,payload.title,payload.body
-      ]],
-      DELETE_POST:['deleteFeedbackPostSupabaseV3',[
-        creatorToken,requestId,target,revision
-      ]],
-      CREATE_COMMENT:['createFeedbackCommentSupabaseV3',[
-        creatorToken,requestId,target,payload.body
-      ]],
-      UPDATE_COMMENT:['updateFeedbackCommentSupabaseV3',[
-        creatorToken,requestId,target,revision,payload.body
-      ]],
-      DELETE_COMMENT:['deleteFeedbackCommentSupabaseV3',[
-        creatorToken,requestId,target,revision
-      ]]
+      CREATE_POST:['CREATE_POST',{
+        requestId,title:payload.title,body:payload.body,product:payload.product
+      }],
+      UPDATE_POST:['UPDATE_POST',{
+        requestId,postId:target,expectedRevision:revision,
+        title:payload.title,body:payload.body,product:payload.product
+      }],
+      DELETE_POST:['DELETE_POST',{
+        requestId,postId:target,expectedRevision:revision
+      }],
+      CREATE_COMMENT:['CREATE_COMMENT',{
+        requestId,postId:target,body:payload.body
+      }],
+      UPDATE_COMMENT:['UPDATE_COMMENT',{
+        requestId,commentId:target,expectedRevision:revision,body:payload.body
+      }],
+      DELETE_COMMENT:['DELETE_COMMENT',{
+        requestId,commentId:target,expectedRevision:revision
+      }]
     };
     if(!map[operation]){
       return Promise.reject(new Error('FEEDBACK_MUTATION_NOT_ALLOWED'));
@@ -739,13 +753,13 @@
     return {
       authEpoch:feedbackAuthEpoch,
       contextKind:'CREATOR',
-      tokenSnapshot:String(creatorSessionToken||'').trim()
+      tokenSnapshot:String(creatorSessionTokenV3_()||'').trim()
     };
   }
 
   async function feedbackMutationAuthStillMatchesV3_(envelope){
     syncFeedbackAuthEpochV3_('MUTATION_RECEIPT');
-    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionToken);
+    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionTokenV3_());
     return !!envelope&&
       Number(envelope.authEpochAtCapture)===Number(feedbackAuthEpoch)&&
       String(envelope.authContextKind||'CREATOR')==='CREATOR'&&
@@ -797,7 +811,7 @@
      - Current safe baseline keeps OWNER mutation wiring OFF.
      ========================================================= */
   function feedbackOwnerAvailableV3_(){
-    return !!(managerAccess&&managerAccess.isOwner);
+    return feedbackOwnerSessionV3_();
   }
 
   function feedbackOwnerStorageV3_(storage){
@@ -918,13 +932,13 @@
 
     let call=null;
     if(operation==='MODERATE_POST'){
-      call=['moderateFeedbackPostSupabaseV3',[
-        requestId,target,revision,action
-      ]];
+      call=['MODERATE_POST',{
+        requestId,postId:target,expectedRevision:revision,moderation:action
+      }];
     }else if(operation==='MODERATE_COMMENT'){
-      call=['moderateFeedbackCommentSupabaseV3',[
-        requestId,target,revision,action
-      ]];
+      call=['MODERATE_COMMENT',{
+        requestId,commentId:target,expectedRevision:revision,moderation:action
+      }];
     }else{
       return Promise.reject(new Error('FEEDBACK_MUTATION_NOT_ALLOWED'));
     }
@@ -1040,8 +1054,8 @@
       selectedPostId:id
     };
 
-    google.script.run
-      .withSuccessHandler(result=>{
+    feedbackServerCallV3_('OWNER_CONTEXT',{postId:id,commentIds})
+      .then(result=>{
         if(!feedbackOwnerContextGuardV3_(request))return;
         const incomingComments=
           result&&result.comments&&typeof result.comments==='object'
@@ -1058,12 +1072,11 @@
         };
         renderFeedbackOwnerControlsV3_();
       })
-      .withFailureHandler(()=>{
+      .catch(()=>{
         if(!feedbackOwnerContextGuardV3_(request))return;
         if(reset)feedbackOwnerContextV3={post:null,comments:{}};
         renderFeedbackOwnerControlsV3_();
-      })
-      .getFeedbackOwnerModerationContextV3(id,commentIds);
+      });
   }
 
   function renderFeedbackOwnerControlsV3_(){
@@ -1256,8 +1269,8 @@
     };
 
     return new Promise(resolve=>{
-      google.script.run
-        .withSuccessHandler(result=>{
+      feedbackServerCallV3_('OWNER_QUEUE',{limit:50})
+        .then(result=>{
           if(!feedbackOwnerRecoveryGuardV3_(request)){
             resolve(false);
             return;
@@ -1266,7 +1279,7 @@
           renderFeedbackOwnerRecoveryV3_(result||{});
           resolve(true);
         })
-        .withFailureHandler(err=>{
+        .catch(err=>{
           if(!feedbackOwnerRecoveryGuardV3_(request)){
             resolve(false);
             return;
@@ -1279,8 +1292,7 @@
               '숨김 항목을 불러오지 못했습니다.';
           }
           resolve(false);
-        })
-        .getFeedbackOwnerModerationQueueV3(50);
+        });
     });
   }
 
@@ -1333,8 +1345,7 @@
     if(operation==='MODERATE_POST'){
       invalidateFeedbackListCachesV3_();
       const refreshed=await Promise.all([
-        refreshFeedbackBoardCurrentPageV16_(),
-        refreshFeedbackPreviewV3_()
+        refreshFeedbackBoardCurrentPageV16_()
       ]);
       if(refreshed.some(value=>value!==true)){
         throw new Error('FEEDBACK_AUTHORITATIVE_LIST_REFRESH_FAILED');
@@ -1638,7 +1649,6 @@
   }
 
   function invalidateFeedbackListCachesV3_(){
-    previewLoaded=false;
     boardLoaded=false;
   }
 
@@ -1653,13 +1663,6 @@
     return loadBoardPageFb1_(Math.max(1,Number(boardPageV16)||1));
   }
 
-  async function refreshFeedbackPreviewV3_(){
-    if(previewRefreshPromise)return previewRefreshPromise;
-    previewRefreshPromise=loadPreviewFb1_(true)
-      .finally(()=>{previewRefreshPromise=null});
-    return previewRefreshPromise;
-  }
-
   async function refreshFeedbackAfterMutationV3_(envelope,receipt,applyToOriginUi){
     const operation=String(envelope&&envelope.operation||'');
     const affectsList=['CREATE_POST','UPDATE_POST','DELETE_POST'].includes(operation);
@@ -1669,8 +1672,7 @@
       const refreshed=await Promise.all([
         operation==='CREATE_POST'
           ?refreshFeedbackBoardFirstPageV3_()
-          :refreshFeedbackBoardCurrentPageV16_(),
-        refreshFeedbackPreviewV3_()
+          :refreshFeedbackBoardCurrentPageV16_()
       ]);
       if(refreshed.some(value=>value!==true)){
         throw new Error('FEEDBACK_AUTHORITATIVE_LIST_REFRESH_FAILED');
@@ -1805,7 +1807,7 @@
   }
 
   async function retryFeedbackPendingV3_(){
-    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionToken);
+    const fingerprint=await feedbackAuthFingerprintV3_(creatorSessionTokenV3_());
     const plan=feedbackPhase1ReplayPlanV3_(sessionStorage,{
       authFingerprint:fingerprint,ownerContextAvailable:false
     });
@@ -1815,7 +1817,7 @@
     machine.activeEnvelope=feedbackPhase1CloneV3_(plan.envelope);
     try{
       const receipt=await feedbackRelayMutationV3_(
-        plan.envelope,String(creatorSessionToken||'').trim()
+        plan.envelope,String(creatorSessionTokenV3_()||'').trim()
       );
       return feedbackCompletePreparedMutationV3_({
         machine,envelope:plan.envelope,receipt,sendCount:1,trace:['RETRY_TRANSMIT']
@@ -1867,7 +1869,7 @@
       feedbackEditorStateV3.targetId||null,
       feedbackEditorStateV3.expectedRevision,
       operation.endsWith('_POST')
-        ?{title:payload.title,body:payload.body}
+        ?{title:payload.title,body:payload.body,product:payload.product}
         :{body:payload.body}
     );
     if(message)message.textContent='저장하는 중...';
@@ -2293,7 +2295,7 @@
       updateFeedbackCommentLoadMoreV3_();
       return;
     }
-    const token=String(creatorSessionToken||'').trim();
+    const token=String(creatorSessionTokenV3_()||'').trim();
     if(!token){
       feedbackCapabilityPendingV3=false;
       updateFeedbackCommentLoadMoreV3_();
@@ -2314,8 +2316,8 @@
     const status=$('feedbackCapabilityStatus');
     if(status){status.textContent='수정 권한을 확인하는 중...';status.hidden=false}
 
-    google.script.run
-      .withSuccessHandler(result=>{
+    feedbackServerCallV3_('CAPABILITIES',{postId:String(postId||''),commentIds:ids})
+      .then(result=>{
         if(!canApplyFeedbackResponseV3_(context,'CAPABILITY'))return;
         if(Number(threadSeq)!==Number(threadWaitingSeq))return;
         feedbackEditorStateV3.waitingFor='';
@@ -2333,7 +2335,7 @@
         renderFeedbackCapabilitiesV3_();
         updateFeedbackCommentLoadMoreV3_();
       })
-      .withFailureHandler(()=>{
+      .catch(()=>{
         if(!canApplyFeedbackResponseV3_(context,'CAPABILITY'))return;
         if(Number(threadSeq)!==Number(threadWaitingSeq))return;
         feedbackEditorStateV3.waitingFor='';
@@ -2345,8 +2347,7 @@
         }
         renderFeedbackCapabilitiesV3_();
         updateFeedbackCommentLoadMoreV3_();
-      })
-      .getFeedbackMutationCapabilitiesV3(token,String(postId||''),ids);
+      });
   }
 
   function feedbackAuthContinuationPlanV3_(intent){
@@ -2409,96 +2410,6 @@
        enforce the public read boundary.
      - Server service credentials are never present in client code.
      ========================================================= */
-  /* Phase 2A-3: TEST public-read destination is no longer hardcoded in
-     Script.html. A server-validated, non-secret projection is loaded once and
-     cached in-memory for all browser -> Supabase public reads. */
-  let feedbackClientConfigV1_=null;
-  let feedbackClientConfigPromiseV1_=null;
-
-  function validateFeedbackClientConfigV1_(value){
-    const c=value&&typeof value==='object'?value:{};
-    const environment=String(c.environment||'').trim().toUpperCase();
-    const projectRef=String(c.projectRef||'').trim().toLowerCase();
-    const supabaseUrl=String(c.supabaseUrl||'').trim().replace(/\/+$/,'');
-    const publishableKey=String(c.publishableKey||'').trim();
-    const expectedUrl=projectRef
-      ?'https://'+projectRef+'.supabase.co'
-      :'';
-
-    if(c.ok!==true||Number(c.version)!==1){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_INVALID');
-    }
-    if(environment!=='TEST'){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_ENVIRONMENT_INVALID');
-    }
-    if(!/^[a-z0-9]{20}$/.test(projectRef)){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_REF_INVALID');
-    }
-    if(supabaseUrl!==expectedUrl){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_URL_MISMATCH');
-    }
-    if(!/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_PUBLISHABLE_INVALID');
-    }
-    if(c.publicReadEnabled!==true){
-      throw new Error('FEEDBACK_CLIENT_CONFIG_PUBLIC_READ_DISABLED');
-    }
-
-    /* Rebuild the object field-by-field. Unknown server fields are discarded
-       so future accidental additions cannot become client authority. */
-    return Object.freeze({
-      version:1,
-      environment,
-      projectRef,
-      supabaseUrl,
-      publishableKey,
-      publicReadEnabled:true
-    });
-  }
-
-  function loadFeedbackClientConfigV1_(){
-    if(feedbackClientConfigV1_){
-      return Promise.resolve(feedbackClientConfigV1_);
-    }
-    if(feedbackClientConfigPromiseV1_){
-      return feedbackClientConfigPromiseV1_;
-    }
-
-    feedbackClientConfigPromiseV1_=new Promise((resolve,reject)=>{
-      if(!window.google||!google.script||!google.script.run){
-        reject(new Error('FEEDBACK_CLIENT_CONFIG_BRIDGE_UNAVAILABLE'));
-        return;
-      }
-
-      google.script.run
-        .withSuccessHandler(value=>{
-          try{
-            const config=validateFeedbackClientConfigV1_(value);
-            feedbackClientConfigV1_=config;
-            window.SMQFeedbackReadTransportV2=Object.freeze({
-              mode:'SUPABASE_ONLY',
-              environment:config.environment,
-              projectRef:config.projectRef,
-              publicReadEnabled:true,
-              secretExposed:false
-            });
-            resolve(config);
-          }catch(err){
-            reject(err);
-          }
-        })
-        .withFailureHandler(err=>{
-          reject(new Error(String(err&&err.message||err)));
-        })
-        .getFeedbackClientConfigV1();
-    }).finally(()=>{
-      /* Keep successful config in feedbackClientConfigV1_; permit retry after
-         a transient Apps Script bridge/config failure. */
-      feedbackClientConfigPromiseV1_=null;
-    });
-
-    return feedbackClientConfigPromiseV1_;
-  }
   function encodeFeedbackCursorV2_(obj){
     if(!obj||typeof obj!=='object')return '';
     try{
@@ -2526,77 +2437,7 @@
   }
 
   async function supabaseFeedbackRpcV2_(fn,payload){
-    const config=await loadFeedbackClientConfigV1_();
-    const started=performance.now();
-    const res=await fetch(
-      config.supabaseUrl+
-      '/rest/v1/rpc/'+encodeURIComponent(fn),
-      {
-        method:'POST',
-        mode:'cors',
-        cache:'no-store',
-        headers:{
-          apikey:config.publishableKey,
-          'Content-Type':'application/json',
-          Accept:'application/json'
-        },
-        body:JSON.stringify(payload||{})
-      }
-    );
-
-    const raw=await res.text();
-    if(!res.ok){
-      throw new Error(
-        'FEEDBACK_SUPABASE_READ_'+res.status+'|'+raw.slice(0,500)
-      );
-    }
-
-    let data=null;
-    try{
-      data=raw?JSON.parse(raw):null;
-    }catch(_e){
-      throw new Error('FEEDBACK_SUPABASE_JSON_INVALID');
-    }
-
-    try{
-      console.info(
-        '[SMQ Feedback V2]',
-        fn,
-        Math.round(performance.now()-started)+'ms'
-      );
-    }catch(_e){}
-
-    return data;
-  }
-
-  async function rpcPostsFb1_(cursor,limit){
-    const parsed=decodeFeedbackCursorV2_(cursor);
-    const data=await supabaseFeedbackRpcV2_(
-      'feedback_list_posts_v2',
-      {
-        p_limit:Math.max(1,Math.min(20,Number(limit||20))),
-        p_cursor_is_notice:
-          parsed&&typeof parsed.isNotice==='boolean'
-            ? parsed.isNotice
-            : null,
-        p_cursor_created_at:
-          parsed&&parsed.createdAt
-            ? String(parsed.createdAt)
-            : null,
-        p_cursor_post_id:
-          parsed&&parsed.postId
-            ? String(parsed.postId)
-            : null
-      }
-    );
-
-    return {
-      items:Array.isArray(data&&data.items)?data.items:[],
-      nextCursor:encodeFeedbackCursorV2_(
-        data&&data.nextCursor
-      ),
-      transport:'SUPABASE_V2'
-    };
+    return transport.rpc(fn,payload);
   }
 
   async function rpcBoardPageV16_(page,pageSize){
@@ -2658,166 +2499,6 @@
       ),
       transport:'SUPABASE_V2'
     };
-  }
-
-  window.SMQFeedbackReadTransportV2=Object.freeze({
-    mode:'SUPABASE_ONLY',
-    environment:'UNRESOLVED',
-    projectRef:'',
-    publicReadEnabled:false,
-    secretExposed:false
-  });
-
-  function makeFeedbackPreviewItemFb1_(item){
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.className='feedback-preview-item';
-
-    const titleRow=document.createElement('div');
-    titleRow.className='feedback-preview-title-row';
-
-    if(item&&item.isNotice){
-      const tag=document.createElement('span');
-      tag.className='feedback-notice-tag';
-      tag.textContent='공지';
-      titleRow.appendChild(tag);
-      btn.classList.add('is-notice');
-    }
-
-    const rawTitle=String(item&&item.title||'제목 없음');
-    const title=document.createElement('strong');
-    title.textContent=rawTitle;
-    title.title=rawTitle;
-    titleRow.appendChild(title);
-
-    const author=document.createElement('span');
-    author.className='feedback-preview-author';
-    author.textContent=String(item&&item.authorDisplayName||'사용자');
-    author.title=author.textContent;
-    titleRow.appendChild(author);
-    requestAnimationFrame(()=>smqFitFeedbackAuthorV13_(author));
-
-    btn.appendChild(titleRow);
-    btn.addEventListener('click',()=>openBoardFb1_(String(item&&item.postId||'')));
-    return btn;
-  }
-
-  function refitPreviewFb1_(){
-    const view=$('usageStatsView');
-    const content=$('usageStatsContent');
-
-    /* Do not measure a display:none subtree. That was the root cause of the
-       one-row preview: Feedback finished first while statistics content was
-       still hidden, so every layout metric collapsed to zero. */
-    if(
-      !feedbackPreviewItemsFb1_.length ||
-      (view&&view.hidden) ||
-      (content&&content.hidden)
-    )return;
-
-    renderPreviewItemsNoScrollFb1_(feedbackPreviewItemsFb1_);
-  }
-
-  function schedulePreviewRefitFb1_(){
-    clearTimeout(feedbackPreviewResizeTimerFb1_);
-
-    /* Two animation frames wait for hidden/class/grid changes to become actual
-       layout. The delayed pass also covers font/stat-card height settlement. */
-    requestAnimationFrame(()=>{
-      requestAnimationFrame(refitPreviewFb1_);
-    });
-
-    feedbackPreviewResizeTimerFb1_=setTimeout(
-      refitPreviewFb1_,
-      180
-    );
-  }
-
-  function renderPreviewItemsNoScrollFb1_(items){
-    const list=$('feedbackPreviewList');
-    const slot=$('usageFeedbackSlot');
-    if(!list||!slot)return;
-
-    clearChildrenFb1_(list);
-    list.hidden=false;
-
-    /* Main Usage & Feedback dashboard has a strict NO-SCROLL contract.
-       The previous implementation read list.clientHeight while the list was
-       empty. In some Chrome layouts that empty list reported roughly one-row
-       height, so capacity collapsed to 1 even though the panel had room for
-       many rows.
-
-       Measure the actual remaining space from the list's top edge to the
-       Feedback slot's bottom edge instead. */
-    const slotRect=slot.getBoundingClientRect();
-    const listRect=list.getBoundingClientRect();
-
-    let availableHeight=Math.floor(slotRect.bottom-listRect.top-12);
-
-    if(!Number.isFinite(availableHeight)||availableHeight<=0){
-      availableHeight=Math.max(
-        0,
-        Number(slot.clientHeight||0)-54
-      );
-    }
-
-    /* Preview rows are now one-line title+nickname rows.
-       Use a tighter measured height so the dashboard uses the full panel
-       instead of reserving two-line 58px cards. */
-    const compactLowHeight=window.innerHeight<=820;
-    const rowHeight=compactLowHeight?32:34;
-    const gap=compactLowHeight?3:4;
-    const capacity=Math.max(
-      1,
-      Math.min(
-        20,
-        Math.floor((availableHeight+gap)/(rowHeight+gap)) || 1
-      )
-    );
-
-    (items||[])
-      .slice(0,capacity)
-      .forEach(item=>list.appendChild(makeFeedbackPreviewItemFb1_(item)));
-  }
-
-  async function loadPreviewFb1_(force){
-    if(previewLoaded&&!force)return true;
-
-    const loading=$('feedbackPreviewLoading');
-    const error=$('feedbackPreviewError');
-    const empty=$('feedbackPreviewEmpty');
-    const list=$('feedbackPreviewList');
-
-    if(loading)loading.hidden=false;
-    if(error)error.hidden=true;
-    if(empty)empty.hidden=true;
-    if(list){list.hidden=true;clearChildrenFb1_(list)}
-
-    try{
-      const data=await rpcPostsFb1_('',20);
-      const items=Array.isArray(data&&data.items)?data.items:[];
-      feedbackPreviewItemsFb1_=items;
-      previewLoaded=true;
-
-      if(loading)loading.hidden=true;
-      if(!items.length){
-        if(empty)empty.hidden=false;
-        return true;
-      }
-
-      if(list)list.hidden=false;
-      schedulePreviewRefitFb1_();
-      return true;
-    }catch(err){
-      previewLoaded=false;
-      if(loading)loading.hidden=true;
-      if(error){
-        error.hidden=false;
-        const text=error.querySelector('span');
-        if(text)text.textContent=feedbackErrorTextFb1_(err,'피드백을 불러오지 못했습니다.');
-      }
-      return false;
-    }
   }
 
   function feedbackDeletedLabelV16_(item,comment){
@@ -2918,6 +2599,9 @@
       titleRow.appendChild(tag);
       btn.classList.add('is-notice');
     }
+
+    const productTag=makeFeedbackProductTagV3_(item.product);
+    if(productTag)titleRow.appendChild(productTag);
 
     const title=document.createElement('strong');
     title.textContent=String(item.title||'제목 없음');
@@ -3203,6 +2887,11 @@
           }
           title.appendChild(document.createTextNode(String(post.title||'제목 없음')));
         }
+        const product=$('feedbackThreadProduct');
+        if(product){
+          product.textContent=feedbackProductBracketV3_(post.product);
+          product.hidden=!product.textContent;
+        }
         if(meta){
           const author=String(post.authorDisplayName||'사용자');
           const date=formatFeedbackDateFb1_(post.createdAt);
@@ -3264,9 +2953,9 @@
     const modal=$('feedbackBoardModal');
     if(!modal)return;
 
+    /* HUB: inline board; never locks page scroll. */
     modal.hidden=false;
     modal.setAttribute('aria-hidden','false');
-    document.body.classList.add('feedback-board-open');
     syncFeedbackAuthEpochV3_('BOARD_OPEN');
     renderFeedbackCapabilitiesV3_();
     assessStoredFeedbackPendingV3_().catch(()=>{});
@@ -3296,31 +2985,19 @@
     }
   }
 
-  function closeBoardFb1_(){
-    const modal=$('feedbackBoardModal');
-    if(!modal)return;
-    modal.hidden=true;
-    modal.setAttribute('aria-hidden','true');
-    document.body.classList.remove('feedback-board-open');
-    threadWaitingSeq=++threadRequestSeq;
-    capabilityWaitingSeq=++capabilityRequestSeq;
-    feedbackCapabilityPendingV3=false;
-    feedbackEditorStateV3.waitingFor='';
-    closeFeedbackOwnerRecoveryV3_();
-    clearFeedbackOwnerContextV3_();
-    updateFeedbackCommentLoadMoreV3_();
-  }
-
   function bindFb1_(){
-    document.addEventListener('click',event=>{
-      const target=event&&event.target;
-      const open=target&&typeof target.closest==='function'
-        ?target.closest('#feedbackOpenBoardBtn')
-        :null;
-      if(open)openBoardFb1_('');
+    $('feedbackSessionConnectBtn')?.addEventListener('click',()=>{
+      feedbackConnectSessionV3_(null);
     });
-    $('feedbackPreviewRetryBtn')?.addEventListener('click',()=>loadPreviewFb1_(true));
-    $('feedbackBoardCloseBtn')?.addEventListener('click',closeBoardFb1_);
+    $('feedbackSessionDisconnectBtn')?.addEventListener('click',()=>{
+      transport.bridge()?.disconnect();
+    });
+    $('feedbackEditorProductSelect')?.addEventListener('change',()=>{
+      feedbackDraftRevisionV3+=1;
+      feedbackEditorStateV3.draftRevision=feedbackDraftRevisionV3;
+      updateFeedbackEditorCountsV3_();
+      saveActiveFeedbackDraftV3_();
+    });
     $('feedbackBoardRefreshBtn')?.addEventListener('click',async()=>{
       threadWaitingSeq=++threadRequestSeq;
       capabilityWaitingSeq=++capabilityRequestSeq;
@@ -3340,7 +3017,7 @@
       if(placeholder)placeholder.hidden=false;
       if(content)content.hidden=true;
       await loadBoardPageFb1_(refreshPage);
-      loadPreviewFb1_(true);
+      loadFeedbackProductsV3_(true);
       clearFeedbackOwnerContextV3_();
       if(feedbackOwnerRecoveryOpenV3_()){
         loadFeedbackOwnerRecoveryV3_();
@@ -3452,6 +3129,7 @@
       openFeedbackEditorV3_('UPDATE_POST',selectedPostId,{
         title:String(post.title||''),
         body:String(post.body||''),
+        product:String(post.product||''),
         expectedRevision:cap.revision
       });
     });
@@ -3539,6 +3217,7 @@
         :feedbackCapabilitiesV3.comments[target]||{};
       const opened=openFeedbackEditorV3_(action,target,{
         title:String(post.title||''),
+        product:action==='UPDATE_POST'?String(post.product||''):'',
         body:action==='UPDATE_POST'?String(post.body||''):String(comment.body||''),
         expectedRevision:cap.revision
       });
@@ -3550,148 +3229,177 @@
       }
     });
 
-    window.addEventListener('resize',schedulePreviewRefitFb1_);
-
-    const feedbackSlot=$('usageFeedbackSlot');
-    if(feedbackSlot && 'ResizeObserver' in window){
-      try{
-        feedbackPreviewResizeObserverFb1_=
-          new ResizeObserver(()=>schedulePreviewRefitFb1_());
-        feedbackPreviewResizeObserverFb1_.observe(feedbackSlot);
-      }catch(_e){}
-    }
-
-    try{
-      if(document.fonts&&document.fonts.ready){
-        document.fonts.ready.then(()=>schedulePreviewRefitFb1_()).catch(()=>{});
-      }
-    }catch(_e){}
-
-    $('feedbackBoardModal')?.addEventListener('click',e=>{
-      if(e.target===$('feedbackBoardModal'))closeBoardFb1_();
-    });
-    document.addEventListener('keydown',e=>{
-      if(e.key==='Escape'&&!$('feedbackBoardModal')?.hidden)closeBoardFb1_();
-    });
-
     renderFeedbackEditorV3_();
     renderFeedbackCapabilitiesV3_();
     syncFeedbackOwnerAuthV3_('OWNER_BIND');
     renderFeedbackOwnerControlsV3_();
+    renderFeedbackSessionV3_();
+    loadFeedbackProductsV3_(false);
+    openBoardFb1_('');
   }
 
-  window.SMQFeedbackFb1={
-    loadPreview:loadPreviewFb1_,
+  /* =========================================================
+     HUB — Project B session connection + 문의 대상 (product registry)
+     ========================================================= */
+  let feedbackProductsV3=null;
+  let feedbackProductsErrorV3=false;
+  let feedbackAuthContinuationV3=null;
+
+  function feedbackProductLabelV3_(key){
+    const value=String(key||'');
+    if(!value)return '';
+    const entry=feedbackProductsV3&&feedbackProductsV3.get(value);
+    return entry?entry.displayName:value;
+  }
+
+  function feedbackProductBracketV3_(key){
+    const label=feedbackProductLabelV3_(key);
+    return label?'['+label+']':'';
+  }
+
+  function makeFeedbackProductTagV3_(key){
+    const text=feedbackProductBracketV3_(key);
+    if(!text)return null;
+    const tag=document.createElement('span');
+    tag.className='feedback-product-tag';
+    tag.dataset.product=String(key||'');
+    tag.textContent=text;
+    return tag;
+  }
+
+  function renderFeedbackProductOptionsV3_(currentKey){
+    const select=$('feedbackEditorProductSelect');
+    if(!select)return;
+    const current=String(currentKey==null?select.value:(currentKey||''));
+    clearChildrenFb1_(select);
+
+    const placeholder=document.createElement('option');
+    placeholder.value='';
+    placeholder.textContent=feedbackProductsV3
+      ?'문의 대상을 선택하세요'
+      :(feedbackProductsErrorV3
+        ?'문의 대상을 불러오지 못했습니다'
+        :'문의 대상을 불러오는 중...');
+    select.appendChild(placeholder);
+
+    const options=feedbackProductsV3?feedbackProductsV3.active.slice():[];
+    /* An existing post keeps its product even after it becomes inactive. */
+    if(current&&!options.some(item=>item.key===current)){
+      const historic=feedbackProductsV3&&feedbackProductsV3.get(current);
+      options.push({
+        key:current,
+        displayName:historic?historic.displayName:current
+      });
+    }
+    options.forEach(item=>{
+      const option=document.createElement('option');
+      option.value=item.key;
+      option.textContent=item.displayName;
+      select.appendChild(option);
+    });
+    select.value=current;
+    updateFeedbackEditorCountsV3_();
+  }
+
+  async function loadFeedbackProductsV3_(force){
+    try{
+      feedbackProductsV3=await transport.loadProducts(force);
+      feedbackProductsErrorV3=false;
+    }catch(_e){
+      feedbackProductsErrorV3=true;
+    }
+    renderFeedbackProductOptionsV3_(null);
+    if(boardLoaded)renderBoardListFb1_();
+    const product=$('feedbackThreadProduct');
+    const post=selectedThreadSnapshotV3&&selectedThreadSnapshotV3.post;
+    if(product&&post){
+      product.textContent=feedbackProductBracketV3_(post.product);
+      product.hidden=!product.textContent;
+    }
+    return !feedbackProductsErrorV3;
+  }
+
+  function renderFeedbackSessionV3_(){
+    const snap=feedbackBridgeSnapshotV3_();
+    const state=snap?snap.state:'IDLE';
+    const connected=state==='CONNECTED';
+    const waiting=['WAIT_READY','BOUND','REBIND_EXPECTED'].includes(state);
+    const status=$('feedbackSessionStatus');
+    const connect=$('feedbackSessionConnectBtn');
+    const disconnect=$('feedbackSessionDisconnectBtn');
+    if(status){
+      status.textContent=
+        connected&&snap.creator&&snap.owner?'Creator · OWNER 연결됨':
+        connected&&snap.creator?'Creator 연결됨':
+        connected&&snap.owner?'OWNER 연결됨 · 글쓰기는 Creator 인증 필요':
+        waiting?'Google 확인 창에서 연결을 기다리는 중...':
+        state==='AUTH_REQUIRED'?'Google 확인 창에서 Creator 인증을 완료해 주세요.':
+        state==='FAILED'&&snap.safeCode==='POPUP_BLOCKED'
+          ?'팝업이 차단되었습니다. 팝업을 허용한 뒤 다시 연결해 주세요.':
+        state==='FAILED'?'연결할 수 없습니다.':
+        state==='STALE'?'연결이 만료되었습니다. 다시 연결해 주세요.':
+        '글·댓글 작성은 Google Creator 연결 후 가능합니다.';
+    }
+    if(connect){
+      connect.hidden=connected&&snap.creator;
+      connect.textContent=
+        waiting||state==='AUTH_REQUIRED'||state==='STALE'?'다시 연결':'Creator 연결';
+    }
+    if(disconnect){
+      disconnect.hidden=!(connected||waiting||state==='AUTH_REQUIRED');
+    }
+  }
+
+  function onFeedbackSessionStateV3_(snap){
+    syncFeedbackAuthEpochV3_('BRIDGE_SESSION');
+    syncFeedbackOwnerAuthV3_('BRIDGE_SESSION');
+    renderFeedbackSessionV3_();
+    renderFeedbackCapabilitiesV3_();
+    if(snap.state!=='CONNECTED')return;
+    if(snap.creator&&feedbackAuthContinuationV3){
+      const intent=feedbackAuthContinuationV3;
+      feedbackAuthContinuationV3=null;
+      restoreFeedbackAuthContinuationV3_(intent);
+    }
+    /* Authenticated thread context arrives only after the session binds. */
+    const thread=selectedThreadSnapshotV3;
+    if(selectedPostId&&thread){
+      requestFeedbackCapabilitiesV3_(selectedPostId,thread.comments,threadWaitingSeq,true);
+      requestFeedbackOwnerContextV3_(selectedPostId,thread.comments,threadWaitingSeq,true);
+    }
+  }
+
+  /* Must run synchronously inside a user action (popup blocker). */
+  function feedbackConnectSessionV3_(intent){
+    feedbackAuthContinuationV3=intent&&intent.action
+      ?{action:String(intent.action),targetId:String(intent.targetId||'')}
+      :null;
+    const bridge=transport.bridge();
+    if(!bridge)return false;
+    bridge.connect(onFeedbackSessionStateV3_);
+    renderFeedbackSessionV3_();
+    return true;
+  }
+
+  window.TeacherToolsFeedbackBoard=Object.freeze({
     openBoard:openBoardFb1_,
-    refitPreview:schedulePreviewRefitFb1_,
-    restoreAuthContinuation:restoreFeedbackAuthContinuationV3_,
-    notifyAuthTransition:reason=>syncFeedbackAuthEpochV3_(reason||'EXPLICIT_TRANSITION'),
-    getClientConfigState:()=>({
-      loaded:!!feedbackClientConfigV1_,
-      environment:feedbackClientConfigV1_
-        ?feedbackClientConfigV1_.environment
-        :'',
-      projectRef:feedbackClientConfigV1_
-        ?feedbackClientConfigV1_.projectRef
-        :'',
-      supabaseUrl:feedbackClientConfigV1_
-        ?feedbackClientConfigV1_.supabaseUrl
-        :'',
-      publishableKeyPresent:!!(
-        feedbackClientConfigV1_&&feedbackClientConfigV1_.publishableKey
-      ),
-      secretExposed:false
-    }),
-    getB3Phase1State:()=>({
-      states:Array.from(FEEDBACK_PHASE1_STATES_V3),
-      envelopeVersion:FEEDBACK_PHASE1_ENVELOPE_VERSION_V3,
-      mutationWiringEnabled:FEEDBACK_MUTATION_WIRING_ENABLED,
-      liveMutationReachable:FEEDBACK_MUTATION_WIRING_ENABLED,
-      transportCount:feedbackMutationTransportCountV3,
-      lastMutation:feedbackPhase1CloneV3_(feedbackLastMutationSummaryV3),
-      editorContextId:String(feedbackEditorStateV3.editorContextId||''),
-      draftRevision:Number(feedbackEditorStateV3.draftRevision||0)
-    }),
-    getB1B2State:()=>({
-      writeUiEnabled:FEEDBACK_WRITE_UI_ENABLED,
-      mutationWiringEnabled:FEEDBACK_MUTATION_WIRING_ENABLED,
-      authEpoch:feedbackAuthEpoch,
+    reloadProducts:()=>loadFeedbackProductsV3_(true),
+    getState:()=>({
       selectedPostId:String(selectedPostId||''),
-      threadRequestSeq,
-      capabilityRequestSeq,
-      capabilityPending:feedbackCapabilityPendingV3,
-      commentLoadMoreEligible:feedbackCommentLoadMoreEligibleV3_({
-        nextCursor:commentNextCursor,
-        capabilityPending:feedbackCapabilityPendingV3,
-        threadPending:feedbackEditorStateV3.waitingFor==='THREAD'
-      }),
-      editorMode:feedbackEditorStateV3.mode
-    }),
-    getOwnerModerationState:()=>({
-      wiringEnabled:FEEDBACK_OWNER_MODERATION_WIRING_ENABLED,
+      editorMode:feedbackEditorStateV3.mode,
+      authEpoch:feedbackAuthEpoch,
       ownerAvailable:feedbackOwnerAvailableV3_(),
       ownerAuthEpoch:feedbackOwnerAuthEpochV3,
-      transportCount:feedbackOwnerMutationTransportCountV3,
-      selectedPostId:String(selectedPostId||''),
-      postContext:feedbackPhase1CloneV3_(feedbackOwnerContextV3.post),
-      commentContextCount:Object.keys(
-        feedbackOwnerContextV3.comments||{}
-      ).length,
-      recoveryOpen:feedbackOwnerRecoveryOpenV3_(),
-      ownerPending:!!feedbackOwnerPendingEnvelopeV3_(),
-      busy:feedbackOwnerMutationBusyV3
-    }),
-    futureState:{
-      preparePendingEnvelope:prepareFeedbackPendingEnvelopeV3_,
-      markPendingUnknown:markFeedbackPendingUnknownV3_,
-      loadPendingForReplay:feedbackPendingReplayEnvelopeV3_,
-      assertPersistedBeforeTransmit:assertFeedbackPendingPersistedBeforeTransmitV3_,
-      mapResult:feedbackMutationStateFromResultV3_,
-      applyResult:applyFeedbackFutureResultV3_,
-      show:showFeedbackFutureStateV3_,
-      phase1EnvelopeVersion:FEEDBACK_PHASE1_ENVELOPE_VERSION_V3,
-      phase1LiveMutationReachable:FEEDBACK_MUTATION_WIRING_ENABLED
-    }
-  };
+      creatorConnected:!!creatorSessionTokenV3_(),
+      productsLoaded:!!feedbackProductsV3,
+      activeProducts:feedbackProductsV3
+        ?feedbackProductsV3.active.map(item=>item.key):[],
+      mutationTransportCount:feedbackMutationTransportCountV3,
+      ownerMutationTransportCount:feedbackOwnerMutationTransportCountV3,
+      lastMutation:feedbackPhase1CloneV3_(feedbackLastMutationSummaryV3)
+    })
+  });
 
-  /* Mirror the existing authoritative OWNER transition hook without
-     replacing its account-management semantics. */
-  if(
-    typeof window.__smqOwnerAuthorityTransitionRcA==='function'&&
-    !window.__smqFeedbackOwnerTransitionWrappedV3
-  ){
-    window.__smqFeedbackOwnerTransitionWrappedV3=true;
-    const feedbackOwnerAuthorityTransitionBaseV3_=
-      window.__smqOwnerAuthorityTransitionRcA;
-    window.__smqOwnerAuthorityTransitionRcA=function(access,source){
-      const result=feedbackOwnerAuthorityTransitionBaseV3_.apply(
-        this,arguments
-      );
-      const next=!!(access&&access.isOwner);
-      if(next!==feedbackOwnerAvailableSnapshotV3){
-        feedbackOwnerAvailableSnapshotV3=next;
-        feedbackOwnerAuthEpochV3+=1;
-        feedbackOwnerContextV3={post:null,comments:{}};
-        feedbackOwnerContextWaitingSeqV3=++feedbackOwnerContextSeqV3;
-        if(!next)closeFeedbackOwnerRecoveryV3_();
-      }
-      renderFeedbackOwnerControlsV3_();
-      return result;
-    };
-  }
-
-  /* Auth/session changes are detected even when they originate in older
-     Manager login paths. Response guards also call the same synchronizer,
-     so an account switch cannot win a race with this lightweight observer. */
-  if(typeof clearGoogleCreatorSession35R3_==='function'){
-    const clearGoogleCreatorSessionFb3BBase_=clearGoogleCreatorSession35R3_;
-    clearGoogleCreatorSession35R3_=function(){
-      const result=clearGoogleCreatorSessionFb3BBase_.apply(this,arguments);
-      creatorSessionToken='';
-      syncFeedbackAuthEpochV3_('CREATOR_SESSION_INVALIDATED');
-      return result;
-    };
-  }
   setInterval(()=>{
     syncFeedbackAuthEpochV3_('AUTH_CONTEXT_OBSERVER');
     syncFeedbackOwnerAuthV3_('OWNER_AUTH_CONTEXT_OBSERVER');

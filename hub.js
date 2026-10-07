@@ -6,7 +6,7 @@
  *
  * 역할:
  * - 상단 애플리케이션 런처만 담당
- * - Feedback 데이터 처리는 feedback.js가 담당
+ * - Feedback 게시판은 feedback-board.js가 담당
  *
  * 카드 미디어:
  * - 정지 상태는 preview 영상의 첫 프레임 poster
