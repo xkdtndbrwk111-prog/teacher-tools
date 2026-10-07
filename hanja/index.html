@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261007-spritesync1">
+<link rel="stylesheet" href="styles.css?v=20261007-rosterdrag1">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -128,7 +128,7 @@
     <section class="student-strip">
       <div class="student-strip-head">
         <div><strong>이번 수업 학생</strong><span id="rosterSummary"></span></div>
-        <div class="strip-actions"><a class="hub-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-add" type="button">명단 새로 읽기</button></div>
+        <div class="strip-actions"><button id="includeAllStudents" class="strip-action" type="button">전체 참가</button><button id="excludeAllStudents" class="strip-action" type="button">전체 해제</button><a class="strip-action strip-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-action" type="button">명단 새로 읽기</button></div>
       </div>
       <div id="studentCards" class="student-cards"></div>
     </section>
@@ -215,6 +215,6 @@
 </section>
 
 <div id="notice" role="status" aria-live="polite" class="hidden"></div>
-<script type="module" src="app.js?v=20261007-spritesync1"></script>
+<script type="module" src="app.js?v=20261007-rosterdrag1"></script>
 </body>
 </html>
