@@ -2297,6 +2297,17 @@ function alreadySeatedAdjacentPartners(s){
     Math.abs(other.cell.col-s.cell.col)===1
   );
 }
+function koreanNameHasBatchim(name){
+  const chars=Array.from(String(name||"").trim());
+  for(let i=chars.length-1;i>=0;i--){
+    const code=chars[i].charCodeAt(0);
+    if(code>=0xAC00&&code<=0xD7A3)return (code-0xAC00)%28!==0;
+  }
+  return false;
+}
+function partnerNameEnding(name){
+  return koreanNameHasBatchim(name)?"이네":"네";
+}
 function tryPartnerSeatSpeech(s,target){
   if(partnerSpeechCount>=2||partnerSpeechSpeakers.has(s.id))return false;
 
@@ -2307,7 +2318,7 @@ function tryPartnerSeatSpeech(s,target){
   // "second sitters" are random each run. In a 3-seat run, the 2nd or 3rd sitter
   // can qualify as long as an adjacent classmate is already seated.
   const partner=partners[Math.floor(Math.random()*partners.length)];
-  const line=`이번 짝궁은 ${partner.name}이네.`;
+  const line=`이번 짝궁은 ${partner.name}${partnerNameEnding(partner.name)}.`;
 
   if(!showStudentSpeech(target,line,2000))return false;
   partnerSpeechCount++;
