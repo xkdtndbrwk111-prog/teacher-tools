@@ -2,11 +2,12 @@
 
 // FB-W2A-1 creates browser-local draft/write-intent state only.
 // FB-W2A-2B adds a user-action hand-off of an unchanged pending intent to
-// feedback-auth-bridge.js. There is still no network or mutation code here.
+// feedback-auth-bridge.js. FB-W2A-2C completes that intent only after the
+// trusted bridge reports the sanitized Project B CREATE result.
 (() => {
   const ACTION = "CREATE_POST";
   const READY = "READY_FOR_AUTH";
-  const TERMINAL_STATES = new Set(["CANCELLED", "SUPERSEDED"]);
+  const TERMINAL_STATES = new Set(["CANCELLED", "SUPERSEDED", "COMPLETED"]);
   const PRODUCTS = Object.freeze([
     "HUB",
     "PROJECT_A",
@@ -30,6 +31,7 @@
   let creatingIntent = false;
   let lastFocused = null;
   let bridgeState = null;
+  let composeCompleted = false;
 
   function codePointLength(value) {
     return Array.from(String(value ?? "")).length;
@@ -217,7 +219,36 @@
 
   function onBridgeState(state) {
     bridgeState = state;
+    if (
+      state &&
+      state.state === "SUCCEEDED" &&
+      pendingIntent &&
+      state.requestId === pendingIntent.requestId &&
+      state.success === true
+    ) {
+      completeIntent();
+      return;
+    }
     renderIntentState();
+  }
+
+  function completeIntent() {
+    const completed = pendingIntent;
+    endIntent(completed, "COMPLETED");
+    removeStored(STORAGE_KEYS.draft);
+    draft = blankDraft();
+    composeCompleted = true;
+    fillForm(draft);
+    clearValidation();
+    renderIntentState();
+    setMessage("compose-status", "등록되었습니다.");
+
+    if (typeof window.feedbackRefresh === "function") {
+      Promise.resolve(window.feedbackRefresh()).catch(() => {
+        // The create already succeeded. Public read refresh failure is handled
+        // by the existing Feedback reader and must not resurrect the intent.
+      });
+    }
   }
 
   function stopBridge() {
@@ -325,7 +356,10 @@
       case "REBIND_EXPECTED":
         return "Google 로그인 후 확인 창이 다시 연결되기를 기다리고 있습니다." + notPosted;
       case "AUTHENTICATED":
-        return "Google Creator 확인이 완료되었습니다." + notPosted;
+      case "MUTATING":
+        return "Google Creator 확인이 완료되었습니다. 게시글을 등록하고 있습니다.";
+      case "SUCCEEDED":
+        return "등록되었습니다.";
       case "CLOSED":
         return "확인 창이 닫혔습니다. 작성 내용과 요청 번호는 그대로 유지됩니다.";
       case "STALE":
@@ -342,14 +376,21 @@
   function renderIntentState() {
     const button = $("feedback-compose-submit");
 
+    if (composeCompleted) {
+      button.disabled = true;
+      button.textContent = "등록 완료";
+      setMessage("compose-status", "등록되었습니다.");
+      return;
+    }
+
     if (pendingIntent) {
       const state = bridgeState && bridgeState.requestId === pendingIntent.requestId
         ? bridgeState
         : null;
-      const authenticated = Boolean(state) && state.state === "AUTHENTICATED";
-      button.disabled = authenticated;
-      button.textContent = authenticated
-        ? "Creator 확인됨"
+      const mutating = Boolean(state) && state.state === "MUTATING";
+      button.disabled = mutating;
+      button.textContent = mutating
+        ? "등록 중"
         : state && state.state !== "IDLE"
           ? "확인 창 다시 열기"
           : "Google 확인 창 열기";
@@ -374,6 +415,7 @@
     const value = formDraft();
     let superseded = false;
 
+    composeCompleted = false;
     persistDraft(value);
     if (pendingIntent && !sameIntent(pendingIntent, normalizedDraft(value))) {
       endIntent(pendingIntent, "SUPERSEDED");
@@ -390,6 +432,7 @@
   }
 
   function openCompose() {
+    composeCompleted = false;
     lastFocused = document.activeElement;
     fillForm(pendingIntent || draft);
     clearValidation();
@@ -412,6 +455,7 @@
   }
 
   function cancelCompose() {
+    composeCompleted = false;
     if (pendingIntent) endIntent(pendingIntent, "CANCELLED");
     removeStored(STORAGE_KEYS.draft);
     removeStored(STORAGE_KEYS.pending);

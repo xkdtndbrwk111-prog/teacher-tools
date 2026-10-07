@@ -9,8 +9,8 @@ const assert=require('assert/strict');
 
 const BRIDGE_ORIGIN='https://n-tmrid42qu3svum6iclzmekeicegv7qtnxbt4hly-0lu-script.googleusercontent.com';
 const EXEC_URL='https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec';
-const BASE='http://127.0.0.1:8123/teacher-tools/';
-const OTHER_BASE='http://127.0.0.1:8876/teacher-tools/';
+const BASE=process.env.FEEDBACK_TEST_BASE||'http://127.0.0.1:8123/teacher-tools/';
+const OTHER_BASE=process.env.FEEDBACK_TEST_OTHER_BASE||'http://127.0.0.1:8876/teacher-tools/';
 const UUID_V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KEYS={
   draft:'teacher-tools.feedback.compose-draft.v1',
@@ -233,15 +233,16 @@ function initScript(){
     assert.equal((await state(page)).state,'AUTHENTICATING');
     await emit(page,'A',{...authed,creatorConfirmed:true,email:'x@example.com',actor_id:'a',isOwner:true});
     const done=await state(page);
-    assert.deepEqual(Object.keys(done).sort(),['requestId','safeCode','state']);
-    assert.equal(done.state,'AUTHENTICATED');
+    assert.deepEqual(Object.keys(done).sort(),['postId','requestId','safeCode','state','success']);
+    assert.equal(done.state,'MUTATING');
+    assert.equal(done.success,null);
     assert.equal(await page.locator('#feedback-compose-submit').isDisabled(),true);
     assert.equal((await pending(page)).state,'READY_FOR_AUTH');
     const stored=await page.evaluate(()=>JSON.stringify({...sessionStorage})+JSON.stringify({...localStorage}));
     assert(!stored.includes('x@example.com')&&!stored.includes('actor_id'));
     await emit(page,'A',ready(nonce2));
     assert.equal((await sent(page)).length,3);
-    pass('T9 AUTHENTICATED needs creatorConfirmed===true + requestId; identity fields never stored; auth != post success');
+    pass('T9 AUTHENTICATED needs creatorConfirmed===true + requestId; identity fields never stored; bridge waits for CREATE result');
 
     // Close / reopen / reload / supersede / cancel.
     await page.reload();
@@ -357,6 +358,105 @@ function initScript(){
     assert.match((await pending(timed)).requestId,UUID_V4);
     assert.equal(await timed.evaluate(()=>window.__closedReads||0),0);
     pass('T13/COOP-G session older than 10 minutes -> STALE, late READY rejected, pending kept');
+
+    // Sanitized CREATE success completes the local intent and invokes the
+    // existing public Feedback refresh behavior.
+    const created=await newPage();
+    await created.goto(BASE);
+    await created.evaluate(()=>{
+      window.__mkFrame('A');
+      window.__refreshCalls=0;
+      window.feedbackRefresh=()=>{window.__refreshCalls++;return Promise.resolve()};
+    });
+    await compose(created,'CREATE 성공','성공 본문');
+    const createPending=await pending(created);
+    const createNonce=await lastNonce(created);
+    await emit(created,'A',ready(createNonce));
+    await emit(created,'A',{
+      type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',
+      bridgeNonce:createNonce,
+      action:'CREATE_POST',
+      requestId:createPending.requestId,
+      creatorConfirmed:true
+    });
+    assert.equal((await state(created)).state,'MUTATING');
+    const postId='11111111-2222-4333-8444-555555555555';
+    await emit(created,'A',{
+      type:'SMQ_FEEDBACK_BRIDGE_CREATE_RESULT',
+      bridgeNonce:createNonce,
+      action:'CREATE_POST',
+      requestId:createPending.requestId,
+      success:true,
+      postId,
+      email:'must-not-store@example.com',
+      actor_id:'must-not-store'
+    });
+    let createState=await state(created);
+    assert.equal(createState.state,'SUCCEEDED');
+    assert.equal(createState.success,true);
+    assert.equal(createState.postId,postId);
+    assert.equal(await pending(created),null);
+    assert.equal(await created.evaluate(k=>sessionStorage.getItem(k),KEYS.draft),null);
+    assert.equal((await terminal(created))[0].state,'COMPLETED');
+    assert.equal(await created.locator('#compose-status').textContent(),'등록되었습니다.');
+    assert.equal(await created.evaluate(()=>window.__refreshCalls),1);
+    assert.equal(await created.locator('#feedback-compose-submit').textContent(),'등록 완료');
+    assert.equal(await created.locator('#feedback-compose-submit').isDisabled(),true);
+    const successStored=await created.evaluate(()=>JSON.stringify({...sessionStorage})+JSON.stringify({...localStorage}));
+    assert(!successStored.includes('must-not-store@example.com')&&!successStored.includes('must-not-store'));
+    pass('C1 sanitized CREATE success clears pending/draft, records COMPLETED, shows success and invokes existing refresh');
+
+    // Safe failure preserves the full retry material and requestId.
+    const failed=await newPage();
+    await failed.goto(BASE);
+    await failed.evaluate(()=>window.__mkFrame('A'));
+    await compose(failed,'CREATE 실패','실패 보존 본문');
+    const failedPending=await pending(failed);
+    const failedDraft=await failed.evaluate(k=>sessionStorage.getItem(k),KEYS.draft);
+    const failedNonce=await lastNonce(failed);
+    await emit(failed,'A',ready(failedNonce));
+    await emit(failed,'A',{
+      type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',bridgeNonce:failedNonce,
+      action:'CREATE_POST',requestId:failedPending.requestId,creatorConfirmed:true
+    });
+    await emit(failed,'A',{
+      type:'SMQ_FEEDBACK_BRIDGE_CREATE_RESULT',bridgeNonce:failedNonce,
+      action:'CREATE_POST',requestId:failedPending.requestId,
+      success:false,safeCode:'FEEDBACK_CUTOVER_CANARY_ACTOR_DENIED',
+      rawError:'must-not-surface'
+    });
+    let failedState=await state(failed);
+    assert.equal(failedState.state,'FAILED');
+    assert.equal(failedState.safeCode,'FEEDBACK_CUTOVER_CANARY_ACTOR_DENIED');
+    assert.equal((await pending(failed)).requestId,failedPending.requestId);
+    assert.equal(await failed.evaluate(k=>sessionStorage.getItem(k),KEYS.draft),failedDraft);
+    assert(!String(await failed.locator('#compose-status').textContent()).includes('must-not-surface'));
+    await failed.locator('#feedback-compose-submit').click();
+    assert.equal((await pending(failed)).requestId,failedPending.requestId);
+    assert.notEqual(await lastNonce(failed),failedNonce);
+    pass('C2 safe CREATE failure preserves pending/draft/same requestId and explicit retry uses a fresh nonce');
+
+    // A malformed success payload or unknown failure code cannot complete or
+    // expose data.
+    const malformedNonce=await lastNonce(failed);
+    await failed.evaluate(()=>window.__mkFrame('B'));
+    await emit(failed,'B',ready(malformedNonce));
+    await emit(failed,'B',{
+      type:'SMQ_FEEDBACK_BRIDGE_CREATE_RESULT',bridgeNonce:malformedNonce,
+      action:'CREATE_POST',requestId:failedPending.requestId,
+      success:true,postId:'not-a-uuid'
+    });
+    assert.equal((await state(failed)).state,'AUTHENTICATING');
+    await emit(failed,'B',{
+      type:'SMQ_FEEDBACK_BRIDGE_CREATE_RESULT',bridgeNonce:malformedNonce,
+      action:'CREATE_POST',requestId:failedPending.requestId,
+      success:false,safeCode:'raw database secret'
+    });
+    failedState=await state(failed);
+    assert.equal(failedState.state,'FAILED');
+    assert.equal(failedState.safeCode,'FEEDBACK_CREATE_FAILED');
+    assert.equal((await pending(failed)).requestId,failedPending.requestId);
+    pass('C3 malformed success rejected and unknown failure collapses to safe fallback');
 
     assert.equal(await page.evaluate(()=>window.__closedReads||0),0);
     assert.equal(await page.evaluate(()=>window.__closeCalls||0),0);

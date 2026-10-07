@@ -3,8 +3,8 @@
 // FB-W2A-2B Creator auth bridge (Hub side).
 // Wire contract source: SUPER MARIO QUIZ MANAGER immutable version 370,
 // FeedbackAuthBridgeV1.js and FeedbackAuthBridgeV1Client.html.
-// This module only confirms the Creator session inside Project B. It never
-// calls a Feedback mutation and never receives identity data.
+// Project B owns Creator authority and performs the TEST mutation. The Hub
+// receives only a sanitized lifecycle/result message and no identity data.
 (() => {
   // TEST deployment @370 (live deployment listing, 2026-10-07).
   const BRIDGE_EXEC_URL =
@@ -21,6 +21,7 @@
   const ACTION = "CREATE_POST";
   const NONCE = /^[a-f0-9]{48}$/;
   const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const ENTITY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   const PRODUCTS = new Set([
     "HUB", "PROJECT_A", "PROJECT_B", "SEATING", "PROJECT_C", "ROLE_MANAGER", "OTHER"
   ]);
@@ -30,6 +31,7 @@
     AUTH_REQUIRED: "SMQ_FEEDBACK_BRIDGE_AUTH_REQUIRED",
     NAVIGATING: "SMQ_FEEDBACK_BRIDGE_NAVIGATING",
     AUTHENTICATED: "SMQ_FEEDBACK_BRIDGE_AUTHENTICATED",
+    CREATE_RESULT: "SMQ_FEEDBACK_BRIDGE_CREATE_RESULT",
     ERROR: "SMQ_FEEDBACK_BRIDGE_ERROR"
   });
   const SAFE_CODES = new Set([
@@ -37,7 +39,24 @@
     "CREATOR_NOT_APPROVED",
     "CREATOR_SESSION_REQUIRED",
     "CREATOR_CONFIRMATION_FAILED",
-    "BRIDGE_STORAGE_UNAVAILABLE"
+    "BRIDGE_STORAGE_UNAVAILABLE",
+    "FEEDBACK_RATE_LIMIT_MUTATION_MINUTE",
+    "FEEDBACK_RATE_LIMIT_POST_MINUTE",
+    "FEEDBACK_RATE_LIMIT_POST_HOUR",
+    "FEEDBACK_IDEMPOTENCY_MISMATCH",
+    "FEEDBACK_IDEMPOTENCY_STATE_INVALID",
+    "FEEDBACK_IDEMPOTENCY_COMPLETE_FAILED",
+    "FEEDBACK_MUTATION_NOT_ALLOWED",
+    "FEEDBACK_TITLE_LENGTH_INVALID",
+    "FEEDBACK_POST_BODY_LENGTH_INVALID",
+    "FEEDBACK_PRODUCT_INVALID",
+    "FEEDBACK_REQUEST_ID_INVALID",
+    "FEEDBACK_CUTOVER_STAGE_DENIED",
+    "FEEDBACK_CUTOVER_CANARY_OPERATION_DENIED",
+    "FEEDBACK_CUTOVER_CANARY_ACTOR_DENIED",
+    "FEEDBACK_MUTATION_RESPONSE_INVALID",
+    "FEEDBACK_MUTATION_FAILED",
+    "FEEDBACK_CREATE_FAILED"
   ]);
   const STATES = Object.freeze({
     IDLE: "IDLE",
@@ -47,18 +66,26 @@
     AUTH_REQUIRED: "AUTH_REQUIRED",
     REBIND_EXPECTED: "REBIND_EXPECTED",
     AUTHENTICATED: "AUTHENTICATED",
+    MUTATING: "MUTATING",
+    SUCCEEDED: "SUCCEEDED",
     CLOSED: "CLOSED",
     STALE: "STALE",
     FAILED: "FAILED"
   });
   const TERMINAL = new Set([
-    STATES.IDLE, STATES.AUTHENTICATED, STATES.CLOSED, STATES.STALE, STATES.FAILED
+    STATES.IDLE, STATES.SUCCEEDED, STATES.CLOSED, STATES.STALE, STATES.FAILED
   ]);
   // Matches the @370 return-marker lifetime (MARKER_MAX_AGE_MS).
   const SESSION_MAX_AGE_MS = 10 * 60 * 1000;
 
   let session = null;
-  let snapshot = Object.freeze({ state: STATES.IDLE, requestId: "", safeCode: "" });
+  let snapshot = Object.freeze({
+    state: STATES.IDLE,
+    requestId: "",
+    safeCode: "",
+    success: null,
+    postId: ""
+  });
 
   function freshNonce() {
     const bytes = new Uint8Array(24);
@@ -81,10 +108,20 @@
       codePointLength(intent.body) >= 1 && codePointLength(intent.body) <= 5000;
   }
 
-  function setState(target, state, safeCode = "") {
+  function setState(target, state, safeCode = "", result = null) {
     target.state = state;
     if (target !== session) return;
-    snapshot = Object.freeze({ state, requestId: target.requestId, safeCode });
+    snapshot = Object.freeze({
+      state,
+      requestId: target.requestId,
+      safeCode,
+      success: result && typeof result.success === "boolean"
+        ? result.success
+        : null,
+      postId: result && typeof result.postId === "string"
+        ? result.postId
+        : ""
+    });
     if (typeof target.onState === "function") {
       try {
         target.onState(snapshot);
@@ -98,10 +135,10 @@
   // after cross-origin OAuth navigation it may sit in another browsing
   // context group (COOP), and trust must not depend on it. A popup that is
   // still visible keeps no trust once its session is ended here.
-  function teardown(target, state, safeCode = "") {
+  function teardown(target, state, safeCode = "", result = null) {
     clearTimeout(target.expiryTimer);
     target.bridgeSource = null;
-    setState(target, state, safeCode);
+    setState(target, state, safeCode, result);
   }
 
   function sendIntent(target) {
@@ -165,7 +202,21 @@
       setState(target, STATES.REBIND_EXPECTED);
     } else if (data.type === TYPES.AUTHENTICATED) {
       if (data.creatorConfirmed !== true) return;
-      teardown(target, STATES.AUTHENTICATED);
+      setState(target, STATES.MUTATING);
+    } else if (data.type === TYPES.CREATE_RESULT) {
+      if (data.success === true) {
+        const postId = typeof data.postId === "string" ? data.postId : "";
+        if (postId && !ENTITY_ID.test(postId)) return;
+        teardown(target, STATES.SUCCEEDED, "", {
+          success: true,
+          postId
+        });
+      } else if (data.success === false) {
+        const code = SAFE_CODES.has(data.safeCode)
+          ? data.safeCode
+          : "FEEDBACK_CREATE_FAILED";
+        teardown(target, STATES.FAILED, code, { success: false });
+      }
     } else if (data.type === TYPES.ERROR) {
       const code = SAFE_CODES.has(data.safeCode)
         ? data.safeCode
