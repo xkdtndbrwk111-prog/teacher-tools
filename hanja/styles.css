@@ -1069,3 +1069,28 @@ button,input,select{font:inherit}button{cursor:pointer}.hidden{display:none!impo
 @media(prefers-reduced-motion:reduce){
  .game-student-sprite::after{animation:none;background-position:0 21px}
 }
+
+
+/* ===== Integrated test V12: manual judgement prompt scale + vertical centering ===== */
+/* Manual judgement has no answer grid, so center the prompt/action group in the available panel. */
+.question-modal.manual-mode .question-side{
+  justify-content:center;
+  padding:0 0 10px;
+}
+.question-modal.manual-mode #questionPrompt{
+  margin:0 0 54px;
+  font-size:190px;
+  line-height:.98;
+  letter-spacing:-4px;
+}
+.question-modal.manual-mode.manual-hanja-prompt #questionPrompt{
+  font-size:240px;
+  line-height:.94;
+}
+.question-modal.manual-mode #manual{
+  margin-top:0;
+  gap:24px;
+}
+.question-modal.manual-mode #feedback{
+  margin-top:22px;
+}
