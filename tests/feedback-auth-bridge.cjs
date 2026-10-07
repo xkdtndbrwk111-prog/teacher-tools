@@ -29,7 +29,11 @@ function initScript(){
   window.open=function(url,name,features){
     window.__opens.push({url:String(url),name,features});
     if(window.__blockPopup)return null;
-    const popup={closed:false,close(){this.closed=true}};
+    const popup={gone:false};
+    window.__closedReads=window.__closedReads||0;
+    window.__closeCalls=window.__closeCalls||0;
+    Object.defineProperty(popup,'closed',{get(){window.__closedReads++;return popup.gone}});
+    popup.close=()=>{window.__closeCalls++;popup.gone=true};
     window.__popups.push(popup);
     return popup;
   };
@@ -184,12 +188,11 @@ function initScript(){
     await emit(page,'C',ready(nonce1));
     assert.equal((await state(page)).state,'STALE');
     assert.equal((await sent(page)).length,1);
-    assert.equal((await page.evaluate(()=>window.__popups[0].closed)),true);
     assert.equal((await pending(page)).requestId,first.requestId);
     await emit(page,'C',ready(nonce1));
     await emit(page,'A',{...authRequired,type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',creatorConfirmed:true});
     assert.equal((await state(page)).state,'STALE');
-    pass('T6 manual reload (untrusted READY) rejected fail-closed: STALE, popup closed, pending/requestId kept');
+    pass('T6 manual reload (untrusted READY) rejected fail-closed: STALE, trust dropped, pending/requestId kept');
 
     // Fresh-session recovery by user action.
     await page.locator('#feedback-compose-submit').click();
@@ -251,16 +254,37 @@ function initScript(){
     await page.locator('#feedback-compose-open').click();
     await page.locator('#feedback-compose-submit').click();
     const nonce3=await lastNonce(page);
-    await page.evaluate(()=>{window.__popups[0].closed=true});
-    await page.waitForFunction(()=>window.TeacherToolsFeedbackAuthBridge.snapshot().state==='CLOSED',null,{timeout:4000});
-    assert.equal((await pending(page)).requestId,first.requestId);
     await emit(page,'A',ready(nonce3));
-    assert.equal((await sent(page)).length,0);
+    assert.equal((await sent(page)).length,1);
+    const pendingBefore=await page.evaluate(k=>sessionStorage.getItem(k),KEYS.pending);
+    await page.evaluate(()=>{window.__popups[0].gone=true});
+    await page.waitForTimeout(2500);
+    assert.equal((await state(page)).state,'AUTHENTICATING');
+    assert.equal(await page.evaluate(k=>sessionStorage.getItem(k),KEYS.pending),pendingBefore);
+    pass('COOP-B manual popup disappearance is not observed and does not mutate pending intent');
+
     await page.locator('#feedback-compose-submit').click();
     const nonce4=await lastNonce(page);
     assert.notEqual(nonce4,nonce3);
+    assert.match(nonce4,/^[a-f0-9]{48}$/);
     assert.equal((await pending(page)).requestId,first.requestId);
-    pass('S4 popup close -> CLOSED with pending kept; reopen -> new nonce, same requestId');
+    assert.equal((await state(page)).state,'WAIT_READY');
+    pass('COOP-C/D/E explicit retry ends old session, new nonce, same requestId');
+
+    const oldNav={type:'SMQ_FEEDBACK_BRIDGE_NAVIGATING',bridgeNonce:nonce3,action:'CREATE_POST',requestId:first.requestId};
+    await emit(page,'A',oldNav);
+    await emit(page,'A',{...oldNav,type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',creatorConfirmed:true});
+    await emit(page,'A',ready(nonce3));
+    assert.equal((await state(page)).state,'WAIT_READY');
+    assert.equal((await sent(page)).length,1);
+    await emit(page,'B',ready(nonce4));
+    out=await sent(page);
+    assert.equal(out.length,2);
+    assert.equal(out[1].frame,'B');
+    assert.equal(out[1].message.bridgeNonce,nonce4);
+    await emit(page,'A',{...oldNav,bridgeNonce:nonce4,type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',creatorConfirmed:true});
+    assert.equal((await state(page)).state,'AUTHENTICATING');
+    pass('COOP-F old source/old nonce cannot affect the new session');
 
     await page.locator('#compose-title').fill('브리지 테스트 수정');
     let ended=await terminal(page);
@@ -268,7 +292,8 @@ function initScript(){
     assert.equal(ended[0].state,'SUPERSEDED');
     assert.equal(await pending(page),null);
     assert.equal((await state(page)).state,'CLOSED');
-    assert.equal(await page.evaluate(()=>window.__popups[1].closed),true);
+    await emit(page,'B',{type:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',bridgeNonce:nonce4,action:'CREATE_POST',requestId:first.requestId,creatorConfirmed:true});
+    assert.equal((await state(page)).state,'CLOSED');
     await page.locator('#feedback-compose-submit').click();
     const second=await pending(page);
     assert.match(second.requestId,UUID_V4);
@@ -282,7 +307,7 @@ function initScript(){
     assert.equal(ended[0].requestId,second.requestId);
     assert.equal(ended[0].state,'CANCELLED');
     assert.equal(await pending(page),null);
-    assert.equal(await page.evaluate(()=>window.__popups[2].closed),true);
+    assert.equal((await state(page)).state,'CLOSED');
     pass('S6 cancel -> CANCELLED, pending removed, bridge session closed');
 
     // ERROR mapping and popup blocked.
@@ -325,9 +350,20 @@ function initScript(){
     assert.equal((await state(timed)).state,'WAIT_READY');
     await timed.clock.runFor(10*60*1000+1000);
     assert.equal((await state(timed)).state,'STALE');
-    assert.equal(await timed.evaluate(()=>window.__popups[0].closed),true);
+    const timedNonce=await lastNonce(timed);
+    await timed.evaluate(()=>window.__mkFrame('A'));
+    await emit(timed,'A',ready(timedNonce));
+    assert.equal((await state(timed)).state,'STALE');
     assert.match((await pending(timed)).requestId,UUID_V4);
-    pass('T13 session older than 10 minutes -> STALE, popup closed, pending kept');
+    assert.equal(await timed.evaluate(()=>window.__closedReads||0),0);
+    pass('T13/COOP-G session older than 10 minutes -> STALE, late READY rejected, pending kept');
+
+    assert.equal(await page.evaluate(()=>window.__closedReads||0),0);
+    assert.equal(await page.evaluate(()=>window.__closeCalls||0),0);
+    const source=require('fs').readFileSync(require('path').join(__dirname,'..','feedback-auth-bridge.js'),'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/.*$/gm,'');
+    assert(!/\.closed\b|\.close\(|setInterval|beforeunload|pagehide|unload|\.location\b|\.document\b/.test(source));
+    pass('COOP-A no popup.closed/close()/polling/unload/location access (runtime count 0 + static)');
 
     // Network boundary. Every non-local request was aborted above; the only
     // attempts allowed are the unchanged feedback.js public list read.

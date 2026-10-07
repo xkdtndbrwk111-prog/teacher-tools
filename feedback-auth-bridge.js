@@ -56,7 +56,6 @@
   ]);
   // Matches the @370 return-marker lifetime (MARKER_MAX_AGE_MS).
   const SESSION_MAX_AGE_MS = 10 * 60 * 1000;
-  const POPUP_POLL_MS = 1000;
 
   let session = null;
   let snapshot = Object.freeze({ state: STATES.IDLE, requestId: "", safeCode: "" });
@@ -95,17 +94,13 @@
     }
   }
 
-  function teardown(target, state, safeCode = "", closePopup = false) {
-    clearInterval(target.pollTimer);
+  // Ends trust in a session. The popup window is never inspected or closed:
+  // after cross-origin OAuth navigation it may sit in another browsing
+  // context group (COOP), and trust must not depend on it. A popup that is
+  // still visible keeps no trust once its session is ended here.
+  function teardown(target, state, safeCode = "") {
     clearTimeout(target.expiryTimer);
     target.bridgeSource = null;
-    if (closePopup && target.popup && !target.popup.closed) {
-      try {
-        target.popup.close();
-      } catch {
-        // A popup we cannot close is no longer trusted either way.
-      }
-    }
     setState(target, state, safeCode);
   }
 
@@ -155,7 +150,7 @@
       // Same origin + same nonce from an untrusted source: a manual reload or a
       // foreign frame. Never rebind; drop trust and require a fresh session.
       if (data.type === TYPES.READY) {
-        teardown(target, STATES.STALE, "", true);
+        teardown(target, STATES.STALE);
       }
       return;
     }
@@ -184,7 +179,7 @@
     const target = session;
     if (!target) return;
     if (!TERMINAL.has(target.state)) {
-      teardown(target, reason, "", true);
+      teardown(target, reason);
     }
   }
 
@@ -202,9 +197,7 @@
         body: intent.body
       }),
       onState,
-      popup: null,
       bridgeSource: null,
-      pollTimer: 0,
       expiryTimer: 0,
       state: STATES.IDLE
     };
@@ -244,17 +237,13 @@
       return snapshot;
     }
 
-    target.popup = popup;
+    // Physical popup closure is not tracked. A manually closed popup leaves
+    // the pending intent untouched; the user retries, which ends this session.
     setState(target, STATES.WAIT_READY);
 
-    target.pollTimer = setInterval(() => {
-      if (target.popup.closed && !TERMINAL.has(target.state)) {
-        teardown(target, STATES.CLOSED);
-      }
-    }, POPUP_POLL_MS);
     target.expiryTimer = setTimeout(() => {
       if (!TERMINAL.has(target.state)) {
-        teardown(target, STATES.STALE, "", true);
+        teardown(target, STATES.STALE);
       }
     }, SESSION_MAX_AGE_MS);
 
