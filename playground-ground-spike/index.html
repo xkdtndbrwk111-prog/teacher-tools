@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>운동장 흙바닥 24×24 타일 스파이크</title>
+<style>
+:root{--ink:#15243a;--panel:#f5f8fc;--line:#cbd6e5;--blue:#2867d8}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:#e9eff7;color:var(--ink)}
+header{height:62px;background:#122238;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 22px;gap:18px}
+header h1{font-size:18px;margin:0}header small{opacity:.72}
+main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 62px)}
+aside{background:#f8fbff;border-right:1px solid var(--line);padding:18px;overflow:auto}
+section{padding:18px;overflow:auto}
+h2{font-size:15px;margin:0 0 10px}.note{font-size:12px;line-height:1.55;color:#5b6b80;margin:0 0 16px}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile-btn{border:2px solid transparent;border-radius:12px;background:white;padding:8px;cursor:pointer;color:inherit}
+.tile-btn.on{border-color:var(--blue);box-shadow:0 0 0 2px #dbeafe}
+.tile-preview{width:72px;height:72px;margin:auto;image-rendering:pixelated;background-size:72px 72px}
+.tile-btn strong{display:block;margin-top:6px;font-size:12px}
+.controls{display:grid;gap:8px;margin-top:18px}.controls button,.controls select{height:38px;border:1px solid #b9c7da;border-radius:9px;background:white;font-weight:700;color:#20314a;padding:0 10px}
+.controls button.primary{background:var(--blue);color:white;border-color:var(--blue)}
+.legend{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;line-height:1.6;color:#5b6b80}
+.stage-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.stage-head strong{font-size:14px}.stage-head span{font-size:12px;color:#63758d}
+#viewport{background:#dce5ef;border:1px solid #bac8da;border-radius:14px;padding:18px;overflow:auto;min-height:400px}
+#ground{display:grid;grid-template-columns:repeat(20,48px);grid-auto-rows:48px;width:max-content;box-shadow:0 8px 26px rgba(15,23,42,.12);touch-action:none;user-select:none}
+.cell{width:48px;height:48px;background-repeat:no-repeat;background-size:48px 48px;image-rendering:pixelated}
+body.debug .cell{outline:1px solid rgba(22,55,95,.35);outline-offset:-1px}
+#strip{display:flex;gap:0;margin-top:18px;width:max-content;box-shadow:0 4px 14px rgba(15,23,42,.1)}
+.strip-tile{width:96px;height:96px;background-size:96px 96px;image-rendering:pixelated}
+.badge{display:inline-flex;padding:5px 8px;border-radius:999px;background:#e7eef8;font-size:11px;font-weight:800}
+@media(max-width:850px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header><div><h1>운동장 흙바닥 타일 스파이크</h1><small>실제 24×24 픽셀 · A/B/C/D 혼합 배치 테스트</small></div><span class="badge">SEAMLESS MIX TEST</span></header>
+<main>
+<aside>
+<h2>흙 타일 선택</h2>
+<p class="note">네 타일은 같은 기본 팔레트와 공통 경계 픽셀을 사용합니다. 잔디·돌·테두리는 넣지 않았습니다.</p>
+<div id="palette" class="palette"></div>
+<div class="controls">
+<button id="fillA">A로 전체 채우기</button>
+<button id="random" class="primary">A 중심 자연 혼합</button>
+<button id="balanced">4종 균등 혼합</button>
+<button id="debug">타일 경계 보기</button>
+<select id="zoom" aria-label="확대 배율"><option value="1">1× 실제 크기</option><option value="2" selected>2× 배치 보기</option><option value="3">3× 확대 보기</option></select>
+</div>
+<div class="legend">
+<b>직접 배치</b><br>
+원하는 타일을 고른 뒤 운동장을 클릭하거나 드래그해서 칠하세요.<br><br>
+<b>설계 원칙</b><br>
+A = 가장 평평함<br>
+B = 작은 흙점<br>
+C = 조금 진한 흙결<br>
+D = 드문 얼룩<br><br>
+경계선은 기본 화면에서는 존재하지 않습니다.
+</div>
+</aside>
+<section>
+<div class="stage-head"><strong>직접 배치 운동장</strong><span id="status">20 × 12 tiles · 480 × 288 source px</span></div>
+<div id="viewport"><div id="ground"></div></div>
+<div class="stage-head" style="margin-top:18px"><strong>연결부 확대 확인</strong><span>A → B → C → D → A</span></div>
+<div id="strip"></div>
+</section>
+</main>
+<script>
+const W=24,H=24,COLS=20,ROWS=12;
+const colors={base:"#c99459",light:"#d5a268",mid:"#bc824c",dark:"#a96f43",soft:"#c18a53"};
+const tileNames=["A 기본","B 작은 흙점","C 진한 흙결","D 드문 얼룩"];
+let selected=0,painting=false,zoom=2;
+const urls=[];
+
+function px(ctx,x,y,color){ctx.fillStyle=color;ctx.fillRect(x,y,1,1)}
+function seedNoise(n){let x=n>>>0;return()=>{x=(x*1664525+1013904223)>>>0;return x/4294967296}}
+function commonBase(ctx){
+ ctx.fillStyle=colors.base;ctx.fillRect(0,0,W,H);
+ // All variants share exactly the same edge pixels. This removes variant-to-variant seams.
+ const edge=[
+  [0,3,"mid"],[0,11,"light"],[0,19,"soft"],[23,3,"mid"],[23,11,"light"],[23,19,"soft"],
+  [4,0,"light"],[12,0,"mid"],[20,0,"soft"],[4,23,"light"],[12,23,"mid"],[20,23,"soft"]
+ ];
+ edge.forEach(([x,y,c])=>px(ctx,x,y,colors[c]));
+ // Sparse common grain reaches near edges so there is no empty rectangular band.
+ [[2,5,"light"],[5,2,"mid"],[21,7,"soft"],[18,2,"light"],[2,17,"mid"],[21,20,"light"],
+  [7,21,"soft"],[15,22,"mid"],[22,14,"soft"],[1,9,"light"],[10,1,"soft"],[16,1,"mid"]]
+  .forEach(([x,y,c])=>px(ctx,x,y,colors[c]));
+}
+function makeTile(kind){
+ const c=document.createElement("canvas");c.width=W;c.height=H;const ctx=c.getContext("2d");
+ commonBase(ctx);
+ const rnd=seedNoise(9417+kind*1709);
+ const count=[18,28,38,30][kind];
+ for(let i=0;i<count;i++){
+  const x=1+Math.floor(rnd()*22),y=1+Math.floor(rnd()*22);
+  const roll=rnd();
+  const col=roll<.25?colors.light:roll<.72?colors.soft:roll<.93?colors.mid:colors.dark;
+  px(ctx,x,y,col);
+  if(kind>=2&&rnd()<.18&&x<22)px(ctx,x+1,y,col);
+ }
+ if(kind===2){
+  [[6,7],[7,7],[8,8],[15,15],[16,15],[15,16],[10,18]].forEach(([x,y],i)=>px(ctx,x,y,i%3===0?colors.dark:colors.mid));
+ }
+ if(kind===3){
+  [[5,14],[6,14],[6,15],[17,6],[18,6],[17,7],[13,19],[14,19]].forEach(([x,y],i)=>px(ctx,x,y,i%2?colors.soft:colors.mid));
+ }
+ return c.toDataURL("image/png");
+}
+for(let i=0;i<4;i++)urls.push(makeTile(i));
+
+const palette=document.getElementById("palette");
+urls.forEach((url,i)=>{
+ const b=document.createElement("button");b.className="tile-btn"+(i===0?" on":"");b.innerHTML='<div class="tile-preview"></div><strong>'+tileNames[i]+'</strong>';
+ b.querySelector(".tile-preview").style.backgroundImage='url("'+url+'")';
+ b.onclick=()=>{selected=i;document.querySelectorAll(".tile-btn").forEach((x,j)=>x.classList.toggle("on",j===i))};
+ palette.append(b);
+});
+const ground=document.getElementById("ground");
+const cells=[];
+for(let i=0;i<COLS*ROWS;i++){
+ const d=document.createElement("div");d.className="cell";d.dataset.kind="0";d.style.backgroundImage='url("'+urls[0]+'")';
+ d.onpointerdown=e=>{painting=true;paint(d);d.setPointerCapture?.(e.pointerId)};
+ d.onpointerenter=()=>{if(painting)paint(d)};
+ d.onpointerup=()=>painting=false;
+ cells.push(d);ground.append(d);
+}
+window.addEventListener("pointerup",()=>painting=false);
+function paint(el,kind=selected){el.dataset.kind=kind;el.style.backgroundImage='url("'+urls[kind]+'")'}
+function fill(kind){cells.forEach(c=>paint(c,kind))}
+function natural(){
+ const rnd=seedNoise(20261007);
+ cells.forEach(c=>{const r=rnd();paint(c,r<.58?0:r<.79?1:r<.93?2:3)});
+}
+function balanced(){const rnd=seedNoise(4411);cells.forEach(c=>paint(c,Math.floor(rnd()*4)))}
+document.getElementById("fillA").onclick=()=>fill(0);
+document.getElementById("random").onclick=natural;
+document.getElementById("balanced").onclick=balanced;
+document.getElementById("debug").onclick=()=>document.body.classList.toggle("debug");
+document.getElementById("zoom").onchange=e=>{
+ zoom=+e.target.value;const s=24*zoom;
+ ground.style.gridTemplateColumns='repeat('+COLS+','+s+'px)';ground.style.gridAutoRows=s+'px';
+ cells.forEach(c=>{c.style.width=s+'px';c.style.height=s+'px';c.style.backgroundSize=s+'px '+s+'px'});
+};
+const strip=document.getElementById("strip");
+[0,1,2,3,0,2,1,3].forEach(i=>{const d=document.createElement("div");d.className="strip-tile";d.style.backgroundImage='url("'+urls[i]+'")';strip.append(d)});
+natural();
+</script>
+</body>
+</html>
