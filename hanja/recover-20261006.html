@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>한자 데이터 복구</title>
+<style>
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:#f3f6fb;color:#172033;display:grid;place-items:center;min-height:100vh}
+main{width:min(560px,calc(100% - 32px));background:#fff;border:1px solid #d8e0eb;border-radius:18px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.12)}
+h1{margin:0 0 12px;font-size:24px}p{line-height:1.65}.ok{padding:14px;border-radius:12px;background:#ecfdf5;color:#166534;font-weight:800}.warn{padding:12px;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:13px}
+a{display:block;margin-top:18px;padding:14px;text-align:center;border-radius:12px;background:#2563eb;color:white;text-decoration:none;font-weight:900}
+small{display:block;margin-top:12px;color:#64748b}
+</style>
+</head>
+<body>
+<main>
+<h1>한자 데이터 복구</h1>
+<div id="status">복구 중...</div>
+<a id="go" href="./" hidden>한자 학습 매니저로 돌아가기</a>
+<small>2026-10-06에 업로드하려던 단일 한자 34개 복구용 페이지입니다.</small>
+</main>
+<script>
+(()=>{
+ const KEY="teacher-tools.hanja.data.v1";
+ const BACKUP="teacher-tools.hanja.recovery-backup.20261007";
+ const defaults={target:"mixed",direction:"forward",mode:"choice",perStudent:3,choices:4};
+ const source=[["一","하나","일"],["二","두","이"],["三","석","삼"],["四","넉","사"],["五","다섯","오"],["六","여섯","육"],["七","일곱","칠"],["八","여덟","팔"],["九","아홉","구"],["十","열","십"],["日","해","일"],["月","달","월"],["火","불","화"],["水","물","수"],["木","나무","목"],["金","쇠","금"],["土","흙","토"],["上","위","상"],["下","아래","하"],["左","왼","좌"],["右","오른","우"],["大","큰","대"],["小","작을","소"],["多","많을","다"],["少","적을","소"],["中","가운데","중"],["心","마음","심"],["山","뫼","산"],["川","내","천"],["草","풀","초"],["天","하늘","천"],["地","땅","지"],["田","밭","전"],["石","돌","석"]];
+ const recovered=source.map(([text,meaning,reading],i)=>({
+   id:(crypto.randomUUID?crypto.randomUUID():"recovered-"+Date.now()+"-"+i),
+   type:"single",text,meaning,reading,weight:60,enabled:true
+ }));
+ let state={version:1,entries:[],settings:{...defaults}};
+ const raw=localStorage.getItem(KEY);
+ if(raw&&!localStorage.getItem(BACKUP))localStorage.setItem(BACKUP,raw);
+ try{
+   if(raw){
+     const parsed=JSON.parse(raw);
+     if(parsed&&parsed.version===1&&Array.isArray(parsed.entries)){
+       state={version:1,entries:parsed.entries,settings:{...defaults,...(parsed.settings||{})}};
+     }
+   }
+ }catch{}
+ const byKey=new Map(state.entries.map((e,i)=>[(e.type||"single")+"|"+e.text,i]));
+ let added=0,updated=0;
+ for(const item of recovered){
+   const key="single|"+item.text;
+   if(byKey.has(key)){
+     const idx=byKey.get(key);
+     state.entries[idx]={...state.entries[idx],meaning:item.meaning,reading:item.reading,weight:60,enabled:true};
+     updated++;
+   }else{
+     byKey.set(key,state.entries.length);
+     state.entries.push(item);
+     added++;
+   }
+ }
+ localStorage.setItem(KEY,JSON.stringify(state));
+ const verify=JSON.parse(localStorage.getItem(KEY));
+ const count=verify.entries.filter(e=>e.type==="single"&&source.some(r=>r[0]===e.text)).length;
+ document.getElementById("status").innerHTML=
+   '<div class="ok">복구 완료 · '+count+'개 확인</div>'+
+   '<p>어젯밤 스프레드시트의 단일 한자 34개를 이 브라우저의 한자 데이터에 복구했습니다.<br>새로 추가 '+added+'개 · 기존 항목 갱신 '+updated+'개</p>'+
+   '<div class="warn">복구 직전 데이터가 있었다면 별도 백업 키에 보존했습니다. 기존의 다른 한자/한자어와 문제 설정은 지우지 않았습니다.</div>';
+ document.getElementById("go").hidden=false;
+})()
+</script>
+</body>
+</html>
