@@ -152,6 +152,7 @@ function restoreSingleSelection(){
  return true;
 }
 function handleCardClick(ev,e){
+ if(suppressCardClick){ev.preventDefault();return}
  if(ev.shiftKey){
   if(selectedIds.has(e.id)){
    selectedIds.delete(e.id);
@@ -204,6 +205,7 @@ function renderDb(){
   const card=document.createElement("article");
   card.className="entry-card"+(e.enabled?"":" off")+(selectedIds.has(e.id)?" selected":"");
   card.setAttribute("aria-selected",String(selectedIds.has(e.id)));
+  card.dataset.entryId=e.id;
   card.style.setProperty("--freq-brightness",String(.5+Math.max(0,Math.min(100,e.weight))/200));
   card.onclick=ev=>handleCardClick(ev,e);
 
@@ -231,6 +233,66 @@ function renderDb(){
  }
  syncEditorMode();
 }
+let dragSelect=null,suppressCardClick=false;
+function updateDragSelectionCard(card){
+ if(!dragSelect||!dragSelect.active||!card)return;
+ const id=card.dataset.entryId;
+ if(!id||dragSelect.visited.has(id))return;
+ dragSelect.visited.add(id);
+ selectedIds.add(id);
+ card.classList.add("selected");
+ card.setAttribute("aria-selected","true");
+ editId=null;
+ lastSelectedId=id;
+ syncEditorMode();
+}
+function finishDragSelection(){
+ if(!dragSelect)return;
+ const wasActive=dragSelect.active;
+ dragSelect=null;
+ document.body.classList.remove("hanja-drag-selecting");
+ if(!wasActive)return;
+ suppressCardClick=true;
+ if(selectedIds.size===1)restoreSingleSelection();
+ else syncEditorMode();
+ requestAnimationFrame(()=>{suppressCardClick=false});
+}
+$("entries").addEventListener("pointerdown",ev=>{
+ if(ev.pointerType!=="mouse"||ev.button!==0)return;
+ if(ev.target.closest("button,input,select,a"))return;
+ const card=ev.target.closest(".entry-card");
+ if(!card)return;
+ dragSelect={
+  startX:ev.clientX,
+  startY:ev.clientY,
+  startCard:card,
+  active:false,
+  additive:ev.shiftKey,
+  visited:new Set()
+ };
+});
+window.addEventListener("pointermove",ev=>{
+ if(!dragSelect||ev.pointerType!=="mouse")return;
+ if(!dragSelect.active){
+  if(Math.hypot(ev.clientX-dragSelect.startX,ev.clientY-dragSelect.startY)<7)return;
+  dragSelect.active=true;
+  if(!dragSelect.additive){
+   selectedIds.clear();
+   document.querySelectorAll("#entries .entry-card.selected").forEach(card=>{
+    card.classList.remove("selected");
+    card.setAttribute("aria-selected","false");
+   });
+  }
+  document.body.classList.add("hanja-drag-selecting");
+  updateDragSelectionCard(dragSelect.startCard);
+ }
+ ev.preventDefault();
+ const hit=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.(".entry-card");
+ if(hit&&hit.closest("#entries"))updateDragSelectionCard(hit);
+});
+window.addEventListener("pointerup",finishDragSelection);
+window.addEventListener("pointercancel",finishDragSelection);
+
 function refreshRoster(){try{students=[...readStudents()];$("start").disabled=false;renderStudents()}catch(e){students=[];$("start").disabled=true;renderStudents();notify(`학생명단을 읽을 수 없습니다. ${e.message}`)}}
 function renderStudents(){
  $("studentCards").replaceChildren();$("rosterSummary").textContent=`참가 ${students.filter(s=>!excluded.has(s.id)).length} / ${students.length}명`;
@@ -425,10 +487,10 @@ function showSuddenFinal(){
  $("questionType").textContent="서든데스 종료";
  $("questionPrompt").textContent=`오늘의 통과자 ${passed} / ${total}명`;
  $("questionInstruction").textContent="";
- $("suddenResultTitle").textContent=failed?"최종 재도전 대상":"전원 통과!";
- $("suddenResultText").textContent=failed?"2차에서도 탈락한 학생입니다. 오늘의 서든데스는 여기서 종료합니다.":"모든 학생이 오늘의 서든데스를 통과했습니다.";
- renderSuddenNames(session.finalFailed);
- $("suddenNames").classList.toggle("hidden",!failed);
+ $("suddenResultTitle").textContent=failed?"오늘의 결과":"전원 통과!";
+ $("suddenResultText").textContent=failed?"재시험까지 모두 마쳤습니다. 오늘의 서든데스는 여기서 종료합니다.":"모든 학생이 오늘의 서든데스를 통과했습니다.";
+ renderSuddenNames([]);
+ $("suddenNames").classList.add("hidden");
  $("suddenResult").classList.remove("hidden");
  session.locked=true;
  fanfare();applause();launchCelebration();
