@@ -810,19 +810,19 @@ function renderStudentStrip(){
   ensureStudentGlassesAssets();refreshStudentPreviewLayers();
 }
 function renderStudentInspector(){
-  const root=$("studentInspector"),student=inspectorStudentById(selectedStudentId);
-  if(!student){root.innerHTML='<div class="student-inspector-empty">하단에서 학생을 선택하세요.</div>';return}
+  const root=$("studentInspector"),nameRoot=$("studentNameSlot"),student=inspectorStudentById(selectedStudentId);
+  if(!student){nameRoot.innerHTML="";root.innerHTML='<div class="student-inspector-empty">하단에서 학생을 선택하세요.</div>';return}
   if(historyView&&!historyView.legacy){
     const apartNames=(student.apartFrom||[]).map(id=>inspectorStudentById(id)?.name||id);
-    root.innerHTML=`<h3 class="student-name-title">${escapeHtml(student.name)}</h3>
-      <div class="history-detail"><b>당시 비공개 속성</b><br>
+    nameRoot.innerHTML=`<h3 class="student-name-title sticky-history-name">${escapeHtml(student.name)}</h3>`;
+    root.innerHTML=`<div class="history-detail"><b>당시 비공개 속성</b><br>
       성별: ${student.gender==="male"?"남":student.gender==="female"?"여":"미지정"}<br>
       배치 균형 속성: ${BALANCE_LABEL[student.balanceLevel]||"미지정"}<br>
       지정석: ${escapeHtml(student.fixedSeatId||"없음")}<br>
       떨어뜨릴 학생: ${escapeHtml(apartNames.join(", ")||"없음")}</div>`;
     return;
   }
-  if(historyView?.legacy){root.innerHTML=`<h3 class="student-name-title">${escapeHtml(student.name)}</h3><div class="notice">이 기록은 V3 레거시 히스토리라 당시 학생 속성이 저장되지 않았습니다.</div>`;return}
+  if(historyView?.legacy){nameRoot.innerHTML=`<h3 class="student-name-title sticky-history-name">${escapeHtml(student.name)}</h3>`;root.innerHTML=`<div class="notice">이 기록은 V3 레거시 히스토리라 당시 학생 속성이 저장되지 않았습니다.</div>`;return}
   const dockBody=document.querySelector(".dock-body"),keepScroll=dockBody?.scrollTop||0;
   const studentIndex=Math.max(0,classState.students.findIndex(s=>s.id===student.id));
   student.visual=normalizedStudentVisual(student,studentIndex);
@@ -833,7 +833,7 @@ function renderStudentInspector(){
   const glassesOptions=STUDENT_GLASSES.map(v=>`<option value="${v.id}" ${visual.glasses===v.id?"selected":""}>${v.label}</option>`).join("");
   const others=classState.students.filter(s=>s.id!==student.id);
   const apartSlots=Array.from({length:3},(_,slot)=>`<select data-apart-slot="${slot}" aria-label="떨어뜨릴 학생 ${slot+1}"><option value="">${slot+1}번 없음</option>${others.map(s=>`<option value="${s.id}" ${student.apartFrom[slot]===s.id?"selected":""}>${escapeHtml(s.name)}</option>`).join("")}</select>`).join("");
-  root.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>\n    <div class="inspector-section student-visual-editor"><span class="inspector-label">외형 커스터마이즈</span><div class="student-visual-preview">${studentPreviewMarkup(student,studentIndex)}</div><div class="student-visual-grid"><label>캐릭터<select id="studentCharacter">${characterOptions}</select></label><label>머리색<select id="studentHair">${hairOptions}</select></label><label>옷 색상<select id="studentOutfit">${outfitOptions}</select></label><label>안경<select id="studentGlasses">${glassesOptions}</select></label></div></div>
+  nameRoot.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>`;\n  root.innerHTML=`<div class="inspector-section student-visual-editor"><span class="inspector-label">외형 커스터마이즈</span><div class="student-visual-preview">${studentPreviewMarkup(student,studentIndex)}</div><div class="student-visual-grid"><label>캐릭터<select id="studentCharacter">${characterOptions}</select></label><label>머리색<select id="studentHair">${hairOptions}</select></label><label>옷 색상<select id="studentOutfit">${outfitOptions}</select></label><label>안경<select id="studentGlasses">${glassesOptions}</select></label></div></div>
     <div class="inspector-section"><span class="inspector-label">성별</span><div class="segmented"><button type="button" data-g="none" class="${student.gender==="none"?"on":""}">미지정</button><button type="button" data-g="male" class="${student.gender==="male"?"on":""}">남</button><button type="button" data-g="female" class="${student.gender==="female"?"on":""}">여</button></div></div>
     <div class="inspector-section"><span class="inspector-label">배치 균형 속성 · 비공개</span><div class="level-segment"><button type="button" data-level="A" class="${student.balanceLevel==="A"?"on":""}">빼어남</button><button type="button" data-level="B" class="${student.balanceLevel==="B"?"on":""}">우수함</button><button type="button" data-level="C" class="${student.balanceLevel==="C"?"on":""}">아름다움</button></div><button id="clearLevel" class="ghost full" type="button" style="margin-top:6px">평가 미지정</button></div>
     <div class="inspector-section"><span class="inspector-label">떨어뜨릴 학생 · 최대 3명</span><div class="apart-selects">${apartSlots}</div></div>
