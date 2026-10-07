@@ -604,3 +604,22 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   border-bottom:1px solid #cbd5e1;
   box-shadow:0 4px 8px rgba(15,23,42,.08);
 }
+
+/* Student inspector polish */
+.student-dock-title{
+  position:sticky;top:-12px;z-index:10;
+  margin:-12px -12px 0;padding:12px 12px 8px;
+  background:#eef3f9;
+}
+.student-name-sticky{
+  top:36px;z-index:10;
+  margin:0 -12px 10px;
+  padding:4px 12px 10px;
+  background:#eef3f9;
+  box-shadow:0 5px 8px rgba(15,23,42,.08);
+}
+.student-visual-preview{height:118px}
+.student-visual-preview .student-mini-sprite{
+  transform:scale(3.15);
+  transform-origin:center;
+}
