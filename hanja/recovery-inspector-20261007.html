@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>한자 데이터 안전 복구 검사</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;color:#172033;background:#eef3f9}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:28px}
+main{width:min(900px,100%);margin:auto;background:#fff;border:1px solid #d5deea;border-radius:18px;padding:26px;box-shadow:0 14px 44px #0f172a18}
+h1{margin:0 0 8px;font-size:27px}p{line-height:1.6}.lead{color:#526174;margin-top:0}
+.card{border:1px solid #d8e0eb;border-radius:14px;padding:16px;margin:14px 0;background:#f8fafc}
+.card strong{font-size:17px}.ok{color:#166534}.warn{color:#9a3412}.bad{color:#b91c1c}
+.meta{margin-top:7px;color:#64748b;font-size:13px}.entries{margin-top:10px;padding:10px;border-radius:10px;background:#fff;border:1px solid #e2e8f0;line-height:1.55;word-break:keep-all}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+button,a{appearance:none;border:0;border-radius:11px;padding:12px 15px;font:inherit;font-weight:850;text-decoration:none;cursor:pointer}
+button{background:#2563eb;color:#fff}.secondary{background:#e8eef7;color:#24344d}.danger{background:#b45309;color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+#message{margin-top:16px;padding:13px;border-radius:11px;background:#eff6ff;color:#1e3a8a;font-weight:750}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>한자 데이터 안전 복구 검사</h1>
+<p class="lead">이 페이지는 열기만 해서는 데이터를 수정하지 않습니다. 현재 브라우저에 남아 있는 한자 저장소와 기존 복구 백업을 먼저 검사합니다.</p>
+<div id="summary"></div>
+<div class="actions">
+  <button id="copy" class="secondary">진단 결과 복사</button>
+  <button id="downloadCurrent" class="secondary">현재 저장본 JSON 받기</button>
+  <button id="downloadBackup" class="secondary">기존 백업 JSON 받기</button>
+  <button id="merge" class="danger">기존 백업과 안전 병합 복구</button>
+  <a class="secondary" href="./">한자 매니저로 돌아가기</a>
+</div>
+<div id="message">검사 중…</div>
+</main>
+<script>
+(()=>{
+ const KEY="teacher-tools.hanja.data.v1";
+ const BACKUP="teacher-tools.hanja.recovery-backup.20261007";
+ const $=id=>document.getElementById(id);
+
+ function inspect(key){
+   const raw=localStorage.getItem(key);
+   if(raw==null)return {key,raw:null,exists:false,valid:false,entries:[],settings:null,error:"없음"};
+   try{
+     const data=JSON.parse(raw);
+     const entries=Array.isArray(data?.entries)?data.entries:[];
+     return {key,raw,exists:true,valid:Array.isArray(data?.entries),entries,settings:data?.settings||null,error:Array.isArray(data?.entries)?"":"entries 배열 없음"};
+   }catch(e){
+     return {key,raw,exists:true,valid:false,entries:[],settings:null,error:"JSON 해석 실패: "+e.message};
+   }
+ }
+ function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+ function names(items){
+   if(!items.length)return "항목 없음";
+   const text=items.slice(0,120).map(e=>esc(e?.text||"?")).join(" · ");
+   return text+(items.length>120?" …":"");
+ }
+ function card(label,item){
+   const cls=item.valid?"ok":item.exists?"warn":"bad";
+   return '<section class="card"><strong class="'+cls+'">'+label+' · '+(item.valid?item.entries.length+"개":item.error)+'</strong>'+
+     '<div class="meta"><code>'+esc(item.key)+'</code> · '+(item.raw?item.raw.length.toLocaleString()+"자":"저장값 없음")+'</div>'+
+     (item.valid?'<div class="entries">'+names(item.entries)+'</div>':'')+'</section>';
+ }
+ function download(name,raw){
+   if(!raw)return;
+   const blob=new Blob([raw],{type:"application/json;charset=utf-8"});
+   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();
+   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ }
+ const current=inspect(KEY);
+ const backup=inspect(BACKUP);
+ const otherKeys=[];
+ for(let i=0;i<localStorage.length;i++){
+   const key=localStorage.key(i);
+   if(key&&/hanja/i.test(key)&&key!==KEY&&key!==BACKUP)otherKeys.push(inspect(key));
+ }
+
+ $("summary").innerHTML=
+   card("현재 한자 저장소",current)+
+   card("기존 복구 백업",backup)+
+   (otherKeys.length?otherKeys.map((x,i)=>card("추가 한자 관련 저장소 "+(i+1),x)).join(""):"");
+
+ let verdict="";
+ if(current.valid&&current.entries.length){
+   verdict="현재 저장소에 "+current.entries.length+"개가 실제로 남아 있습니다. 매니저에서 안 보였다면 삭제보다는 표시/검증 문제일 가능성이 큽니다. 지금은 병합 버튼을 누르지 말고 이 진단 결과를 알려 주세요.";
+ }else if(backup.valid&&backup.entries.length){
+   verdict="현재 저장소는 비었거나 읽기 어렵지만 기존 백업에 "+backup.entries.length+"개가 남아 있습니다. 복구 가능성이 높습니다.";
+ }else{
+   verdict="이 두 기본 저장소에서는 항목을 찾지 못했습니다. 아래 진단 결과에 추가 한자 관련 저장소가 있는지 확인해 주세요.";
+ }
+ $("message").textContent=verdict;
+
+ $("downloadCurrent").disabled=!current.raw;
+ $("downloadBackup").disabled=!backup.raw;
+ $("merge").disabled=!(backup.valid&&backup.entries.length);
+
+ $("downloadCurrent").onclick=()=>download("hanja-current-"+Date.now()+".json",current.raw);
+ $("downloadBackup").onclick=()=>download("hanja-backup-"+Date.now()+".json",backup.raw);
+
+ function diagnostic(){
+   const rows=[current,backup,...otherKeys].map(x=>({
+     key:x.key,exists:x.exists,valid:x.valid,count:x.entries.length,error:x.error,
+     texts:x.entries.map(e=>e?.text).filter(Boolean)
+   }));
+   return JSON.stringify({url:location.href,rows},null,2);
+ }
+ $("copy").onclick=async()=>{
+   try{await navigator.clipboard.writeText(diagnostic());$("message").textContent="진단 결과를 복사했습니다. 채팅에 붙여 넣어 주세요."}
+   catch{prompt("아래 내용을 복사해 채팅에 붙여 넣어 주세요.",diagnostic())}
+ };
+
+ $("merge").onclick=()=>{
+   if(!(backup.valid&&backup.entries.length))return;
+   const ok=confirm("현재 저장본을 별도 백업한 뒤, 기존 백업의 누락 항목만 합칩니다. 현재 항목과 설정을 우선 보존합니다. 계속할까요?");
+   if(!ok)return;
+   const preKey="teacher-tools.hanja.pre-restore."+new Date().toISOString().replace(/[:.]/g,"-");
+   if(current.raw)localStorage.setItem(preKey,current.raw);
+   const map=new Map();
+   for(const e of backup.entries){
+     if(!e||!e.text)continue;
+     map.set((e.type||"single")+"|"+e.text,{...e});
+   }
+   for(const e of current.entries){
+     if(!e||!e.text)continue;
+     map.set((e.type||"single")+"|"+e.text,{...e});
+   }
+   const state={
+     version:1,
+     entries:[...map.values()],
+     settings:current.settings||backup.settings||{target:"mixed",direction:"forward",mode:"choice",perStudent:3,choices:4}
+   };
+   localStorage.setItem(KEY,JSON.stringify(state));
+   $("message").textContent="병합 복구 완료 · "+state.entries.length+"개. 복구 직전 현재 저장본도 "+preKey+" 에 보존했습니다. 한자 매니저로 돌아가 새로고침해 주세요.";
+   $("merge").disabled=true;
+ };
+})();
+</script>
+</body>
+</html>
