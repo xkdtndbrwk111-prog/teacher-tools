@@ -1041,3 +1041,31 @@ button,input,select{font:inherit}button{cursor:pointer}.hidden{display:none!impo
 /* GitHub hub integration */
 .hub-link{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#172033;text-decoration:none;font-weight:850}
 .strip-actions{display:flex;align-items:center;gap:7px}.strip-add{min-height:32px;padding:5px 9px;border:1px solid #4b6484;border-radius:7px;background:#24344d;color:#fff;font-weight:800}
+
+/* Seating student customization parity: render the selected glasses over the same sprite frame. */
+.hanja-sprite,.game-student-sprite{position:relative}
+.hanja-sprite::after,.game-student-sprite::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background-image:var(--student-glasses-image,none);
+  background-repeat:no-repeat;
+  image-rendering:pixelated;
+}
+.hanja-sprite::after{
+  background-size:231px 308px;
+  background-position:-77px 5px;
+}
+.game-student-sprite::after{
+  background-size:1020px 1360px;
+  animation:hanjaGlassesWalk .54s steps(1,end) infinite;
+}
+@keyframes hanjaGlassesWalk{
+  0%,32%{background-position:0 21px}
+  33%,65%{background-position:-340px 21px}
+  66%,100%{background-position:-680px 21px}
+}
+@media(prefers-reduced-motion:reduce){
+ .game-student-sprite::after{animation:none;background-position:0 21px}
+}
