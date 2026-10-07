@@ -1,0 +1,766 @@
+diff -ruN --exclude=.clasp.json project-b-v371-source/FeedbackAuthBridgeV1.js project-b-v372-candidate/FeedbackAuthBridgeV1.js
+--- project-b-v371-source/FeedbackAuthBridgeV1.js	2026-10-07 14:23:45
++++ project-b-v372-candidate/FeedbackAuthBridgeV1.js	2026-10-07 15:10:37
+@@ -1,16 +1,20 @@
+ /* =========================================================
+    FB-W2A-2B — TEST Creator auth bridge server boundary
++   FB-HUB-1 — persistent Hub Feedback session (@372)
+ 
+    This file adds no Feedback mutation surface. It only:
+    - validates the fixed TEST bridge bootstrap parameters;
+    - reuses the existing server-side Creator session/Registry checks;
+-   - returns a boolean confirmation with no identity data.
++   - reports whether the current visitor is a confirmed Creator and/or
++     OWNER, with no identity data. These flags only drive Hub UI; every
++     relayed Feedback call re-checks its own authority on this server.
+ 
+-   FeedbackSupabaseV2.js remains byte-identical to the approved @369 relay.
++   All Feedback reads/mutations relayed for the Hub go through the existing
++   FeedbackSupabaseV2.js functions unchanged.
+    ========================================================= */
+ 
+ const SMQ_FEEDBACK_AUTH_BRIDGE_MODE_V1 = 'feedback-auth-bridge';
+-const SMQ_FEEDBACK_AUTH_BRIDGE_ACTION_V1 = 'CREATE_POST';
++const SMQ_FEEDBACK_AUTH_BRIDGE_ACTION_V1 = 'SESSION';
+ const SMQ_FEEDBACK_AUTH_BRIDGE_NONCE_V1 = /^[a-f0-9]{48}$/;
+ const SMQ_FEEDBACK_AUTH_BRIDGE_HUB_ORIGINS_V1 = Object.freeze([
+   'http://127.0.0.1:8123',
+@@ -70,6 +74,35 @@
+   return {
+     ok:true,
+     creatorConfirmed:true,
++    environment:'TEST'
++  };
++}
++
++function getFeedbackBridgeSessionV1(creatorToken){
++  smqFeedbackAuthBridgeAssertTestV1_();
++
++  const token=String(creatorToken||'').trim();
++  let creatorConfirmed=false;
++  let creatorCode='';
++  if(token){
++    try{
++      smqFeedbackCreatorMutationContextV3_(token);
++      creatorConfirmed=true;
++    }catch(err){
++      const raw=String(err&&err.message||err||'').toUpperCase();
++      creatorCode=raw.indexOf('CREATOR_BLOCKED')>=0
++        ?'CREATOR_BLOCKED'
++        :raw.indexOf('CREATOR_NOT_APPROVED')>=0
++          ?'CREATOR_NOT_APPROVED'
++          :'CREATOR_SESSION_REQUIRED';
++    }
++  }
++
++  return {
++    ok:true,
++    creatorConfirmed,
++    creatorCode,
++    ownerAvailable:currentManagerAccess_().isOwner===true,
+     environment:'TEST'
+   };
+ }
+diff -ruN --exclude=.clasp.json project-b-v371-source/FeedbackAuthBridgeV1Client.html project-b-v372-candidate/FeedbackAuthBridgeV1Client.html
+--- project-b-v371-source/FeedbackAuthBridgeV1Client.html	2026-10-07 14:23:45
++++ project-b-v372-candidate/FeedbackAuthBridgeV1Client.html	2026-10-07 15:12:12
+@@ -1,59 +1,43 @@
+ <script>
+ /* =========================================================
+    FB-W2A-2B — TEST Creator auth bridge client
++   FB-HUB-1 — persistent Hub Feedback session (@372)
+ 
+    The Creator token remains inside Project B. The Hub receives only bridge
+-   lifecycle messages and a sanitized CREATE result. Project B calls the
+-   existing FB-W1 TEST mutation relay after server-side Creator confirmation.
++   lifecycle messages, Creator/OWNER availability flags for its UI, an opaque
++   session fingerprint for replay safety, and field-whitelisted results of an
++   allowlisted set of existing Feedback server functions. Every relayed call
++   re-checks Creator/OWNER authority on the server.
+    ========================================================= */
+ (() => {
+   'use strict';
+ 
+   const MODE='feedback-auth-bridge';
+-  const ACTION='CREATE_POST';
++  const ACTION='SESSION';
+   const NONCE=/^[a-f0-9]{48}$/;
+   const REQUEST_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+-  const PRODUCTS=new Set([
+-    'HUB','PROJECT_A','PROJECT_B','SEATING','PROJECT_C','ROLE_MANAGER','OTHER'
+-  ]);
++  const ENTITY_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
++  const PRODUCT=/^[A-Z][A-Z0-9_]{0,63}$/;
+   const MARKER_KEY='SMQ_FEEDBACK_AUTH_BRIDGE_RETURN_V1';
+   const MARKER_MAX_AGE_MS=10*60*1000;
+   const TYPES=Object.freeze({
+     READY:'SMQ_FEEDBACK_BRIDGE_READY',
+-    INTENT:'SMQ_FEEDBACK_BRIDGE_INTENT',
++    SESSION:'SMQ_FEEDBACK_BRIDGE_SESSION',
+     AUTH_REQUIRED:'SMQ_FEEDBACK_BRIDGE_AUTH_REQUIRED',
+     NAVIGATING:'SMQ_FEEDBACK_BRIDGE_NAVIGATING',
+-    AUTHENTICATED:'SMQ_FEEDBACK_BRIDGE_AUTHENTICATED',
+-    CREATE_RESULT:'SMQ_FEEDBACK_BRIDGE_CREATE_RESULT',
++    CALL:'SMQ_FEEDBACK_BRIDGE_CALL',
++    RESULT:'SMQ_FEEDBACK_BRIDGE_RESULT',
++    CLOSED:'SMQ_FEEDBACK_BRIDGE_CLOSED',
+     ERROR:'SMQ_FEEDBACK_BRIDGE_ERROR'
+   });
+-
+-  const SAFE_CREATE_CODES=new Set([
+-    'CREATOR_BLOCKED',
+-    'CREATOR_NOT_APPROVED',
+-    'CREATOR_SESSION_REQUIRED',
+-    'FEEDBACK_RATE_LIMIT_MUTATION_MINUTE',
+-    'FEEDBACK_RATE_LIMIT_POST_MINUTE',
+-    'FEEDBACK_RATE_LIMIT_POST_HOUR',
+-    'FEEDBACK_IDEMPOTENCY_MISMATCH',
+-    'FEEDBACK_IDEMPOTENCY_STATE_INVALID',
+-    'FEEDBACK_IDEMPOTENCY_COMPLETE_FAILED',
+-    'FEEDBACK_MUTATION_NOT_ALLOWED',
+-    'FEEDBACK_TITLE_LENGTH_INVALID',
+-    'FEEDBACK_POST_BODY_LENGTH_INVALID',
+-    'FEEDBACK_PRODUCT_INVALID',
+-    'FEEDBACK_REQUEST_ID_INVALID',
+-    'FEEDBACK_CUTOVER_STAGE_DENIED',
+-    'FEEDBACK_CUTOVER_CANARY_OPERATION_DENIED',
+-    'FEEDBACK_CUTOVER_CANARY_ACTOR_DENIED',
+-    'FEEDBACK_MUTATION_RESPONSE_INVALID',
+-    'FEEDBACK_MUTATION_FAILED'
++  const CREATOR_CODES=new Set([
++    'CREATOR_BLOCKED','CREATOR_NOT_APPROVED','CREATOR_SESSION_REQUIRED'
+   ]);
+ 
+   let bridge=null;
+   let messageBound=false;
+-  let confirmSeq=0;
+-  let createSeq=0;
++  let sessionSeq=0;
++  let navigating=false;
+ 
+   function safeString(value){
+     return String(value==null?'':value);
+@@ -149,9 +133,12 @@
+ 
+     const close=document.createElement('button');
+     close.type='button';
+-    close.textContent='창 닫기';
++    close.textContent='연결 끊고 창 닫기';
+     close.style.cssText='width:100%;min-height:42px;margin-top:10px;border:1px solid #cbd8d0;border-radius:12px;background:#fff;color:#465950;font:inherit;font-weight:700;cursor:pointer';
+-    close.addEventListener('click',()=>window.top.close());
++    close.addEventListener('click',()=>{
++      postToHub(TYPES.CLOSED);
++      window.top.close();
++    });
+ 
+     card.append(kicker,title,status,login,close);
+     panel.append(card);
+@@ -167,24 +154,6 @@
+     if(login)login.hidden=!loginVisible;
+   }
+ 
+-  function safeErrorCode(error){
+-    const raw=safeString(error&&error.message||error).toUpperCase();
+-    if(raw.includes('CREATOR_BLOCKED'))return 'CREATOR_BLOCKED';
+-    if(raw.includes('CREATOR_NOT_APPROVED'))return 'CREATOR_NOT_APPROVED';
+-    if(raw.includes('CREATOR'))return 'CREATOR_SESSION_REQUIRED';
+-    return 'CREATOR_CONFIRMATION_FAILED';
+-  }
+-
+-  function safeCreateErrorCode(error){
+-    const raw=safeString(error&&error.message||error).toUpperCase();
+-    const creatorCode=safeErrorCode(error);
+-    if(creatorCode!=='CREATOR_CONFIRMATION_FAILED')return creatorCode;
+-    for(const code of SAFE_CREATE_CODES){
+-      if(raw.includes(code))return code;
+-    }
+-    return 'FEEDBACK_CREATE_FAILED';
+-  }
+-
+   function currentCreatorToken(){
+     if(typeof creatorSessionToken==='string'&&creatorSessionToken.trim()){
+       return creatorSessionToken.trim();
+@@ -197,130 +166,369 @@
+     }
+   }
+ 
+-  function validIntent(data){
+-    return data&&
+-      data.type===TYPES.INTENT&&
+-      data.action===ACTION&&
+-      data.bridgeNonce===bridge.bridgeNonce&&
+-      REQUEST_ID.test(safeString(data.requestId))&&
+-      PRODUCTS.has(safeString(data.product))&&
+-      typeof data.title==='string'&&
+-      typeof data.body==='string'&&
+-      codePointLength(data.title)>=1&&codePointLength(data.title)<=120&&
+-      codePointLength(data.body)>=1&&codePointLength(data.body)<=5000;
++  /* Same derivation Project B used for its own pending-replay guard. Lets the
++     Hub refuse to replay a pending request under a different Creator. */
++  async function creatorFingerprint(token){
++    const value=safeString(token).trim();
++    if(!value||!window.crypto||!window.crypto.subtle)return '';
++    const digest=await window.crypto.subtle.digest(
++      'SHA-256',
++      new TextEncoder().encode('SMQ_FEEDBACK_SESSION_V3|'+value)
++    );
++    return 'sha256:'+Array.from(new Uint8Array(digest))
++      .slice(0,16)
++      .map(b=>b.toString(16).padStart(2,'0'))
++      .join('');
+   }
+ 
+-  function createPost(token){
+-    if(!bridge||!bridge.intent)return;
+-    const intent=bridge.intent;
+-    const seq=++createSeq;
+-    setStatus('Google Creator 확인이 완료되었습니다.\n게시글을 등록하고 있습니다.',false);
+-    postToHub(TYPES.AUTHENTICATED,{
+-      requestId:intent.requestId,
+-      creatorConfirmed:true
++  function safeCode(error){
++    const raw=safeString(error&&error.message||error);
++    const feedback=raw.match(/FEEDBACK_[A-Z0-9_]+/);
++    if(feedback)return feedback[0];
++    const upper=raw.toUpperCase();
++    if(upper.includes('CREATOR_BLOCKED'))return 'FEEDBACK_CREATOR_BLOCKED';
++    if(upper.includes('CREATOR_NOT_APPROVED'))return 'FEEDBACK_CREATOR_NOT_APPROVED';
++    if(upper.includes('CREATOR'))return 'FEEDBACK_CREATOR_SESSION_UNAVAILABLE';
++    if(raw.includes('OWNER'))return 'FEEDBACK_OWNER_REQUIRED';
++    return 'FEEDBACK_MUTATION_TRANSPORT_UNKNOWN';
++  }
++
++  function runServer(name,args){
++    return new Promise((resolve,reject)=>{
++      google.script.run
++        .withSuccessHandler(resolve)
++        .withFailureHandler(reject)[name](...args);
+     });
++  }
+ 
+-    google.script.run
+-      .withSuccessHandler(result=>{
+-        if(seq!==createSeq||!bridge||bridge.intent!==intent)return;
+-        if(!result||result.ok!==true){
+-          setStatus('게시글을 등록하지 못했습니다. Hub에서 다시 시도할 수 있습니다.',false);
+-          postToHub(TYPES.CREATE_RESULT,{
+-            requestId:intent.requestId,
+-            success:false,
+-            safeCode:'FEEDBACK_MUTATION_RESPONSE_INVALID'
+-          });
+-          return;
+-        }
+-        clearMarker();
+-        setStatus('등록되었습니다.',false);
+-        postToHub(TYPES.CREATE_RESULT,{
+-          requestId:intent.requestId,
+-          success:true,
+-          postId:safeString(result.entityId)
+-        });
+-      })
+-      .withFailureHandler(error=>{
+-        if(seq!==createSeq||!bridge||bridge.intent!==intent)return;
+-        const code=safeCreateErrorCode(error);
+-        setStatus('게시글을 등록하지 못했습니다. Hub에서 다시 시도할 수 있습니다.',false);
+-        postToHub(TYPES.CREATE_RESULT,{
+-          requestId:intent.requestId,
+-          success:false,
+-          safeCode:code
+-        });
+-      })
+-      .createFeedbackPostSupabaseV3(
+-        token,
+-        intent.requestId,
+-        intent.title,
+-        intent.body,
+-        intent.product
+-      );
++  /* ---------- argument validation ---------- */
++
++  function argRequestId(value){
++    const id=safeString(value);
++    if(!REQUEST_ID.test(id))throw new Error('FEEDBACK_REQUEST_ID_INVALID');
++    return id;
+   }
+ 
+-  function confirmCreator(){
+-    if(!bridge||!bridge.requestId)return;
++  function argEntity(value,code){
++    const id=safeString(value).toLowerCase();
++    if(!ENTITY_ID.test(id))throw new Error(code);
++    return id;
++  }
++
++  function argRevision(value){
++    const n=Number(value);
++    if(!Number.isSafeInteger(n)||n<1)throw new Error('FEEDBACK_REVISION_INVALID');
++    return n;
++  }
++
++  function argText(value,min,max,code){
++    if(typeof value!=='string')throw new Error(code);
++    const n=codePointLength(value);
++    if(n<min||n>max)throw new Error(code);
++    return value;
++  }
++
++  function argProduct(value){
++    const product=safeString(value);
++    if(!PRODUCT.test(product))throw new Error('FEEDBACK_PRODUCT_INVALID');
++    return product;
++  }
++
++  function argCommentIds(value){
++    if(!Array.isArray(value)||value.length>50){
++      throw new Error('FEEDBACK_CAPABILITY_COMMENT_LIMIT');
++    }
++    return value.map(id=>argEntity(id,'FEEDBACK_CAPABILITIES_REFRESH_REQUIRED'));
++  }
++
++  function argAction(value,allowed){
++    const action=safeString(value);
++    if(allowed.indexOf(action)<0)throw new Error('FEEDBACK_MODERATION_ACTION_INVALID');
++    return action;
++  }
++
++  /* ---------- result projection (field whitelist) ---------- */
++
++  function projectReceipt(result){
++    if(!result||result.ok!==true)throw new Error('FEEDBACK_MUTATION_RESPONSE_INVALID');
++    const out={
++      ok:true,
++      replay:result.replay===true,
++      entityId:safeString(result.entityId),
++      revision:Number(result.revision||0)
++    };
++    if(result.status!=null)out.status=safeString(result.status);
++    if(typeof result.isNotice==='boolean')out.isNotice=result.isNotice;
++    if(!ENTITY_ID.test(out.entityId)||!Number.isSafeInteger(out.revision)||out.revision<1){
++      throw new Error('FEEDBACK_MUTATION_RESPONSE_INVALID');
++    }
++    return out;
++  }
++
++  function projectCapability(entry){
++    if(!entry||typeof entry!=='object')return null;
++    return {
++      canEdit:entry.canEdit===true,
++      canDelete:entry.canDelete===true,
++      revision:Number(entry.revision||0)
++    };
++  }
++
++  function projectCapabilities(result){
++    const comments={};
++    const source=result&&result.comments&&typeof result.comments==='object'
++      ?result.comments:{};
++    Object.keys(source).forEach(id=>{
++      if(ENTITY_ID.test(id))comments[id]=projectCapability(source[id]);
++    });
++    return {ok:true,post:projectCapability(result&&result.post),comments};
++  }
++
++  function projectOwnerContext(result){
++    const post=result&&result.post;
++    const comments={};
++    const source=result&&result.comments&&typeof result.comments==='object'
++      ?result.comments:{};
++    Object.keys(source).forEach(id=>{
++      const c=source[id]||{};
++      if(!ENTITY_ID.test(id))return;
++      comments[id]={
++        commentId:safeString(c.commentId),
++        postId:safeString(c.postId),
++        revision:Number(c.revision||0),
++        status:safeString(c.status)
++      };
++    });
++    return {
++      ok:true,
++      post:post?{
++        postId:safeString(post.postId),
++        revision:Number(post.revision||0),
++        status:safeString(post.status),
++        isNotice:post.isNotice===true
++      }:null,
++      comments
++    };
++  }
++
++  function projectOwnerQueue(result){
++    const posts=(Array.isArray(result&&result.posts)?result.posts:[]).map(p=>({
++      postId:safeString(p&&p.postId),
++      createdAt:safeString(p&&p.createdAt),
++      updatedAt:safeString(p&&p.updatedAt),
++      revision:Number(p&&p.revision||0),
++      authorDisplayName:safeString(p&&p.authorDisplayName),
++      title:safeString(p&&p.title),
++      body:safeString(p&&p.body),
++      status:safeString(p&&p.status),
++      isNotice:!!(p&&p.isNotice===true)
++    }));
++    const comments=(Array.isArray(result&&result.comments)?result.comments:[]).map(c=>({
++      commentId:safeString(c&&c.commentId),
++      postId:safeString(c&&c.postId),
++      createdAt:safeString(c&&c.createdAt),
++      updatedAt:safeString(c&&c.updatedAt),
++      revision:Number(c&&c.revision||0),
++      authorDisplayName:safeString(c&&c.authorDisplayName),
++      body:safeString(c&&c.body),
++      status:safeString(c&&c.status)
++    }));
++    return {ok:true,posts,comments};
++  }
++
++  /* ---------- allowlisted operations ---------- */
++
++  const POST_INVALID='FEEDBACK_POST_ID_INVALID';
++  const COMMENT_INVALID='FEEDBACK_COMMENT_ID_INVALID';
++
++  const OPS=Object.freeze({
++    SESSION:{
++      creator:false,
++      run:()=>sessionStatus()
++    },
++    CAPABILITIES:{
++      creator:true,
++      run:(a,token)=>runServer('getFeedbackMutationCapabilitiesV3',[
++        token,argEntity(a.postId,POST_INVALID),argCommentIds(a.commentIds)
++      ]).then(projectCapabilities)
++    },
++    OWNER_CONTEXT:{
++      creator:false,
++      run:a=>runServer('getFeedbackOwnerModerationContextV3',[
++        argEntity(a.postId,POST_INVALID),argCommentIds(a.commentIds)
++      ]).then(projectOwnerContext)
++    },
++    OWNER_QUEUE:{
++      creator:false,
++      run:a=>{
++        const limit=Math.max(1,Math.min(100,Math.floor(Number(a.limit)||50)));
++        return runServer('getFeedbackOwnerModerationQueueV3',[limit])
++          .then(projectOwnerQueue);
++      }
++    },
++    CREATE_POST:{
++      creator:true,
++      run:(a,token)=>runServer('createFeedbackPostSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argText(a.title,1,120,'FEEDBACK_TITLE_LENGTH_INVALID'),
++        argText(a.body,1,5000,'FEEDBACK_POST_BODY_LENGTH_INVALID'),
++        argProduct(a.product)
++      ]).then(projectReceipt)
++    },
++    UPDATE_POST:{
++      creator:true,
++      run:(a,token)=>runServer('updateFeedbackPostSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argEntity(a.postId,POST_INVALID),argRevision(a.expectedRevision),
++        argText(a.title,1,120,'FEEDBACK_TITLE_LENGTH_INVALID'),
++        argText(a.body,1,5000,'FEEDBACK_POST_BODY_LENGTH_INVALID'),
++        argProduct(a.product)
++      ]).then(projectReceipt)
++    },
++    DELETE_POST:{
++      creator:true,
++      run:(a,token)=>runServer('deleteFeedbackPostSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argEntity(a.postId,POST_INVALID),argRevision(a.expectedRevision)
++      ]).then(projectReceipt)
++    },
++    CREATE_COMMENT:{
++      creator:true,
++      run:(a,token)=>runServer('createFeedbackCommentSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argEntity(a.postId,POST_INVALID),
++        argText(a.body,1,1000,'FEEDBACK_COMMENT_BODY_LENGTH_INVALID')
++      ]).then(projectReceipt)
++    },
++    UPDATE_COMMENT:{
++      creator:true,
++      run:(a,token)=>runServer('updateFeedbackCommentSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argEntity(a.commentId,COMMENT_INVALID),argRevision(a.expectedRevision),
++        argText(a.body,1,1000,'FEEDBACK_COMMENT_BODY_LENGTH_INVALID')
++      ]).then(projectReceipt)
++    },
++    DELETE_COMMENT:{
++      creator:true,
++      run:(a,token)=>runServer('deleteFeedbackCommentSupabaseV3',[
++        token,argRequestId(a.requestId),
++        argEntity(a.commentId,COMMENT_INVALID),argRevision(a.expectedRevision)
++      ]).then(projectReceipt)
++    },
++    MODERATE_POST:{
++      creator:false,
++      run:a=>runServer('moderateFeedbackPostSupabaseV3',[
++        argRequestId(a.requestId),
++        argEntity(a.postId,POST_INVALID),argRevision(a.expectedRevision),
++        argAction(a.moderation,['HIDE','UNHIDE','DELETE','PIN','UNPIN'])
++      ]).then(projectReceipt)
++    },
++    MODERATE_COMMENT:{
++      creator:false,
++      run:a=>runServer('moderateFeedbackCommentSupabaseV3',[
++        argRequestId(a.requestId),
++        argEntity(a.commentId,COMMENT_INVALID),argRevision(a.expectedRevision),
++        argAction(a.moderation,['HIDE','UNHIDE','DELETE'])
++      ]).then(projectReceipt)
++    }
++  });
++
++  async function sessionStatus(){
+     const token=currentCreatorToken();
+-    if(!token){
+-      setStatus('Google Creator 인증이 필요합니다.\n인증 후에도 작성 중인 내용과 요청 번호는 Hub에 그대로 유지됩니다.',true);
+-      postToHub(TYPES.AUTH_REQUIRED,{requestId:bridge.requestId});
+-      return;
++    const result=await runServer('getFeedbackBridgeSessionV1',[token]);
++    const creator=!!(result&&result.creatorConfirmed===true);
++    const owner=!!(result&&result.ownerAvailable===true);
++    const code=CREATOR_CODES.has(safeString(result&&result.creatorCode))
++      ?safeString(result.creatorCode):'';
++    return {
++      ok:true,
++      creator,
++      owner,
++      creatorCode:creator?'':(code||'CREATOR_SESSION_REQUIRED'),
++      creatorTag:creator?await creatorFingerprint(token):''
++    };
++  }
++
++  function renderSessionStatus(status){
++    if(status.creator){
++      setStatus(
++        'Teacher Tools 피드백 게시판과 연결되었습니다.\n'+
++        (status.owner?'OWNER 관리 기능을 사용할 수 있습니다.\n':'')+
++        '게시판을 사용하는 동안 이 창을 열어 두세요.',
++        false
++      );
++    }else if(status.owner){
++      setStatus(
++        'OWNER로 연결되었습니다.\n'+
++        '글이나 댓글을 쓰려면 Google Creator 확인이 필요합니다.\n'+
++        '게시판을 사용하는 동안 이 창을 열어 두세요.',
++        true
++      );
++    }else if(status.creatorCode==='CREATOR_BLOCKED'||status.creatorCode==='CREATOR_NOT_APPROVED'){
++      setStatus('이 Google 계정은 아직 Creator로 승인되지 않았습니다.',true);
++    }else{
++      setStatus('Google Creator 인증이 필요합니다.',true);
+     }
++  }
+ 
+-    const seq=++confirmSeq;
+-    setStatus('현재 Creator 권한을 서버에서 확인하고 있습니다.',false);
+-    google.script.run
+-      .withSuccessHandler(result=>{
+-        if(seq!==confirmSeq||!bridge)return;
+-        if(!result||result.ok!==true||result.creatorConfirmed!==true){
+-          setStatus('작성 권한을 확인할 수 없습니다.',true);
+-          postToHub(TYPES.ERROR,{
+-            requestId:bridge.requestId,
+-            safeCode:'CREATOR_CONFIRMATION_FAILED'
+-          });
+-          return;
+-        }
+-        createPost(token);
+-      })
+-      .withFailureHandler(error=>{
+-        if(seq!==confirmSeq||!bridge)return;
+-        const code=safeErrorCode(error);
+-        if(code==='CREATOR_SESSION_REQUIRED'){
+-          setStatus('Google Creator 인증이 필요합니다.',true);
+-          postToHub(TYPES.AUTH_REQUIRED,{requestId:bridge.requestId});
+-          return;
+-        }
+-        setStatus('작성 권한을 확인할 수 없습니다.',true);
+-        postToHub(TYPES.ERROR,{
+-          requestId:bridge.requestId,
+-          safeCode:code
+-        });
+-      })
+-      .confirmFeedbackBridgeCreatorSessionV1(token);
++  async function publishSession(){
++    const seq=++sessionSeq;
++    try{
++      const status=await sessionStatus();
++      if(seq!==sessionSeq||!bridge)return;
++      renderSessionStatus(status);
++      postToHub(TYPES.SESSION,{
++        creator:status.creator,
++        owner:status.owner,
++        creatorCode:status.creatorCode,
++        creatorTag:status.creatorTag
++      });
++      if(!status.creator&&!status.owner)postToHub(TYPES.AUTH_REQUIRED);
++    }catch(error){
++      if(seq!==sessionSeq||!bridge)return;
++      setStatus('연결 상태를 확인하지 못했습니다.',true);
++      postToHub(TYPES.ERROR,{safeCode:safeCode(error)});
++    }
+   }
+ 
++  async function handleCall(data){
++    const callId=safeString(data.callId);
++    const op=OPS[safeString(data.op)];
++    const args=data.args&&typeof data.args==='object'&&!Array.isArray(data.args)
++      ?data.args:{};
++    if(!op){
++      postToHub(TYPES.RESULT,{callId,ok:false,safeCode:'FEEDBACK_MUTATION_NOT_ALLOWED'});
++      return;
++    }
++    try{
++      const token=currentCreatorToken();
++      if(op.creator&&!token)throw new Error('FEEDBACK_CREATOR_SESSION_UNAVAILABLE');
++      const value=await op.run(args,token);
++      postToHub(TYPES.RESULT,{callId,ok:true,value});
++    }catch(error){
++      postToHub(TYPES.RESULT,{callId,ok:false,safeCode:safeCode(error)});
++    }
++  }
++
+   function onHubMessage(event){
+     if(!bridge)return;
+     if(event.origin!==bridge.hubOrigin)return;
+     if(event.source!==openerWindow())return;
+     const data=event.data;
+-    if(!validIntent(data))return;
+-
+-    bridge.requestId=safeString(data.requestId);
+-    bridge.intent=Object.freeze({
+-      requestId:bridge.requestId,
+-      product:safeString(data.product),
+-      title:data.title,
+-      body:data.body
+-    });
+-    confirmCreator();
++    if(!data||typeof data!=='object'||Array.isArray(data))return;
++    if(data.bridgeNonce!==bridge.bridgeNonce||data.action!==ACTION)return;
++    if(data.type!==TYPES.CALL)return;
++    if(!REQUEST_ID.test(safeString(data.callId)))return;
++    handleCall(data);
+   }
+ 
+   function bindMessages(){
+     if(messageBound)return;
+     messageBound=true;
+     window.addEventListener('message',onHubMessage);
++    window.addEventListener('pagehide',()=>{
++      if(!navigating)postToHub(TYPES.CLOSED);
++    });
+   }
+ 
+   function activate(config){
+@@ -329,13 +537,12 @@
+       mode:MODE,
+       action:ACTION,
+       bridgeNonce:safeString(config.bridgeNonce),
+-      hubOrigin:safeString(config.hubOrigin),
+-      requestId:bridge&&bridge.requestId||'',
+-      intent:bridge&&bridge.intent||null
++      hubOrigin:safeString(config.hubOrigin)
+     };
+     bindMessages();
+     setStatus('Teacher Tools와 안전한 연결을 확인하고 있습니다.',false);
+     postToHub(TYPES.READY);
++    publishSession();
+   }
+ 
+   function bootstrap(input){
+@@ -350,17 +557,15 @@
+   }
+ 
+   function startAuth(){
+-    if(!bridge||!bridge.requestId)return;
++    if(!bridge)return;
+     if(!writeMarker()){
+       setStatus('인증 연결 정보를 보관할 수 없습니다.',false);
+-      postToHub(TYPES.ERROR,{
+-        requestId:bridge.requestId,
+-        safeCode:'BRIDGE_STORAGE_UNAVAILABLE'
+-      });
++      postToHub(TYPES.ERROR,{safeCode:'BRIDGE_STORAGE_UNAVAILABLE'});
+       return;
+     }
+ 
+-    postToHub(TYPES.NAVIGATING,{requestId:bridge.requestId});
++    navigating=true;
++    postToHub(TYPES.NAVIGATING);
+     setStatus('Google 로그인 화면으로 이동합니다.',false);
+     window.__smqPendingAction={
+       type:'FEEDBACK_BRIDGE_AUTH',
+@@ -390,8 +595,9 @@
+         try{sessionStorage.removeItem(SMQ_GOOGLE35_INTENT_KEY)}catch(_error){}
+         try{localStorage.removeItem(SMQ_GOOGLE35_INTENT_LOCAL_R61)}catch(_error){}
+         window.__smqPendingAction=null;
++        clearMarker();
+         if(!bridge)bootstrap(marker);
+-        else confirmCreator();
++        else publishSession();
+         return;
+       }
+       return replayBase.apply(this,arguments);
+diff -ruN --exclude=.clasp.json project-b-v371-source/FeedbackSupabaseV2.js project-b-v372-candidate/FeedbackSupabaseV2.js
+--- project-b-v371-source/FeedbackSupabaseV2.js	2026-10-07 14:23:45
++++ project-b-v372-candidate/FeedbackSupabaseV2.js	2026-10-07 15:10:01
+@@ -956,15 +956,9 @@
+ const SMQ_FEEDBACK_POST_BODY_MAX_V3 = 5000;
+ const SMQ_FEEDBACK_COMMENT_BODY_MAX_V3 = 1000;
+ const SMQ_FEEDBACK_NICKNAME_MAX_V3 = 80;
+-const SMQ_FEEDBACK_PRODUCTS_V3 = Object.freeze([
+-  'HUB',
+-  'PROJECT_A',
+-  'PROJECT_B',
+-  'SEATING',
+-  'PROJECT_C',
+-  'ROLE_MANAGER',
+-  'OTHER'
+-]);
++/* Product keys are owned by public.feedback_products (registry). The relay
++   only checks the key shape; the DB decides existence/active state. */
++const SMQ_FEEDBACK_PRODUCT_KEY_V3 = /^[A-Z][A-Z0-9_]{0,63}$/;
+ 
+ function smqFeedbackCodePointLengthV3_(value){
+   return Array.from(String(value==null?'':value)).length;
+@@ -985,7 +979,7 @@
+ 
+ function smqFeedbackNormalizeProductV3_(value){
+   const product=String(value==null?'':value).trim().toUpperCase();
+-  if(!SMQ_FEEDBACK_PRODUCTS_V3.includes(product)){
++  if(!SMQ_FEEDBACK_PRODUCT_KEY_V3.test(product)){
+     throw new Error('FEEDBACK_PRODUCT_INVALID');
+   }
+   return product;
+@@ -1621,12 +1615,13 @@
+     1,SMQ_FEEDBACK_POST_BODY_MAX_V3,
+     'FEEDBACK_POST_BODY_LENGTH_INVALID'
+   );
+-  const hasProduct=arguments.length>=5;
+-  const normalizedProduct=hasProduct
+-    ?smqFeedbackNormalizeProductV3_(product)
+-    :null;
+-  const changes={title:normalizedTitle,body:normalizedBody};
+-  if(hasProduct)changes.product=normalizedProduct;
++  /* Product is required: no silent HUB/OTHER default. */
++  const normalizedProduct=smqFeedbackNormalizeProductV3_(product);
++  const changes={
++    title:normalizedTitle,
++    body:normalizedBody,
++    product:normalizedProduct
++  };
+ 
+   const payloadHash=smqFeedbackPayloadHashV3_(
+     'CREATE_POST',
+@@ -1645,9 +1640,9 @@
+     p_payload_hash:payloadHash,
+     p_author_display_name:ctx.nickname,
+     p_title:normalizedTitle,
+-    p_body:normalizedBody
++    p_body:normalizedBody,
++    p_product:normalizedProduct
+   };
+-  if(hasProduct)payload.p_product=normalizedProduct;
+ 
+   return smqFeedbackMutationReceiptV3_(
+     smqFeedbackMutationRpcV3_('feedback_create_post_v3',payload)
