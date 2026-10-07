@@ -2,7 +2,7 @@ import {readStudents,STUDENT_STORAGE_KEY} from '../shared/student-registry.js';
 "use strict";
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";
-const defaults={target:"mixed",direction:"forward",mode:"choice",perStudent:3,choices:4};
+const defaults={target:"mixed",direction:"forward",mode:"choice",gameMode:"normal",perStudent:3,choices:4};
 function frequencyLabel(weight){const n=Number(weight);if(n<=0)return "사용 안 함";if(n<=20)return "매우 낮음";if(n<=40)return "낮음";if(n<=60)return "보통";if(n<=80)return "높음";return "매우 높음"}
 function frequencyOutput(weight){
  const n=Math.max(0,Math.min(100,Number(weight)||0));
@@ -84,7 +84,7 @@ function validateEntry(e){
  return e;
 }
 function validateSettings(s){
- if(!["single","word","mixed"].includes(s.target)||!["forward","reverse","both"].includes(s.direction)||!["choice","manual"].includes(s.mode)||!Number.isInteger(s.perStudent)||s.perStudent<1||s.perStudent>50||!Number.isInteger(s.choices)||s.choices<2||s.choices>6)throw Error("문제 설정을 확인해 주세요.");
+ if(!["single","word","mixed"].includes(s.target)||!["forward","reverse","both"].includes(s.direction)||!["choice","manual"].includes(s.mode)||!["normal","sudden"].includes(s.gameMode)||!Number.isInteger(s.perStudent)||s.perStudent<1||s.perStudent>50||!Number.isInteger(s.choices)||s.choices<2||s.choices>6)throw Error("문제 설정을 확인해 주세요.");
  return s;
 }
 function load(){
@@ -237,7 +237,7 @@ function renderStudents(){
  if(!students.length){const p=document.createElement("p");p.textContent="자리배치 매니저에서 학생명단을 먼저 저장해 주세요.";$("studentCards").append(p);return}
  for(const s of students){const b=document.createElement("button");b.className="hanja-student";b.setAttribute("aria-pressed",String(!excluded.has(s.id)));const sprite=document.createElement("div");sprite.className="hanja-sprite";sprite.style.backgroundImage=`url("${s.sprite}")`;sprite.dataset.hanjaGlasses=s.visual?.glasses||"none";const glassesSrc=hanjaGlassesSrc(sprite.dataset.hanjaGlasses);sprite.style.setProperty("--student-glasses-image",glassesSrc?`url("${glassesSrc}")`:"none");const name=document.createElement("span");name.textContent=s.name;const st=document.createElement("small");st.textContent=excluded.has(s.id)?"제외":"참가";b.append(sprite,name,st);b.onclick=()=>{excluded.has(s.id)?excluded.delete(s.id):excluded.add(s.id);renderStudents()};$("studentCards").append(b)}refreshHanjaGlassesLayers()
 }
-function readSettings(){return validateSettings({target:$("target").value,direction:$("direction").value,mode:$("mode").value,perStudent:Number($("perStudent").value),choices:Number($("choices").value)})}
+function readSettings(){return validateSettings({target:$("target").value,direction:$("direction").value,mode:$("mode").value,gameMode:$("gameMode").value,perStudent:Number($("perStudent").value),choices:Number($("choices").value)})}
 function answerFor(e,d){if(d==="reverse")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
 function promptFor(e,d){if(d==="forward")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
 function questionLabel(e,d){if(e.type==="single")return d==="forward"?"단일 한자 · 한자 → 훈음":"단일 한자 · 훈음 → 한자";return d==="forward"?"한자어 · 한자어 → 읽기":"한자어 · 읽기 → 한자어"}
@@ -348,15 +348,170 @@ function fitHanjaRoom(){
  shell.style.height=`${roomH*scale}px`;
 }
 function startGame(){
- try{settings=readSettings();checkReady(db,settings);if(!save())throw Error("설정을 저장하지 못했습니다.");refreshRoster();const participants=students.filter(s=>!excluded.has(s.id));if(!participants.length)throw Error("이번 수업에 참가할 학생을 선택해 주세요.");session={students:shuffle(participants),settings:{...settings},db:db.map(e=>({...e})),studentIndex:0,solved:0,lastId:null,locked:false,revealed:false,q:null};$("manager").classList.add("hidden");$("game").classList.remove("hidden");fitHanjaRoom();nextQuestion()}catch(e){notify(e.message)}
+ try{
+  settings=readSettings();
+  checkReady(db,settings);
+  if(!save())throw Error("설정을 저장하지 못했습니다.");
+  refreshRoster();
+  const participants=students.filter(s=>!excluded.has(s.id));
+  if(!participants.length)throw Error("이번 수업에 참가할 학생을 선택해 주세요.");
+  session={
+   students:shuffle(participants),
+   allStudents:[...participants],
+   settings:{...settings},
+   db:db.map(e=>({...e})),
+   studentIndex:0,
+   solved:0,
+   lastId:null,
+   locked:false,
+   revealed:false,
+   q:null,
+   round:1,
+   firstRoundFailed:[],
+   finalFailed:[]
+  };
+  $("manager").classList.add("hidden");
+  $("game").classList.remove("hidden");
+  fitHanjaRoom();
+  nextQuestion();
+ }catch(e){notify(e.message)}
+}
+function resetGameQuestionSurface(){
+ clearTimeout(advanceTimer);advanceTimer=null;
+ $("correctOverlay").classList.add("hidden");
+ $("meaningOverlay").classList.add("hidden");
+ $("meaningOverlayText").textContent="";
+ $("gameSprite").classList.remove("jump");
+ $("currentStudent").classList.add("hidden");
+ $("options").replaceChildren();
+ $("options").classList.add("hidden");
+ $("manual").classList.add("hidden");
+ $("answer").classList.add("hidden");
+ $("judgement").classList.add("hidden");
+ $("reveal").classList.remove("hidden");
+ $("feedback").textContent="";
+ $("suddenResult").classList.add("hidden");
+ $("retestSudden").classList.add("hidden");
+ const modal=document.querySelector(".question-modal");
+ modal.classList.remove("manual-mode","manual-hanja-prompt","sudden-round-result");
+ modal.classList.add("complete");
+}
+function renderSuddenNames(items){
+ $("suddenNames").replaceChildren();
+ for(const s of items){
+  const chip=document.createElement("span");
+  chip.textContent=s.name;
+  $("suddenNames").append(chip);
+ }
+}
+function finishNormalGame(){
+ resetGameQuestionSurface();
+ $("progress").textContent=`수업 완료 · ${session.students.length}명 × ${session.settings.perStudent}문제`;
+ $("questionCounter").textContent="완료";
+ $("questionType").textContent="모두 마쳤어요";
+ $("questionPrompt").textContent="수고했어요!";
+ $("questionInstruction").textContent="";
+ $("feedback").textContent="모든 학생이 문제를 풀었습니다.";
+ session.locked=true;
+ fanfare();applause();launchCelebration();
+}
+function showSuddenFinal(){
+ resetGameQuestionSurface();
+ const total=session.allStudents.length;
+ const failed=session.finalFailed.length;
+ const passed=total-failed;
+ $("progress").textContent=`서든데스 종료 · 통과 ${passed}/${total}명`;
+ $("questionCounter").textContent="최종 결과";
+ $("questionType").textContent="서든데스 종료";
+ $("questionPrompt").textContent=`오늘의 통과자 ${passed} / ${total}명`;
+ $("questionInstruction").textContent="";
+ $("suddenResultTitle").textContent=failed?"최종 재도전 대상":"전원 통과!";
+ $("suddenResultText").textContent=failed?"2차에서도 탈락한 학생입니다. 오늘의 서든데스는 여기서 종료합니다.":"모든 학생이 오늘의 서든데스를 통과했습니다.";
+ renderSuddenNames(session.finalFailed);
+ $("suddenNames").classList.toggle("hidden",!failed);
+ $("suddenResult").classList.remove("hidden");
+ session.locked=true;
+ fanfare();applause();launchCelebration();
+}
+function finishSuddenRound(){
+ resetGameQuestionSurface();
+ session.locked=true;
+ if(session.round===1){
+  const failed=session.firstRoundFailed;
+  if(!failed.length){session.finalFailed=[];showSuddenFinal();return}
+  $("progress").textContent=`서든데스 1차 종료 · 탈락 ${failed.length}/${session.allStudents.length}명`;
+  $("questionCounter").textContent="1차 종료";
+  $("questionType").textContent="서든데스";
+  $("questionPrompt").textContent=`1차 탈락자 ${failed.length}명`;
+  $("questionInstruction").textContent="";
+  $("suddenResultTitle").textContent="재시험 대상";
+  $("suddenResultText").textContent=`아래 학생만 ${session.settings.perStudent}문제로 한 번 더 도전합니다.`;
+  renderSuddenNames(failed);
+  $("suddenNames").classList.remove("hidden");
+  $("retestSudden").classList.remove("hidden");
+  $("suddenResult").classList.remove("hidden");
+  document.querySelector(".question-modal").classList.add("sudden-round-result");
+  return;
+ }
+ showSuddenFinal();
 }
 function nextQuestion(){
- if(!session)return;if(session.studentIndex>=session.students.length){$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("gameSprite").classList.remove("jump");$("progress").textContent=`수업 완료 · ${session.students.length}명 × ${session.settings.perStudent}문제`;$("questionCounter").textContent="완료";$("questionType").textContent="모두 마쳤어요";$("questionPrompt").textContent="수고했어요!";$("questionInstruction").textContent="";$("options").replaceChildren();$("manual").classList.add("hidden");$("feedback").textContent="모든 학생이 문제를 풀었습니다.";$("currentStudent").classList.add("hidden");document.querySelector(".question-modal").classList.remove("manual-mode","manual-hanja-prompt");document.querySelector(".question-modal").classList.add("complete");session.locked=true;fanfare();applause();launchCelebration();return}
- session.q=makeQuestion(session.db,session.settings,session.lastId);session.lastId=session.q.id;session.locked=false;session.revealed=false;renderQuestion();
+ if(!session)return;
+ if(session.studentIndex>=session.students.length){
+  if(session.settings.gameMode==="sudden")finishSuddenRound();
+  else finishNormalGame();
+  return;
+ }
+ session.q=makeQuestion(session.db,session.settings,session.lastId);
+ session.lastId=session.q.id;
+ session.locked=false;
+ session.revealed=false;
+ renderQuestion();
 }
 function renderQuestion(){
- const s=session.students[session.studentIndex],q=session.q,modal=document.querySelector(".question-modal");modal.classList.remove("complete");modal.classList.toggle("manual-mode",session.settings.mode==="manual");modal.classList.toggle("manual-hanja-prompt",session.settings.mode==="manual"&&q.direction==="forward");$("questionCounter").textContent=`문제 ${session.solved+1} / ${session.settings.perStudent}`;$("progress").textContent=`학생 ${session.studentIndex+1}/${session.students.length} · ${s.name} 문제 ${session.solved+1}/${session.settings.perStudent}`;$("questionType").textContent=questionLabel(q.entry,q.direction);$("questionPrompt").textContent=q.prompt;$("questionInstruction").textContent=instructionFor(q.entry,q.direction);$("feedback").textContent="";$("currentStudent").classList.remove("hidden");$("studentName").textContent=s.name;$("gameSprite").style.backgroundImage=`url("${s.sprite}")`;$("gameSprite").dataset.hanjaGlasses=s.visual?.glasses||"none";{const gs=hanjaGlassesSrc($("gameSprite").dataset.hanjaGlasses);$("gameSprite").style.setProperty("--student-glasses-image",gs?`url("${gs}")`:"none")}refreshHanjaGlassesLayers();$("gameSprite").classList.remove("jump");$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("options").replaceChildren();$("manual").classList.toggle("hidden",session.settings.mode!=="manual");$("answer").classList.add("hidden");$("judgement").classList.add("hidden");$("reveal").classList.remove("hidden");$("reveal").disabled=false;$("correct").disabled=false;$("wrong").disabled=false;
- if(session.settings.mode==="choice")q.options.forEach((option,index)=>{const b=document.createElement("button");const num=document.createElement("span"),txt=document.createElement("span");num.className="choice-number";num.textContent=String(index+1);txt.className="choice-text";txt.textContent=option;b.append(num,txt);if(Array.from(option).length>6)b.classList.add("compact-choice");b.onclick=()=>judge(option===q.answer,b);$("options").append(b)});$("options").classList.toggle("hidden",session.settings.mode!=="choice")
+ const s=session.students[session.studentIndex],q=session.q,modal=document.querySelector(".question-modal");
+ modal.classList.remove("complete","sudden-round-result");
+ modal.classList.toggle("manual-mode",session.settings.mode==="manual");
+ modal.classList.toggle("manual-hanja-prompt",session.settings.mode==="manual"&&q.direction==="forward");
+ $("suddenResult").classList.add("hidden");
+ $("questionCounter").textContent=`문제 ${session.solved+1} / ${session.settings.perStudent}`;
+ const roundLabel=session.settings.gameMode==="sudden"?` · ${session.round}차`:"";
+ $("progress").textContent=`학생 ${session.studentIndex+1}/${session.students.length}${roundLabel} · ${s.name} 문제 ${session.solved+1}/${session.settings.perStudent}`;
+ $("questionType").textContent=questionLabel(q.entry,q.direction);
+ $("questionPrompt").textContent=q.prompt;
+ $("questionInstruction").textContent=instructionFor(q.entry,q.direction);
+ $("feedback").textContent="";
+ $("currentStudent").classList.remove("hidden");
+ $("studentName").textContent=s.name;
+ $("gameSprite").style.backgroundImage=`url("${s.sprite}")`;
+ $("gameSprite").dataset.hanjaGlasses=s.visual?.glasses||"none";
+ {
+  const gs=hanjaGlassesSrc($("gameSprite").dataset.hanjaGlasses);
+  $("gameSprite").style.setProperty("--student-glasses-image",gs?`url("${gs}")`:"none");
+ }
+ refreshHanjaGlassesLayers();
+ $("gameSprite").classList.remove("jump");
+ $("correctOverlay").classList.add("hidden");
+ $("meaningOverlay").classList.add("hidden");
+ $("meaningOverlayText").textContent="";
+ $("options").replaceChildren();
+ $("manual").classList.toggle("hidden",session.settings.mode!=="manual");
+ $("answer").classList.add("hidden");
+ $("judgement").classList.add("hidden");
+ $("reveal").classList.remove("hidden");
+ $("reveal").disabled=false;
+ $("correct").disabled=false;
+ $("wrong").disabled=false;
+ if(session.settings.mode==="choice")q.options.forEach((option,index)=>{
+  const b=document.createElement("button"),num=document.createElement("span"),txt=document.createElement("span");
+  num.className="choice-number";num.textContent=String(index+1);
+  txt.className="choice-text";txt.textContent=option;
+  b.append(num,txt);
+  if(Array.from(option).length>6)b.classList.add("compact-choice");
+  b.onclick=()=>judge(option===q.answer,b);
+  $("options").append(b);
+ });
+ $("options").classList.toggle("hidden",session.settings.mode!=="choice");
 }
 function advanceAfterCorrect(){
  if(!session||!session.locked)return;
@@ -373,10 +528,32 @@ function advanceAfterCorrect(){
  if(changedStudent)studentChangeChime();
  nextQuestion();
 }
+function advanceAfterSuddenElimination(){
+ if(!session||!session.locked)return;
+ clearTimeout(advanceTimer);advanceTimer=null;
+ session.studentIndex++;
+ session.solved=0;
+ if(session.studentIndex<session.students.length)studentChangeChime();
+ nextQuestion();
+}
+function eliminateCurrentStudent(){
+ if(!session||session.settings.gameMode!=="sudden")return;
+ const student=session.students[session.studentIndex];
+ const target=session.round===1?session.firstRoundFailed:session.finalFailed;
+ if(student&&!target.some(s=>s.id===student.id))target.push(student);
+ session.locked=true;
+ $("feedback").textContent="✕ 탈락! 다음 학생으로 넘어갑니다.";
+ document.querySelectorAll("#options button,#judgement button,#reveal").forEach(b=>b.disabled=true);
+ advanceTimer=setTimeout(advanceAfterSuddenElimination,900);
+}
 function judge(correct,button=null){
  if(!session||session.locked||(session.settings.mode==="manual"&&!session.revealed))return;
  sound(correct);
- if(!correct){$("feedback").textContent="✕ 다시 도전해 보세요.";return}
+ if(!correct){
+  if(session.settings.gameMode==="sudden"){eliminateCurrentStudent();return}
+  $("feedback").textContent="✕ 다시 도전해 보세요.";
+  return;
+ }
  session.locked=true;
  const q=session.q;
  if(q.entry.type==="word"){
@@ -390,6 +567,22 @@ function judge(correct,button=null){
  document.querySelectorAll("#options button,#judgement button").forEach(b=>b.disabled=true);
  const wait=q.entry.type==="word"?2200:850;
  advanceTimer=setTimeout(advanceAfterCorrect,wait);
+}
+function startSuddenRetest(){
+ if(!session||session.settings.gameMode!=="sudden"||session.round!==1||!session.firstRoundFailed.length)return;
+ clearCelebration();
+ session.round=2;
+ session.students=[...session.firstRoundFailed];
+ session.studentIndex=0;
+ session.solved=0;
+ session.lastId=null;
+ session.locked=false;
+ session.revealed=false;
+ session.q=null;
+ session.finalFailed=[];
+ $("suddenResult").classList.add("hidden");
+ document.querySelector(".question-modal").classList.remove("complete","sudden-round-result");
+ nextQuestion();
 }
 function parseFrequency(v,fallback=60){const s=String(v??"").trim();const map={"사용 안 함":0,"사용안함":0,"제외":0,"매우 낮음":20,"낮음":40,"보통":60,"높음":80,"매우 높음":100};if(s in map)return map[s];const n=Number(s);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):fallback}
 function normalizeUse(v){const s=String(v??"사용").trim().toLowerCase();return !["제외","미사용","n","no","0","false","off"].includes(s)}
@@ -456,8 +649,8 @@ $("settingsForm").onchange=()=>{try{settings=readSettings();save()}catch(e){noti
 document.querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{type=b.dataset.type;document.querySelectorAll("[data-type]").forEach(x=>x.classList.toggle("on",x===b));resetForm();panel("data")});
 document.querySelectorAll("[data-panel]").forEach(b=>b.onclick=()=>panel(b.dataset.panel));
 $("newEntry").onclick=()=>{resetForm();panel("data");$("hanzi").focus()};$("cancelEdit").onclick=resetForm;$("refreshRoster").onclick=refreshRoster;$("start").onclick=startGame;
-$("reveal").onclick=()=>{if(!session||session.locked)return;session.revealed=true;$("answer").textContent="정답: "+revealAnswerText(session.q);$("answer").classList.remove("hidden");$("judgement").classList.remove("hidden");$("reveal").classList.add("hidden")};$("correct").onclick=()=>judge(true);$("wrong").onclick=()=>judge(false);$("meaningOverlay").onclick=()=>{if(!session||!session.locked||$("meaningOverlay").classList.contains("hidden")||session.q?.entry.type!=="word")return;advanceAfterCorrect()};
-$("endGame").onclick=()=>{clearTimeout(advanceTimer);clearCelebration();$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";document.querySelector(".question-modal").classList.remove("complete");session=null;$("game").classList.add("hidden");$("manager").classList.remove("hidden");refreshRoster()};
+$("reveal").onclick=()=>{if(!session||session.locked)return;session.revealed=true;$("answer").textContent="정답: "+revealAnswerText(session.q);$("answer").classList.remove("hidden");$("judgement").classList.remove("hidden");$("reveal").classList.add("hidden")};$("correct").onclick=()=>judge(true);$("wrong").onclick=()=>judge(false);$("retestSudden").onclick=startSuddenRetest;$("meaningOverlay").onclick=()=>{if(!session||!session.locked||$("meaningOverlay").classList.contains("hidden")||session.q?.entry.type!=="word")return;advanceAfterCorrect()};
+$("endGame").onclick=()=>{clearTimeout(advanceTimer);advanceTimer=null;clearCelebration();$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("suddenResult").classList.add("hidden");document.querySelector(".question-modal").classList.remove("complete","manual-mode","manual-hanja-prompt","sudden-round-result");session=null;$("game").classList.add("hidden");$("manager").classList.remove("hidden");refreshRoster()};
 $("importXlsx").onclick=()=>$("xlsxFile").click();
 $("xlsxFile").onchange=async ev=>{
  const file=ev.target.files[0];if(!file)return;
