@@ -71,7 +71,10 @@ const APPS = [
     url: "./hanja/",
     icon: "folder",
     color: "amber",
-    media: null
+    media: {
+      poster: "./assets/hub/cards/hanja-manager-hover-poster-v1.webp",
+      video: "./assets/hub/cards/hanja-manager-hover-preview-v1.mp4"
+    }
   },
 
   {
