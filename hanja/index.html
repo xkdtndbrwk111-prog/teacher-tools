@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261007-sudden1">
+<link rel="stylesheet" href="styles.css?v=20261007-dragselect1">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -59,7 +59,7 @@
           <div id="singleEditPanel">
             <div class="dock-title">
               <h2 id="editTitle">한자 등록</h2>
-              <span>카드를 클릭하면 바로 상세 설정을 수정합니다. Shift+클릭하면 여러 항목을 선택합니다.</span>
+              <span>카드를 클릭하면 상세 설정을 수정합니다. Shift+클릭 또는 마우스 드래그로 여러 항목을 선택합니다.</span>
             </div>
             <form id="entryForm">
               <label><span id="textLabel">한자</span><input id="hanzi" required autocomplete="off"></label>
@@ -82,7 +82,7 @@
           <div id="bulkEditPanel" class="hidden">
             <div class="dock-title">
               <h2><span id="bulkCount">0</span>개 항목 일괄 설정</h2>
-              <span>Shift+클릭으로 선택을 추가하거나 해제할 수 있습니다.</span>
+              <span>Shift+클릭으로 추가·해제하거나, 카드 위를 마우스로 드래그해 여러 항목을 한 번에 선택할 수 있습니다.</span>
             </div>
             <label class="frequency-control">선택 항목 출제 빈도
               <div class="frequency-slider-row">
@@ -215,6 +215,6 @@
 </section>
 
 <div id="notice" role="status" aria-live="polite" class="hidden"></div>
-<script type="module" src="app.js?v=20261007-sudden1"></script>
+<script type="module" src="app.js?v=20261007-dragselect1"></script>
 </body>
 </html>
