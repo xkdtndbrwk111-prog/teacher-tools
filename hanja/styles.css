@@ -1196,3 +1196,95 @@ body.hanja-drag-selecting .entry-card{
     background-position-y:21px;
   }
 }
+
+
+/* ===== Integrated test V16: fixed roster strip + drag participation controls ===== */
+.studio{
+  grid-template-rows:minmax(0,1fr) 202px;
+}
+.student-strip{
+  height:202px;
+  min-height:202px;
+  max-height:202px;
+  padding:10px 12px 12px;
+  overflow:hidden;
+}
+.student-strip-head{
+  min-height:32px;
+  margin-bottom:8px;
+}
+.student-cards{
+  height:140px;
+  min-height:140px;
+  max-height:140px;
+  padding:2px 1px 8px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  align-items:flex-start;
+  overscroll-behavior-x:contain;
+}
+.strip-actions{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-wrap:nowrap;
+}
+.student-strip-head .strip-action{
+  width:120px;
+  min-width:120px;
+  height:40px;
+  min-height:40px;
+  padding:0 10px;
+  border:1px solid #4b6484;
+  border-radius:9px;
+  background:#24344d;
+  color:#fff;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-decoration:none;
+  font:inherit;
+  font-size:13px;
+  font-weight:850;
+  line-height:1;
+  white-space:nowrap;
+}
+.student-strip-head .strip-action:hover{
+  background:#314663;
+}
+.student-strip-head .strip-link{
+  background:#fff;
+  border-color:#cbd5e1;
+  color:#172033;
+}
+.student-strip-head .strip-link:hover{
+  background:#f1f5f9;
+}
+body.roster-drag-selecting,
+body.roster-drag-selecting *{
+  cursor:crosshair!important;
+  user-select:none!important;
+  -webkit-user-select:none!important;
+}
+body.roster-drag-selecting .hanja-student{
+  touch-action:none;
+}
+
+@media(max-width:760px){
+  .student-strip{
+    height:202px;
+    min-height:202px;
+    max-height:202px;
+  }
+  .student-cards{
+    height:140px;
+    min-height:140px;
+    max-height:140px;
+    overflow-x:auto;
+    overflow-y:hidden;
+  }
+  .strip-actions{
+    overflow-x:auto;
+    max-width:100%;
+  }
+}
