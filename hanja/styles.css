@@ -1166,3 +1166,33 @@ body.hanja-drag-selecting *{
 body.hanja-drag-selecting .entry-card{
   touch-action:none;
 }
+
+
+/* ===== Integrated test V15: lock glasses to sprite frame + larger student nameplate ===== */
+/*
+  The glasses layer must not own an independent animation clock.
+  It inherits the sprite's animated X frame, so walking, jump resets,
+  tab throttling, and question transitions can never put the two layers
+  on different horizontal frames.
+*/
+.game-student-sprite::after{
+  animation:none;
+  background-position-x:inherit;
+  background-position-y:21px;
+}
+
+/* 1.5× the V7 student nameplate scale. */
+#studentName{
+  min-width:323px;
+  padding:23px 57px;
+  border-width:6px;
+  font-size:60px;
+}
+
+@media(prefers-reduced-motion:reduce){
+  .game-student-sprite::after{
+    animation:none;
+    background-position-x:inherit;
+    background-position-y:21px;
+  }
+}
