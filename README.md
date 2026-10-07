@@ -10,15 +10,15 @@
 | 마리오 매니저 | active | 외부 Project B | 링크 설정 필요 |
 | 자리배치 매니저 | active | `./seating/` | 사용 가능 |
 | 한자 학습 매니저 | active | `./hanja/` | 사용 가능 |
-| 피드백 | active | 외부 Project B 소속 공용 피드백 | 링크 설정 필요 |
+| 피드백 | active | Hub 내장 게시판 (`#feedback`) | 사용 가능 |
 | Project C | development | 향후 외부 서비스 | 개발 중, 비활성 |
 | 1인1역 배치 매니저 | development | 향후 내부 앱 | 개발 중, 비활성 |
 
-Hub는 도구·상태 표시와 링크 이동만 합니다. A/B/C 소스, backend, 인증을 통합하지 않습니다. Feedback에는 product/source를 전달하지 않으며 backend를 변경하지 않습니다.
+Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다. 단일 Feedback 게시판은 Hub에 내장되어 있습니다(`feedback-board.js`, Project B 게시판 이식). 공개 읽기는 Supabase 공개 RPC, 작성·수정·삭제·OWNER 관리는 Project B 서버 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다.
 
 ## 외부 주소 설정
 
-`hub.js` 상단 `APPS` 배열에서 `mario-game`, `mario-manager`, `feedback`의 `url: null`을 확인된 HTTPS Production URL로 바꿉니다. 주소가 없으면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
+`hub.js` 상단 `APPS` 배열에서 `mario-game`, `mario-manager`의 `url: null`을 확인된 HTTPS Production URL로 바꿉니다. 주소가 없으면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
 
 ## 자리배치
 
