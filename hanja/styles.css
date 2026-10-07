@@ -1152,3 +1152,17 @@ button,input,select{font:inherit}button{cursor:pointer}.hidden{display:none!impo
 .question-modal.complete .sudden-result:not(.hidden){
   display:block;
 }
+
+
+/* ===== Integrated test V14: mouse drag multi-select ===== */
+.entry-card{
+  user-select:none;
+  -webkit-user-select:none;
+}
+body.hanja-drag-selecting,
+body.hanja-drag-selecting *{
+  cursor:crosshair!important;
+}
+body.hanja-drag-selecting .entry-card{
+  touch-action:none;
+}
