@@ -52,15 +52,16 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
      return {key,raw,exists:true,valid:false,entries:[],settings:null,error:"JSON 해석 실패: "+e.message};
    }
  }
+ function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
  function names(items){
    if(!items.length)return "항목 없음";
-   const text=items.slice(0,120).map(e=>String(e?.text||"?")).join(" · ");
+   const text=items.slice(0,120).map(e=>esc(e?.text||"?")).join(" · ");
    return text+(items.length>120?" …":"");
  }
  function card(label,item){
    const cls=item.valid?"ok":item.exists?"warn":"bad";
    return '<section class="card"><strong class="'+cls+'">'+label+' · '+(item.valid?item.entries.length+"개":item.error)+'</strong>'+
-     '<div class="meta"><code>'+item.key+'</code> · '+(item.raw?item.raw.length.toLocaleString()+"자":"저장값 없음")+'</div>'+
+     '<div class="meta"><code>'+esc(item.key)+'</code> · '+(item.raw?item.raw.length.toLocaleString()+"자":"저장값 없음")+'</div>'+
      (item.valid?'<div class="entries">'+names(item.entries)+'</div>':'')+'</section>';
  }
  function download(name,raw){
