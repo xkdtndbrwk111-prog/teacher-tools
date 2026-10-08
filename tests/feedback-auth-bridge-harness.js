@@ -125,10 +125,6 @@ window.runFeedbackAuthBridgeHarness = async function runFeedbackAuthBridgeHarnes
     const bad = await bridge.call("DROP_TABLE", {}).then(() => "", e => e);
     check("B12 op outside allowlist never sent", bad === "FEEDBACK_MUTATION_NOT_ALLOWED");
 
-    const p4 = bridge.call("CREATE_POST", { requestId: "r" }, { timeoutMs: 150 });
-    const e4 = await p4.then(() => "", e => e);
-    check("B13 unanswered call times out as FEEDBACK_BRIDGE_TIMEOUT", e4 === "FEEDBACK_BRIDGE_TIMEOUT");
-
     // Trusted navigation (Google sign-in inside the popup) and rebind.
     const p5 = bridge.call("CREATE_POST", { requestId: "r" }, { timeoutMs: 5000 });
     emit("B", msg(T.NAVIGATING, nonce));
@@ -171,6 +167,19 @@ window.runFeedbackAuthBridgeHarness = async function runFeedbackAuthBridgeHarnes
       state().safeCode === "FEEDBACK_BRIDGE_ERROR");
     emit("B", msg(T.CLOSED, nonce2));
     check("B24 CLOSED from bound source ends the session", state().state === "CLOSED");
+
+    // An unanswered call (popup gone without CLOSED) times out and ends trust.
+    bridge.connect(() => {});
+    const n4 = nonceOf();
+    emit("A", msg(T.READY, n4));
+    emit("A", msg(T.SESSION, n4, { creator: true, creatorTag: TAG }));
+    const p4 = bridge.call("CREATE_POST", { requestId: "r" }, { timeoutMs: 150 });
+    const e4 = await p4.then(() => "", e => e);
+    check("B13 unanswered call -> FEEDBACK_BRIDGE_TIMEOUT and session STALE (reconnect required)",
+      e4 === "FEEDBACK_BRIDGE_TIMEOUT" && state().state === "STALE" &&
+      state().safeCode === "FEEDBACK_BRIDGE_TIMEOUT" && !state().creator);
+    emit("A", msg(T.SESSION, n4, { creator: true, creatorTag: TAG }));
+    check("B13b late SESSION after timeout cannot revive the session", state().state === "STALE");
 
     blockPopup = true;
     bridge.connect(() => {});

@@ -294,7 +294,13 @@
       : DEFAULT_CALL_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        if (target.calls.delete(callId)) reject("FEEDBACK_BRIDGE_TIMEOUT");
+        if (!target.calls.delete(callId)) return;
+        reject("FEEDBACK_BRIDGE_TIMEOUT");
+        // A bridge that stops answering (e.g. popup closed without a CLOSED
+        // message) is no longer trusted; the user must reconnect explicitly.
+        if (target === session && !TERMINAL.has(target.state)) {
+          teardown(target, STATES.STALE, "FEEDBACK_BRIDGE_TIMEOUT");
+        }
       }, timeoutMs);
       target.calls.set(callId, { resolve, reject, timer });
       target.bridgeSource.postMessage({
