@@ -99,8 +99,14 @@ window.runFeedbackBoardHarness = async function runFeedbackBoardHarness(opts = {
       return Promise.resolve(answer(op, args || {}));
     }
   });
+  // OWNER confirmations use the ported Project B in-page dialog; accept it.
+  const dialogObserver = new MutationObserver(() => {
+    const modal = $("appDialog");
+    if (modal && !modal.hidden) $("appDialogConfirm").click();
+  });
+  if ($("appDialog")) dialogObserver.observe($("appDialog"), { attributes: true, attributeFilter: ["hidden"] });
   const realConfirm = window.confirm;
-  window.confirm = () => true;
+  window.confirm = () => { throw new Error("native confirm must not be used"); };
   try { sessionStorage.clear(); } catch {}
 
   const openPost = async () => {
@@ -315,6 +321,7 @@ window.runFeedbackBoardHarness = async function runFeedbackBoardHarness(opts = {
     window.fetch = realFetch;
     window.TeacherToolsFeedbackAuthBridge = realBridge;
     window.confirm = realConfirm;
+    dialogObserver.disconnect();
     try { sessionStorage.clear(); } catch {}
   }
   return { results, calls };
