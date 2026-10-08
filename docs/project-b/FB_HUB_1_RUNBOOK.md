@@ -93,6 +93,24 @@ clasp deploy -i AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQH
 
 Re-run the live smoke above against @373.
 
+## @374 — dashboard cleanup after board removal
+
+`v373-to-v374.diff`: @373 left the desktop usage dashboard's third grid
+column (reserved for the Feedback tier) empty, and the home card / dashboard
+title still advertised the Feedback board. @374 appends one CSS block that
+reduces the desktop grid to two columns and renames the labels to
+"사용 통계". No server file changes.
+
+## Live TEST results (2026-10-08)
+
+- @372: A–H live smoke PASS (Creator + OWNER account, second non-owner
+  Creator for E, popup-close recovery with same requestId and no duplicate).
+- Hub fixes found live: in-page OWNER confirm dialog (native confirm was
+  suppressed); unanswered bridge calls end the session (STALE) and a
+  matching Creator is offered the preserved PENDING_UNKNOWN retry.
+- @373: Project B board UI removed; Hub list/detail, Creator connect,
+  comment create, OWNER hidden queue and refresh PASS against @373.
+
 ## Production promotion delta (not performed)
 
 Production Supabase `rhtyktjebiunkchddxvg` (read-only inspection 2026-10-07)
