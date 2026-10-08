@@ -3233,9 +3233,54 @@
     renderFeedbackCapabilitiesV3_();
     syncFeedbackOwnerAuthV3_('OWNER_BIND');
     renderFeedbackOwnerControlsV3_();
+    bindAppDialogV3_();
     renderFeedbackSessionV3_();
     loadFeedbackProductsV3_(false);
     openBoardFb1_('');
+  }
+
+  /* =========================================================
+     HUB — Project B @371 app dialog (Script.html line 2807), so OWNER
+     confirmations do not depend on a native window.confirm.
+     ========================================================= */
+  let appDialogResolver=null;
+  function closeAppDialog(result){
+    const modal=document.getElementById('appDialog');
+    if(!modal)return;
+    modal.hidden=true;modal.setAttribute('aria-hidden','true');
+    const resolve=appDialogResolver;appDialogResolver=null;
+    if(resolve)resolve(!!result);
+  }
+  function showAppDialog(options={}){
+    const modal=document.getElementById('appDialog');
+    const card=modal.querySelector('.app-dialog-card');
+    const title=document.getElementById('appDialogTitle');
+    const message=document.getElementById('appDialogMessage');
+    const cancel=document.getElementById('appDialogCancel');
+    const confirm=document.getElementById('appDialogConfirm');
+    card.classList.remove('danger','warning','info','smq-wide');
+    card.classList.add(options.tone||'warning');
+    if(options.wide)card.classList.add('smq-wide');
+    title.textContent=options.title||'확인';
+    message.textContent=options.message||'';
+    confirm.textContent=options.confirmText||'확인';
+    cancel.textContent=options.cancelText||'취소';
+    cancel.hidden=options.cancelable===false;
+    modal.hidden=false;modal.setAttribute('aria-hidden','false');
+    requestAnimationFrame(()=>confirm.focus());
+    return new Promise(resolve=>{appDialogResolver=resolve});
+  }
+  function showAppNotice(message,title='알림',tone='info'){
+    return showAppDialog({title,message:String(message||''),tone,cancelable:false,confirmText:'확인'});
+  }
+  function bindAppDialogV3_(){
+    document.getElementById('appDialogCancel')?.addEventListener('click',()=>closeAppDialog(false));
+    document.getElementById('appDialogConfirm')?.addEventListener('click',()=>closeAppDialog(true));
+    document.getElementById('appDialog')?.addEventListener('click',e=>{if(e.target.id==='appDialog')closeAppDialog(false)});
+    document.addEventListener('keydown',e=>{
+      const modal=document.getElementById('appDialog');
+      if(modal&&!modal.hidden&&e.key==='Escape'){e.preventDefault();closeAppDialog(false)}
+    });
   }
 
   /* =========================================================
@@ -3360,6 +3405,14 @@
       const intent=feedbackAuthContinuationV3;
       feedbackAuthContinuationV3=null;
       restoreFeedbackAuthContinuationV3_(intent);
+    }else if(!['CREATE_POST','UPDATE_POST','CREATE_COMMENT','UPDATE_COMMENT']
+      .includes(feedbackEditorStateV3.mode)){
+      /* A request preserved as PENDING_UNKNOWN is offered again only when the
+         reconnected Creator matches its fingerprint (Project B replay rule). */
+      assessStoredFeedbackPendingV3_().then(pending=>{
+        const actions=$('feedbackPendingActions');
+        if(actions&&pending&&pending.replayable)actions.hidden=false;
+      }).catch(()=>{});
     }
     /* Authenticated thread context arrives only after the session binds. */
     const thread=selectedThreadSnapshotV3;
