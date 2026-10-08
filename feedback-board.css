@@ -1029,6 +1029,105 @@ body.feedback-board-open{
   }
 }
 
+/* Project B @371 app dialog (Styles.html .app-dialog*), used by the board
+   for OWNER confirmations instead of a native window.confirm. */
+.app-dialog[hidden]{
+  display:none!important;
+}
+.app-dialog{
+  position:fixed;
+  z-index:300;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(8,18,28,.58);
+  backdrop-filter:blur(2px);
+}
+.app-dialog-card{
+  width:min(430px,92vw);
+  overflow:hidden;
+  border-radius:16px;
+  background:#fff;
+  color:#1d2b38;
+  box-shadow:0 20px 70px rgba(0,0,0,.36);
+  padding:0 20px 18px;
+  font-family:'Noto Sans KR',Arial,sans-serif;
+}
+.app-dialog-tone{
+  height:7px;
+  margin:0 -20px 16px;
+  background:#e0a21a;
+}
+.app-dialog-card.danger .app-dialog-tone{
+  background:#d94a43;
+}
+.app-dialog-card.info .app-dialog-tone{
+  background:#2d78e8;
+}
+.app-dialog-card h2{
+  margin:0 0 9px;
+  font-size:19px;
+  font-weight:900;
+}
+.app-dialog-card p{
+  margin:0;
+  white-space:pre-line;
+  font-size:13px;
+  line-height:1.65;
+  color:#506274;
+}
+.app-dialog-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:20px;
+}
+.app-dialog-btn{
+  min-width:78px;
+  border:0;
+  border-radius:9px;
+  padding:9px 13px;
+  font:800 12px 'Noto Sans KR',Arial,sans-serif;
+  cursor:pointer;
+}
+.app-dialog-btn.cancel{
+  background:#edf1f5;
+  color:#526476;
+}
+.app-dialog-btn.confirm{
+  background:#d08b00;
+  color:#fff;
+}
+.app-dialog-card.danger .app-dialog-btn.confirm{
+  background:#c83d36;
+}
+.app-dialog-card.info .app-dialog-btn.confirm{
+  background:#2d78e8;
+}
+.app-dialog-card{
+  max-height:min(84vh,760px);
+  display:flex;
+  flex-direction:column;
+}
+.app-dialog-card h2{
+  flex:0 0 auto;
+}
+.app-dialog-message{
+  min-height:0;
+  overflow:auto;
+  white-space:pre-line;
+  font-size:13px;
+  line-height:1.65;
+  color:#506274;
+  padding-right:4px;
+  scrollbar-gutter:stable;
+}
+.app-dialog-actions{
+  flex:0 0 auto;
+}
+
 /* ===================== 2. Hub additions ===================== */
 .feedback-section{
   margin-top:76px;
