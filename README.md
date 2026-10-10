@@ -22,6 +22,10 @@ Hub는 GitHub Pages(`https://xkdtndbrwk111-prog.github.io/teacher-tools/`)에서
 
 `hub.js` 상단 `APPS` 배열의 `mario-game`(Project A), `mario-manager`(Project B) `url`에는 확인된 HTTPS Production URL이 설정되어 있습니다. 주소가 null이면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
 
+## 익명 실행 횟수 (USAGE-1)
+
+자리배치 매니저와 한자 학습 매니저는 앞으로의 누적 실행 횟수만 익명 집계합니다. 같은 탭 세션에서 새로고침해도 한 번만 집계하며, Hub 피드백 게시판 아래에 작은 글씨로 누적 횟수를 표시합니다. 서버에는 `SEATING` / `HANJA`별 총횟수만 저장하며 계정, 학교, 학생, 브라우저 식별자 같은 개인정보는 저장하지 않습니다. 집계 실패는 앱 실행을 막지 않습니다.
+
 ## 자리배치
 
 `seating/`은 승인된 `classroom_seating_studio_v6_24_step1b_validation_hardened_2026-10-04.zip`의 배포 파일을 기반으로 공용 자산 경로를 참조합니다. UI, 배치 엔진, 저장·migration, Export/Import 기능은 수정하지 않았습니다.
