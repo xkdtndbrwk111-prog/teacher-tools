@@ -23,7 +23,7 @@ let mode="classroom";
 let peState=loadPEState();
 let peAssignments=[];
 let peConfirmed=[];
-let peAbilityOpen=new Set();
+let peShowAllAbilities=false;
 let peFixedEditTeam=0;
 
 function loadPEState(){
@@ -214,8 +214,24 @@ function canChangeTeamCount(n){
   if(!invalid.length)return true;
   alert(`${invalid.map(s=>s.name).join(", ")} 학생이 ${n+1}팀 이상에 고정되어 있습니다.\n먼저 학생의 고정 팀을 변경해 주세요.`);return false;
 }
-function teamTargets(n,total){const base=Math.floor(total/n),extra=total%n;return Array.from({length:n},(_,i)=>base+(i<extra?1:0))}
+// Equal team sizes take precedence; reserve any +1 slots required by locked students.
+function teamTargets(n,total,fixedCounts=[]){
+  const base=Math.floor(total/n),extra=total%n;
+  const targets=Array(n).fill(base),required=[];
+  for(let i=0;i<n;i++){
+    const locked=fixedCounts[i]||0;
+    if(locked>base+1)return null;
+    if(locked>base)required.push(i);
+  }
+  if(required.length>extra)return null;
+  required.forEach(i=>targets[i]++);
+  const remaining=Array.from({length:n},(_,i)=>i).filter(i=>!required.includes(i));
+  remaining.sort((a,b)=>(fixedCounts[b]||0)-(fixedCounts[a]||0)||a-b);
+  remaining.slice(0,extra-required.length).forEach(i=>targets[i]++);
+  return targets;
+}
 function peVector(student){const t=ensurePEStudent(student,classState.students.indexOf(student)).traits;return[t.stamina,t.leadership,t.initiative,t.charm]}
+function peGender(student){return student.gender==='male'?'male':student.gender==='female'?'female':'unknown'}
 function scoreTeams(teams,targets){
   const vectors=teams.map(team=>{const sums=[0,0,0,0];team.forEach(s=>peVector(s).forEach((v,i)=>sums[i]+=v));return sums});
   const weights=[2.2,1.25,1.05,.8];let score=0;
@@ -226,27 +242,85 @@ function scoreTeams(teams,targets){
   teams.forEach((t,i)=>{const d=t.length-targets[i];score+=d*d*80});
   return score;
 }
+// Exact small-state quota search: minimize boys/girls deviations before trait balancing.
+// Unknown gender has a separate quota; it is NEVER inferred from the sprite or name.
+// All fixed students are counted first and may make equal gender counts impossible.
+function peGenderQuotas(teams,targets,auto){
+  const n=teams.length,remaining={male:0,female:0,unknown:0};
+  const locked=teams.map(t=>({male:t.filter(s=>peGender(s)==='male').length,female:t.filter(s=>peGender(s)==='female').length}));
+  auto.forEach(s=>remaining[peGender(s)]++);
+  const totalM=remaining.male+locked.reduce((a,t)=>a+t.male,0);
+  const totalF=remaining.female+locked.reduce((a,t)=>a+t.female,0);
+  const total=targets.reduce((a,b)=>a+b,0)||1;
+  const futureSlots=Array(n+1).fill(0);
+  for(let i=n-1;i>=0;i--)futureSlots[i]=futureSlots[i+1]+targets[i]-teams[i].length;
+  const meanM=totalM/n,meanF=totalF/n,memo=new Map();
+  function solve(i,maleLeft,femaleLeft){
+    if(i===n)return maleLeft===0&&femaleLeft===0?{cost:0,quotas:[]}:null;
+    const key=`${i}|${maleLeft}|${femaleLeft}`;
+    if(memo.has(key))return memo.get(key);
+    let best=null;
+    const slots=targets[i]-teams[i].length;
+    for(let m=0;m<=Math.min(slots,maleLeft);m++){
+      for(let f=0;f<=Math.min(slots-m,femaleLeft);f++){
+        if(maleLeft-m+femaleLeft-f>futureSlots[i+1])continue;
+        const tail=solve(i+1,maleLeft-m,femaleLeft-f);
+        if(!tail)continue;
+        const totalTeamM=locked[i].male+m,totalTeamF=locked[i].female+f;
+        const fairness=(totalTeamM-meanM)**2+(totalTeamF-meanF)**2;
+        // Tiny tie-breaker: when team sizes differ, a larger team gets
+        // approximately its proportional share without overriding count fairness.
+        const proportional=(totalTeamM-totalM*targets[i]/total)**2+(totalTeamF-totalF*targets[i]/total)**2;
+        const cost=tail.cost+fairness+proportional*.0001;
+        if(!best||cost<best.cost-1e-9)best={cost,quotas:[{male:m,female:f,unknown:slots-m-f},...tail.quotas]};
+      }
+    }
+    memo.set(key,best);
+    return best;
+  }
+  return solve(0,remaining.male,remaining.female)?.quotas||null;
+}
 function generatePETeams(){
   peConfirmed=[]; // a fresh distribution invalidates any previous approval
-  const n=peState.teamCount||4,students=[...classState.students],targets=teamTargets(n,students.length),teams=Array.from({length:n},()=>[]),auto=[];
-  students.forEach(s=>{const fixed=ensurePEStudent(s,students.indexOf(s)).fixedTeam;if(fixed>=1&&fixed<=n)teams[fixed-1].push(s);else auto.push(s)});
-  for(let i=0;i<n;i++)if(teams[i].length>targets[i]){alert(`${i+1}팀 고정 학생이 목표 인원(${targets[i]}명)보다 많습니다.`);return}
-  auto.sort(()=>Math.random()-.5).sort((a,b)=>peVector(b)[0]-peVector(a)[0]);
+  const n=peState.teamCount||4,students=[...classState.students];
+  const teams=Array.from({length:n},()=>[]),auto=[];
+  students.forEach((s,i)=>{const fixed=ensurePEStudent(s,i).fixedTeam;if(fixed>=1&&fixed<=n)teams[fixed-1].push(s);else auto.push(s)});
+  const targets=teamTargets(n,students.length,teams.map(t=>t.length));
+  if(!targets){alert('현재 고정 학생 수로는 팀 인원을 1명 이내 차이로 맞출 수 없습니다. 고정을 조정해 주세요.');return}
+  const quotas=peGenderQuotas(teams,targets,auto);
+  if(!quotas){alert('남녀 인원 배분을 계산하지 못했습니다. 고정 학생 설정을 확인해 주세요.');return}
+  const remaining=quotas.map(q=>({...q}));
+  // Randomized tie order; high-stamina students are allocated early to balance
+  // the independent ability axes within each already balanced gender quota.
+  for(let i=auto.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[auto[i],auto[j]]=[auto[j],auto[i]]}
+  auto.sort((a,b)=>(peVector(b)[0]||0)-(peVector(a)[0]||0));
   auto.forEach(student=>{
+    const gender=peGender(student);
     let best=-1,bestScore=Infinity;
     for(let i=0;i<n;i++){
-      if(teams[i].length>=targets[i])continue;
-      teams[i].push(student);const sc=scoreTeams(teams,targets)+Math.random()*.03;teams[i].pop();if(sc<bestScore){bestScore=sc;best=i}
+      if(remaining[i][gender]<=0)continue;
+      teams[i].push(student);
+      const sc=scoreTeams(teams,targets)+Math.random()*.03;
+      teams[i].pop();
+      if(sc<bestScore){bestScore=sc;best=i}
     }
-    if(best<0)best=teams.findIndex((t,i)=>t.length<targets[i]);teams[best].push(student);
+    if(best<0)throw new Error('PE gender-quota allocation inconsistent');
+    teams[best].push(student);remaining[best][gender]--;
   });
-  // local improvement: swap only auto-assigned students
+  // Optimize independent traits without changing team sizes or gender quotas.
+  // Locked students are NEVER exchanged; only like-for-like gender swaps.
   let current=scoreTeams(teams,targets);
-  for(let pass=0;pass<250;pass++){
+  for(let pass=0;pass<500;pass++){
     const a=Math.floor(Math.random()*n),b=Math.floor(Math.random()*n);if(a===b)continue;
-    const ca=teams[a].filter(s=>!ensurePEStudent(s,students.indexOf(s)).fixedTeam),cb=teams[b].filter(s=>!ensurePEStudent(s,students.indexOf(s)).fixedTeam);if(!ca.length||!cb.length)continue;
-    const sa=ca[Math.floor(Math.random()*ca.length)],sb=cb[Math.floor(Math.random()*cb.length)],ia=teams[a].indexOf(sa),ib=teams[b].indexOf(sb);
-    teams[a][ia]=sb;teams[b][ib]=sa;const next=scoreTeams(teams,targets);if(next<=current)current=next;else{teams[a][ia]=sa;teams[b][ib]=sb}
+    const ca=teams[a].filter(s=>!ensurePEStudent(s,students.indexOf(s)).fixedTeam);
+    if(!ca.length)continue;
+    const sa=ca[Math.floor(Math.random()*ca.length)];
+    const cb=teams[b].filter(s=>!ensurePEStudent(s,students.indexOf(s)).fixedTeam&&peGender(s)===peGender(sa));
+    if(!cb.length)continue;
+    const sb=cb[Math.floor(Math.random()*cb.length)],ia=teams[a].indexOf(sa),ib=teams[b].indexOf(sb);
+    teams[a][ia]=sb;teams[b][ib]=sa;
+    const next=scoreTeams(teams,targets);
+    if(next<=current)current=next;else{teams[a][ia]=sa;teams[b][ib]=sb}
   }
   peAssignments=teams;renderPE();updateModeChrome();
 }
@@ -270,10 +344,11 @@ function renderPE(){
     classState.students.forEach(s=>{const fixed=ensurePEStudent(s,classState.students.indexOf(s)).fixedTeam;if(fixed>=1&&fixed<=n)teams[fixed-1].push(s)});
   }
   $('peBoard').innerHTML=teams.map((team,i)=>{
-    const teamNo=i+1,avg=teamAverage(team),abilityOpen=peAbilityOpen.has(teamNo);
+    const teamNo=i+1,avg=teamAverage(team),abilityOpen=peShowAllAbilities;
+    const boys=team.filter(s=>peGender(s)==="male").length,girls=team.filter(s=>peGender(s)==="female").length,unspecified=team.length-boys-girls;
     const members=team.length?team.map(s=>{const idx=classState.students.indexOf(s),d=ensurePEStudent(s,idx);return`<div class="pe-member ${d.fixedTeam===teamNo?'fixed':''}" data-student-id="${s.id}" data-team-no="${teamNo}" title="클릭: 이 팀 고정/해제 · 우클릭: 고정 해제">${studentPreviewMarkup(s,idx)}<div><strong>${escapeHtml(s.name)}</strong>${d.fixedTeam===teamNo?`<em>🔒 ${teamNo}팀 고정</em>`:'<em style="color:#64748b">클릭해 고정</em>'}</div></div>`}).join(''):`<div class="pe-empty">${peAssignments.length?'배정 학생 없음':'하단 학생을 이 팀으로 끌어 고정할 수 있습니다.'}</div>`;
     const ability=`<div class="pe-team-ability">${teamRadarLarge(avg)}<div class="pe-team-ability-copy"><strong>${teamNo}팀 능력 균형</strong><span>체육 편성에 사용하는 네 능력의 팀 평균 형태입니다. 숫자 총점은 사용하지 않습니다.</span><div class="pe-axis-key"><b>체력</b><b>통솔</b><b>적극</b><b>매력</b></div></div></div>`;
-    return`<section class="pe-team" data-pe-team="${teamNo}"><div class="pe-team-head" style="background:${TEAM_COLORS[i]}"><div class="pe-team-title"><span>${teamNo}팀</span><button type="button" data-team-ability="${teamNo}" class="${abilityOpen?'on':''}">${abilityOpen?'팀원 보기':'팀 능력'}</button><button type="button" data-fixed-edit="${teamNo}" class="${peFixedEditTeam===teamNo?'fixed-edit-on':''}">${peFixedEditTeam===teamNo?'고정 지정 중':'고정 지정'}</button></div><small>${team.length}명</small></div><div class="pe-team-body">${abilityOpen?ability:members}</div></section>`;
+    return`<section class="pe-team" data-pe-team="${teamNo}"><div class="pe-team-head" style="background:${TEAM_COLORS[i]}"><div class="pe-team-title"><span>${teamNo}팀</span><button type="button" data-team-ability="${teamNo}" class="${abilityOpen?'on':''}">${abilityOpen?'팀원 보기':'팀 능력'}</button><button type="button" data-fixed-edit="${teamNo}" class="${peFixedEditTeam===teamNo?'fixed-edit-on':''}">${peFixedEditTeam===teamNo?'고정 지정 중':'고정 지정'}</button></div><small>${team.length}명 · 남 ${boys} / 여 ${girls}${unspecified?` / 미지정 ${unspecified}`:""}</small></div><div class="pe-team-body">${abilityOpen?ability:members}</div></section>`;
   }).join('');
 
   // 하단 학생 카드 -> 팀 드롭: 해당 팀에 즉시 고정하고, 이미 편성된 상태라면 그 팀으로 이동한다.
@@ -310,7 +385,7 @@ function renderPE(){
       if(clearPEFixedTeam(studentId))refreshPEAfterFixedChange(studentId,`${student.name} 학생의 팀 고정을 해제했습니다.`);
     };
   });
-  $('peBoard').querySelectorAll('[data-team-ability]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();const team=Number(btn.dataset.teamAbility);if(peAbilityOpen.has(team))peAbilityOpen.delete(team);else peAbilityOpen.add(team);renderPE()});
+  $('peBoard').querySelectorAll('[data-team-ability]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();peShowAllAbilities=!peShowAllAbilities;renderPE()});
   $('peBoard').querySelectorAll('[data-fixed-edit]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();const team=Number(btn.dataset.fixedEdit);peFixedEditTeam=peFixedEditTeam===team?0:team;renderPE();renderStudentStrip();updateModeChrome()});
   decorateStudentStrip();
 }
