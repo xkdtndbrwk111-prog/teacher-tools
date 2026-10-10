@@ -649,17 +649,50 @@ function renderLayout(){
       el.onmousedown=event=>{if(event.button!==0)return;event.preventDefault();beginGroupPaint(cell.id)};
       el.onmouseenter=()=>{if(groupEdit.painting)applyGroupPaint(cell.id)};
     }else if(!ctx.readonly){
-      el.onmousedown=event=>{if(event.button!==0)return;event.preventDefault();beginPaint(index)};
+      el.onmousedown=event=>{
+        if(event.button!==0)return;
+        if(event.target.closest("[data-assigned-student-id]"))return;
+        event.preventDefault();beginPaint(index);
+      };
       el.onmouseenter=()=>{if(isPainting)applyPaint(index)};
     }
     if(seat){
       const typeLabel=cell.type==="seat"?"일반 좌석":cell.type==="male"?"남학생 좌석":"여학생 좌석";
       const name=student?.name||fixedStudent?.name||"빈 좌석";
-      el.innerHTML=`<span class="idx">${cell.row+1}-${cell.col+1}</span><div class="seat-info"><strong class="seat-occupant ${student||fixedStudent?"":"empty"}">${escapeHtml(name)}</strong><span class="seat-type">${typeLabel}</span>${fixedStudent?'<span class="seat-fixed">📌 고정석</span>':""}</div>${group?`<span class="group-chip">${escapeHtml(group.name)}</span>`:""}`;
+      const studentFixed=Boolean(student?.fixedSeatId);
+      const occupantAttrs=student&&!ctx.readonly&&!groupEdit.active
+        ?` data-assigned-student-id="${escapeHtml(student.id)}" draggable="${studentFixed?"false":"true"}"`
+        :"";
+      el.innerHTML=`<span class="idx">${cell.row+1}-${cell.col+1}</span><div class="seat-info"><strong class="seat-occupant ${student||fixedStudent?"":"empty"}${studentFixed?" fixed-occupant":""}"${occupantAttrs}>${escapeHtml(name)}</strong><span class="seat-type">${typeLabel}</span>${fixedStudent?'<span class="seat-fixed">📌 고정석</span>':""}</div>${group?`<span class="group-chip">${escapeHtml(group.name)}</span>`:""}`;
       if(!ctx.readonly){
+        const assignedNode=el.querySelector("[data-assigned-student-id]");
+        if(assignedNode){
+          el.title=studentFixed?"우클릭하면 고정석을 해제합니다.":"학생 이름을 드래그해 자리를 바꾸고, 우클릭하면 이 자리에 고정합니다.";
+          if(!studentFixed){
+            assignedNode.ondragstart=event=>{
+              event.stopPropagation();
+              event.dataTransfer.effectAllowed="move";
+              event.dataTransfer.setData("application/x-assigned-student-id",student.id);
+              event.dataTransfer.setData("text/plain",student.id);
+              el.classList.add("assignment-drag-source");
+            };
+            assignedNode.ondragend=()=>el.classList.remove("assignment-drag-source");
+          }
+          el.oncontextmenu=event=>{
+            if(groupEdit.active)return;
+            event.preventDefault();
+            toggleFixedSeatFromAssignment(student.id,cell.id);
+          };
+        }
         el.ondragover=event=>{event.preventDefault();event.dataTransfer.dropEffect="move";el.classList.add("drop-target")};
         el.ondragleave=()=>el.classList.remove("drop-target");
-        el.ondrop=event=>{event.preventDefault();el.classList.remove("drop-target");assignFixedSeat(event.dataTransfer.getData("application/x-student-id")||event.dataTransfer.getData("text/plain"),cell.id)};
+        el.ondrop=event=>{
+          event.preventDefault();el.classList.remove("drop-target");
+          const assignedId=event.dataTransfer.getData("application/x-assigned-student-id");
+          if(assignedId){moveAssignedStudent(assignedId,cell.id);return}
+          const rosterId=event.dataTransfer.getData("application/x-student-id")||event.dataTransfer.getData("text/plain");
+          if(rosterId)assignFixedSeat(rosterId,cell.id);
+        };
       }
     }else el.innerHTML=`<span class="cell-label">${cell.type==="aisle"?"통로":"빈 자리"}</span>`;
     root.appendChild(el);
@@ -769,6 +802,76 @@ function assignFixedSeat(studentId,fixedSeatId){
 function clearFixedSeat(student){
   if(historyView)return;
   student.fixedSeatId=null;invalidatePreview(`${student.name} 학생의 고정석을 해제했습니다.`);applyRuleGating();saveState();renderStudentStrip();renderStudentInspector();
+}
+function moveAssignedStudent(studentId,targetSeatId){
+  if(historyView||groupEdit.active||!previewAssignments.length)return;
+  if(!usableCells().some(cell=>cell.id===targetSeatId))return;
+
+  const sourceIndex=previewAssignments.findIndex(a=>a.studentId===studentId);
+  if(sourceIndex<0)return;
+
+  const source=previewAssignments[sourceIndex],sourceStudent=studentById(studentId);
+  if(!sourceStudent||source.seatId===targetSeatId)return;
+
+  if(sourceStudent.fixedSeatId){
+    setAssignmentStatus(`${sourceStudent.name} 학생은 고정석입니다. 우클릭으로 고정을 해제한 뒤 이동하세요.`);
+    return;
+  }
+
+  const fixedOwner=classState.students.find(s=>s.id!==studentId&&s.fixedSeatId===targetSeatId);
+  if(fixedOwner){
+    setAssignmentStatus(`${fixedOwner.name} 학생의 고정석이라 자리를 바꿀 수 없습니다.`);
+    return;
+  }
+
+  const targetIndex=previewAssignments.findIndex(a=>a.seatId===targetSeatId);
+  let message;
+
+  if(targetIndex>=0){
+    const target=previewAssignments[targetIndex],targetStudent=studentById(target.studentId);
+    if(targetStudent?.fixedSeatId){
+      setAssignmentStatus(`${targetStudent.name} 학생은 고정석입니다. 우클릭으로 고정을 해제한 뒤 자리를 바꾸세요.`);
+      return;
+    }
+    previewAssignments[sourceIndex]={...source,seatId:targetSeatId};
+    previewAssignments[targetIndex]={...target,seatId:source.seatId};
+    message=`${sourceStudent.name} ↔ ${targetStudent?.name||"학생"} 자리 교환 · 배치 확정 전 미리보기`;
+  }else{
+    previewAssignments[sourceIndex]={...source,seatId:targetSeatId};
+    message=`${sourceStudent.name} 학생을 빈 좌석으로 이동 · 배치 확정 전 미리보기`;
+  }
+
+  previewRevision=Date.now()+Math.random();
+  renderLayout();
+  setAssignmentStatus(message);
+  recordUndoPoint();
+}
+function toggleFixedSeatFromAssignment(studentId,seatId){
+  if(historyView||groupEdit.active||!previewAssignments.length)return;
+  const assignment=previewAssignments.find(a=>a.studentId===studentId);
+  const student=studentById(studentId);
+  if(!student||!assignment||assignment.seatId!==seatId)return;
+
+  let message;
+  if(student.fixedSeatId===seatId){
+    student.fixedSeatId=null;
+    message=`${student.name} 학생의 고정석을 해제했습니다.`;
+  }else{
+    const fixedOwner=classState.students.find(s=>s.id!==studentId&&s.fixedSeatId===seatId);
+    if(fixedOwner){
+      setAssignmentStatus(`${fixedOwner.name} 학생이 이미 이 좌석을 고정하고 있습니다.`);
+      return;
+    }
+    student.fixedSeatId=seatId;
+    message=`${student.name} 학생을 현재 좌석에 고정했습니다. 다음 새 배치에도 유지됩니다.`;
+  }
+
+  applyRuleGating();
+  saveState();
+  renderStudentStrip();
+  renderStudentInspector();
+  renderLayout();
+  setAssignmentStatus(message);
 }
 function inspectorStudents(){return historyView&&!historyView.legacy?(historyView.studentsSnapshot||[]):classState.students}
 function inspectorStudentById(id){return inspectorStudents().find(s=>s.id===id)}
