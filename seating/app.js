@@ -601,6 +601,36 @@ function renderRosterSummary(students=historyView?.studentsSnapshot||classState.
 function setAssignmentStatus(message,success=false){
   const el=$("assignmentStatus");el.textContent=message;el.classList.toggle("success",success);
 }
+function closeSeatCountDialog(){
+  const dialog=$("seatCountDialog");if(!dialog)return;
+  dialog.classList.add("hidden");dialog.setAttribute("aria-hidden","true");
+}
+function showSeatCountDialog(mode,capacity){
+  const dialog=$("seatCountDialog"),title=$("seatCountDialogTitle"),message=$("seatCountDialogMessage"),cancel=$("seatCountCancel"),proceed=$("seatCountProceed");
+  if(!dialog||!title||!message||!cancel||!proceed)return;
+
+  const {seats,students,difference}=capacity;
+  if(mode==="shortage"){
+    title.textContent="배치 가능한 좌석이 부족합니다";
+    message.textContent=`배치 대상 학생 ${students}명 · 배치 가능 좌석 ${seats}석 · ${Math.abs(difference)}석 부족\n\n좌석을 늘리거나 하단 학생 카드에서 우클릭해 배치 대상에서 제외할 학생을 지정해 주세요.`;
+    cancel.textContent="확인";
+    proceed.classList.add("hidden");
+  }else if(mode==="surplus"){
+    title.textContent="배치 가능한 좌석이 남습니다";
+    message.textContent=`배치 대상 학생 ${students}명 · 배치 가능 좌석 ${seats}석 · ${difference}석 남음\n\n빈 좌석 ${difference}석을 포함해 새 배치를 진행할 수 있습니다.`;
+    cancel.textContent="취소";
+    proceed.textContent="빈 좌석 포함 시행";
+    proceed.classList.remove("hidden");
+  }else{
+    title.textContent="배치 대상 학생이 없습니다";
+    message.textContent="하단 학생 카드에서 우클릭해 배치할 학생을 다시 포함해 주세요.";
+    cancel.textContent="확인";
+    proceed.classList.add("hidden");
+  }
+
+  dialog.classList.remove("hidden");dialog.setAttribute("aria-hidden","false");
+  requestAnimationFrame(()=>{(mode==="surplus"?proceed:cancel).focus()});
+}
 function invalidatePreview(message){
   previewAssignments=[];
   previewRevision=null;
@@ -1692,7 +1722,7 @@ function backRowRepeatScore(assignments){
   return score;
 }
 function buildAssignmentCandidate(blankReference=[]){
-  const participants=assignmentStudents();
+  const participants=assignmentStudents(),participantIds=new Set(participants.map(s=>s.id));
   const seats=usableCells(),seatMap=new Map(seats.map(s=>[s.id,s])),occupied=new Set(),placed=new Set(),assignments=[];
   const useGender=!classState.rules.completeRandom&&classState.rules.genderSeats;
   const useApart=!classState.rules.completeRandom&&classState.rules.apartStudents;
@@ -1736,7 +1766,7 @@ function buildAssignmentCandidate(blankReference=[]){
     const involved=apartInvolvedIds(),geometry=seatGeometry();
 
     const priority=remaining.filter(s=>involved.has(s.id)).sort((a,b)=>{
-      const aOut=(a.apartFrom||[]).length,bOut=(b.apartFrom||[]).length;
+      const aOut=(a.apartFrom||[]).filter(id=>participantIds.has(id)).length,bOut=(b.apartFrom||[]).filter(id=>participantIds.has(id)).length;
       if(aOut!==bOut)return bOut-aOut;
       const ar=apartRelationshipCount(a),br=apartRelationshipCount(b);
       return br-ar||Math.random()-.5;
@@ -1764,7 +1794,7 @@ function buildAssignmentCandidate(blankReference=[]){
       // Priority: never repeat the back row if another legal seat exists.
       candidates=preferNonBackRowCandidates(student,candidates);
 
-      const isOwner=(student.apartFrom||[]).length>0;
+      const isOwner=(student.apartFrom||[]).some(id=>participantIds.has(id));
       if(isOwner){
         // Owner goes to left two or right two usable columns when possible.
         const side=ownerPreferredOuterSide(student,blankReference);
@@ -2007,8 +2037,25 @@ function compareCandidatePriority(a,b){
   return 0;
 }
 
-function generateAssignment(){
+function generateAssignment({allowSurplus=false}={}){
   if(historyView){setAssignmentStatus("과거보기 모드에서는 새 배치를 만들 수 없습니다.");return}
+
+  const capacity=assignmentCapacity();
+  if(capacity.students===0){
+    setAssignmentStatus("배치 대상 학생이 없습니다.");
+    showSeatCountDialog("empty",capacity);
+    return;
+  }
+  if(capacity.difference<0){
+    setAssignmentStatus(`좌석 부족 · 배치 대상 ${capacity.students}명 / 좌석 ${capacity.seats}석 / ${Math.abs(capacity.difference)}석 부족`);
+    showSeatCountDialog("shortage",capacity);
+    return;
+  }
+  if(capacity.difference>0&&!allowSurplus){
+    setAssignmentStatus(`좌석 여유 · 배치 대상 ${capacity.students}명 / 좌석 ${capacity.seats}석 / ${capacity.difference}석 남음`);
+    showSeatCountDialog("surplus",capacity);
+    return;
+  }
 
   const optimizeGroup=classState.rules.groupBalance&&classState.groups.length;
   const optimizeApart=classState.rules.apartStudents&&apartPairs().length;
@@ -2889,7 +2936,8 @@ function bindUI(){
   $("targetStudentCount").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();fillStudentsToTarget()}};
   $("undoButton").onclick=undoAction;$("redoButton").onclick=redoAction;
   $("groupColor").oninput=e=>{groupEdit.color=e.target.value;renderGroupPalette();renderLayout()};
-  $("generateAssignment").onclick=generateAssignment;$("confirmAssignment").onclick=confirmAssignment;$("openPlayback").onclick=openPlayback;$("exitHistoryView").onclick=exitHistory;
+  $("generateAssignment").onclick=()=>generateAssignment();$("confirmAssignment").onclick=confirmAssignment;$("openPlayback").onclick=openPlayback;$("exitHistoryView").onclick=exitHistory;
+  $("seatCountCancel").onclick=closeSeatCountDialog;$("seatCountProceed").onclick=()=>{closeSeatCountDialog();generateAssignment({allowSurplus:true})};
   $("newGroup").onclick=()=>startGroupEdit();$("saveGroup").onclick=saveGroup;$("cancelGroup").onclick=cancelGroupEdit;
   $("className").onchange=e=>{classState.className=e.target.value.trim().slice(0,30)||"우리 반";saveState();renderTopTitle()};
   $("backToTeacher").onclick=backToTeacher;$("simpleBackToTeacher").onclick=backToTeacher;$("run1").onclick=()=>runPlayback(1);$("run5").onclick=()=>runPlayback(5);$("instant").onclick=finishPlayback;
@@ -2898,6 +2946,7 @@ function bindUI(){
   window.addEventListener("resize",()=>{fitRoom();fitEditorGrid()});
   window.addEventListener("storage",handleExternalStorageChange);
   document.addEventListener("keydown",event=>{
+    if(event.key==="Escape"&&!$("seatCountDialog").classList.contains("hidden")){event.preventDefault();closeSeatCountDialog();return}
     const editable=["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable;
     if(editable)return;
     const mod=event.ctrlKey||event.metaKey;
