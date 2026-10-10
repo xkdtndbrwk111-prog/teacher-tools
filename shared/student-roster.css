@@ -3,11 +3,80 @@
   height:auto!important;
   min-height:0!important;
   max-height:none!important;
-  padding:9px 12px;
+  padding:5px 10px 6px!important;
 }
 .student-strip-head{
-  min-height:32px;
-  margin-bottom:7px;
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:10px!important;
+  min-height:26px!important;
+  margin-bottom:4px!important;
+}
+.student-strip-titleline{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex:0 0 auto;
+  min-width:0;
+  white-space:nowrap;
+}
+.student-strip-titleline strong,
+.student-strip-titleline span{
+  display:inline!important;
+  margin:0!important;
+  line-height:1.15!important;
+}
+.student-strip-titleline strong{font-size:12px!important}
+.student-strip-titleline span{font-size:10px!important;color:#9fb0c6!important}
+.student-strip-titleline strong::after{
+  content:"·";
+  margin-left:6px;
+  color:#64748b;
+  font-weight:700;
+}
+.student-strip-head .strip-help{
+  display:block!important;
+  flex:1 1 auto;
+  min-width:0;
+  margin:0!important;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:right;
+  font-size:10px!important;
+  line-height:1.15!important;
+  color:#9fb0c6!important;
+}
+.student-strip-actions,
+.strip-actions{
+  display:flex!important;
+  align-items:center!important;
+  flex:0 0 auto;
+  gap:5px!important;
+  min-width:0;
+  white-space:nowrap;
+}
+.student-strip .student-strip-actions button,
+.student-strip .strip-actions .strip-action{
+  min-height:26px!important;
+  height:26px;
+  padding:3px 7px!important;
+  font-size:10px!important;
+  line-height:1!important;
+}
+.student-strip .target-student-count{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  white-space:nowrap;
+  font-size:10px;
+}
+.student-strip .target-student-count input{
+  width:42px!important;
+  height:26px!important;
+  min-height:26px!important;
+  padding:2px 4px!important;
 }
 .student-cards{
   display:flex;
@@ -18,7 +87,7 @@
   max-height:none;
   overflow-x:auto;
   overflow-y:hidden;
-  padding:2px 1px 6px;
+  padding:0 1px 4px;
   overscroll-behavior-x:contain;
 }
 
@@ -43,6 +112,7 @@
   color:#eef5ff!important;
   text-align:center!important;
   position:relative;
+  box-sizing:border-box!important;
 }
 .shared-student-card.gender-male{--student-gender-border:#60a5fa}
 .shared-student-card.gender-female{--student-gender-border:#fb7185}
@@ -73,7 +143,9 @@
   background-size:126px 168px!important;
   background-position:0 0;
   image-rendering:pixelated;
-  animation:sharedRosterWalk .54s steps(1,end) infinite;
+  animation:
+    sharedRosterWalk .60s steps(1,end) infinite,
+    sharedRosterBob .96s ease-in-out infinite;
 }
 .shared-student-sprite::after{
   content:"";
@@ -125,9 +197,13 @@
   33%,65%{background-position:-42px 3px}
   66%,100%{background-position:-84px 3px}
 }
+@keyframes sharedRosterBob{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-2px)}
+}
 
 @media (min-width:761px){
-  .studio{grid-template-rows:minmax(0,1fr) 158px!important}
+  .studio{grid-template-rows:minmax(0,1fr) 136px!important}
 }
 
 @media (prefers-reduced-motion:reduce){
