@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>자리배치 매니저 V1.00</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=20261010-swap-pin1">
+  <link rel="stylesheet" href="styles.css?v=20261010-capacity1">
   <link rel="stylesheet" href="pe-v1.css?v=20261010-r1">
 </head>
 <body>
@@ -209,7 +209,7 @@
             <strong>학생 목록</strong>
             <span id="rosterSummary">전체 0명 · 남 0명 · 여 0명 · 미지정 0명</span>
           </div>
-          <span class="strip-help">배치 후 학생 이름을 드래그해 서로 자리를 바꾸고, 우클릭으로 고정/해제합니다. 하단 카드를 좌석으로 끄는 지정석 설정도 그대로 사용할 수 있습니다.</span>
+          <span class="strip-help">학생 카드 우클릭: 배치 대상 제외/다시 포함 · 하단 카드 드래그: 지정석 · 배치 후 학생 이름 드래그: 자리 교환 · 배치된 학생 우클릭: 고정/해제</span>
           <div class="student-strip-actions">
             <button id="addStudent" class="strip-add" type="button">＋ 학생 추가</button>
             <label class="target-student-count">총원 <input id="targetStudentCount" type="number" min="0" max="60" inputmode="numeric" aria-label="학급 총원">명</label>
@@ -220,6 +220,19 @@
       </section>
     </div>
   </section>
+
+  <div id="seatCountDialog" class="seat-count-dialog hidden" aria-hidden="true">
+    <div class="seat-count-dialog-backdrop"></div>
+    <div class="seat-count-dialog-card" role="dialog" aria-modal="true" aria-labelledby="seatCountDialogTitle" aria-describedby="seatCountDialogMessage">
+      <span class="seat-count-dialog-kicker">배치 인원 확인</span>
+      <h2 id="seatCountDialogTitle">새 배치 확인</h2>
+      <p id="seatCountDialogMessage"></p>
+      <div class="seat-count-dialog-actions">
+        <button id="seatCountCancel" class="ghost" type="button">취소</button>
+        <button id="seatCountProceed" class="primary hidden" type="button">빈 좌석 포함 시행</button>
+      </div>
+    </div>
+  </div>
 
   <section id="playbackScreen" class="screen playback-screen hidden" aria-label="학생 공개 화면">
     <div id="gameView" class="playback-wrap">
@@ -305,7 +318,7 @@
   </main>
 </section>
 
-  <script src="app.js?v=20261010-swap-pin1"></script>
+  <script src="app.js?v=20261010-capacity1"></script>
   <script src="pe-v1.js?v=20261010-r2"></script>
   <script src="classroom-trait-balance-v1.js?v=20261010-r1"></script>
   <script src="backup-unified-v2.js?v=20261010-r1"></script>
