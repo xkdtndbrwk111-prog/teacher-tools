@@ -569,6 +569,12 @@ function saveState(){
 }
 function studentById(id){return classState.students.find(s=>s.id===id)}
 function usableCells(){return classState.layout.cells.filter(isUsable)}
+function assignmentStudents(students=classState.students){return (students||[]).filter(student=>student.assignmentExcluded!==true)}
+function assignmentStudentIds(){return new Set(assignmentStudents().map(student=>student.id))}
+function assignmentCapacity(){
+  const seats=usableCells().length,students=assignmentStudents().length;
+  return{seats,students,difference:seats-students};
+}
 function assignmentMap(list=previewAssignments){return new Map(list.map(a=>[a.seatId,a.studentId]))}
 function pruneFixedSeats(){
   const valid=new Set(usableCells().map(c=>c.id));
@@ -580,13 +586,17 @@ function pruneGroups(){
   if(!classState.groups.length){classState.rules.groupBalance=false;classState.rules.recentGroupmatesAvoid=false}
 }
 function rosterCounts(students=classState.students){
-  const counts={total:students.length,male:0,female:0,none:0};
-  students.forEach(s=>{if(s.gender==="male")counts.male++;else if(s.gender==="female")counts.female++;else counts.none++});
+  const counts={total:students.length,male:0,female:0,none:0,eligible:0,excluded:0};
+  students.forEach(s=>{
+    if(s.gender==="male")counts.male++;else if(s.gender==="female")counts.female++;else counts.none++;
+    if(s.assignmentExcluded===true)counts.excluded++;else counts.eligible++;
+  });
   return counts;
 }
 function renderRosterSummary(students=historyView?.studentsSnapshot||classState.students){
   const c=rosterCounts(students||[]);
-  $("rosterSummary").textContent=`전체 ${c.total}명 · 남 ${c.male}명 · 여 ${c.female}명 · 미지정 ${c.none}명`;
+  const participation=historyView?"":` · 배치 대상 ${c.eligible}명 · 제외 ${c.excluded}명`;
+  $("rosterSummary").textContent=`전체 ${c.total}명${participation} · 남 ${c.male}명 · 여 ${c.female}명 · 미지정 ${c.none}명`;
 }
 function setAssignmentStatus(message,success=false){
   const el=$("assignmentStatus");el.textContent=message;el.classList.toggle("success",success);
