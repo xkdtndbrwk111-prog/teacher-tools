@@ -423,7 +423,7 @@ function loadState(){
 }
 
 let classState=loadState();
-let paintTool="seat",isPainting=false,paintMode="apply",painted=new Set();
+let paintTool="seat";
 let selectedStudentId=classState.students[0]?.id||null;
 let activeDockTab="settings";
 let previewAssignments=classState.assignments.map(a=>({...a}));
