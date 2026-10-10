@@ -1,0 +1,98 @@
+/* PE V2.7: read-only stadium reveal overlay; isolated from classroom playback */
+.pe-pitch-reveal{position:fixed;inset:0;z-index:100005;display:none;flex-direction:column;background:#112019;color:#f7fbf7;overflow:auto;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif}
+.pe-pitch-reveal.is-open{display:flex}
+.pe-pitch-header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px max(16px,calc((100vw - 1220px)/2));background:#172820;border-bottom:1px solid #345141;min-height:69px;box-sizing:border-box}
+.pe-pitch-identity{display:flex;flex-direction:column;gap:4px}.pe-pitch-identity strong{font-size:19px;font-weight:850}.pe-pitch-identity small{font-size:12px;color:#bacdbf}
+.pe-pitch-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.pe-pitch-actions span{color:#b7caba;font-weight:700;font-size:13px}
+.pe-pitch-actions button{border:1px solid #71897a;border-radius:8px;padding:10px 16px;background:#2c4434;color:#fff;cursor:pointer;font-weight:800;min-height:42px}
+.pe-pitch-actions button:hover{background:#42624d}
+.pe-pitch-main{width:min(1120px,calc(100% - 32px));margin:20px auto 22px;flex:0 0 auto}
+.pe-pitch-main canvas{display:block;width:100%;height:auto;aspect-ratio:14/9;border-radius:7px;border:2px solid #466345;box-shadow:0 2px 16px #07150d88;background:#478c22;image-rendering:pixelated}
+.pe-pitch-note{font-size:12px;text-align:center;margin:11px 0 0;color:#bfd0bb}
+@media(max-width:650px){.pe-pitch-header{padding:10px 13px}.pe-pitch-main{width:calc(100% - 14px);margin:12px auto}.pe-pitch-identity strong{font-size:16px}.pe-pitch-actions button{font-size:13px}}
+
+/* PE V2.8: same stadium/team geometry, independent ground selection */
+.pe-surface-control{display:flex;align-items:center;gap:9px;min-width:0}
+.pe-surface-control>span{font-size:12px;font-weight:800;white-space:nowrap;color:#d5e6d5}
+.pe-surface-buttons{display:flex;gap:4px;padding:3px;border-radius:9px;background:#101f18;border:1px solid #506557}
+.pe-surface-buttons button{border:0;border-radius:6px;padding:8px 12px;min-height:35px;min-width:71px;background:transparent;color:#d2e3d5;font-size:12px;line-height:1.2;font-weight:800;cursor:pointer}
+.pe-surface-buttons button[aria-pressed="true"]{background:#e7f3da;color:#19331e;box-shadow:0 1px 4px #0005}
+.pe-surface-buttons button:focus-visible{outline:3px solid #f3dd78;outline-offset:2px}
+.pe-surface-buttons button:not([aria-pressed="true"]):hover{background:#38533e}
+.pe-pitch-reveal.is-dirt .pe-pitch-main canvas{background:#e0b884;border-color:#9e7656}
+.pe-pitch-toolbar-choice{margin-left:12px;flex:0 0 auto}
+body.pe-mode .pe-toolbar{flex-wrap:wrap;row-gap:8px}
+.pe-pitch-toolbar-choice .pe-surface-buttons button{min-height:34px}
+.pe-pitch-toolbar-choice>span{color:#b6c5d9;font-size:11px}
+body.pe-mode .pe-toolbar:has(.pe-pitch-toolbar-choice) .pe-toolbar-note{max-width:290px}
+@media(max-width:1000px){.pe-toolbar .pe-pitch-toolbar-choice{margin-left:0}.pe-toolbar .pe-toolbar-note{display:none}}
+@media(max-width:650px){.pe-pitch-actions{gap:9px}.pe-pitch-header{align-items:flex-start}.pe-pitch-surface-choice{width:100%;justify-content:flex-start}.pe-surface-buttons button{min-height:37px;padding:8px 11px}}
+
+/* PE V2.9: teacher-triggered sports-field student entrance; independent of classroom playback */
+.pe-pitch-entrance{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:11px 16px;background:#1d3528;border-bottom:1px solid #44604c}
+.pe-pitch-run-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.pe-pitch-run-actions button{color:white;background:#2f4d39;border:1px solid #789b7f;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:800;min-height:42px;cursor:pointer}
+.pe-pitch-run-actions button[data-rate="1"]{background:#24548d;border-color:#7bb7f0}
+.pe-pitch-run-actions button[data-rate="5"]{background:#77541d;border-color:#e1bd59}
+.pe-pitch-run-actions button[data-pe-instant]{background:#3c653a;border-color:#9dcc83}
+.pe-pitch-run-actions button[aria-pressed="true"]{outline:2px solid #f5f9e9;outline-offset:2px}
+.pe-pitch-run-actions button:hover{filter:brightness(1.17)}
+.pe-pitch-run-actions button:focus-visible,.pe-pitch-line-option:focus-within{outline:2px solid #fff4aa;outline-offset:3px}
+.pe-pitch-run-actions button:disabled{opacity:.4;cursor:not-allowed}
+.pe-pitch-entrance-meta{display:flex;flex-wrap:wrap;gap:9px 15px;align-items:center;color:#d8ead6;font-size:13px;font-weight:750}
+.pe-pitch-line-option{display:flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap}
+.pe-pitch-line-option input{width:18px;height:18px;accent-color:#c5ed8c;cursor:pointer}
+#pePitchEntranceStatus{min-width:155px;font-variant-numeric:tabular-nums}
+@media(max-width:700px){.pe-pitch-entrance{padding:10px}.pe-pitch-run-actions{gap:6px}.pe-pitch-run-actions button{padding:8px 10px;font-size:12px;min-height:40px}.pe-pitch-entrance-meta{font-size:12px}}
+
+
+/* V2.10: classroom-style, full-height field and left-only controls */
+.pe-pitch-reveal{flex-direction:row;overflow:hidden;height:100dvh}
+.pe-reveal-sidebar{width:230px;min-width:230px;display:flex;flex-direction:column;background:#14243e;box-sizing:border-box;padding:12px;gap:12px;overflow-y:auto}
+.pe-pitch-header{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;background:transparent;border:0;gap:14px}
+.pe-pitch-identity strong{font-size:18px}
+.pe-pitch-identity small{line-height:1.5}
+.pe-pitch-actions{display:flex;flex-direction:column;align-items:stretch;gap:10px}
+.pe-pitch-actions button{width:100%;background:#f3f5f8;color:#102039}
+.pe-pitch-entrance{display:flex;flex-direction:column;align-items:stretch;background:transparent;padding:0;border:0;gap:14px}
+.pe-pitch-run-actions{display:flex;flex-direction:column;gap:10px}
+.pe-pitch-run-actions button{width:100%;min-height:43px;color:#122038;background:#e9eff8}
+.pe-pitch-run-actions button[data-rate="1"]{background:#ffdc4b;color:#172239;border-color:#e7bb21}
+.pe-pitch-run-actions button[data-rate="5"]{background:#e9f0fb;color:#172239;border-color:#a8b5c8}
+.pe-pitch-run-actions button[data-pe-instant]{background:#96e4af;color:#172239;border-color:#74c992}
+.pe-pitch-entrance-meta{font-size:12px;line-height:1.5}
+.pe-pitch-main{flex:1;min-width:0;width:auto;height:100%;margin:0;position:relative;display:flex;align-items:stretch;justify-content:center;overflow:hidden;background:#0e1c14}
+/* Preserve native 1120:720 aspect ratio. Fill vertical space; tile the unused side margins. */
+.pe-pitch-main canvas{flex:0 0 auto;width:auto;height:100%;max-width:none;aspect-ratio:14/9;object-fit:contain;border:0;border-radius:0;box-shadow:none;image-rendering:auto}
+.pe-pitch-note{position:absolute;bottom:7px;right:10px;margin:0;background:#13221cc9;padding:4px 8px;border-radius:5px}
+.pe-manager-lines{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800;white-space:nowrap}
+.pe-manager-lines input{accent-color:#2f6db8}
+@media(max-width:700px){.pe-reveal-sidebar{width:160px;min-width:160px;padding:8px}.pe-pitch-run-actions button{font-size:12px}.pe-pitch-identity small{font-size:10px}}
+
+
+/* V2.11: Draw the entire football pitch in ONE adaptive canvas.
+   Its actual bitmap and CSS box have the same aspect ratio; do not stretch a
+   fixed-aspect canvas, crop pitch markings, or tile extra turf in gutters. */
+.pe-pitch-reveal .pe-pitch-main{flex:1 1 0;min-height:0;min-width:0;height:100%;margin:0;position:relative;background:#0f1f16;overflow:hidden}
+.pe-pitch-reveal .pe-pitch-main canvas#pePitchCanvas{display:block;position:absolute;inset:0;width:100%;height:100%;max-width:none;aspect-ratio:auto;object-fit:unset;box-sizing:border-box;border:0;border-radius:0;box-shadow:none;image-rendering:auto}
+.pe-reveal-sidebar #pePitchSimpleOpen{background:#f8fafc;color:#14243e;border:1px solid #9aa7b6}
+.pe-reveal-sidebar #pePitchSimpleOpen:disabled{opacity:.45;cursor:not-allowed}
+.pe-reveal-sidebar #pePitchSimpleReturn{background:#f8fafc;color:#14243e}
+.pe-reveal-sidebar #pePitchSaveJpg{background:#2864e4;color:white;border-color:#2864e4}
+.pe-pitch-reveal.is-simple .pe-pitch-main #pePitchCanvas,
+.pe-pitch-reveal.is-simple .pe-pitch-entrance,
+.pe-pitch-reveal.is-simple #pePitchSpriteStatus{display:none!important}
+.pe-pitch-reveal.is-simple #pePitchSimpleOpen{display:none!important}
+.pe-pitch-reveal [hidden]{display:none!important}
+.pe-simple-panel{position:absolute;inset:0;overflow:auto;background:#eef1f5;color:#17243a;padding:16px;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+.pe-simple-paper{background:white;box-shadow:0 4px 18px #0e21301a;border-radius:7px;padding:clamp(16px,3vw,42px);width:100%;max-height:100%;overflow:auto;box-sizing:border-box}
+.pe-simple-heading{text-align:center;margin-bottom:clamp(14px,2vh,24px)}
+.pe-simple-heading h2{margin:0 0 9px;font-size:clamp(24px,2.6vw,42px);font-weight:900;color:#142136}
+.pe-simple-heading p{margin:0;color:#64748b;font-size:14px;font-weight:700}
+.pe-simple-grid{display:grid;grid-template-columns:repeat(var(--pe-cols,2),minmax(0,1fr));gap:clamp(12px,1.8vw,26px);align-content:center}
+.pe-simple-team{background:#f8fafc;border:2px solid #d1d9e2;border-radius:12px;padding:13px;min-width:0}
+.pe-simple-team-name{background:#176539;color:white;text-align:center;border-radius:6px;padding:8px;font-size:clamp(16px,1.6vw,26px);font-weight:900;margin-bottom:12px}
+.pe-simple-team-members{display:grid;grid-template-columns:repeat(var(--pe-member-cols,3),minmax(0,1fr));gap:7px}
+.pe-simple-name{background:white;border:2px solid #42536b;border-radius:9px;min-width:0;min-height:40px;display:flex;align-items:center;justify-content:center;word-break:keep-all;text-align:center;padding:6px 3px;font-weight:850;font-size:clamp(14px,1.4vw,23px)}
+@media(max-width:1000px){.pe-simple-panel{padding:8px}.pe-simple-paper{padding:16px}.pe-simple-grid{gap:10px}.pe-simple-team{padding:8px}}
+@media(max-width:600px){.pe-simple-grid{grid-template-columns:1fr}.pe-simple-panel{align-items:flex-start}.pe-simple-heading h2{font-size:22px}}
