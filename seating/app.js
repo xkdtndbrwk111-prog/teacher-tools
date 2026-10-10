@@ -6,7 +6,7 @@ const LEGACY_STORAGE_KEYS=["classroom-seating-integrated-v6_7","classroom-seatin
 const BACKUP_FORMAT=`${STORAGE_PREFIX}.backup`;
 const BACKUP_FORMAT_VERSION=1;
 const APP_VERSION="6.24-step1b";
-const CURRENT_STATE_VERSION=9;
+const CURRENT_STATE_VERSION=10;
 const DEFAULT_NAMES=["김민수","이서연","박준호","최유진","정하늘","윤지호","한서아","오도윤","강채원","임현우"];
 const CHARACTERS=["boy1","boy2","girl","trav","prin"];
 const HAIR_COLORS=["brown","black"];
@@ -129,7 +129,7 @@ function defaultState(){
   return{
     version:CURRENT_STATE_VERSION,
     className:"우리 반",
-    students:DEFAULT_NAMES.map((name,index)=>{const s={id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null};s.visual=defaultStudentVisual(s,index);return s}),
+    students:DEFAULT_NAMES.map((name,index)=>{const s={id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false};s.visual=defaultStudentVisual(s,index);return s}),
     layout:{rows:4,cols:8,cells:defaultPairedCells(4,8)},
     groups:[],
     rules:{completeRandom:true,genderSeats:false,apartStudents:false,fixedSeats:false,groupBalance:false,backRowNoRepeat:false,recentGroupmatesAvoid:false},
@@ -170,6 +170,7 @@ function migrateState(saved){
     balanceLevel:["A","B","C"].includes(s.balanceLevel)?s.balanceLevel:"none",
     apartFrom:Array.isArray(s.apartFrom)?[...new Set(s.apartFrom)].slice(0,3):[],
     fixedSeatId:validSeatIds.has(s.fixedSeatId)?s.fixedSeatId:null,
+    assignmentExcluded:s.assignmentExcluded===true,
     visual:normalizedStudentVisual(s,index)
   }));
   const ids=new Set(state.students.map(s=>s.id));
@@ -331,6 +332,7 @@ function validatePersistentState(state){
     studentIds.add(student.id);
     if(typeof student.name!=="string")errors.push(`${index+1}번째 학생 이름이 올바르지 않습니다.`);
     if(!Array.isArray(student.apartFrom)||student.apartFrom.length>3)errors.push(`${index+1}번째 떨어뜨릴 학생 설정이 올바르지 않습니다.`);
+    if(typeof student.assignmentExcluded!=="boolean")errors.push(`${index+1}번째 학생의 배치 대상 상태가 올바르지 않습니다.`);
   });
   const usableSeatIds=new Set(Array.isArray(cells)?cells.filter(isUsable).map(cell=>cell.id):[]);
   state.students.forEach(student=>{
@@ -748,7 +750,7 @@ function applyStudentNames(){
   const names=$("studentInput").value.split("\n").map(s=>s.trim()).filter(Boolean),old=[...classState.students];
   classState.students=names.map(name=>{
     const at=old.findIndex(s=>s.name===name);
-    return at>=0?old.splice(at,1)[0]:{id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null};
+    return at>=0?old.splice(at,1)[0]:{id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false};
   });
   const ids=new Set(classState.students.map(s=>s.id)),validSeats=new Set(usableCells().map(c=>c.id));
   classState.students.forEach(s=>{s.apartFrom=[...new Set((s.apartFrom||[]).filter(id=>ids.has(id)&&id!==s.id))].slice(0,3);if(s.fixedSeatId&&!validSeats.has(s.fixedSeatId))s.fixedSeatId=null;if(!["A","B","C"].includes(s.balanceLevel))s.balanceLevel="none"});
@@ -763,7 +765,7 @@ function nextPlaceholderStudentName(){
   return name;
 }
 function makeBlankStudent(name=nextPlaceholderStudentName()){
-  return{id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null};
+  return{id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false};
 }
 function addStudentFromStrip(){
   if(historyView)return;
