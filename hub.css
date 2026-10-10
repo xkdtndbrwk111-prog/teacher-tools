@@ -898,3 +898,17 @@ button:focus-visible {
     right: 11px;
   }
 }
+
+/* =========================================================
+   USAGE-1 — quiet aggregate launch count
+   ========================================================= */
+
+.usage-stats-line {
+  margin: 10px 2px 0;
+
+  color: #97a19c;
+
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
