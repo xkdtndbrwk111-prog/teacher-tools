@@ -694,35 +694,34 @@ function renderLayout(){
       if(groupEdit.seatIds.has(cell.id))el.classList.add("group-selected");
       el.onmousedown=event=>{if(event.button!==0)return;event.preventDefault();beginGroupPaint(cell.id)};
       el.onmouseenter=()=>{if(groupEdit.painting)applyGroupPaint(cell.id)};
-    }else if(!ctx.readonly){
-      el.onmousedown=event=>{
+    }else if(!ctx.readonly&&!student){
+      el.onclick=event=>{
         if(event.button!==0)return;
-        if(event.target.closest("[data-assigned-student-id]"))return;
-        event.preventDefault();beginPaint(index);
+        applyPaintOnce(index);
       };
-      el.onmouseenter=()=>{if(isPainting)applyPaint(index)};
     }
     if(seat){
       const typeLabel=cell.type==="seat"?"일반 좌석":cell.type==="male"?"남학생 좌석":"여학생 좌석";
       const name=student?.name||fixedStudent?.name||"빈 좌석";
       const studentFixed=Boolean(student?.fixedSeatId);
       const occupantAttrs=student&&!ctx.readonly&&!groupEdit.active
-        ?` data-assigned-student-id="${escapeHtml(student.id)}" draggable="${studentFixed?"false":"true"}"`
+        ?` data-assigned-student-id="${escapeHtml(student.id)}"`
         :"";
       el.innerHTML=`<span class="idx">${cell.row+1}-${cell.col+1}</span><div class="seat-info"><strong class="seat-occupant ${student||fixedStudent?"":"empty"}${studentFixed?" fixed-occupant":""}"${occupantAttrs}>${escapeHtml(name)}</strong><span class="seat-type">${typeLabel}</span>${fixedStudent?'<span class="seat-fixed">📌 고정석</span>':""}</div>${group?`<span class="group-chip">${escapeHtml(group.name)}</span>`:""}`;
       if(!ctx.readonly){
         const assignedNode=el.querySelector("[data-assigned-student-id]");
         if(assignedNode){
-          el.title=studentFixed?"우클릭하면 고정석을 해제합니다.":"학생 이름을 드래그해 자리를 바꾸고, 우클릭하면 이 자리에 고정합니다.";
+          el.title=studentFixed?"우클릭하면 고정석을 해제합니다.":"학생이 배치된 칸 어디든 드래그해 자리를 바꾸고, 우클릭하면 이 자리에 고정합니다.";
           if(!studentFixed){
-            assignedNode.ondragstart=event=>{
-              event.stopPropagation();
+            el.draggable=true;
+            el.classList.add("assignment-draggable");
+            el.ondragstart=event=>{
               event.dataTransfer.effectAllowed="move";
               event.dataTransfer.setData("application/x-assigned-student-id",student.id);
               event.dataTransfer.setData("text/plain",student.id);
               el.classList.add("assignment-drag-source");
             };
-            assignedNode.ondragend=()=>el.classList.remove("assignment-drag-source");
+            el.ondragend=()=>el.classList.remove("assignment-drag-source");
           }
           el.oncontextmenu=event=>{
             if(groupEdit.active)return;
@@ -740,30 +739,27 @@ function renderLayout(){
           if(rosterId)assignFixedSeat(rosterId,cell.id);
         };
       }
-    }else el.innerHTML=`<span class="cell-label">${cell.type==="aisle"?"통로":"빈 자리"}</span>`;
+    }else{
+      el.innerHTML=`<span class="cell-label">${cell.type==="aisle"?"통로":"빈 자리"}</span>`;
+      if(!ctx.readonly&&!groupEdit.active){
+        el.onclick=()=>applyPaintOnce(index);
+      }
+    }
     root.appendChild(el);
   });
   const counts={seat:0,male:0,female:0,aisle:0,unused:0};cells.forEach(c=>counts[c.type]=(counts[c.type]||0)+1);
   $("layoutStats").innerHTML=`<div class="stat">사용 가능 <b>${counts.seat+counts.male+counts.female}</b></div><div class="stat">남학생석 <b>${counts.male}</b></div><div class="stat">여학생석 <b>${counts.female}</b></div><div class="stat">통로 <b>${counts.aisle}</b></div><div class="stat">빈 자리 <b>${counts.unused}</b></div>${ctx.groups.length?`<div class="stat">모둠 <b>${ctx.groups.length}</b></div>`:""}`;
   updateAxisControls();requestAnimationFrame(fitEditorGrid);
 }
-function beginPaint(index){
+function applyPaintOnce(index){
   if(historyView||groupEdit.active)return;
-  beginUndoBatch();
-  isPainting=true;painted=new Set();paintMode=classState.layout.cells[index].type===paintTool?"erase":"apply";applyPaint(index);
-}
-function applyPaint(index){
-  if(!isPainting||painted.has(index)||historyView||groupEdit.active)return;
-  painted.add(index);
-  classState.layout.cells[index].type=paintMode==="erase"?"seat":paintTool;
+  const cell=classState.layout.cells[index];if(!cell)return;
+  const nextType=cell.type===paintTool?"seat":paintTool;
+  if(cell.type===nextType)return;
+  cell.type=nextType;
   pruneFixedSeats();pruneGroups();
   invalidateConfirmed("레이아웃이 바뀌어 기존 확정 배치를 해제했습니다.");
   saveState();renderStudentInspector();renderGroups();applyRuleGating();
-}
-function endPaint(){
-  const hadPaint=isPainting;
-  isPainting=false;painted.clear();endGroupPaint();
-  if(hadPaint)endUndoBatch();
 }
 function resizeGridTo(rows,cols,message="격자 크기가 바뀌어 기존 확정 배치를 해제했습니다."){
   if(historyView)return;const old=classState.layout;rows=Math.max(2,Math.min(12,rows));cols=Math.max(2,Math.min(12,cols));if(rows===old.rows&&cols===old.cols)return;
@@ -2955,7 +2951,7 @@ function applyStudioCollapse(){requestAnimationFrame(fitEditorGrid)}
 
 /* UI bindings */
 function bindUI(){
-  document.addEventListener("mouseup",endPaint);document.addEventListener("mouseleave",endPaint);
+  document.addEventListener("mouseup",endGroupPaint);document.addEventListener("mouseleave",endGroupPaint);
   document.querySelectorAll(".toolbtn").forEach(button=>button.onclick=()=>{if(historyView||groupEdit.active)return;paintTool=button.dataset.tool;document.querySelectorAll(".toolbtn").forEach(b=>b.classList.toggle("on",b===button))});
   document.querySelectorAll(".dock-tab").forEach(button=>button.onclick=()=>activateDock(button.dataset.tab));
   $("resetLayout").onclick=resetLayout;$("applyStudents").onclick=applyStudentNames;
