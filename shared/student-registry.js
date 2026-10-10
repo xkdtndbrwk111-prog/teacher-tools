@@ -9,7 +9,8 @@ export function readStudents(storage = localStorage) {
   return Object.freeze(state.students.map((s, index) => {
     if (!s || typeof s.id !== 'string' || !s.id || ids.has(s.id) || typeof s.name !== 'string') throw new Error('학생명단을 자리배치에서 확인해 주세요.');
     ids.add(s.id);
-    return Object.freeze({id:s.id, name:s.name, sprite:studentSprite(s,index), visual:Object.freeze({...studentVisual(s,index)})});
+    const gender=['male','female'].includes(s.gender)?s.gender:'none';
+    return Object.freeze({id:s.id, name:s.name, gender, sprite:studentSprite(s,index), visual:Object.freeze({...studentVisual(s,index)})});
   }));
 }
 export function studentVisual(student,index) {
