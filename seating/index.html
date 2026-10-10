@@ -3,15 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>교실 자리배치 Studio V6.24</title>
+  <title>자리배치 매니저 V1.00</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="pe-v1.css?v=20261010-r1">
 </head>
 <body>
   <section id="teacherScreen" class="screen teacher-screen">
     <header class="studio-topbar">
       <div class="brand-block">
-        <strong id="topClassTitle">교실 자리배치 Studio V6.24</strong>
+        <strong id="topClassTitle">자리배치 매니저 V1.00</strong>
         <span id="saveStatus">브라우저 저장 · 확인 중…</span>
       </div>
       <div class="top-actions">
@@ -268,6 +269,43 @@
     </div>
   </section>
 
+<!-- Physical-education team reveal: stadium and simple team sheet -->
+<section id="pePitchReveal" class="pe-pitch-reveal" aria-label="체육 모둠 운동장 팀 공개" aria-hidden="true">
+  <aside class="pe-reveal-sidebar">  <header class="pe-pitch-header">
+    <div class="pe-pitch-identity"><strong>⚽ 체육 모둠 · 팀 공개</strong><small id="pePitchSurfaceDescription">잔디 축구장 · 센터서클 중앙 · 운동장 1.5× / 학생 1.75× / 이름표 2.0×</small></div>
+    <div class="pe-pitch-actions">
+      <span id="pePitchTeamCount" role="status" aria-live="polite">팀 공개 준비 중</span>
+      <button id="pePitchBack" type="button">← 체육 모둠으로 돌아가기</button>
+      <button id="pePitchSimpleOpen" type="button" disabled>▦ 간단 배치표 보기</button>
+      <button id="pePitchSimpleReturn" type="button" hidden>← 운동장 화면으로</button>
+      <button id="pePitchSaveJpg" type="button" hidden>↓ JPG 저장</button>
+    </div>
+  </header>
+  <section class="pe-pitch-entrance" aria-label="학생 입장 및 운동장 표시 설정">
+    <div class="pe-pitch-run-actions" role="group" aria-label="학생 입장 애니메이션 속도">
+      <button type="button" id="pePitchRun1" data-rate="1" aria-pressed="false">▶ 1× 시작</button>
+      <button type="button" id="pePitchRun5" data-rate="5" aria-pressed="false">▶ 5× 시작</button>
+      <button type="button" id="pePitchInstant" data-pe-instant>⚡ 즉시 완료</button>
+      <button type="button" id="pePitchReplay">↻ 다시 보기</button>
+    </div>
+    <div class="pe-pitch-entrance-meta">
+      <span id="pePitchEntranceStatus" role="status" aria-live="polite">입장 준비 · 시작을 눌러 주세요</span>
+    </div>
+  </section>
+  </aside>
+  <main class="pe-pitch-main">
+    <canvas id="pePitchCanvas" width="2240" height="1440" aria-label="실제 확정된 팀과 학생 캐릭터가 배치된 운동장"></canvas>
+    <div id="peSimplePanel" class="pe-simple-panel" hidden aria-label="체육 모둠 간단 배치표">
+      <div class="pe-simple-paper">
+        <div class="pe-simple-heading"><h2 id="peSimpleTitle">오늘의 체육 모둠 배치표</h2><p>확정된 팀 · 학생 이름</p></div>
+        <div id="peSimpleGrid" class="pe-simple-grid"></div>
+      </div>
+    </div>
+    <p id="pePitchSpriteStatus" class="pe-pitch-note" aria-live="polite">학생 스프라이트 준비 중…</p>
+  </main>
+</section>
+
   <script src="app.js?v=20261007-particle1"></script>
+  <script src="pe-v1.js?v=20261010-r1"></script>
 </body>
 </html>
