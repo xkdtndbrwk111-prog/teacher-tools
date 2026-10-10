@@ -1119,7 +1119,7 @@ function applyRuleGating(){
     Array.isArray(latestHistory?.groupsSnapshot)&&
     latestHistory.groupsSnapshot.length
   );
-  const fixedCount=classState.students.filter(student=>student.fixedSeatId).length;
+  const fixedCount=assignmentStudents().filter(student=>student.fixedSeatId).length;
 
   [
     ["ruleGender","genderSeats",false],
@@ -1169,16 +1169,17 @@ function compatible(student,seat,useGender){
 }
 
 function apartInvolvedIds(){
-  const ids=new Set();
-  classState.students.forEach(s=>{
-    if((s.apartFrom||[]).length)ids.add(s.id);
-    (s.apartFrom||[]).forEach(id=>ids.add(id));
+  const ids=new Set(),eligibleIds=assignmentStudentIds();
+  assignmentStudents().forEach(s=>{
+    const targets=(s.apartFrom||[]).filter(id=>eligibleIds.has(id));
+    if(targets.length)ids.add(s.id);
+    targets.forEach(id=>ids.add(id));
   });
   return ids;
 }
 function apartPairs(){
-  const pairs=[],seen=new Set();
-  classState.students.forEach(s=>(s.apartFrom||[]).forEach(other=>{
+  const pairs=[],seen=new Set(),eligibleIds=assignmentStudentIds();
+  assignmentStudents().forEach(s=>(s.apartFrom||[]).filter(other=>eligibleIds.has(other)).forEach(other=>{
     const key=[s.id,other].sort().join("|");
     if(!seen.has(key)){seen.add(key);pairs.push([s.id,other])}
   }));
@@ -1200,10 +1201,11 @@ function groupIdForSeatId(seatId){
   return group?.id||null;
 }
 function apartRelationSets(){
-  return classState.students
+  const eligibleIds=assignmentStudentIds();
+  return assignmentStudents()
     .map(owner=>({
       ownerId:owner.id,
-      targetIds:[...new Set((owner.apartFrom||[]).filter(id=>id&&id!==owner.id))]
+      targetIds:[...new Set((owner.apartFrom||[]).filter(id=>id&&id!==owner.id&&eligibleIds.has(id)))]
     }))
     .filter(rel=>rel.targetIds.length);
 }
@@ -1339,8 +1341,9 @@ function apartGroupDistributionPenalty(assignments){
   return repeatViolations*1000000+concentrationViolations*250000+soft;
 }
 function apartRelationshipCount(student){
-  const outgoing=(student.apartFrom||[]).length;
-  const incoming=classState.students.filter(s=>(s.apartFrom||[]).includes(student.id)).length;
+  const eligibleIds=assignmentStudentIds();
+  const outgoing=(student.apartFrom||[]).filter(id=>eligibleIds.has(id)).length;
+  const incoming=assignmentStudents().filter(s=>(s.apartFrom||[]).includes(student.id)).length;
   return outgoing+incoming;
 }
 function buildApartSidePlan(referenceAssignments=[]){
@@ -1374,10 +1377,10 @@ function blankSeatReferenceIds(referenceAssignments=[]){
 }
 function chooseReservedEmptySeats(referenceAssignments=[],useGender=false){
   const seats=usableCells();
-  const surplus=Math.max(0,seats.length-classState.students.length);
+  const surplus=Math.max(0,seats.length-assignmentStudents().length);
   if(!surplus)return new Set();
 
-  const fixedSeatIds=new Set(classState.students.map(s=>s.fixedSeatId).filter(Boolean));
+  const fixedSeatIds=new Set(assignmentStudents().map(s=>s.fixedSeatId).filter(Boolean));
   const previousBlankIds=blankSeatReferenceIds(referenceAssignments);
   const selected=[];
   const groupBlankCounts=new Map();
@@ -1610,7 +1613,7 @@ function apartGreedySeatScore(student,seat,assignedSeatByStudent,geometry){
     const d=Math.hypot(seat.col-other.col,(seat.row-other.row)*1.15);
     score-=d*35;
   }
-  for(const otherStudent of classState.students){
+  for(const otherStudent of assignmentStudents()){
     if(!(otherStudent.apartFrom||[]).includes(student.id))continue;
     const other=assignedSeatByStudent.get(otherStudent.id);
     if(!other)continue;
