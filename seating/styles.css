@@ -256,7 +256,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   writing-mode:horizontal-tb!important;
 }
 .tool-dock .dock-tabs{
-  padding-left:42px;
+  padding-left:0;
 }
 .studio.dock-collapsed .tool-dock{
   overflow:hidden!important;
@@ -649,6 +649,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   margin:-12px -12px 10px;
   padding:12px 12px 10px;
   background:#eef3f9;
+  border-radius:12px 12px 0 0;
   border-bottom:1px solid #cbd5e1;
   box-shadow:0 5px 8px rgba(15,23,42,.08);
 }
