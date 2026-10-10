@@ -2,6 +2,7 @@ import {readStudents,STUDENT_STORAGE_KEY} from '../shared/student-registry.js';
 "use strict";
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";
+const PARTICIPATION_KEY="teacher-tools.hanja.participation.v1";
 const defaults={target:"mixed",direction:"forward",mode:"choice",gameMode:"normal",perStudent:3,choices:4};
 function frequencyLabel(weight){const n=Number(weight);if(n<=0)return "사용 안 함";if(n<=20)return "매우 낮음";if(n<=40)return "낮음";if(n<=60)return "보통";if(n<=80)return "높음";return "매우 높음"}
 function frequencyOutput(weight){
@@ -31,7 +32,18 @@ function syncEditorMode(){
  }
 }
 
-let db=[],settings={...defaults},type="single",editId=null,selectedIds=new Set(),lastSelectedId=null,students=[],excluded=new Set(),session=null,advanceTimer=null,noticeTimer=null,audio=null,lastRaw=null,storageBlocked=false;
+function loadExcludedStudents(){
+ try{
+  const raw=localStorage.getItem(PARTICIPATION_KEY);
+  if(!raw)return new Set();
+  const ids=JSON.parse(raw);
+  return new Set(Array.isArray(ids)?ids.filter(id=>typeof id==="string"):[]);
+ }catch{return new Set()}
+}
+function saveExcludedStudents(){
+ try{localStorage.setItem(PARTICIPATION_KEY,JSON.stringify([...excluded]))}catch{}
+}
+let db=[],settings={...defaults},type="single",editId=null,selectedIds=new Set(),lastSelectedId=null,students=[],excluded=loadExcludedStudents(),session=null,advanceTimer=null,noticeTimer=null,audio=null,lastRaw=null,storageBlocked=false;
 const HANJA_GLASSES=[
  {id:"none",color:null},{id:"red",color:null},{id:"black",color:[45,48,54]},
  {id:"brown",color:[112,67,42]},{id:"navy",color:[45,70,110]},
@@ -293,88 +305,70 @@ window.addEventListener("pointermove",ev=>{
 window.addEventListener("pointerup",finishDragSelection);
 window.addEventListener("pointercancel",finishDragSelection);
 
-function refreshRoster(){try{students=[...readStudents()];$("start").disabled=false;renderStudents()}catch(e){students=[];$("start").disabled=true;renderStudents();notify(`학생명단을 읽을 수 없습니다. ${e.message}`)}}
+function refreshRoster(){
+ try{
+  students=[...readStudents()];
+  const validIds=new Set(students.map(s=>s.id));
+  excluded=new Set([...excluded].filter(id=>validIds.has(id)));
+  saveExcludedStudents();
+  $("start").disabled=false;
+  renderStudents();
+ }catch(e){
+  students=[];$("start").disabled=true;renderStudents();notify(`학생명단을 읽을 수 없습니다. ${e.message}`);
+ }
+}
 function updateRosterSummary(){
- $("rosterSummary").textContent=`참가 ${students.filter(s=>!excluded.has(s.id)).length} / ${students.length}명`;
+ $("rosterSummary").textContent=`참가 ${students.filter(s=>!excluded.has(s.id)).length} / ${students.length}명 · 제외 ${students.filter(s=>excluded.has(s.id)).length}명`;
 }
 function setStudentParticipation(id,included,card=null){
  if(included)excluded.delete(id);else excluded.add(id);
+ saveExcludedStudents();
  const el=card||document.querySelector(`#studentCards .hanja-student[data-student-id="${CSS.escape(id)}"]`);
  if(el){
   el.setAttribute("aria-pressed",String(included));
-  const status=el.querySelector("small");if(status)status.textContent=included?"참가":"제외";
+  el.classList.toggle("assignment-excluded",!included);
+  const status=el.querySelector(".shared-student-status");if(status)status.textContent=included?"참가":"제외";
+  el.setAttribute("aria-label",included?`${el.dataset.studentName} · 참가 · 우클릭하면 제외`:`${el.dataset.studentName} · 제외 · 우클릭하면 다시 포함`);
  }
  updateRosterSummary();
-}
-let rosterDrag=null,suppressRosterClick=false;
-function applyRosterDragCard(card){
- if(!rosterDrag||!rosterDrag.active||!card)return;
- const id=card.dataset.studentId;
- if(!id||rosterDrag.visited.has(id))return;
- rosterDrag.visited.add(id);
- setStudentParticipation(id,rosterDrag.include,card);
-}
-function finishRosterDrag(){
- if(!rosterDrag)return;
- const wasActive=rosterDrag.active;
- rosterDrag=null;
- document.body.classList.remove("roster-drag-selecting");
- if(!wasActive)return;
- suppressRosterClick=true;
- requestAnimationFrame(()=>{suppressRosterClick=false});
 }
 function renderStudents(){
  $("studentCards").replaceChildren();updateRosterSummary();
  if(!students.length){const p=document.createElement("p");p.textContent="자리배치 매니저에서 학생명단을 먼저 저장해 주세요.";$("studentCards").append(p);return}
  for(const s of students){
+  const isExcluded=excluded.has(s.id),gender=["male","female"].includes(s.gender)?s.gender:"none";
   const b=document.createElement("button");
-  b.className="hanja-student";
+  b.type="button";
+  b.className=`hanja-student shared-student-card gender-${gender}${isExcluded?" assignment-excluded":""}`;
   b.dataset.studentId=s.id;
-  b.setAttribute("aria-pressed",String(!excluded.has(s.id)));
-  const sprite=document.createElement("div");
-  sprite.className="hanja-sprite";
+  b.dataset.studentName=s.name;
+  b.setAttribute("aria-pressed",String(!isExcluded));
+  b.setAttribute("aria-label",isExcluded?`${s.name} · 제외 · 우클릭하면 다시 포함`:`${s.name} · 참가 · 우클릭하면 제외`);
+
+  const sprite=document.createElement("span");
+  sprite.className="hanja-sprite shared-student-sprite";
   sprite.style.backgroundImage=`url("${s.sprite}")`;
   sprite.dataset.hanjaGlasses=s.visual?.glasses||"none";
   const glassesSrc=hanjaGlassesSrc(sprite.dataset.hanjaGlasses);
   sprite.style.setProperty("--student-glasses-image",glassesSrc?`url("${glassesSrc}")`:"none");
-  const name=document.createElement("span");name.textContent=s.name;
-  const st=document.createElement("small");st.textContent=excluded.has(s.id)?"제외":"참가";
+
+  const name=document.createElement("span");
+  name.className="shared-student-name";
+  name.textContent=s.name;
+
+  const st=document.createElement("small");
+  st.className="shared-student-status";
+  st.textContent=isExcluded?"제외":"참가";
+
   b.append(sprite,name,st);
-  b.onclick=()=>{
-   if(suppressRosterClick)return;
+  b.oncontextmenu=ev=>{
+   ev.preventDefault();
    setStudentParticipation(s.id,excluded.has(s.id),b);
   };
   $("studentCards").append(b);
  }
  refreshHanjaGlassesLayers();
 }
-$("studentCards").addEventListener("pointerdown",ev=>{
- if(ev.pointerType!=="mouse"||ev.button!==0)return;
- const card=ev.target.closest(".hanja-student");
- if(!card)return;
- rosterDrag={
-  startX:ev.clientX,
-  startY:ev.clientY,
-  startCard:card,
-  active:false,
-  include:excluded.has(card.dataset.studentId),
-  visited:new Set()
- };
-});
-window.addEventListener("pointermove",ev=>{
- if(!rosterDrag||ev.pointerType!=="mouse")return;
- if(!rosterDrag.active){
-  if(Math.hypot(ev.clientX-rosterDrag.startX,ev.clientY-rosterDrag.startY)<7)return;
-  rosterDrag.active=true;
-  document.body.classList.add("roster-drag-selecting");
-  applyRosterDragCard(rosterDrag.startCard);
- }
- ev.preventDefault();
- const hit=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.(".hanja-student");
- if(hit&&hit.closest("#studentCards"))applyRosterDragCard(hit);
-});
-window.addEventListener("pointerup",finishRosterDrag);
-window.addEventListener("pointercancel",finishRosterDrag);
 function readSettings(){return validateSettings({target:$("target").value,direction:$("direction").value,mode:$("mode").value,gameMode:$("gameMode").value,perStudent:Number($("perStudent").value),choices:Number($("choices").value)})}
 function answerFor(e,d){if(d==="reverse")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
 function promptFor(e,d){if(d==="forward")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
@@ -786,7 +780,7 @@ $("entryForm").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.isComposing
 $("settingsForm").onchange=()=>{try{settings=readSettings();save()}catch(e){notify(e.message)}};$("settingsForm").onsubmit=e=>e.preventDefault();
 document.querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{type=b.dataset.type;document.querySelectorAll("[data-type]").forEach(x=>x.classList.toggle("on",x===b));resetForm();panel("data")});
 document.querySelectorAll("[data-panel]").forEach(b=>b.onclick=()=>panel(b.dataset.panel));
-$("newEntry").onclick=()=>{resetForm();panel("data");$("hanzi").focus()};$("cancelEdit").onclick=resetForm;$("refreshRoster").onclick=refreshRoster;$("includeAllStudents").onclick=()=>{excluded.clear();renderStudents()};$("excludeAllStudents").onclick=()=>{excluded=new Set(students.map(s=>s.id));renderStudents()};$("start").onclick=startGame;
+$("newEntry").onclick=()=>{resetForm();panel("data");$("hanzi").focus()};$("cancelEdit").onclick=resetForm;$("refreshRoster").onclick=refreshRoster;$("includeAllStudents").onclick=()=>{excluded.clear();saveExcludedStudents();renderStudents()};$("excludeAllStudents").onclick=()=>{excluded=new Set(students.map(s=>s.id));saveExcludedStudents();renderStudents()};$("start").onclick=startGame;
 $("reveal").onclick=()=>{if(!session||session.locked)return;session.revealed=true;$("answer").textContent="정답: "+revealAnswerText(session.q);$("answer").classList.remove("hidden");$("judgement").classList.remove("hidden");$("reveal").classList.add("hidden")};$("correct").onclick=()=>judge(true);$("wrong").onclick=()=>judge(false);$("retestSudden").onclick=startSuddenRetest;$("meaningOverlay").onclick=()=>{if(!session||!session.locked||$("meaningOverlay").classList.contains("hidden")||session.q?.entry.type!=="word")return;advanceAfterCorrect()};
 $("endGame").onclick=()=>{clearTimeout(advanceTimer);advanceTimer=null;clearCelebration();$("correctOverlay").classList.add("hidden");$("meaningOverlay").classList.add("hidden");$("meaningOverlayText").textContent="";$("suddenResult").classList.add("hidden");document.querySelector(".question-modal").classList.remove("complete","manual-mode","manual-hanja-prompt","sudden-round-result");session=null;$("game").classList.add("hidden");$("manager").classList.remove("hidden");refreshRoster()};
 $("importXlsx").onclick=()=>$("xlsxFile").click();
