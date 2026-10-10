@@ -111,6 +111,10 @@ function refreshStudentPreviewLayers(){
     const src=studentGlassesSrc(el.dataset.studentGlasses);
     el.style.backgroundImage=src?`url("${src}")`:"none";
   });
+  document.querySelectorAll("[data-student-roster-glasses]").forEach(el=>{
+    const src=studentGlassesSrc(el.dataset.studentRosterGlasses);
+    el.style.setProperty("--student-glasses-image",src?`url("${src}")`:"none");
+  });
 }
 function studentPreviewMarkup(student,index){
   const v=normalizedStudentVisual(student,index),sheet=studentVisualFor(student,index);
@@ -950,15 +954,19 @@ function renderStudentStrip(){
   const students=inspectorStudents();
   if(!students.some(s=>s.id===selectedStudentId))selectedStudentId=students[0]?.id||null;
   const root=$("studentCards");root.innerHTML="";
-  students.forEach(student=>{
+  students.forEach((student,index)=>{
     const excluded=!historyView&&student.assignmentExcluded===true;
+    const gender=["male","female"].includes(student.gender)?student.gender:"none";
+    const visual=normalizedStudentVisual(student,index);
+    const glassesSrc=studentGlassesSrc(visual.glasses);
+    const status=excluded?"제외":(!historyView&&student.fixedSeatId?"고정":"참가");
     const card=document.createElement("button");
     card.type="button";
-    card.className=`student-card${student.id===selectedStudentId?" selected":""}${excluded?" assignment-excluded":""}`;
+    card.className=`student-card shared-student-card gender-${gender}${student.id===selectedStudentId?" selected":""}${excluded?" assignment-excluded":""}`;
     card.dataset.studentId=student.id;
     card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
     if(!historyView&&!excluded){card.draggable=true}
-    card.innerHTML=`<span class="student-card-copy"><strong>${escapeHtml(student.name)}</strong><small><span class="gender-dot ${student.gender}"></span>${student.gender==="male"?"남학생":student.gender==="female"?"여학생":"성별 미지정"}${excluded?" · 배치 제외":!historyView&&student.fixedSeatId?" · 📌 고정석":""}</small></span>${studentPreviewMarkup(student,students.indexOf(student))}`;
+    card.innerHTML=`<span class="shared-student-sprite" aria-hidden="true" data-student-roster-glasses="${visual.glasses}" style="background-image:url('${studentVisualFor(student,index)}');--student-glasses-image:${glassesSrc?`url('${glassesSrc}')`:"none"}"></span><span class="shared-student-name">${escapeHtml(student.name)}</span><small class="shared-student-status">${status}</small>`;
     card.onclick=()=>{selectedStudentId=student.id;activateDock("student");renderStudentStrip();renderStudentInspector()};
     if(!historyView){
       card.oncontextmenu=event=>{event.preventDefault();toggleAssignmentParticipation(student)};
