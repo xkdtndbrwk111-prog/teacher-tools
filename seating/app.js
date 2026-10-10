@@ -904,17 +904,37 @@ function bindStudentStripWheel(){
     if(scroller.scrollLeft!==before)event.preventDefault();
   },{passive:false});
 }
+function toggleAssignmentParticipation(student){
+  if(historyView||!student)return;
+  student.assignmentExcluded=student.assignmentExcluded!==true;
+  const message=student.assignmentExcluded
+    ?`${student.name} 학생을 배치 대상에서 제외했습니다.`
+    :`${student.name} 학생을 다시 배치 대상에 포함했습니다.`;
+  invalidateConfirmed(message+" 새 배치를 생성하세요.");
+  applyRuleGating();
+  saveState();
+  renderStudentStrip();
+  renderStudentInspector();
+}
 function renderStudentStrip(){
   const students=inspectorStudents();
   if(!students.some(s=>s.id===selectedStudentId))selectedStudentId=students[0]?.id||null;
   const root=$("studentCards");root.innerHTML="";
   students.forEach(student=>{
-    const card=document.createElement("button");card.type="button";card.className=`student-card${student.id===selectedStudentId?" selected":""}`;card.dataset.studentId=student.id;
-    if(!historyView){card.draggable=true}
-    card.innerHTML=`<span class="student-card-copy"><strong>${escapeHtml(student.name)}</strong><small><span class="gender-dot ${student.gender}"></span>${student.gender==="male"?"남학생":student.gender==="female"?"여학생":"성별 미지정"}${!historyView&&student.fixedSeatId?" · 📌 고정석":""}</small></span>${studentPreviewMarkup(student,students.indexOf(student))}`;
+    const excluded=!historyView&&student.assignmentExcluded===true;
+    const card=document.createElement("button");
+    card.type="button";
+    card.className=`student-card${student.id===selectedStudentId?" selected":""}${excluded?" assignment-excluded":""}`;
+    card.dataset.studentId=student.id;
+    card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
+    if(!historyView&&!excluded){card.draggable=true}
+    card.innerHTML=`<span class="student-card-copy"><strong>${escapeHtml(student.name)}</strong><small><span class="gender-dot ${student.gender}"></span>${student.gender==="male"?"남학생":student.gender==="female"?"여학생":"성별 미지정"}${excluded?" · 배치 제외":!historyView&&student.fixedSeatId?" · 📌 고정석":""}</small></span>${studentPreviewMarkup(student,students.indexOf(student))}`;
     card.onclick=()=>{selectedStudentId=student.id;activateDock("student");renderStudentStrip();renderStudentInspector()};
     if(!historyView){
-      card.ondragstart=event=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("application/x-student-id",student.id);event.dataTransfer.setData("text/plain",student.id)};
+      card.oncontextmenu=event=>{event.preventDefault();toggleAssignmentParticipation(student)};
+      if(!excluded){
+        card.ondragstart=event=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("application/x-student-id",student.id);event.dataTransfer.setData("text/plain",student.id)};
+      }
     }
     root.appendChild(card);
   });
