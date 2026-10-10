@@ -15,11 +15,12 @@
     type="image/svg+xml"
   >
   <link rel="stylesheet" href="./hub.css?v=step3a-ui2">
+  <link rel="stylesheet" href="./feedback-board.css?v=fb-hub-1">
 
   <script src="./hub.js?v=step3a-ui3" defer></script>
-  <script src="./feedback.js" defer></script>
-  <script src="./feedback-auth-bridge.js" defer></script>
-  <script src="./feedback-write.js" defer></script>
+  <script src="./feedback-auth-bridge.js?v=fb-hub-1" defer></script>
+  <script src="./feedback-transport.js?v=fb-hub-1" defer></script>
+  <script src="./feedback-board.js?v=fb-hub-1" defer></script>
 </head>
 
 <body>
@@ -70,398 +71,297 @@
       <section
         id="feedback"
         class="feedback-section"
-        aria-labelledby="feedback-heading"
+        aria-labelledby="feedbackBoardTitle"
       >
+<!-- Ported from Project B TEST @371 Index.html #feedbackBoardModal.
+     HUB additions: session bar, 문의 대상 field, thread product line;
+     close button removed (inline board). -->
+<div id="feedbackBoardModal" class="feedback-board-modal" aria-hidden="false">
 
-        <div class="feedback-section-head">
+  <div class="feedback-board-card" aria-labelledby="feedbackBoardTitle">
 
-          <div>
-            <p class="section-kicker">
-              FEEDBACK
-            </p>
+    <div class="feedback-board-top">
 
-            <h2 id="feedback-heading">
-              역사보리꼬리 공작소 피드백 게시판
-            </h2>
+      <div>
 
-            <p>
-              오류나 개선 의견을 함께 확인할 수 있습니다.
-            </p>
+        <span>FEEDBACK BOARD</span>
+
+        <h2 id="feedbackBoardTitle">피드백 게시판</h2>
+
+        <p>선생님들의 의견을 읽고 직접 글과 댓글을 남길 수 있습니다.</p>
+
+      </div>
+
+      <div class="feedback-board-top-actions">
+
+        <div class="feedback-session-bar">
+
+          <span id="feedbackSessionStatus" class="feedback-session-status" role="status" aria-live="polite"></span>
+
+          <button id="feedbackSessionConnectBtn" type="button">Creator 연결</button>
+
+          <button id="feedbackSessionDisconnectBtn" type="button" hidden>연결 해제</button>
+
+        </div>
+
+        <button id="feedbackWritePostBtn" type="button" hidden>글쓰기</button>
+
+        <button id="feedbackOwnerRecoveryOpenV3" type="button" hidden>숨김 관리</button>
+
+        <button id="feedbackBoardRefreshBtn" type="button">↻ 새로고침</button>
+
+      </div>
+
+    </div>
+
+    <section id="feedbackOwnerRecoveryPanelV3"
+             class="feedback-owner-recovery-panel"
+             hidden
+             aria-labelledby="feedbackOwnerRecoveryTitleV3">
+
+      <div class="feedback-owner-recovery-head">
+        <div>
+          <span>OWNER MODERATION</span>
+          <h3 id="feedbackOwnerRecoveryTitleV3">숨김 항목 관리</h3>
+          <p>숨김 처리된 게시글과 댓글을 복원하거나 삭제할 수 있습니다.</p>
+        </div>
+
+        <div class="feedback-owner-recovery-actions">
+          <button id="feedbackOwnerRecoveryRefreshV3" type="button">↻ 새로고침</button>
+          <button id="feedbackOwnerRecoveryCloseV3" type="button" aria-label="숨김 관리 닫기">×</button>
+        </div>
+      </div>
+
+      <div id="feedbackOwnerRecoveryLoadingV3"
+           class="feedback-board-state"
+           hidden>
+        숨김 항목을 불러오는 중...
+      </div>
+
+      <div id="feedbackOwnerRecoveryErrorV3"
+           class="feedback-board-state feedback-board-error"
+           hidden>
+      </div>
+
+      <div class="feedback-owner-recovery-grid">
+
+        <section class="feedback-owner-recovery-group"
+                 aria-labelledby="feedbackOwnerHiddenPostsTitleV3">
+          <h4 id="feedbackOwnerHiddenPostsTitleV3">숨김 게시글</h4>
+
+          <div id="feedbackOwnerHiddenPostsEmptyV3"
+               class="feedback-board-state"
+               hidden>
+            숨김 처리된 게시글이 없습니다.
           </div>
 
-          <div class="feedback-head-actions">
-            <span class="feedback-readonly-badge">
-              승인된 Creator 등록 가능
-            </span>
+          <div id="feedbackOwnerHiddenPostsV3"
+               class="feedback-owner-recovery-list">
+          </div>
+        </section>
 
-            <button
-              id="feedback-compose-open"
-              class="feedback-control-button feedback-compose-open"
-              type="button"
-            >
-              글쓰기
-            </button>
+        <section class="feedback-owner-recovery-group"
+                 aria-labelledby="feedbackOwnerHiddenCommentsTitleV3">
+          <h4 id="feedbackOwnerHiddenCommentsTitleV3">숨김 댓글</h4>
 
-            <button
-              id="feedback-refresh-btn"
-              class="feedback-control-button"
-              type="button"
-            >
-              새로고침
-            </button>
+          <div id="feedbackOwnerHiddenCommentsEmptyV3"
+               class="feedback-board-state"
+               hidden>
+            숨김 처리된 댓글이 없습니다.
           </div>
 
-        </div>
+          <div id="feedbackOwnerHiddenCommentsV3"
+               class="feedback-owner-recovery-list">
+          </div>
+        </section>
 
-        <div
-          id="feedback-global-error"
-          class="feedback-global-error"
-          hidden
-          role="status"
-        >
-          <span id="feedback-global-error-text">
-            게시판을 불러오지 못했습니다.
-          </span>
+      </div>
+    </section>
 
-          <button
-            id="feedback-global-retry-btn"
-            type="button"
-          >
-            다시 시도
-          </button>
-        </div>
+    <div class="feedback-board-layout">
 
-        <div class="feedback-board">
+      <section class="feedback-board-list-pane" aria-label="피드백 글 목록">
 
-          <section
-            class="feedback-list-pane"
-            aria-label="피드백 게시글 목록"
-          >
+        <div id="feedbackBoardListLoading" class="feedback-board-state">게시글을 불러오는 중...</div>
 
-            <div class="feedback-pane-head">
-              <div>
-                <h3>
-                  최근 의견
-                </h3>
+        <div id="feedbackBoardListError" class="feedback-board-state feedback-board-error" hidden></div>
 
-                <p>
-                  역사보리꼬리 공작소 사용자들의 의견입니다.
-                </p>
+        <div id="feedbackBoardListEmpty" class="feedback-board-state" hidden>아직 등록된 의견이 없습니다.</div>
+
+        <div id="feedbackBoardList" class="feedback-board-list" hidden></div>
+
+        <nav id="feedbackBoardPaginationV16"
+             class="feedback-board-pagination-v16"
+             aria-label="피드백 게시판 페이지"
+             hidden>
+        </nav>
+
+      </section>
+
+      <section class="feedback-board-detail-pane" aria-label="피드백 글 내용">
+
+        <div id="feedbackThreadPlaceholder" class="feedback-thread-placeholder">왼쪽에서 글을 선택해 주세요.</div>
+
+        <div id="feedbackThreadLoading" class="feedback-board-state" hidden>글을 불러오는 중...</div>
+
+        <div id="feedbackThreadError" class="feedback-board-state feedback-board-error" hidden></div>
+
+        <article id="feedbackThreadContent" class="feedback-thread-content" hidden>
+
+          <header class="feedback-thread-head">
+
+            <span id="feedbackThreadProduct" class="feedback-thread-product" hidden></span>
+
+            <div class="feedback-thread-title-row">
+
+              <h3 id="feedbackThreadTitle"></h3>
+
+              <div id="feedbackPostOwnerActions" class="feedback-owner-actions" hidden>
+
+                <button id="feedbackEditPostBtn" type="button">수정</button>
+
+                <button id="feedbackDeletePostBtn" type="button">삭제</button>
+
               </div>
+
+            <div id="feedbackOwnerPostModerationV3"
+                 class="feedback-owner-moderation-actions"
+                 hidden>
+              <button id="feedbackOwnerPinPostV3" type="button" hidden>공지로 고정</button>
+              <button id="feedbackOwnerUnpinPostV3" type="button" hidden>공지 해제</button>
+              <button id="feedbackOwnerHidePostV3" type="button">숨김</button>
+              <button id="feedbackOwnerDeletePostV3" type="button">관리자 삭제</button>
             </div>
 
-            <div
-              id="feedback-list-loading"
-              class="feedback-state"
-            >
-              게시글을 불러오는 중...
             </div>
 
-            <div
-              id="feedback-list-empty"
-              class="feedback-state"
-              hidden
-            >
-              아직 등록된 의견이 없습니다.
-            </div>
+            <div id="feedbackThreadMeta" class="feedback-thread-meta"></div>
 
-            <div
-              id="feedback-list-error"
-              class="feedback-state feedback-state-error"
-              hidden
-            >
-              게시글 목록을 불러오지 못했습니다.
-            </div>
+          </header>
 
-            <div
-              id="feedback-list"
-              class="feedback-list"
-              hidden
-            ></div>
+          <div id="feedbackThreadBody" class="feedback-thread-body"></div>
 
-            <button
-              id="feedback-more-btn"
-              class="feedback-more-button"
-              type="button"
-              hidden
-            >
-              게시글 더 보기
-            </button>
+          <div class="feedback-comments-head">
 
-          </section>
+            <strong>댓글</strong>
 
-          <section
-            class="feedback-detail-pane"
-            aria-label="선택한 피드백 게시글"
-          >
+            <button id="feedbackWriteCommentBtn" type="button" hidden>댓글쓰기</button>
 
-            <div
-              id="feedback-detail-placeholder"
-              class="feedback-detail-placeholder"
-            >
-              <strong>
-                의견을 선택해 주세요.
-              </strong>
+          </div>
 
-              <span>
-                왼쪽 목록에서 글을 선택하면 내용과 댓글이 표시됩니다.
-              </span>
-            </div>
+          <div id="feedbackCapabilityStatus" class="feedback-capability-status" hidden></div>
 
-            <div
-              id="feedback-detail-loading"
-              class="feedback-state"
-              hidden
-            >
-              글을 불러오는 중...
-            </div>
+          <div id="feedbackCommentList" class="feedback-comment-list"></div>
 
-            <div
-              id="feedback-detail-error"
-              class="feedback-state feedback-state-error"
-              hidden
-            >
-              글을 불러오지 못했습니다.
-            </div>
+          <div id="feedbackCommentEmpty" class="feedback-comment-empty" hidden>아직 댓글이 없습니다.</div>
 
-            <article
-              id="feedback-thread"
-              class="feedback-thread"
-              hidden
-            >
+          <button id="feedbackCommentsMoreBtn" class="feedback-board-more-btn" type="button" hidden>댓글 더 보기</button>
 
-              <header class="feedback-thread-head">
+        </article>
 
-                <div class="feedback-thread-title-row">
-                  <span
-                    id="feedback-thread-notice"
-                    class="feedback-notice-badge"
-                    hidden
-                  >
-                    공지
-                  </span>
+        <div id="feedbackMutationStateNotice" class="feedback-mutation-state-notice" role="status" hidden></div>
 
-                  <h3 id="feedback-thread-title"></h3>
-                </div>
+        <div id="feedbackPendingActions" class="feedback-state-actions" hidden>
 
-                <div
-                  id="feedback-thread-meta"
-                  class="feedback-thread-meta"
-                ></div>
+          <button id="feedbackPendingRetryBtn" type="button">같은 요청 다시 확인</button>
 
-              </header>
-
-              <div
-                id="feedback-thread-body"
-                class="feedback-thread-body"
-              ></div>
-
-              <section
-                class="feedback-comments"
-                aria-labelledby="feedback-comments-heading"
-              >
-
-                <div class="feedback-comments-head">
-                  <h4 id="feedback-comments-heading">
-                    댓글
-                  </h4>
-                </div>
-
-                <div
-                  id="feedback-comments-empty"
-                  class="feedback-state"
-                  hidden
-                >
-                  아직 댓글이 없습니다.
-                </div>
-
-                <div
-                  id="feedback-comments-list"
-                  class="feedback-comments-list"
-                ></div>
-
-                <button
-                  id="feedback-comments-more-btn"
-                  class="feedback-more-button"
-                  type="button"
-                  hidden
-                >
-                  댓글 더 보기
-                </button>
-
-              </section>
-
-            </article>
-
-          </section>
+          <button id="feedbackPendingLaterBtn" type="button">결과 확인을 나중에 하기</button>
 
         </div>
 
-        <div class="feedback-write-note">
-          <strong>
-            승인된 Creator는 글을 등록할 수 있습니다.
-          </strong>
+        <div id="feedbackConflictActions" class="feedback-state-actions" hidden>
 
-          <span>
-            Google Creator 확인 후 피드백 게시글이 등록됩니다.
-          </span>
+          <button id="feedbackConflictEditAgainBtn" type="button">최신 내용을 확인하고 다시 수정</button>
+
         </div>
 
-        <div
-          id="feedback-compose-overlay"
-          class="feedback-compose-overlay"
-          hidden
-        >
-          <section
-            class="feedback-compose-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="compose-heading"
-            aria-describedby="compose-description"
-          >
-            <header class="feedback-compose-header">
-              <div>
-                <p class="section-kicker">
-                  FEEDBACK
-                </p>
+        <section id="feedbackEditorShell" class="feedback-editor-shell" data-mode="READ_THREAD" hidden aria-labelledby="feedbackEditorTitle">
 
-                <h3 id="compose-heading">
-                  문의 내용을 남겨주세요
-                </h3>
-              </div>
+          <div class="feedback-editor-head">
 
-              <button
-                id="feedback-compose-close"
-                class="feedback-compose-close"
-                type="button"
-                aria-label="작성 화면 닫기"
-              >
-                ×
-              </button>
-            </header>
+            <div>
 
-            <p
-              id="compose-description"
-              class="feedback-compose-description"
-            >
-              작성 내용은 이 브라우저 세션에 임시 보관됩니다.
-              승인된 Google Creator 확인 후 피드백 게시글을 등록할 수 있습니다.
-            </p>
+              <span>WRITE SHELL</span>
 
-            <form
-              id="feedback-compose-form"
-              novalidate
-            >
-              <div class="feedback-compose-field">
-                <label for="compose-product">
-                  문의 대상
-                </label>
+              <h3 id="feedbackEditorTitle">피드백 작성</h3>
 
-                <select
-                  id="compose-product"
-                  name="product"
-                  aria-describedby="compose-error"
-                >
-                  <option value="">
-                    문의 대상을 선택하세요
-                  </option>
-                  <option value="HUB">
-                    역사보리꼬리 공작소
-                  </option>
-                  <option value="PROJECT_A">
-                    마리오 게임
-                  </option>
-                  <option value="PROJECT_B">
-                    퀴즈 매니저
-                  </option>
-                  <option value="SEATING">
-                    자리배치 매니저
-                  </option>
-                  <option value="PROJECT_C">
-                    Project C
-                  </option>
-                  <option value="ROLE_MANAGER">
-                    1인1역 배치 매니저
-                  </option>
-                  <option value="OTHER">
-                    기타
-                  </option>
-                </select>
-              </div>
+            </div>
 
-              <div class="feedback-compose-field">
-                <div class="feedback-compose-label-line">
-                  <label for="compose-title">
-                    제목
-                  </label>
+            <strong id="feedbackEditorModeLabel">READ_THREAD</strong>
 
-                  <span id="compose-title-count">
-                    0 / 120
-                  </span>
-                </div>
+          </div>
 
-                <input
-                  id="compose-title"
-                  name="title"
-                  type="text"
-                  autocomplete="off"
-                  aria-describedby="compose-title-count compose-error"
-                >
-              </div>
+          <label id="feedbackEditorProductField" class="feedback-editor-field" hidden>
 
-              <div class="feedback-compose-field">
-                <div class="feedback-compose-label-line">
-                  <label for="compose-body">
-                    내용
-                  </label>
+            <span>문의 대상</span>
 
-                  <span id="compose-body-count">
-                    0 / 5000
-                  </span>
-                </div>
+            <select id="feedbackEditorProductSelect" required>
+              <option value="">문의 대상을 불러오는 중...</option>
+            </select>
 
-                <textarea
-                  id="compose-body"
-                  name="body"
-                  rows="9"
-                  aria-describedby="compose-body-count compose-error"
-                ></textarea>
-              </div>
+          </label>
 
-              <p
-                id="compose-error"
-                class="feedback-compose-message feedback-compose-error"
-                role="alert"
-              ></p>
+          <label id="feedbackEditorTitleField" class="feedback-editor-field" hidden>
 
-              <p
-                id="compose-status"
-                class="feedback-compose-message"
-                role="status"
-                aria-live="polite"
-              ></p>
+            <span>제목</span>
 
-              <div class="feedback-compose-buttons">
-                <button
-                  id="feedback-compose-cancel"
-                  class="feedback-control-button"
-                  type="button"
-                >
-                  취소
-                </button>
+            <input id="feedbackEditorTitleInput" type="text" autocomplete="off" aria-describedby="feedbackEditorTitleCount">
 
-                <button
-                  id="feedback-compose-submit"
-                  class="feedback-control-button feedback-compose-submit"
-                  type="submit"
-                >
-                  등록
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+            <small id="feedbackEditorTitleCount">0 / 120</small>
 
+          </label>
+
+          <label class="feedback-editor-field">
+
+            <span id="feedbackEditorBodyLabel">내용</span>
+
+            <textarea id="feedbackEditorBodyInput" rows="9" aria-describedby="feedbackEditorBodyCount"></textarea>
+
+            <small id="feedbackEditorBodyCount">0 / 5000</small>
+
+          </label>
+
+          <p id="feedbackEditorMessage" class="feedback-editor-message" role="status"></p>
+
+          <div class="feedback-editor-actions">
+
+            <button id="feedbackEditorCancelBtn" type="button">취소</button>
+
+            <button id="feedbackEditorSubmitBtn" type="button">등록</button>
+
+          </div>
+
+        </section>
+
+      </section>
+
+    </div>
+
+  </div>
+
+</div>
+<!-- Project B @371 Index.html #appDialog (board confirmations). -->
+<div id="appDialog" class="app-dialog" hidden aria-hidden="true">
+
+  <div class="app-dialog-card" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+
+    <div id="appDialogTone" class="app-dialog-tone"></div>
+
+    <h2 id="appDialogTitle">확인</h2>
+
+    <div id="appDialogMessage" class="app-dialog-message"></div>
+
+    <div class="app-dialog-actions">
+
+      <button id="appDialogCancel" class="app-dialog-btn cancel" type="button">취소</button>
+
+      <button id="appDialogConfirm" class="app-dialog-btn confirm" type="button">확인</button>
+
+    </div>
+
+  </div>
+
+</div>
       </section>
 
     </main>

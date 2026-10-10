@@ -1,15 +1,16 @@
 "use strict";
 
-// FB-W2A-2B Creator auth bridge (Hub side).
-// Wire contract source: SUPER MARIO QUIZ MANAGER immutable version 370,
+// FB-W2A-2B Creator auth bridge (Hub side), FB-HUB-1 persistent session.
+// Wire contract source: SUPER MARIO QUIZ MANAGER TEST @372,
 // FeedbackAuthBridgeV1.js and FeedbackAuthBridgeV1Client.html.
-// Project B owns Creator authority and performs the TEST mutation. The Hub
-// receives only a sanitized lifecycle/result message and no identity data.
+// Project B owns Creator/OWNER authority and runs every Feedback call. The
+// Hub receives only lifecycle messages, availability flags for its UI, an
+// opaque Creator fingerprint, and field-whitelisted call results.
 (() => {
-  // TEST deployment @370 (live deployment listing, 2026-10-07).
+  // Production deployment. The deployment ID remains stable across versions.
   const BRIDGE_EXEC_URL =
-    "https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec";
-  // Exact @370 user-frame origin. Compared with === only.
+    "https://script.google.com/macros/s/AKfycby9iWJSQhcYZncoPAvxeWm_Mk9ZvbHXcVcy_UWo6Vktbrdvwcev7rEPM3Y2X0U-SLca/exec";
+  // Exact Project B user-frame origin. Compared with === only.
   const BRIDGE_ORIGIN =
     "https://n-tmrid42qu3svum6iclzmekeicegv7qtnxbt4hly-0lu-script.googleusercontent.com";
   // Mirrors SMQ_FEEDBACK_AUTH_BRIDGE_HUB_ORIGINS_V1; Project B re-checks it.
@@ -18,74 +19,74 @@
     "https://xkdtndbrwk111-prog.github.io"
   ]);
   const MODE = "feedback-auth-bridge";
-  const ACTION = "CREATE_POST";
+  const ACTION = "SESSION";
   const NONCE = /^[a-f0-9]{48}$/;
-  const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-  const ENTITY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-  const PRODUCTS = new Set([
-    "HUB", "PROJECT_A", "PROJECT_B", "SEATING", "PROJECT_C", "ROLE_MANAGER", "OTHER"
-  ]);
+  const CALL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const CREATOR_TAG = /^sha256:[0-9a-f]{32}$/;
+  const SAFE_CODE = /^FEEDBACK_[A-Z0-9_]{1,80}$/;
   const TYPES = Object.freeze({
     READY: "SMQ_FEEDBACK_BRIDGE_READY",
-    INTENT: "SMQ_FEEDBACK_BRIDGE_INTENT",
+    SESSION: "SMQ_FEEDBACK_BRIDGE_SESSION",
     AUTH_REQUIRED: "SMQ_FEEDBACK_BRIDGE_AUTH_REQUIRED",
     NAVIGATING: "SMQ_FEEDBACK_BRIDGE_NAVIGATING",
-    AUTHENTICATED: "SMQ_FEEDBACK_BRIDGE_AUTHENTICATED",
-    CREATE_RESULT: "SMQ_FEEDBACK_BRIDGE_CREATE_RESULT",
+    CALL: "SMQ_FEEDBACK_BRIDGE_CALL",
+    RESULT: "SMQ_FEEDBACK_BRIDGE_RESULT",
+    CLOSED: "SMQ_FEEDBACK_BRIDGE_CLOSED",
     ERROR: "SMQ_FEEDBACK_BRIDGE_ERROR"
   });
-  const SAFE_CODES = new Set([
+  const CREATOR_CODES = new Set([
     "CREATOR_BLOCKED",
     "CREATOR_NOT_APPROVED",
-    "CREATOR_SESSION_REQUIRED",
-    "CREATOR_CONFIRMATION_FAILED",
-    "BRIDGE_STORAGE_UNAVAILABLE",
-    "FEEDBACK_RATE_LIMIT_MUTATION_MINUTE",
-    "FEEDBACK_RATE_LIMIT_POST_MINUTE",
-    "FEEDBACK_RATE_LIMIT_POST_HOUR",
-    "FEEDBACK_IDEMPOTENCY_MISMATCH",
-    "FEEDBACK_IDEMPOTENCY_STATE_INVALID",
-    "FEEDBACK_IDEMPOTENCY_COMPLETE_FAILED",
-    "FEEDBACK_MUTATION_NOT_ALLOWED",
-    "FEEDBACK_TITLE_LENGTH_INVALID",
-    "FEEDBACK_POST_BODY_LENGTH_INVALID",
-    "FEEDBACK_PRODUCT_INVALID",
-    "FEEDBACK_REQUEST_ID_INVALID",
-    "FEEDBACK_CUTOVER_STAGE_DENIED",
-    "FEEDBACK_CUTOVER_CANARY_OPERATION_DENIED",
-    "FEEDBACK_CUTOVER_CANARY_ACTOR_DENIED",
-    "FEEDBACK_MUTATION_RESPONSE_INVALID",
-    "FEEDBACK_MUTATION_FAILED",
-    "FEEDBACK_CREATE_FAILED"
+    "CREATOR_SESSION_REQUIRED"
+  ]);
+  const OPS = new Set([
+    "SESSION",
+    "CAPABILITIES",
+    "OWNER_CONTEXT",
+    "OWNER_QUEUE",
+    "CREATE_POST",
+    "UPDATE_POST",
+    "DELETE_POST",
+    "CREATE_COMMENT",
+    "UPDATE_COMMENT",
+    "DELETE_COMMENT",
+    "MODERATE_POST",
+    "MODERATE_COMMENT"
   ]);
   const STATES = Object.freeze({
     IDLE: "IDLE",
     WAIT_READY: "WAIT_READY",
     BOUND: "BOUND",
-    AUTHENTICATING: "AUTHENTICATING",
+    CONNECTED: "CONNECTED",
     AUTH_REQUIRED: "AUTH_REQUIRED",
     REBIND_EXPECTED: "REBIND_EXPECTED",
-    AUTHENTICATED: "AUTHENTICATED",
-    MUTATING: "MUTATING",
-    SUCCEEDED: "SUCCEEDED",
     CLOSED: "CLOSED",
     STALE: "STALE",
     FAILED: "FAILED"
   });
   const TERMINAL = new Set([
-    STATES.IDLE, STATES.SUCCEEDED, STATES.CLOSED, STATES.STALE, STATES.FAILED
+    STATES.IDLE, STATES.CLOSED, STATES.STALE, STATES.FAILED
   ]);
-  // Matches the @370 return-marker lifetime (MARKER_MAX_AGE_MS).
-  const SESSION_MAX_AGE_MS = 10 * 60 * 1000;
+  const CALLABLE = new Set([
+    STATES.BOUND, STATES.CONNECTED, STATES.AUTH_REQUIRED
+  ]);
+  // A popup that never reports READY expires with the @370 marker lifetime.
+  const WAIT_READY_MAX_MS = 10 * 60 * 1000;
+  const DEFAULT_CALL_TIMEOUT_MS = 60 * 1000;
 
   let session = null;
-  let snapshot = Object.freeze({
-    state: STATES.IDLE,
-    requestId: "",
-    safeCode: "",
-    success: null,
-    postId: ""
-  });
+  let snapshot = freeze(STATES.IDLE, null, "");
+
+  function freeze(state, target, safeCode) {
+    return Object.freeze({
+      state,
+      creator: Boolean(target && target.creator),
+      owner: Boolean(target && target.owner),
+      creatorTag: target && target.creator ? target.creatorTag : "",
+      creatorCode: target ? target.creatorCode : "",
+      safeCode
+    });
+  }
 
   function freshNonce() {
     const bytes = new Uint8Array(24);
@@ -93,35 +94,10 @@
     return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
   }
 
-  function codePointLength(value) {
-    return Array.from(String(value ?? "")).length;
-  }
-
-  function validIntent(intent) {
-    return Boolean(intent) &&
-      intent.action === ACTION &&
-      REQUEST_ID.test(String(intent.requestId || "")) &&
-      PRODUCTS.has(intent.product) &&
-      typeof intent.title === "string" &&
-      typeof intent.body === "string" &&
-      codePointLength(intent.title) >= 1 && codePointLength(intent.title) <= 120 &&
-      codePointLength(intent.body) >= 1 && codePointLength(intent.body) <= 5000;
-  }
-
-  function setState(target, state, safeCode = "", result = null) {
+  function setState(target, state, safeCode = "") {
     target.state = state;
     if (target !== session) return;
-    snapshot = Object.freeze({
-      state,
-      requestId: target.requestId,
-      safeCode,
-      success: result && typeof result.success === "boolean"
-        ? result.success
-        : null,
-      postId: result && typeof result.postId === "string"
-        ? result.postId
-        : ""
-    });
+    snapshot = freeze(state, target, safeCode);
     if (typeof target.onState === "function") {
       try {
         target.onState(snapshot);
@@ -131,34 +107,60 @@
     }
   }
 
-  // Ends trust in a session. The popup window is never inspected or closed:
-  // after cross-origin OAuth navigation it may sit in another browsing
-  // context group (COOP), and trust must not depend on it. A popup that is
-  // still visible keeps no trust once its session is ended here.
-  function teardown(target, state, safeCode = "", result = null) {
-    clearTimeout(target.expiryTimer);
-    target.bridgeSource = null;
-    setState(target, state, safeCode, result);
+  function failCalls(target, code) {
+    const calls = target.calls;
+    target.calls = new Map();
+    calls.forEach(call => {
+      clearTimeout(call.timer);
+      call.reject(code);
+    });
   }
 
-  function sendIntent(target) {
-    // Exact INTENT shape accepted by @370 validIntent(); nothing else is sent.
-    target.bridgeSource.postMessage({
-      type: TYPES.INTENT,
-      action: ACTION,
-      bridgeNonce: target.nonce,
-      requestId: target.requestId,
-      product: target.intent.product,
-      title: target.intent.title,
-      body: target.intent.body
-    }, BRIDGE_ORIGIN);
-    setState(target, STATES.AUTHENTICATING);
+  // Ends trust in a session. The popup window is never inspected or closed:
+  // after cross-origin OAuth navigation it may sit in another browsing
+  // context group (COOP), and trust must not depend on it.
+  function teardown(target, state, safeCode = "") {
+    clearTimeout(target.expiryTimer);
+    target.bridgeSource = null;
+    target.creator = false;
+    target.owner = false;
+    target.creatorTag = "";
+    failCalls(target, "FEEDBACK_BRIDGE_DISCONNECTED");
+    setState(target, state, safeCode);
   }
 
   function bind(target, source) {
+    clearTimeout(target.expiryTimer);
     target.bridgeSource = source;
     setState(target, STATES.BOUND);
-    sendIntent(target);
+  }
+
+  function applySession(target, data) {
+    target.creator = data.creator === true;
+    target.owner = data.owner === true;
+    target.creatorTag = target.creator && CREATOR_TAG.test(String(data.creatorTag || ""))
+      ? data.creatorTag
+      : "";
+    if (target.creator && !target.creatorTag) target.creator = false;
+    target.creatorCode = CREATOR_CODES.has(data.creatorCode) ? data.creatorCode : "";
+    setState(
+      target,
+      target.creator || target.owner ? STATES.CONNECTED : STATES.AUTH_REQUIRED
+    );
+  }
+
+  function applyResult(target, data) {
+    const call = target.calls.get(data.callId);
+    if (!call) return;
+    target.calls.delete(data.callId);
+    clearTimeout(call.timer);
+    if (data.ok === true) {
+      call.resolve(data.value);
+    } else {
+      call.reject(SAFE_CODE.test(String(data.safeCode || ""))
+        ? data.safeCode
+        : "FEEDBACK_MUTATION_TRANSPORT_UNKNOWN");
+    }
   }
 
   function onMessage(event) {
@@ -172,13 +174,8 @@
     if (data.bridgeNonce !== target.nonce || data.action !== ACTION) return;
     if (!event.source) return;
 
-    if (target.state === STATES.WAIT_READY) {
-      if (data.type === TYPES.READY) bind(target, event.source);
-      return;
-    }
-
-    if (target.state === STATES.REBIND_EXPECTED) {
-      // Armed only by a trusted NAVIGATING from the bound source.
+    if (target.state === STATES.WAIT_READY || target.state === STATES.REBIND_EXPECTED) {
+      // REBIND_EXPECTED is armed only by a trusted NAVIGATING from the bound source.
       if (data.type === TYPES.READY) bind(target, event.source);
       return;
     }
@@ -186,79 +183,60 @@
     if (event.source !== target.bridgeSource) {
       // Same origin + same nonce from an untrusted source: a manual reload or a
       // foreign frame. Never rebind; drop trust and require a fresh session.
-      if (data.type === TYPES.READY) {
-        teardown(target, STATES.STALE);
-      }
+      if (data.type === TYPES.READY) teardown(target, STATES.STALE);
       return;
     }
 
     if (data.type === TYPES.READY) return; // duplicate READY is a no-op
 
-    if (data.requestId !== target.requestId) return;
-
-    if (data.type === TYPES.AUTH_REQUIRED) {
-      setState(target, STATES.AUTH_REQUIRED);
+    if (data.type === TYPES.SESSION) {
+      applySession(target, data);
+    } else if (data.type === TYPES.AUTH_REQUIRED) {
+      if (!target.creator && !target.owner) setState(target, STATES.AUTH_REQUIRED);
     } else if (data.type === TYPES.NAVIGATING) {
+      failCalls(target, "FEEDBACK_BRIDGE_DISCONNECTED");
+      target.creator = false;
+      target.owner = false;
+      target.creatorTag = "";
       setState(target, STATES.REBIND_EXPECTED);
-    } else if (data.type === TYPES.AUTHENTICATED) {
-      if (data.creatorConfirmed !== true) return;
-      setState(target, STATES.MUTATING);
-    } else if (data.type === TYPES.CREATE_RESULT) {
-      if (data.success === true) {
-        const postId = typeof data.postId === "string" ? data.postId : "";
-        if (postId && !ENTITY_ID.test(postId)) return;
-        teardown(target, STATES.SUCCEEDED, "", {
-          success: true,
-          postId
-        });
-      } else if (data.success === false) {
-        const code = SAFE_CODES.has(data.safeCode)
-          ? data.safeCode
-          : "FEEDBACK_CREATE_FAILED";
-        teardown(target, STATES.FAILED, code, { success: false });
-      }
+    } else if (data.type === TYPES.RESULT) {
+      if (CALL_ID.test(String(data.callId || ""))) applyResult(target, data);
+    } else if (data.type === TYPES.CLOSED) {
+      teardown(target, STATES.CLOSED);
     } else if (data.type === TYPES.ERROR) {
-      const code = SAFE_CODES.has(data.safeCode)
+      const code = SAFE_CODE.test(String(data.safeCode || ""))
         ? data.safeCode
-        : "CREATOR_CONFIRMATION_FAILED";
-      // The popup keeps its login button visible; the session stays bound.
-      setState(target, STATES.AUTH_REQUIRED, code);
+        : "FEEDBACK_BRIDGE_ERROR";
+      setState(target, target.state, code);
     }
   }
 
-  function stop(reason = STATES.CLOSED) {
+  function disconnect(reason = STATES.CLOSED) {
     const target = session;
     if (!target) return;
-    if (!TERMINAL.has(target.state)) {
-      teardown(target, reason);
-    }
+    if (!TERMINAL.has(target.state)) teardown(target, reason);
   }
 
   // Must be called synchronously from a user action (popup blocker).
-  function start(intent, onState) {
-    stop(STATES.CLOSED);
+  function connect(onState) {
+    disconnect(STATES.CLOSED);
 
     const nonce = freshNonce();
     const target = {
       nonce,
-      requestId: intent && intent.requestId,
-      intent: intent && Object.freeze({
-        product: intent.product,
-        title: intent.title,
-        body: intent.body
-      }),
       onState,
       bridgeSource: null,
       expiryTimer: 0,
+      calls: new Map(),
+      creator: false,
+      owner: false,
+      creatorTag: "",
+      creatorCode: "",
       state: STATES.IDLE
     };
     session = target;
 
-    if (!validIntent(intent)) {
-      setState(target, STATES.FAILED, "INTENT_INVALID");
-      return snapshot;
-    }
-    if (!NONCE.test(nonce) || nonce === target.requestId) {
+    if (!NONCE.test(nonce)) {
       setState(target, STATES.FAILED, "NONCE_UNAVAILABLE");
       return snapshot;
     }
@@ -288,25 +266,61 @@
       return snapshot;
     }
 
-    // Physical popup closure is not tracked. A manually closed popup leaves
-    // the pending intent untouched; the user retries, which ends this session.
     setState(target, STATES.WAIT_READY);
-
     target.expiryTimer = setTimeout(() => {
-      if (!TERMINAL.has(target.state)) {
-        teardown(target, STATES.STALE);
-      }
-    }, SESSION_MAX_AGE_MS);
+      if (target.state === STATES.WAIT_READY) teardown(target, STATES.STALE);
+    }, WAIT_READY_MAX_MS);
 
     return snapshot;
+  }
+
+  function newCallId() {
+    const id = String(crypto.randomUUID()).toLowerCase();
+    if (!CALL_ID.test(id)) throw new Error("FEEDBACK_REQUEST_ID_INVALID");
+    return id;
+  }
+
+  // Resolves with the bridge's whitelisted value; rejects with a safe code
+  // string. A disconnect or timeout leaves the server outcome unknown.
+  function call(op, args, options = {}) {
+    const target = session;
+    if (!OPS.has(op)) return Promise.reject("FEEDBACK_MUTATION_NOT_ALLOWED");
+    if (!target || !CALLABLE.has(target.state) || !target.bridgeSource) {
+      return Promise.reject("FEEDBACK_BRIDGE_NOT_CONNECTED");
+    }
+    const callId = newCallId();
+    const timeoutMs = Number(options.timeoutMs) > 0
+      ? Number(options.timeoutMs)
+      : DEFAULT_CALL_TIMEOUT_MS;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!target.calls.delete(callId)) return;
+        reject("FEEDBACK_BRIDGE_TIMEOUT");
+        // A bridge that stops answering (e.g. popup closed without a CLOSED
+        // message) is no longer trusted; the user must reconnect explicitly.
+        if (target === session && !TERMINAL.has(target.state)) {
+          teardown(target, STATES.STALE, "FEEDBACK_BRIDGE_TIMEOUT");
+        }
+      }, timeoutMs);
+      target.calls.set(callId, { resolve, reject, timer });
+      target.bridgeSource.postMessage({
+        type: TYPES.CALL,
+        action: ACTION,
+        bridgeNonce: target.nonce,
+        callId,
+        op,
+        args: JSON.parse(JSON.stringify(args || {}))
+      }, BRIDGE_ORIGIN);
+    });
   }
 
   window.addEventListener("message", onMessage);
 
   window.TeacherToolsFeedbackAuthBridge = Object.freeze({
     STATES,
-    start,
-    stop,
+    connect,
+    disconnect,
+    call,
     snapshot: () => snapshot
   });
 })();
