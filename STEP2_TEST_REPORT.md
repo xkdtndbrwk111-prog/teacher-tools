@@ -1,5 +1,7 @@
 # STEP 2 Test Report
 
+> HISTORICAL / SUPERSEDED: STEP 2 snapshot. External URLs, Pages publishing and Feedback are now in Production; see `docs/project-b/FB_HUB_1_FINAL_REPORT.md` and `docs/DEPLOYMENT.md`.
+
 Date: 2026-10-05 (Asia/Seoul)
 
 ## Environment

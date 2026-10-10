@@ -1,4 +1,28 @@
-# FB-HUB-1 — Project B Feedback Board → Hub (TEST runbook)
+# FB-HUB-1 — Project B Feedback Board → Hub (runbook)
+
+## FINAL PRODUCTION STATUS — COMPLETE (current)
+
+Production promotion is **complete**. Current Source of Truth:
+[`FB_HUB_1_FINAL_REPORT.md`](FB_HUB_1_FINAL_REPORT.md).
+
+- Project B visible Feedback Board UI: **removed** (Project B is backend-only for Feedback).
+- Production bridge active: Project B Production
+  `AKfycby9iWJSQhcYZncoPAvxeWm_Mk9ZvbHXcVcy_UWo6Vktbrdvwcev7rEPM3Y2X0U-SLca`
+  (latest confirmed application version @377); Hub `feedback-auth-bridge.js` points to it.
+- Production Supabase `rhtyktjebiunkchddxvg` active for public v3 reads and relayed mutations.
+- Active-product contract (`20261007055920_feedback_product_active_contract.sql`) **applied**;
+  8 ACTIVE products; legacy product-less create rejects with `FEEDBACK_PRODUCT_INVALID`.
+- Final Production smoke: **PASS** (Creator/OWNER CRUD, idempotent replay, PIN/UNPIN,
+  post and comment HIDE/UNHIDE/DELETE, tombstones, `HANJA` product, disconnect/reconnect).
+- Hub Quiz Manager card (`mario-manager`) switched from TEST @374 to Production
+  (main `34f71e0a3f848c6c5c16f67fd657e4968b4c87bd`).
+
+Everything below is the **HISTORICAL TEST PROCEDURE** (@372/@373/@374 on the TEST
+deployment). It is kept as a record; do not re-run it against Production.
+
+---
+
+## HISTORICAL — TEST runbook
 
 Branch: `codex/feedback-projectb-to-hub`. Project B source is not vendored in
 this repository; the exact deltas against the immutable TEST @371 source are:
@@ -111,7 +135,10 @@ reduces the desktop grid to two columns and renames the labels to
 - @373: Project B board UI removed; Hub list/detail, Creator connect,
   comment create, OWNER hidden queue and refresh PASS against @373.
 
-## Production promotion delta (not performed)
+## HISTORICAL / SUPERSEDED — Production promotion delta (planning, 2026-10-07)
+
+> Superseded: this plan was carried out. Production promotion is complete; see
+> FINAL PRODUCTION STATUS above. The text below describes the pre-promotion state.
 
 Production Supabase `rhtyktjebiunkchddxvg` (read-only inspection 2026-10-07)
 has `fb_w2_product_production_promotion` (fixed product CHECK) but **no**

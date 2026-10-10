@@ -6,19 +6,21 @@
 
 | 도구 | 제품 상태 | 위치 | 초기 연결 상태 |
 |---|---|---|---|
-| 마리오 게임 | active | 외부 Project A | 링크 설정 필요 |
-| 마리오 매니저 | active | 외부 Project B | 링크 설정 필요 |
+| 마리오 게임 | active | 외부 Project A | Production URL 연결됨 |
+| 마리오 매니저 (퀴즈 매니저) | active | 외부 Project B | Production URL 연결됨 |
 | 자리배치 매니저 | active | `./seating/` | 사용 가능 |
 | 한자 학습 매니저 | active | `./hanja/` | 사용 가능 |
-| 피드백 | active | Hub 내장 게시판 (`#feedback`) | 사용 가능 |
+| 피드백 | active | Hub 내장 게시판 (`#feedback`) | Production 운영 중 |
 | Project C | development | 향후 외부 서비스 | 개발 중, 비활성 |
 | 1인1역 배치 매니저 | development | 향후 내부 앱 | 개발 중, 비활성 |
 
-Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다. 단일 Feedback 게시판은 Hub에 내장되어 있습니다(`feedback-board.js`, Project B 게시판 이식). 공개 읽기는 Supabase 공개 RPC, 작성·수정·삭제·OWNER 관리는 Project B 서버 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다.
+Hub는 GitHub Pages(`https://xkdtndbrwk111-prog.github.io/teacher-tools/`)에서 운영 중입니다. Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다.
+
+**Feedback (FB-HUB-1, Production 완료):** 눈에 보이는 Feedback 게시판은 Hub에만 있습니다(`feedback-board.js`, `feedback-board.css`). Project B의 Feedback 게시판 UI는 제거되었고, Project B는 Feedback에 대해 backend 전용입니다(Google Creator 인증, OWNER 권한, Hub bridge, mutation relay, idempotency, moderation, Supabase 특권 접근). 공개 읽기는 Production Supabase 공개 RPC(`feedback-transport.js`), 작성·수정·삭제·OWNER 관리는 Project B Production 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다. 현재 기준 문서: [FB_HUB_1_FINAL_REPORT](docs/project-b/FB_HUB_1_FINAL_REPORT.md).
 
 ## 외부 주소 설정
 
-`hub.js` 상단 `APPS` 배열에서 `mario-game`, `mario-manager`의 `url: null`을 확인된 HTTPS Production URL로 바꿉니다. 주소가 없으면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
+`hub.js` 상단 `APPS` 배열의 `mario-game`(Project A), `mario-manager`(Project B) `url`에는 확인된 HTTPS Production URL이 설정되어 있습니다. 주소가 null이면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
 
 ## 자리배치
 
@@ -32,7 +34,7 @@ Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·bac
 
 저장소의 부모 폴더에서 `python3 -m http.server 8000`을 실행하고 `http://localhost:8000/teacher-tools/`에 접속하면 Project Pages 경로를 재현할 수 있습니다.
 
-예정 공개 주소는 `https://<owner>.github.io/teacher-tools/`이며 자리배치는 그 아래 `seating/`에서 실행합니다. 공개 배포는 STEP 2 범위가 아닙니다. 이후 승인된 시점에 GitHub Pages의 branch 기반 `/ (root)` 게시를 사용합니다. 별도 Actions 파일이나 custom domain 설정은 추가하지 않았습니다. [배포 안내](docs/DEPLOYMENT.md)를 참고하세요.
+공개 주소는 `https://xkdtndbrwk111-prog.github.io/teacher-tools/`이며 자리배치는 그 아래 `seating/`에서 실행합니다. GitHub Pages의 branch 기반(main, `/ (root)`) 게시를 사용합니다. 별도 Actions 파일이나 custom domain 설정은 없습니다. [배포 안내](docs/DEPLOYMENT.md)를 참고하세요.
 
 Hub와 Seating은 하나의 Pages 게시 산출물을 공유합니다. 외부 서비스 A/B/C와는 배포가 독립적이며, 내부 앱들 사이의 완전한 독립 배포를 보장하지는 않습니다.
 
