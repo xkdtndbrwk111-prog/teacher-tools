@@ -1021,7 +1021,7 @@ function renderStudentInspector(){
   ensureStudentGlassesAssets();refreshStudentPreviewLayers();
   if(dockBody)requestAnimationFrame(()=>{dockBody.scrollTop=keepScroll});
   $("studentNameEdit").onchange=event=>{const next=event.target.value.trim().slice(0,30);if(!next){event.target.value=student.name;return}student.name=next;invalidateConfirmed("학생 이름이 바뀌어 기존 확정 배치를 해제했습니다.");saveState();renderStudentsInput();renderStudentStrip();renderLayout();renderStudentInspector()};
-  root.querySelectorAll("[data-g]").forEach(button=>button.onclick=()=>{student.gender=button.dataset.g;saveState();renderStudentStrip();renderStudentInspector()});
+  root.querySelectorAll("[data-g]").forEach(button=>button.onclick=()=>{student.gender=button.dataset.g;applyRuleGating();saveState();renderStudentStrip();renderStudentInspector()});
   root.querySelectorAll("[data-level]").forEach(button=>button.onclick=()=>{student.balanceLevel=button.dataset.level;saveState();renderStudentInspector()});
   $("clearLevel").onclick=()=>{student.balanceLevel="none";saveState();renderStudentInspector()};
   root.querySelectorAll("[data-apart-slot]").forEach(select=>select.onchange=event=>{const values=[...student.apartFrom];values[Number(select.dataset.apartSlot)]=event.target.value;student.apartFrom=[...new Set(values.filter(Boolean))].slice(0,3);saveState();renderStudentInspector()});
@@ -1147,6 +1147,15 @@ function bindRules(){
   $("ruleFixed").disabled=true;
   applyRuleGating();
 }
+function fixedGenderSeatConflicts(){
+  const seatById=new Map(usableCells().map(seat=>[seat.id,seat]));
+  return assignmentStudents().filter(student=>{
+    if(!student.fixedSeatId)return false;
+    const seat=seatById.get(student.fixedSeatId);
+    if(!seat||!["male","female"].includes(seat.type))return false;
+    return !compatible(student,seat,true);
+  });
+}
 function applyRuleGating(){
   const random=$("ruleRandom").checked;classState.rules.completeRandom=random;
   const groupAvailable=classState.groups.length>0;
@@ -1158,9 +1167,11 @@ function applyRuleGating(){
     latestHistory.groupsSnapshot.length
   );
   const fixedCount=assignmentStudents().filter(student=>student.fixedSeatId).length;
+  const genderConflicts=fixedGenderSeatConflicts();
+  const genderBlocked=genderConflicts.length>0;
 
   [
-    ["ruleGender","genderSeats",false],
+    ["ruleGender","genderSeats",genderBlocked],
     ["ruleApart","apartStudents",false],
     ["ruleGroupBalance","groupBalance",!groupAvailable],
     ["ruleBackRow","backRowNoRepeat",!historyAvailable],
@@ -1181,6 +1192,15 @@ function applyRuleGating(){
   fixedCard.classList.toggle("active",fixedCount>0);
 
   document.querySelector('[data-rule="completeRandom"]').classList.toggle("active",random);
+  const genderNotice=$("genderFixedNotice");
+  if(genderNotice){
+    genderNotice.classList.toggle("hidden",!genderBlocked);
+    if(genderBlocked){
+      const names=genderConflicts.slice(0,3).map(student=>student.name).join(", ");
+      const extra=genderConflicts.length>3?` 외 ${genderConflicts.length-3}명`:"";
+      genderNotice.textContent=`성별 지정석과 다른 학생이 고정되어 있어 ‘남녀 자리 구분’을 사용할 수 없습니다. (${names}${extra}) 고정석을 해제하거나 좌석/학생 성별을 맞춰 주세요.`;
+    }
+  }
   $("apartNotice").classList.toggle("hidden",!classState.rules.apartStudents);
   $("groupBalanceNotice").classList.toggle("hidden",groupAvailable||random);
   $("backRowNotice").classList.toggle("hidden",historyAvailable||random);
