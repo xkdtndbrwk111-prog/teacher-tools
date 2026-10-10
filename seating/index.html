@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>자리배치 매니저 V1.00</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=20261010-roster-unified1">
+  <link rel="stylesheet" href="styles.css?v=20261010-dock-gender1">
   <link rel="stylesheet" href="pe-v1.css?v=20261010-r1">
   <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
 </head>
@@ -139,6 +139,7 @@
                 <input id="ruleRecentGroupmates" type="checkbox" disabled>
               </label>
             </div>
+            <div id="genderFixedNotice" class="notice hidden">성별 지정석과 다른 학생이 고정되어 있어 ‘남녀 자리 구분’을 사용할 수 없습니다.</div>
             <div id="groupBalanceNotice" class="notice hidden">먼저 ‘좌석·모둠’에서 모둠을 만들어 주세요.</div>
             <div id="apartNotice" class="notice hidden">사용 가능한 좌석의 왼쪽 2열·오른쪽 2열을 기준으로 회피합니다. 기준 학생이 왼쪽 2열이면 회피 대상은 오른쪽 2열, 오른쪽이면 왼쪽 2열을 우선합니다. 회피 관계 학생끼리는 같은 행의 붙어 있는 짝꿍 좌석에 절대 배치하지 않습니다.</div>
             <div id="backRowNotice" class="notice hidden">직전 확정 히스토리가 있어야 맨뒷자리 연속 배정을 비교할 수 있습니다.</div>
@@ -319,7 +320,7 @@
   </main>
 </section>
 
-  <script src="app.js?v=20261010-roster-unified1"></script>
+  <script src="app.js?v=20261010-dock-gender1"></script>
   <script src="pe-v1.js?v=20261010-r2"></script>
   <script src="classroom-trait-balance-v1.js?v=20261010-r1"></script>
   <script src="backup-unified-v2.js?v=20261010-r1"></script>
