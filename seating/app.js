@@ -1692,24 +1692,25 @@ function backRowRepeatScore(assignments){
   return score;
 }
 function buildAssignmentCandidate(blankReference=[]){
+  const participants=assignmentStudents();
   const seats=usableCells(),seatMap=new Map(seats.map(s=>[s.id,s])),occupied=new Set(),placed=new Set(),assignments=[];
   const useGender=!classState.rules.completeRandom&&classState.rules.genderSeats;
   const useApart=!classState.rules.completeRandom&&classState.rules.apartStudents;
   const assignedSeatByStudent=new Map();
   const reservedEmptySeatIds=chooseReservedEmptySeats(blankReference,useGender);
 
-  const expectedSurplus=Math.max(0,seats.length-classState.students.length);
+  const expectedSurplus=Math.max(0,seats.length-participants.length);
   if(reservedEmptySeatIds.size!==expectedSurplus){
-    return{valid:false,hardFail:false,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:"빈 좌석 예약을 완성할 수 없어 다른 후보를 찾습니다."};
+    return{valid:false,hardFail:false,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:"빈 좌석 예약을 완성할 수 없어 다른 후보를 찾습니다."};
   }
 
-  for(const s of classState.students){
+  for(const s of participants){
     if(!s.fixedSeatId)continue;
     const seat=seatMap.get(s.fixedSeatId);
-    if(!seat)return{valid:false,hardFail:true,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석이 현재 레이아웃에서 사용할 수 없습니다.`};
-    if(reservedEmptySeatIds.has(seat.id))return{valid:false,hardFail:false,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:"고정석과 빈 좌석 예약이 겹쳐 다른 빈 좌석 후보를 찾습니다."};
-    if(occupied.has(seat.id))return{valid:false,hardFail:true,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석이 다른 학생의 고정석과 충돌합니다.`};
-    if(!compatible(s,seat,useGender))return{valid:false,hardFail:true,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석과 현재 남녀 좌석 조건이 충돌합니다.`};
+    if(!seat)return{valid:false,hardFail:true,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석이 현재 레이아웃에서 사용할 수 없습니다.`};
+    if(reservedEmptySeatIds.has(seat.id))return{valid:false,hardFail:false,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:"고정석과 빈 좌석 예약이 겹쳐 다른 빈 좌석 후보를 찾습니다."};
+    if(occupied.has(seat.id))return{valid:false,hardFail:true,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석이 다른 학생의 고정석과 충돌합니다.`};
+    if(!compatible(s,seat,useGender))return{valid:false,hardFail:true,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:`${s.name} 학생의 고정석과 현재 남녀 좌석 조건이 충돌합니다.`};
     assignments.push({studentId:s.id,seatId:seat.id});
     occupied.add(seat.id);placed.add(s.id);assignedSeatByStudent.set(s.id,seat);
   }
@@ -1722,14 +1723,14 @@ function buildAssignmentCandidate(blankReference=[]){
         valid:false,
         hardFail:true,
         assignments:[],
-        remaining:[...classState.students],
+        remaining:[...participants],
         reservedEmptySeatIds,
         reason:`${studentNameById(a)} 학생과 ${studentNameById(b)} 학생의 고정석이 붙어 있는 짝꿍 자리라 회피 규칙을 지킬 수 없습니다.`
       };
     }
   }
 
-  let remaining=shuffled(classState.students.filter(s=>!placed.has(s.id)));
+  let remaining=shuffled(participants.filter(s=>!placed.has(s.id)));
 
   if(useApart){
     const involved=apartInvolvedIds(),geometry=seatGeometry();
@@ -1804,12 +1805,12 @@ function buildAssignmentCandidate(blankReference=[]){
     occupied.add(seat.id);placed.add(student.id);assignedSeatByStudent.set(student.id,seat);
   }
 
-  if(assignments.length!==classState.students.length){
-    return{valid:false,hardFail:false,assignments:[],remaining:classState.students.filter(s=>!placed.has(s.id)),reservedEmptySeatIds,reason:"학생 전원 배치 검증에 실패해 다른 후보를 찾습니다."};
+  if(assignments.length!==participants.length){
+    return{valid:false,hardFail:false,assignments:[],remaining:participants.filter(s=>!placed.has(s.id)),reservedEmptySeatIds,reason:"배치 대상 학생 전원 배치 검증에 실패해 다른 후보를 찾습니다."};
   }
 
   if(assignments.some(a=>reservedEmptySeatIds.has(a.seatId))){
-    return{valid:false,hardFail:false,assignments:[],remaining:[...classState.students],reservedEmptySeatIds,reason:"예약 빈 좌석 침범이 감지되어 다른 후보를 찾습니다."};
+    return{valid:false,hardFail:false,assignments:[],remaining:[...participants],reservedEmptySeatIds,reason:"예약 빈 좌석 침범이 감지되어 다른 후보를 찾습니다."};
   }
 
   if(useApart){
@@ -1819,7 +1820,7 @@ function buildAssignmentCandidate(blankReference=[]){
         valid:false,
         hardFail:false,
         assignments:[],
-        remaining:[...classState.students],
+        remaining:[...participants],
         reservedEmptySeatIds,
         reason:"붙어 있는 짝꿍 좌석에 회피 관계 학생이 배치되어 후보를 폐기합니다."
       };
@@ -1830,9 +1831,10 @@ function buildAssignmentCandidate(blankReference=[]){
 }
 function groupBalanceScore(assignments){
   if(!classState.groups.length)return 0;
-  const byStudent=new Map(classState.students.map(s=>[s.id,s])),bySeat=new Map(assignments.map(a=>[a.seatId,a.studentId]));
+  const participants=assignmentStudents();
+  const byStudent=new Map(participants.map(s=>[s.id,s])),bySeat=new Map(assignments.map(a=>[a.seatId,a.studentId]));
   const overall={A:0,B:0,C:0};let overallKnown=0;
-  classState.students.forEach(s=>{if(["A","B","C"].includes(s.balanceLevel)){overall[s.balanceLevel]++;overallKnown++}});
+  participants.forEach(s=>{if(["A","B","C"].includes(s.balanceLevel)){overall[s.balanceLevel]++;overallKnown++}});
   if(!overallKnown)return 0;
   const ratio={A:overall.A/overallKnown,B:overall.B/overallKnown,C:overall.C/overallKnown};
   let score=0;
