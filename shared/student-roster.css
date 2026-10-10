@@ -1,5 +1,8 @@
 /* Shared bottom student roster UI for Seating + Hanja managers. */
 .student-strip{
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
   padding:9px 12px;
 }
 .student-strip-head{
