@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261007-rosterdrag1">
+<link rel="stylesheet" href="styles.css?v=20261010-roster-unified1">
+<link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r1">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -128,6 +129,7 @@
     <section class="student-strip">
       <div class="student-strip-head">
         <div><strong>이번 수업 학생</strong><span id="rosterSummary"></span></div>
+        <span class="strip-help">학생 카드 우클릭: 이번 수업에서 제외/다시 포함 · 테두리 색: 남/여/미지정</span>
         <div class="strip-actions"><button id="includeAllStudents" class="strip-action" type="button">전체 참가</button><button id="excludeAllStudents" class="strip-action" type="button">전체 해제</button><a class="strip-action strip-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-action" type="button">명단 새로 읽기</button></div>
       </div>
       <div id="studentCards" class="student-cards"></div>
