@@ -6,11 +6,12 @@
 // - authenticated reads + mutations: Project B session bridge.
 // The browser never supplies actor/author/owner identity or any secret.
 (() => {
-  // TEST qualification: Hub and Project B read the same TEST dataset.
+  // Production: public reads use the Production dataset; authenticated
+  // operations remain server-authoritative through Project B.
   const CONFIG = Object.freeze({
-    environment: "TEST",
-    supabaseUrl: "https://gjvmnzldisachojkdmid.supabase.co",
-    publishableKey: "sb_publishable_DoNpsinAl8cUUOb7pKE37A_Efsu6Xk9",
+    environment: "PRODUCTION",
+    supabaseUrl: "https://rhtyktjebiunkchddxvg.supabase.co",
+    publishableKey: "sb_publishable_SD1BpBEMqvj3Qv34ymUNFw_sqrgLwao",
     requestTimeoutMs: 15000
   });
 

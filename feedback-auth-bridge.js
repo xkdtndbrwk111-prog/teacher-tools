@@ -7,9 +7,9 @@
 // Hub receives only lifecycle messages, availability flags for its UI, an
 // opaque Creator fingerprint, and field-whitelisted call results.
 (() => {
-  // TEST deployment (same deployment id across @370-@372).
+  // Production deployment. The deployment ID remains stable across versions.
   const BRIDGE_EXEC_URL =
-    "https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec";
+    "https://script.google.com/macros/s/AKfycby9iWJSQhcYZncoPAvxeWm_Mk9ZvbHXcVcy_UWo6Vktbrdvwcev7rEPM3Y2X0U-SLca/exec";
   // Exact Project B user-frame origin. Compared with === only.
   const BRIDGE_ORIGIN =
     "https://n-tmrid42qu3svum6iclzmekeicegv7qtnxbt4hly-0lu-script.googleusercontent.com";
