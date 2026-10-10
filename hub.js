@@ -38,7 +38,7 @@ const APPS = [
     description: "마리오 게임에서 사용할 문제와 카트리지를 관리",
     type: "external",
     status: "active",
-    url: "https://script.google.com/macros/s/AKfycbx4DE5eCrJ4kc_vuyOnQew7g7M39SktECR2KekMuriDsKa8ujRpVPMH-tQHiOQUCvc/exec",
+    url: "https://script.google.com/macros/s/AKfycby9iWJSQhcYZncoPAvxeWm_Mk9ZvbHXcVcy_UWo6Vktbrdvwcev7rEPM3Y2X0U-SLca/exec",
     icon: "folder",
     color: "amber",
     media: {
