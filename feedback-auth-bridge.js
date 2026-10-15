@@ -9,7 +9,7 @@
 (() => {
   // Production deployment. The deployment ID remains stable across versions.
   const BRIDGE_EXEC_URL =
-    "https://script.google.com/macros/s/AKfycby9iWJSQhcYZncoPAvxeWm_Mk9ZvbHXcVcy_UWo6Vktbrdvwcev7rEPM3Y2X0U-SLca/exec";
+    "https://script.google.com/macros/s/AKfycbzwfZwv7JLEw0_CxeIyvozy9QaqmUXwBOCsCSWQin_SITmVJzx618p9kZtCOjxkD4X-/exec";
   // Exact Project B user-frame origin. Compared with === only.
   const BRIDGE_ORIGIN =
     "https://n-tmrid42qu3svum6iclzmekeicegv7qtnxbt4hly-0lu-script.googleusercontent.com";
