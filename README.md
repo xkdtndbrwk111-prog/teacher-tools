@@ -10,13 +10,13 @@
 | 마리오 매니저 (퀴즈 매니저) | active | 외부 Project B | Production URL 연결됨 |
 | 자리배치 매니저 | active | `./seating/` | 사용 가능 |
 | 한자 학습 매니저 | active | `./hanja/` | 사용 가능 |
-| 피드백 | active | Hub 내장 게시판 (`#feedback`) | Production 운영 중 |
+| 피드백 | hidden | Hub 내장 게시판 (`#feedback`) | 화면 숨김·자동 연결 중지, 소스 보존 |
 | Project C | development | 향후 외부 서비스 | 개발 중, 비활성 |
 | 1인1역 배치 매니저 | development | 향후 내부 앱 | 개발 중, 비활성 |
 
 Hub는 GitHub Pages(`https://xkdtndbrwk111-prog.github.io/teacher-tools/`)에서 운영 중입니다. Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다.
 
-**Feedback (FB-HUB-1, Production 완료):** 눈에 보이는 Feedback 게시판은 Hub에만 있습니다(`feedback-board.js`, `feedback-board.css`). Project B의 Feedback 게시판 UI는 제거되었고, Project B는 Feedback에 대해 backend 전용입니다(Google Creator 인증, OWNER 권한, Hub bridge, mutation relay, idempotency, moderation, Supabase 특권 접근). 공개 읽기는 Production Supabase 공개 RPC(`feedback-transport.js`), 작성·수정·삭제·OWNER 관리는 Project B Production 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다. 현재 기준 문서: [FB_HUB_1_FINAL_REPORT](docs/project-b/FB_HUB_1_FINAL_REPORT.md).
+**Feedback (FB-HUB-1, 구현 보존 / 화면 숨김 2026-10-15):** Hub의 Feedback 게시판은 현재 `index.html`에서 숨겨져 있으며, 게시판용 CSS/JS의 자동 로딩을 중지했습니다. `feedback-board.js`, `feedback-board.css`, `feedback-auth-bridge.js`, `feedback-transport.js` 및 HTML 마크업은 보존되어 있습니다. 누적 실행 횟수는 게시판 밖에서 계속 표시합니다. (게시판을 다시 켜려면 `index.html`의 `#feedback` 숨김 속성과 주석 처리된 로딩 태그를 복구하세요.) Project B의 Feedback 게시판 UI는 제거되었고, Project B는 Feedback에 대해 backend 전용입니다(Google Creator 인증, OWNER 권한, Hub bridge, mutation relay, idempotency, moderation, Supabase 특권 접근). 공개 읽기는 Production Supabase 공개 RPC(`feedback-transport.js`), 작성·수정·삭제·OWNER 관리는 Project B Production 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다. 현재 기준 문서: [FB_HUB_1_FINAL_REPORT](docs/project-b/FB_HUB_1_FINAL_REPORT.md).
 
 ## 외부 주소 설정
 
