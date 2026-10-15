@@ -15,12 +15,17 @@
     type="image/svg+xml"
   >
   <link rel="stylesheet" href="./hub.css?v=step3a-ui2">
+  <!-- Feedback Board disabled on Hub (2026-10-15). Source files are preserved.
+       To restore, re-enable the stylesheet and scripts, and remove hidden from #feedback.
   <link rel="stylesheet" href="./feedback-board.css?v=fb-hub-1">
+  -->
 
   <script src="./hub.js?v=project-b-url-20261015" defer></script>
+  <!-- Feedback Board paused: no auth popup initialization or Supabase board reads.
   <script src="./feedback-auth-bridge.js?v=project-b-url-20261015" defer></script>
   <script src="./feedback-transport.js?v=fb-hub-1" defer></script>
   <script src="./feedback-board.js?v=fb-hub-1" defer></script>
+  -->
   <script src="./usage-stats.js?v=usage-1" data-usage-display="usageStatsLine" defer></script>
 </head>
 
@@ -73,6 +78,8 @@
         id="feedback"
         class="feedback-section"
         aria-labelledby="feedbackBoardTitle"
+        hidden
+        style="display: none !important"
       >
 <!-- Ported from Project B TEST @371 Index.html #feedbackBoardModal.
      HUB additions: session bar, 문의 대상 field, thread product line;
@@ -363,8 +370,9 @@
   </div>
 
 </div>
-        <p id="usageStatsLine" class="usage-stats-line" hidden></p>
       </section>
+
+      <p id="usageStatsLine" class="usage-stats-line" hidden></p>
 
     </main>
 
