@@ -1,0 +1,37 @@
+name: One-time HOJA preview asset import
+on:
+  push:
+    paths:
+      - .github/workflows/hoja-preview-import.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import-hoja-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout site
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Import supplied HOJA trailer and create lightweight card assets
+        env:
+          VIDEO_SOURCE: "https://at.adobe.com/m0eSwWd9UvVfBIsA"
+        run: |
+          set -euo pipefail
+          command -v ffmpeg
+          mkdir -p assets/hub/cards
+          curl --fail --location --show-error --silent --retry 2 --max-time 90 "$VIDEO_SOURCE" --output /tmp/hoja-source.mov
+          test "$(wc -c </tmp/hoja-source.mov)" -gt 50000
+          ffprobe -v error -show_entries stream=codec_name,width,height -of csv=p=0 /tmp/hoja-source.mov
+          ffmpeg -hide_banner -loglevel error -i /tmp/hoja-source.mov -map 0:v:0 -an -vf 'fps=12,scale=480:-2:flags=lanczos' -c:v libx264 -preset slow -crf 27 -pix_fmt yuv420p -movflags +faststart -y assets/hub/cards/hoja-game-hover-preview-v1.mp4
+          ffmpeg -hide_banner -loglevel error -ss 0.3 -i /tmp/hoja-source.mov -vf 'scale=480:-2' -frames:v 1 -c:v libwebp -quality 80 -y assets/hub/cards/hoja-game-hover-poster-v1.webp
+          test "$(wc -c <assets/hub/cards/hoja-game-hover-preview-v1.mp4)" -gt 10000
+          test "$(wc -c <assets/hub/cards/hoja-game-hover-poster-v1.webp)" -gt 1000
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/hub/cards/hoja-game-hover-preview-v1.mp4 assets/hub/cards/hoja-game-hover-poster-v1.webp
+          git commit -m "assets(hub): add official HOJA preview trailer and poster"
+          git push origin HEAD:main
