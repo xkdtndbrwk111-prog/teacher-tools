@@ -18,8 +18,8 @@
 const APPS = [
   {
     id: "mario-game",
-    title: "마리오 게임",
-    description: "수업 문제를 게임으로 진행하는 퀴즈 게임",
+    title: "호자 퀴즈 2.0",
+    description: "달리고 점프하며 퀴즈를 푸는 횡스크롤 아케이드 게임",
     type: "external",
     status: "active",
     url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
@@ -35,7 +35,7 @@ const APPS = [
   {
     id: "mario-manager",
     title: "퀴즈 매니저",
-    description: "마리오 게임에서 사용할 문제와 카트리지를 관리",
+    description: "개인 카트리지를 만들고 문제를 수정하는 퀴즈 매니저",
     type: "external",
     status: "active",
     url: "https://script.google.com/macros/s/AKfycbzwfZwv7JLEw0_CxeIyvozy9QaqmUXwBOCsCSWQin_SITmVJzx618p9kZtCOjxkD4X-/exec",
@@ -319,9 +319,9 @@ function ensureQrModal() {
       </button>
 
       <p class="qr-modal-kicker">STUDENT JOIN</p>
-      <h2 id="mario-qr-title">마리오 게임 학생 접속</h2>
+      <h2 id="mario-qr-title">호자 퀴즈 2.0 학생 접속</h2>
       <p class="qr-modal-guide">
-        학생들이 카메라로 QR 코드를 스캔하면 바로 마리오 게임으로 이동합니다.
+        학생들이 카메라로 QR 코드를 스캔하면 바로 호자 퀴즈 2.0으로 이동합니다.
       </p>
 
       <a
@@ -329,18 +329,18 @@ function ensureQrModal() {
         data-qr-link
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="마리오 게임 열기"
+        aria-label="호자 퀴즈 2.0 열기"
       >
         <img
           src="./assets/hub/cards/mario-game-join-qr-v1.svg"
-          alt="마리오 게임 학생 접속 QR 코드"
+          alt="호자 퀴즈 2.0 학생 접속 QR 코드"
           width="560"
           height="560"
         >
       </a>
 
       <p class="qr-modal-note">
-        QR 코드를 클릭해도 마리오 게임으로 이동합니다.
+        QR 코드를 클릭해도 호자 퀴즈 2.0으로 이동합니다.
       </p>
     </section>
   `;
