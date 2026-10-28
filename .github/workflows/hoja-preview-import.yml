@@ -21,7 +21,10 @@ jobs:
           VIDEO_SOURCE: "https://at.adobe.com/m0eSwWd9UvVfBIsA"
         run: |
           set -euo pipefail
-          command -v ffmpeg
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
           mkdir -p assets/hub/cards
           curl --fail --location --show-error --silent --retry 2 --max-time 90 "$VIDEO_SOURCE" --output /tmp/hoja-source.mov
           test "$(wc -c </tmp/hoja-source.mov)" -gt 50000
