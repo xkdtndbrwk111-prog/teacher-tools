@@ -78,6 +78,20 @@ const APPS = [
   },
 
   {
+    id: "hoja-minigames",
+    title: "호자 미니게임",
+    description: "전자칠판과 태블릿에서 터치로 함께 즐기는 미니게임 10종",
+    type: "external",
+    status: "active",
+    url: "https://xkdtndbrwk111-prog.github.io/hoja-minigames/",
+    icon: "game",
+    color: "coral",
+    media: {
+      poster: "./assets/hub/cards/hoja-minigames-poster-v1.webp"
+    }
+  },
+
+  {
     id: "project-c",
     title: "Project C",
     description: "새로운 실시간 수업 게임",
@@ -212,8 +226,7 @@ function createMedia(app, badgeText, hoverTarget) {
 
   if (
     app.media &&
-    typeof app.media.poster === "string" &&
-    typeof app.media.video === "string"
+    typeof app.media.poster === "string"
   ) {
     media.classList.add("has-preview");
 
@@ -251,6 +264,7 @@ function createMedia(app, badgeText, hoverTarget) {
     );
 
     if (
+      typeof app.media.video === "string" &&
       canHover.matches &&
       !reduceMotion.matches &&
       hoverTarget instanceof HTMLElement

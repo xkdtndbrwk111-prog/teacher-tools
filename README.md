@@ -10,6 +10,7 @@
 | 마리오 매니저 (퀴즈 매니저) | active | 외부 Project B | Production URL 연결됨 |
 | 자리배치 매니저 | active | `./seating/` | 사용 가능 |
 | 한자 학습 매니저 | active | `./hanja/` | 사용 가능 |
+| 호자 미니게임 | active | 외부 `hoja-minigames` Pages | 사용 가능 |
 | 피드백 | hidden | Hub 내장 게시판 (`#feedback`) | 화면 숨김·자동 연결 중지, 소스 보존 |
 | Project C | development | 향후 외부 서비스 | 개발 중, 비활성 |
 | 1인1역 배치 매니저 | development | 향후 내부 앱 | 개발 중, 비활성 |
