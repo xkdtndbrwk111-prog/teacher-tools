@@ -14,13 +14,13 @@
     href="./assets/hub/favicon.svg"
     type="image/svg+xml"
   >
-  <link rel="stylesheet" href="./hub.css?v=linked-tools-1">
+  <link rel="stylesheet" href="./hub.css?v=linked-tools-2">
   <!-- Feedback Board disabled on Hub (2026-10-15). Source files are preserved.
        To restore, re-enable the stylesheet and scripts, and remove hidden from #feedback.
   <link rel="stylesheet" href="./feedback-board.css?v=fb-hub-1">
   -->
 
-  <script src="./hub.js?v=linked-tools-1" defer></script>
+  <script src="./hub.js?v=linked-tools-2" defer></script>
   <!-- Feedback Board paused: no auth popup initialization or Supabase board reads.
   <script src="./feedback-auth-bridge.js?v=project-b-url-20261015" defer></script>
   <script src="./feedback-transport.js?v=fb-hub-1" defer></script>
@@ -58,41 +58,18 @@
         tabindex="-1"
       >
 
-        <section class="linked-tools" aria-labelledby="linkedToolsTitle">
-          <h2 id="linkedToolsTitle">함께 쓰면 이어지는 도구</h2>
-          <svg class="linked-venn linked-venn-wide" viewBox="-8 0 876 400" role="img" aria-label="교실 매니저는 한자 학습 매니저와 학생 명단을, 교실 대시보드와 자리표와 명단과 코인 지급을 나눕니다. 한자 학습 매니저와 교실 대시보드는 직접 연결되지 않습니다.">
-            <circle class="venn-hanja" cx="180" cy="200" r="185"/>
-            <circle class="venn-class" cx="430" cy="200" r="185"/>
-            <circle class="venn-board" cx="680" cy="200" r="185"/>
-            <text class="venn-name" x="130" y="192">한자 학습</text>
-            <text class="venn-name" x="130" y="222">매니저</text>
-            <text class="venn-name" x="430" y="172">교실 매니저</text>
-            <text class="venn-note" x="430" y="204">명단은</text>
-            <text class="venn-note" x="430" y="226">여기서 관리</text>
-            <text class="venn-name" x="730" y="192">교실</text>
-            <text class="venn-name" x="730" y="222">대시보드</text>
-            <text class="venn-link" x="305" y="206">학생 명단</text>
-            <text class="venn-link" x="555" y="184">자리표</text>
-            <text class="venn-link" x="555" y="208">학생 명단</text>
-            <text class="venn-link" x="555" y="232">코인 지급</text>
-          </svg>
-          <svg class="linked-venn linked-venn-tall" viewBox="0 0 340 680" role="img" aria-label="교실 매니저는 한자 학습 매니저와 학생 명단을, 교실 대시보드와 자리표와 명단과 코인 지급을 나눕니다. 한자 학습 매니저와 교실 대시보드는 직접 연결되지 않습니다.">
-            <circle class="venn-hanja" cx="170" cy="150" r="145"/>
-            <circle class="venn-class" cx="170" cy="340" r="145"/>
-            <circle class="venn-board" cx="170" cy="530" r="145"/>
-            <text class="venn-name" x="170" y="104">한자 학습 매니저</text>
-            <text class="venn-link" x="170" y="251">학생 명단</text>
-            <text class="venn-name" x="170" y="336">교실 매니저</text>
-            <text class="venn-note" x="170" y="362">명단은 여기서 관리</text>
-            <text class="venn-link" x="170" y="429">자리표 · 학생 명단</text>
-            <text class="venn-link" x="170" y="453">코인 지급</text>
-            <text class="venn-name" x="170" y="586">교실 대시보드</text>
-          </svg>
-          <div
-            id="linked-grid"
-            class="app-grid"
-          ></div>
-        </section>
+        <div
+          id="linked-grid"
+          class="linked-grid"
+          aria-label="서로 연결되는 도구"
+        >
+          <div class="link-outline link-outline-hanja" aria-hidden="true">
+            <span>학생 명단으로 연결</span>
+          </div>
+          <div class="link-outline link-outline-board" aria-hidden="true">
+            <span>자리표 · 명단 · 코인으로 연결</span>
+          </div>
+        </div>
 
         <div
           id="app-grid"

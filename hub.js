@@ -577,7 +577,6 @@ function renderApps() {
   }
 
   grid.replaceChildren();
-  linkedGrid.replaceChildren();
 
   APPS.forEach(app => {
     (app.linked ? linkedGrid : grid).append(
