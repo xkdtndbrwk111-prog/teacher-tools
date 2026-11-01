@@ -2148,7 +2148,9 @@ function generateAssignment({allowSurplus=false}={}){
   );
 
   const maxTargets=Math.max(0,...apartRelationSets().map(rel=>rel.targetIds.length));
-  const attempts=optimizeApart?(maxTargets>=2?900:600):(optimizeGroup||optimizeBack?360:1);
+  // Boy and girl seats can leave the random empty seats unworkable, so one try is not enough.
+  const useGenderSeats=!classState.rules.completeRandom&&classState.rules.genderSeats;
+  const attempts=optimizeApart?(maxTargets>=2?900:600):(optimizeGroup||optimizeBack?360:(useGenderSeats?60:1));
 
   const sideReference=previewAssignments.length?previewAssignments:classState.assignments;
   const blankReference=sideReference;
