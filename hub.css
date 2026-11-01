@@ -232,7 +232,7 @@ h1 {
 .linked-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 40px;
+  gap: 48px 40px;
 
   margin: 18px 0 44px;
 }
@@ -253,6 +253,21 @@ h1 {
 
 .linked-grid [data-app-id="dashboard"] {
   grid-column: 3;
+}
+
+.linked-grid [data-app-id="mario-game"] {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.linked-grid [data-app-id="mario-manager"] {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.linked-grid [data-app-id="hoja-minigames"] {
+  grid-column: 3;
+  grid-row: 2;
 }
 
 .link-outline {
@@ -301,6 +316,34 @@ h1 {
 
 .link-outline-board span {
   right: 18px;
+}
+
+.link-outline-mini {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  margin: -12px -6px -12px;
+
+  border-color: #b5533c;
+  color: #a3472e;
+}
+
+.link-outline-mini span {
+  top: auto;
+  right: 18px;
+  bottom: -12px;
+}
+
+.link-outline-quiz {
+  grid-column: 1 / 3;
+  grid-row: 2;
+  margin: -12px;
+
+  border-color: #7a5bb0;
+  color: #5f4391;
+}
+
+.link-outline-quiz span {
+  left: 18px;
 }
 
 /* =========================================================
@@ -907,6 +950,7 @@ button:focus-visible {
 @media (max-width: 720px) {
   .linked-grid {
     grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
   }
 
   .linked-grid .app-card,
@@ -926,6 +970,18 @@ button:focus-visible {
     grid-row: 3;
   }
 
+  .linked-grid [data-app-id="hoja-minigames"] {
+    grid-row: 4;
+  }
+
+  .linked-grid [data-app-id="mario-game"] {
+    grid-row: 5;
+  }
+
+  .linked-grid [data-app-id="mario-manager"] {
+    grid-row: 6;
+  }
+
   .link-outline-hanja {
     grid-row: 1 / 3;
     margin: -12px;
@@ -934,6 +990,15 @@ button:focus-visible {
   .link-outline-board {
     grid-row: 2 / 4;
     margin: -22px -7px -12px;
+  }
+
+  .link-outline-mini {
+    grid-row: 3 / 5;
+    margin: -12px;
+  }
+
+  .link-outline-quiz {
+    grid-row: 5 / 7;
   }
 }
 

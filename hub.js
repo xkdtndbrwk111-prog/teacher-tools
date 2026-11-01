@@ -17,37 +17,6 @@
 
 const APPS = [
   {
-    id: "mario-game",
-    title: "호자 퀴즈 2.0",
-    description: "달리고 점프하며 퀴즈를 푸는 횡스크롤 아케이드 게임",
-    type: "external",
-    status: "active",
-    url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
-    launchMode: "qr",
-    icon: "game",
-    color: "coral",
-    media: {
-      poster: "./assets/hub/cards/hoja-game-hover-poster-v1.webp",
-      video: "./assets/hub/cards/hoja-game-hover-preview-v1.mp4"
-    }
-  },
-
-  {
-    id: "mario-manager",
-    title: "퀴즈 매니저",
-    description: "개인 카트리지를 만들고 문제를 수정하는 퀴즈 매니저",
-    type: "external",
-    status: "active",
-    url: "https://script.google.com/macros/s/AKfycbzwfZwv7JLEw0_CxeIyvozy9QaqmUXwBOCsCSWQin_SITmVJzx618p9kZtCOjxkD4X-/exec",
-    icon: "folder",
-    color: "amber",
-    media: {
-      poster: "./assets/hub/cards/mario-manager-hover-poster-v1.webp",
-      video: "./assets/hub/cards/mario-manager-hover-preview-v1.mp4"
-    }
-  },
-
-  {
     id: "hanja",
     title: "한자 학습 매니저",
     description: "우리 반 학생들과 한자·한자어 문제를 풀어요",
@@ -99,11 +68,45 @@ const APPS = [
   },
 
   {
+    id: "mario-game",
+    title: "호자 퀴즈 2.0",
+    description: "달리고 점프하며 퀴즈를 푸는 횡스크롤 아케이드 게임",
+    type: "external",
+    status: "active",
+    linked: true,
+    url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
+    launchMode: "qr",
+    icon: "game",
+    color: "coral",
+    media: {
+      poster: "./assets/hub/cards/hoja-game-hover-poster-v1.webp",
+      video: "./assets/hub/cards/hoja-game-hover-preview-v1.mp4"
+    }
+  },
+
+  {
+    id: "mario-manager",
+    title: "퀴즈 매니저",
+    description: "개인 카트리지를 만들고 문제를 수정하는 퀴즈 매니저",
+    type: "external",
+    status: "active",
+    linked: true,
+    url: "https://script.google.com/macros/s/AKfycbzwfZwv7JLEw0_CxeIyvozy9QaqmUXwBOCsCSWQin_SITmVJzx618p9kZtCOjxkD4X-/exec",
+    icon: "folder",
+    color: "amber",
+    media: {
+      poster: "./assets/hub/cards/mario-manager-hover-poster-v1.webp",
+      video: "./assets/hub/cards/mario-manager-hover-preview-v1.mp4"
+    }
+  },
+
+  {
     id: "hoja-minigames",
     title: "호자 미니게임",
     description: "전자칠판과 태블릿에서 터치로 함께 즐기는 미니게임 10종",
     type: "external",
     status: "active",
+    linked: true,
     url: "https://xkdtndbrwk111-prog.github.io/hoja-minigames/",
     icon: "game",
     color: "coral",
