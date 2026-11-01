@@ -174,11 +174,19 @@ button.tt-lock-ok{border:0;border-radius:12px;background:#2563eb;color:#fff;font
 .pe-reveal-sidebar .pe-pitch-actions{flex-direction:column;align-items:stretch}
 .pe-reveal-sidebar .pe-pitch-actions button{min-height:56px}
 html.tt-board #teacherScreen,html.tt-board #backToTeacher,html.tt-board #simpleBackToTeacher,html.tt-board #downloadJpg{display:none!important}
-#tt-board-empty{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:34vh 24px 24px;background:#13233d;color:#fff;font-size:clamp(20px,2vw,34px);font-weight:700;text-align:center}
-#tt-board-empty[hidden]{display:none}
+.tt-board-screen{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:24px;padding:36vh 24px 24px;background:#13233d;color:#fff;font-size:clamp(20px,2vw,32px);font-weight:700;text-align:center;line-height:1.5}
+.tt-board-screen[hidden],#tt-board-practice[hidden]{display:none}
+.tt-board-screen h1{margin:0;font-size:clamp(28px,3vw,48px)}
+.tt-board-screen p{margin:0}
+.tt-board-screen button{min-height:64px;padding:10px 34px;border:0;border-radius:12px;background:#fff;color:#172033;font-size:clamp(18px,1.6vw,26px);font-weight:800}
+.tt-board-choices{display:flex;flex-wrap:wrap;justify-content:center;gap:18px}
+#tt-board-menu .tt-board-choices button{min-width:clamp(180px,20vw,320px);min-height:clamp(90px,14vh,150px);background:#fde68a;font-size:clamp(26px,3vw,44px)}
+#tt-board-menu .tt-board-choices button+button{background:#93c5fd}
+#tt-real-start{background:#93c5fd!important}
+#tt-board-change{min-height:56px;border:0;border-radius:9px;background:#e7eef7;color:#172033;font-size:15px;font-weight:800}
 #tt-board-practice{position:fixed;left:12px;top:64px;z-index:40;width:176px;box-sizing:border-box;padding:10px;border-radius:10px;background:#fde68a;color:#172033;font-size:16px;font-weight:900;line-height:1.35;pointer-events:none}
 #tt-board-again{min-height:56px;border:0;border-radius:9px;background:#fde68a;color:#172033;font-size:17px;font-weight:900}
-#tt-board-empty button,#tt-board-back{min-height:56px;padding:0 22px;border:0;border-radius:10px;background:#fff;color:#172033;font-size:17px;font-weight:800}
+#tt-board-back{min-height:56px;padding:0 22px;border:0;border-radius:10px;background:#fff;color:#172033;font-size:17px;font-weight:800}
 
 #tt-cloud-chip.is-alert{background:#fde68a;color:#172033;font-weight:800}
 .tt-cloud-mode{display:flex!important;grid-template-columns:none;flex-direction:row;align-items:flex-start;gap:8px;font-weight:600!important;line-height:1.5}
