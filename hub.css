@@ -226,6 +226,86 @@ h1 {
 }
 
 /* =========================================================
+   LINKED TOOLS
+   ========================================================= */
+
+.linked-tools {
+  margin-bottom: 26px;
+  padding: 22px 22px 24px;
+
+  border: 1px solid var(--line);
+  border-radius: 22px;
+
+  background: var(--surface-soft);
+}
+
+.linked-tools h2 {
+  margin: 0;
+
+  color: var(--ink-strong);
+
+  font-size: 20px;
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+  text-align: center;
+}
+
+.linked-venn {
+  width: min(760px, 100%);
+  height: auto;
+
+  display: block;
+
+  margin: 8px auto 16px;
+}
+
+.linked-venn-tall {
+  display: none;
+  width: min(340px, 100%);
+}
+
+.linked-venn circle {
+  stroke-width: 2;
+  mix-blend-mode: multiply;
+}
+
+.venn-hanja {
+  fill: #ffe9ad;
+  stroke: #c79a2b;
+}
+
+.venn-class {
+  fill: #cfe8d2;
+  stroke: #4f8a5e;
+}
+
+.venn-board {
+  fill: #cfe0f5;
+  stroke: #4a7fb8;
+}
+
+.linked-venn text {
+  fill: var(--ink-strong);
+  text-anchor: middle;
+}
+
+.venn-name {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.venn-note {
+  font-size: 15px;
+  fill: #4a5a53 !important;
+}
+
+.venn-link {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* =========================================================
    APP GRID
    ========================================================= */
 
@@ -450,6 +530,11 @@ h1 {
 .green {
   --tint: #e8f3e8;
   --accent: #376e47;
+}
+
+.blue {
+  --tint: #e6eef8;
+  --accent: #2f5f94;
 }
 
 .muted {
@@ -851,6 +936,18 @@ button:focus-visible {
 
   .tools-section {
     padding-top: 26px;
+  }
+
+  .linked-tools {
+    padding: 18px 14px 16px;
+  }
+
+  .linked-venn-wide {
+    display: none;
+  }
+
+  .linked-venn-tall {
+    display: block;
   }
 
   .app-grid {

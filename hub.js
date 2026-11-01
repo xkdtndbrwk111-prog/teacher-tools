@@ -48,11 +48,28 @@ const APPS = [
   },
 
   {
-    id: "seating",
-    title: "자리배치 매니저",
-    description: "학급 조건을 반영해 새로운 자리배치를 생성",
+    id: "hanja",
+    title: "한자 학습 매니저",
+    description: "우리 반 학생들과 한자·한자어 문제를 풀어요",
     type: "internal",
     status: "active",
+    linked: true,
+    url: "./hanja/",
+    icon: "folder",
+    color: "amber",
+    media: {
+      poster: "./assets/hub/cards/hanja-manager-hover-poster-v1.webp",
+      video: "./assets/hub/cards/hanja-manager-hover-preview-v1.mp4"
+    }
+  },
+
+  {
+    id: "seating",
+    title: "교실 매니저",
+    description: "자리배치와 성적, 학생 명단을 한곳에서 관리",
+    type: "internal",
+    status: "active",
+    linked: true,
     url: "./seating/",
     icon: "seats",
     color: "green",
@@ -63,17 +80,21 @@ const APPS = [
   },
 
   {
-    id: "hanja",
-    title: "한자 학습 매니저",
-    description: "우리 반 학생들과 한자·한자어 문제를 풀어요",
+    id: "dashboard",
+    title: "교실 대시보드",
+    description: "시간표와 급식, 자리표, 수업 도구를 전자칠판 한 화면에",
     type: "internal",
-    status: "active",
-    url: "./hanja/",
-    icon: "folder",
-    color: "amber",
+    status: "development",
+    linked: true,
+    url: "./dashboard/TeacherTools_V1_13.zip",
+    download: true,
+    badge: "Windows",
+    action: "Windows용 내려받기",
+    arrow: "↓",
+    icon: "seats",
+    color: "blue",
     media: {
-      poster: "./assets/hub/cards/hanja-manager-hover-poster-v1.webp",
-      video: "./assets/hub/cards/hanja-manager-hover-preview-v1.mp4"
+      poster: "./assets/hub/cards/dashboard-poster-v1.jpg"
     }
   },
 
@@ -471,8 +492,14 @@ function createAppCard(app) {
     card.href = href;
     card.setAttribute(
       "aria-label",
-      `${app.title} 열기`
+      app.action
+        ? `${app.title} ${app.action}`
+        : `${app.title} 열기`
     );
+
+    if (app.download) {
+      card.setAttribute("download", "");
+    }
   }
 
   let badgeText = "링크 설정 필요";
@@ -482,7 +509,7 @@ function createAppCard(app) {
   } else if (usesQr) {
     badgeText = "학생 접속";
   } else if (href) {
-    badgeText = "사용 가능";
+    badgeText = app.badge || "사용 가능";
   }
 
   const media = createMedia(app, badgeText, card);
@@ -510,7 +537,7 @@ function createAppCard(app) {
   } else if (usesQr) {
     label.textContent = "학생 접속 QR 열기";
   } else if (href) {
-    label.textContent = "도구 열기";
+    label.textContent = app.action || "도구 열기";
   } else {
     label.textContent = "서비스 주소를 준비하고 있어요";
   }
@@ -519,7 +546,7 @@ function createAppCard(app) {
 
   if (href) {
     const arrow = document.createElement("span");
-    arrow.textContent = usesQr ? "▣" : "↗";
+    arrow.textContent = usesQr ? "▣" : app.arrow || "↗";
     arrow.setAttribute("aria-hidden", "true");
     action.append(arrow);
   }
@@ -542,14 +569,18 @@ function renderApps() {
   const grid =
     document.getElementById("app-grid");
 
-  if (!grid) {
+  const linkedGrid =
+    document.getElementById("linked-grid");
+
+  if (!grid || !linkedGrid) {
     return;
   }
 
   grid.replaceChildren();
+  linkedGrid.replaceChildren();
 
   APPS.forEach(app => {
-    grid.append(
+    (app.linked ? linkedGrid : grid).append(
       createAppCard(app)
     );
   });
