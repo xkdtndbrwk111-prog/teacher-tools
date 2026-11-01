@@ -3,24 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>자리배치 매니저 V1.00</title>
+  <title>교실 매니저</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
   <link rel="stylesheet" href="styles.css?v=20261010-seatdrag2">
   <link rel="stylesheet" href="pe-v1.css?v=20261010-r1">
   <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
+  <link rel="stylesheet" href="../classroom/host/grade-mount.css">
+  <link rel="stylesheet" href="../classroom/host/class-ui.css">
+  <script src="../classroom/host/class-store.js"></script>
+  <script src="../classroom/host/class-bootstrap.js"></script>
 </head>
 <body>
   <section id="teacherScreen" class="screen teacher-screen">
     <header class="studio-topbar">
       <div class="brand-block">
-        <strong id="topClassTitle">자리배치 매니저 V1.00</strong>
+        <strong id="topClassTitle">교실 매니저</strong>
         <span id="saveStatus">브라우저 저장 · 확인 중…</span>
       </div>
       <div class="top-actions">
         <a class="ghost hub-home-link" href="../" aria-label="도구 홈으로 이동">⌂ 도구 홈</a>
         <div class="undo-actions" aria-label="실행 취소 및 다시 실행">
-          <button id="undoButton" class="ghost undo-button" type="button" disabled title="실행 취소 (Ctrl/⌘+Z)">↶ 실행 취소</button>
-          <button id="redoButton" class="ghost undo-button" type="button" disabled title="다시 실행 (Ctrl/⌘+Shift+Z)">↷ 다시 실행</button>
+          <button id="undoButton" class="ghost undo-button" type="button" disabled title="실행 취소 (Ctrl/⌘+Z)" aria-label="실행 취소">↶<span class="tt-wide-label"> 실행 취소</span></button>
+          <button id="redoButton" class="ghost undo-button" type="button" disabled title="다시 실행 (Ctrl/⌘+Shift+Z)" aria-label="다시 실행">↷<span class="tt-wide-label"> 다시 실행</span></button>
         </div>
         <button id="generateAssignment" class="ghost" type="button">새 배치</button>
         <button id="confirmAssignment" class="primary" type="button">배치 확정</button>
@@ -236,6 +240,22 @@
     </div>
   </div>
 
+  <div id="rosterChangeDialog" class="seat-count-dialog hidden" aria-hidden="true">
+    <div class="seat-count-dialog-backdrop"></div>
+    <div class="seat-count-dialog-card roster-change-card" role="dialog" aria-modal="true" aria-labelledby="rosterChangeTitle" aria-describedby="rosterChangeHelp">
+      <span class="seat-count-dialog-kicker">명단 변경 확인</span>
+      <h2 id="rosterChangeTitle">명단에서 빠지는 학생이 있습니다</h2>
+      <p id="rosterChangeHelp">이름만 바뀐 학생은 새 이름을 골라 주세요. 자리 규칙과 성적이 그대로 이어집니다. 제외한 학생의 성적은 지워지지 않고, 성적 관리의 학급·학생 화면에서 다시 연결할 수 있습니다.</p>
+      <div id="rosterChangeRows" class="roster-change-rows"></div>
+      <p id="rosterChangeAdded" class="roster-change-added"></p>
+      <p id="rosterChangeError" class="roster-change-error" role="alert"></p>
+      <div class="seat-count-dialog-actions">
+        <button id="rosterChangeCancel" class="ghost" type="button">취소</button>
+        <button id="rosterChangeApply" class="primary" type="button">명단 적용</button>
+      </div>
+    </div>
+  </div>
+
   <section id="playbackScreen" class="screen playback-screen hidden" aria-label="학생 공개 화면">
     <div id="gameView" class="playback-wrap">
       <div class="playback-head">
@@ -320,10 +340,6 @@
   </main>
 </section>
 
-  <script src="app.js?v=20261010-seatdrag2"></script>
-  <script src="pe-v1.js?v=20261010-r2"></script>
-  <script src="classroom-trait-balance-v1.js?v=20261010-r1"></script>
-  <script src="backup-unified-v2.js?v=20261010-r1"></script>
   <script src="../usage-stats.js?v=usage-1" data-usage-app="SEATING"></script>
 </body>
 </html>

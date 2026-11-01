@@ -3,7 +3,7 @@
 "use strict";
 
 // Display-only product rename. Preserve the actual editable class name and all saved data.
-const APP_DISPLAY_TITLE="자리배치 매니저 V1.00";
+const APP_DISPLAY_TITLE="교실 매니저";
 const originalRenderTopTitle=renderTopTitle;
 renderTopTitle=function(){
   originalRenderTopTitle();
@@ -11,7 +11,7 @@ renderTopTitle=function(){
 };
 renderTopTitle();
 
-const PE_KEY="teacher-tools.seating.pe-prototype.v2";
+const PE_KEY=window.__TT_STAGE031_CLASS.peKey;
 const TRAITS=[
   ["leadership","통솔"],["intelligence","지력"],["stamina","체력"],["charm","매력"],["initiative","적극"]
 ];
@@ -27,10 +27,10 @@ let peShowAllAbilities=false;
 let peFixedEditTeam=0;
 
 function loadPEState(){
-  try{return JSON.parse(localStorage.getItem(PE_KEY))||{}}catch{return{}}
+  try{return JSON.parse(window.__TT_STORE.getItem(PE_KEY))||{}}catch{return{}}
 }
 function persistPE(){
-  try{localStorage.setItem(PE_KEY,JSON.stringify(peState))}catch{}
+  try{window.__TT_STORE.setItem(PE_KEY,JSON.stringify(peState))}catch{}
 }
 function ensurePEStudent(student,index){
   if(!peState[student.id]){

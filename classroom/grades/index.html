@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교실 관리 매니저 · Teacher Tools</title>
+<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./mount-guard.css">
+<script defer type="module" src="./app.mjs"></script>
+</head>
+<body>
+<div id="app" class="teacher-screen">
+  <header class="studio-topbar">
+    <div class="brand-block"><strong>교실 관리 매니저 <span class="brand-version">V0.6.8</span></strong><span>Teacher Tools · 학급 / 평가 / 성적 작업공간</span></div>
+    <div class="top-actions">
+      <label class="year-label">학년도 <select id="year" aria-label="학년도"></select></label>
+      <span id="draft-state" class="save-status" role="status">○ 로컬 작업 공간</span><button type="button" id="cloud-save" class="success" disabled>Sheets 저장</button><button type="button" id="cloud-login" class="ghost">Google 로그인</button>
+      <button class="ghost" type="button" id="export-json">JSON 백업</button>
+    </div>
+  </header>
+  <div class="studio">
+    <main class="workspace-column">
+      <section class="workspace-toolbar" aria-label="주 메뉴">
+        <nav class="toolbar-group" aria-label="작업 메뉴">
+          <button class="toolbtn on nav active" type="button" data-page="overview">① 대시보드</button>
+          <button class="toolbtn nav" type="button" data-page="classes">② 학급 · 학생</button>
+          <button class="toolbtn nav" type="button" data-page="assessments">③ 평가 관리</button>
+          <button class="toolbtn nav" type="button" data-page="grades">④ 성적 입력</button>
+          <label class="view-year">학년도 <select id="view-year" aria-label="볼 학년도"></select></label>
+        </nav>
+        <span class="toolbar-spacer"></span><span id="grade-toolbar-subject" class="grade-toolbar-subject hidden" aria-live="polite"></span><span class="assignment-status" id="crumb">대시보드</span>
+      </section>
+      <div class="workspace" id="content-workspace">
+        <div class="body">
+          <header class="page-header">
+            <div><div class="eyebrow" id="eyebrow">CLASSROOM OVERVIEW</div><h1 id="heading">교실 관리 대시보드</h1><p id="subheading"></p></div>
+          </header>
+          <section class="page" data-view="overview">
+            <div class="stats">
+              <article class="stat"><div class="stat-label">등록 학급</div><strong id="n-classes">0</strong><small>올해 학급 수</small></article>
+              <article class="stat"><div class="stat-label">등록 학생</div><strong id="n-students">0</strong><small>학급 소속 기준</small></article>
+              <article class="stat"><div class="stat-label">평가 항목</div><strong id="n-assessments">0</strong><small>점수 · 단계 · 기타 기록</small></article>
+              <article class="stat"><div class="stat-label">입력된 결과</div><strong id="n-grades">0</strong><small>0점 포함 · 빈칸 제외</small></article>
+            </div>
+            <div class="two-col">
+              <section class="panel"><div class="panel-top"><div><h2>나의 학급</h2><p>현재 등록된 학급 현황입니다. 학급 생성·이름 변경·삭제는 상단의 반 관리에서 진행합니다.</p></div></div><div id="overview-classes"></div></section>
+              <section class="panel"><div class="panel-top"><div><h2>최근 평가</h2><p>점수·단계·기타 기록으로 평가합니다.</p></div><button class="mini" data-go="assessments">평가 관리 →</button></div><div id="overview-assessments"></div></section>
+            </div>
+            
+          </section>
+          <section class="page hidden" data-view="classes">
+            <section class="panel class-stage-panel">
+              <div class="panel-top"><div><h2 id="selected-class-title">학급 학생 명단</h2></div><span class="class-inline-summary" id="class-count"></span><button type="button" id="edit-numbers" class="ghost hidden">번호 수정</button></div>
+              <div id="class-stage-roster" class="class-stage-roster"></div>
+              <div id="inactive-students" class="inactive-students hidden"></div>
+            </section>
+          </section>
+          <section class="page hidden" data-view="assessments">
+            <div class="two-col assessment-layout">
+              <section class="panel"><div class="panel-top"><div><h2>새 평가 만들기</h2><p>학급에 적용할 평가 방식과 기준을 설정합니다.</p></div></div>
+                <form id="assessment-form" class="stack-form">
+                  <label>과목<input name="subject" placeholder="예: 수학" maxlength="50" required></label>
+                  <label>평가명<input name="title" placeholder="예: 1단원 분수 평가" maxlength="100" required></label>
+                  <fieldset class="type-fieldset"><legend>평가 방식</legend>
+                    <div class="type-switch" role="radiogroup" aria-label="평가 방식 선택">
+                      <label class="type-option"><input type="radio" name="gradeType" value="score" checked><span>점수 평가 <small>숫자로 입력</small></span></label>
+                      <label class="type-option"><input type="radio" name="gradeType" value="level"><span>단계 평가 <small>3 · 4 · 5단계</small></span></label>
+                      <label class="type-option"><input type="radio" name="gradeType" value="other"><span>기타 <small>자유 단위 기록</small></span></label>
+                    </div>
+                  </fieldset>
+                  <div class="criterion-config form-row" id="score-settings"><label>기준 이름<input name="criterionScore" value="점수" maxlength="80" required></label><label>만점<input name="maxScore" type="number" min="1" max="10000" value="100" required></label></div>
+                  <div id="level-settings" class="level-settings hidden"><div class="form-row"><label>기준 이름<input name="criterionLevel" value="평가 수준" maxlength="80" disabled></label><label>단계 수<select id="level-count" name="levelCount" disabled><option value="3">3단계</option><option value="4">4단계</option><option value="5">5단계</option></select></label></div><div class="level-preview"><span class="preview-label">평가 항목</span><div id="level-options-preview" class="level-chips" aria-live="polite"></div></div></div>
+                  <div id="other-settings" class="criterion-config hidden"><div class="form-row"><label>기준 이름<input name="criterionOther" maxlength="80" placeholder="예: 50m 달리기" disabled></label><label>기록 단위<input name="recordUnit" maxlength="12" placeholder="예: 초, m, 회" disabled></label></div><label class="direction-choice">좋은 점수의 방향성<select name="recordDirection" id="record-direction" required disabled><option value="">선택하세요</option><option value="lower">낮을수록 우수 — 달리기 시간</option><option value="higher">높을수록 우수 — 윗몸일으키기 횟수</option></select></label></div>
+<div class="metrics-description">학생의 평가 결과를 <strong>학급 평균과 표준편차</strong>를 기준으로 비교합니다. 기타형 평가는 교사가 점수의 우수 방향을 직접 설정합니다. 이렇게 계산한 비교 결과는 자리배치에서 학생의 5축 능력치와 연결할 수 있습니다. 자리배치를 사용하지 않는다면 신경 쓰지 않으셔도 됩니다.</div>
+                  <div><div class="formlabel">대상 학급 선택</div><div id="class-checks" class="checks"></div></div>
+                  <button class="primary full" type="submit">＋ 평가 생성</button>
+                </form>
+              </section>
+              <section class="panel"><div class="panel-top"><div><h2>등록된 평가</h2><p>평가 유형에 따라 점수 또는 단계로 입력합니다.</p></div></div><div id="assessment-list"></div></section>
+            </div>
+          </section>
+          <section class="page hidden" data-view="grades">
+            <section class="panel grade-panel">
+              <div class="sheet-frame" aria-label="성적 입력 스프레드시트">
+                <div class="sheet-formula"><span class="sheet-formula-label">fx</span><span id="sheet-cell-info">결과 입력 셀을 선택하세요</span></div>
+                <div class="table-wrap sheet-scroll" id="sheet-scroll"><table class="grade-table" id="grade-table"><thead>
+                  <tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th><th>A<span class="sheet-resize" data-resize-col="0" title="드래그해 열 너비 변경"></span></th><th>B<span class="sheet-resize" data-resize-col="1" title="드래그해 열 너비 변경"></span></th><th>C<span class="sheet-resize" data-resize-col="2" title="드래그해 열 너비 변경"></span></th><th>D<span class="sheet-resize" data-resize-col="3" title="드래그해 열 너비 변경"></span></th><th>E<span class="sheet-resize" data-resize-col="4" title="드래그해 열 너비 변경"></span></th></tr>
+                  <tr class="sheet-labels"><th class="sheet-row-num">1</th><th>학급</th><th>번호</th><th>학생 이름</th><th id="grade-value-heading">평가 결과</th><th>상태</th></tr>
+                </thead><tbody id="grade-rows"></tbody></table></div>
+                <div class="sheet-tab-bar"><span class="sheet-tab-label">학급 시트</span><div id="class-tabs" class="tabs" role="tablist" aria-label="학급 시트 선택"></div><span class="sheet-tab-count" id="grade-summary"></span></div>
+              </div>
+            </section>
+          </section>
+          <footer class="footer"><span>교실 매니저 · 이 브라우저에만 저장 · Google 미연결</span></footer>
+        </div>
+        <section class="student-detail-view hidden" id="student-detail" aria-label="학생 개인 평가 결과">
+          <div class="student-detail-inner"><div class="student-detail-top"><div><span class="student-detail-eyebrow">학생 개인 대시보드</span><h2 id="personal-name">학생</h2><p id="personal-meta"></p></div><div class="personal-header-actions"><button class="ghost hidden" type="button" id="personal-back">← 전체 과목</button><button class="ghost" type="button" id="close-student-detail">닫기</button></div></div>
+          <div id="personal-summary" class="personal-summary"></div><section class="ability-preview" id="personal-ability"></section><div id="personal-results" class="personal-results"></div></div>
+        </section>
+      </div>
+    </main>
+    <aside class="tool-dock">
+      <nav class="dock-tabs" aria-label="교사 도구"><button type="button" class="dock-tab hidden" data-dock="classes">학급 · 학생</button><button type="button" class="dock-tab on" data-dock="guide">작업 안내</button><button type="button" class="dock-tab" data-dock="data">데이터 관리</button><button type="button" class="dock-tab" data-dock="cloud">Google 연결</button><button type="button" class="dock-tab hidden" data-dock="grades">성적 도구</button></nav>
+      <div class="dock-body">
+        <section class="dock-panel hidden" data-dock-panel="grades">
+          <div class="dock-title"><h2>성적 입력 도구</h2><span>평가 선택 및 학생 검색</span></div>
+          <div class="grade-tools"><label for="grade-subject">과목별 함께 보기<select id="grade-subject"></select></label><label for="grade-assessment">개별 평가 선택<select id="grade-assessment"></select></label><label for="student-search">학생 검색<input id="student-search" placeholder="학생 이름으로 검색" autocomplete="off"></label></div>
+          <div class="grade-dock-description" id="grade-info" role="status"></div>
+          <div class="grade-dock-actions"><button class="ghost full" type="button" id="export-csv">현재 평가 CSV 내보내기</button></div>
+          <div class="grade-dock-hint" id="grade-guide">방향키·Tab·Enter: 셀 이동</div>
+          <div class="grade-dock-hint">학생 이름은 자리배치 메뉴에서만 수정<br>마우스 드래그로 범위 선택 → Ctrl/Cmd+C 복사<br>머리글 오른쪽 경계: 열 너비 조절<br>행 번호 아래 경계: 행 높이 조절<br>성적은 이 브라우저에만 저장됩니다.</div>
+        </section>
+        <section class="dock-panel hidden" data-dock-panel="classes">
+          <div class="dock-title"><h2>학급 · 학생 설정</h2><span>자리배치처럼 오른쪽에서 학생을 관리합니다.</span></div>
+          <form id="class-form" class="dock-form"><label>새 학급<input id="new-class" placeholder="예: 5-1" maxlength="50" required></label><button class="primary full" type="submit">학급 추가</button></form>
+          <div class="dock-subheading">학급 선택</div><div id="class-list" class="class-list"></div>
+          <div class="dock-divider"></div>
+          <h3 id="dock-roster-heading" class="dock-roster-heading">학생 등록</h3>
+          <div id="roster-ui" class="empty-state">학급을 선택하세요.</div>
+          <div class="dock-divider"></div>
+          <div class="dock-subheading">자리배치 아바타 연동</div>
+          <p class="dock-note">자리배치의 아바타를 읽기 전용으로 가져옵니다. 이름이 중복되거나 일치하지 않으면 자동 연결하지 않습니다.</p>
+          <button type="button" class="ghost full" id="connect-seating-same-origin">자리배치 설정에서 불러오기</button>
+          <button type="button" class="ghost full" id="connect-seating-backup">자리배치 JSON 백업 선택</button>
+          <input type="file" id="seating-backup-file" accept=".json,application/json" hidden>
+          <div id="seating-link-status" class="dock-note" role="status">아바타 변경은 자리배치에서만 가능합니다.</div>
+        </section>
+        <section class="dock-panel" data-dock-panel="guide">
+          <div class="dock-title"><h2 id="dock-heading">대시보드</h2><span>교실 매니저 사용 안내</span></div>
+          <div class="dock-help" id="dock-help">먼저 학급을 만들고 학생을 등록해 주세요.</div>
+          <div class="dock-box"><span class="dock-eyebrow">작업 현황</span><strong id="dock-stat">학급 0개</strong><small id="dock-description">학급을 등록하면 평가를 만들 수 있습니다.</small></div>
+          <button class="primary full" id="dock-next" type="button">학급 만들기로 이동 →</button>
+          <p class="dock-note">* 표시된 결과는 브라우저의 임시 데이터이며, 공식 Google Sheets 기록이 아닙니다.</p>
+        </section>
+        <section class="dock-panel hidden" data-dock-panel="cloud">
+          <div class="dock-title"><h2>Google 계정 · 개인 시트</h2><span>교사 소유 파일에만 접근합니다.</span></div>
+          <div class="dock-box"><span class="dock-eyebrow">Google 계정</span><strong id="cloud-user">로그인 필요</strong><small id="cloud-file">연결된 Sheets 파일 없음</small></div>
+          <div class="dock-actions">
+            <button type="button" class="ghost full" id="cloud-find" disabled>기존 학년도 파일 다시 찾기</button>
+            <div class="cloud-candidates hidden" id="cloud-candidates" aria-live="polite"></div>
+            <button type="button" class="primary full" id="cloud-create" disabled>새 학년도 시트 만들기</button>
+            <label class="cloud-key-label">제한된 Google Picker API 키<input type="password" id="picker-key" autocomplete="off" placeholder="AI... 형태의 브라우저 API 키"></label>
+            <button type="button" class="ghost full" id="cloud-picker" disabled>기존 교실 관리 시트 선택</button>
+            <button type="button" class="ghost full" id="cloud-reload" disabled>Sheets에서 다시 읽기</button><button type="button" class="ghost full" id="cloud-recover" disabled>연결 복구 · Sheets 재확인</button>
+            <button type="button" class="ghost full" id="cloud-logout" disabled>Google 연결 해제</button>
+          </div>
+          <p class="dock-note">먼저 기존 학년도 파일을 검색합니다. 중복이 있으면 새 파일 생성은 차단되며, 원본 파일을 직접 선택할 수 있습니다. 파일 삭제는 하지 않습니다.</p>
+          <p class="dock-note">API 키는 현재 입력란에만 보관합니다. 계정 토큰은 메모리에서만 사용합니다. 이 기능은 가상 자료로 먼저 확인하세요.</p>
+        </section>
+        <section class="dock-panel hidden" data-dock-panel="data">
+          <div class="dock-title"><h2>데이터 관리</h2><span>자리배치·한자 매니저처럼 작업 정보를 백업합니다.</span></div>
+          <div class="dock-actions"><details class="dock-bulk"><summary>고급 · 수동 연동 데이터 내보내기</summary><button class="ghost full" id="export-seating-metrics" type="button">자리배치용 평가 결과 JSON</button></details><button class="ghost full" id="import-json" type="button">JSON 백업 불러오기</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="ghost full" id="load-sample" type="button">예시 데이터 불러오기</button><button class="danger full" id="reset" type="button">현재 학년도 초기화</button></div>
+          <p class="dock-note">내보내기에는 학생 이름과 원본 성적이 포함됩니다. 테스트 자료만 사용하세요. 자리배치 아바타 연결로 학생 ID를 연결한 뒤, 자리배치에서 과목·평가별 5축 설정 및 4·5·10단계 환산을 합니다.</p><p class="dock-note">브라우저 저장 공간이 삭제될 수 있습니다. 백업은 직접 내려받아 보관해 주세요.</p>
+        </section>
+      </div>
+    </aside>
+    <section class="student-strip hidden" id="student-strip" aria-label="학생 카드 영역">
+      <div class="student-strip-head"><div class="strip-heading"><strong>학생 목록</strong><span id="strip-summary">선택 학급의 학생</span></div><div class="student-strip-controls"><label class="strip-class-select">학급 <select id="strip-class"></select></label></div><button type="button" class="strip-toggle" id="strip-toggle" aria-expanded="true" aria-label="학생 목록 접기" title="학생 목록 접기"><span aria-hidden="true">▼</span></button></div>
+      <div class="student-cards" id="student-cards"></div>
+    </section>
+  </div>
+</div>
+<dialog class="sheets-save-dialog" id="sheets-save-dialog" aria-labelledby="sheets-dialog-title" aria-describedby="sheets-dialog-description">
+  <div class="sheets-dialog-content">
+    <h2 id="sheets-dialog-title">Google Sheets에 저장</h2>
+    <p id="sheets-dialog-description">현재 학급·평가·성적 변경사항을 교사 소유 Google Sheets에 저장하시겠습니까?<br>다른 탭에서 수정한 내용이 발견되면 저장을 중단합니다.</p>
+    <div class="sheets-dialog-actions"><button type="button" class="ghost" data-save-confirm="cancel">취소</button><button type="button" class="primary" data-save-confirm="confirm" id="sheets-dialog-confirm">저장</button></div>
+  </div>
+</dialog>
+<div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+<script defer src="./mount-guard.js"></script>
+</body></html>

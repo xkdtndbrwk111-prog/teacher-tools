@@ -11,3 +11,9 @@ Run from repository root with Node.js 22+ and Playwright available (`NODE_PATH` 
 7. Feedback Board: also serve on the allowed Hub origin, `python3 -m http.server 8123 --bind 127.0.0.1 --directory ..`, then `node tests/feedback-auth-bridge.cjs`. It runs `tests/feedback-auth-bridge-harness.js` (session-bridge security, no Project B/Google traffic) and `tests/feedback-board-harness.js` (ported board against the TEST Feedback dataset via public reads; every Project B call goes to an in-page mock; nothing is written). Both harnesses can also be loaded into a served Hub page and run with `await runFeedbackAuthBridgeHarness()` / `await runFeedbackBoardHarness({owner:true})`.
 
 Reports and screenshots go to ignored `work/`. Fixtures only exist in isolated browser profiles. No real student data is used; only the Feedback suite reads the TEST Feedback dataset (public, read-only). Playback tests wait for actual animated completion.
+
+## Classroom manager
+
+`node --test classroom/tests/*.test.mjs` and `node classroom/tests/browser.cjs` cover the seating, grades and classroom flows and need no separate server.
+
+`tests/seating-browser.cjs`, `tests/seating-animation.cjs` and `tests/hanja-browser.cjs` predate the classroom store and the seat-count dialog. They already failed on the repository before Stage 04 and are kept for reference only.

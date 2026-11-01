@@ -1,0 +1,190 @@
+/* One shared class selector in the unmodified seating header geometry. */
+.studio-topbar .brand-block{min-width:340px;display:grid;grid-template-columns:max-content max-content;grid-template-rows:auto auto;align-items:center;column-gap:12px}
+.studio-topbar .brand-block>strong{grid-column:1;grid-row:1}
+.studio-topbar .brand-block>span{grid-column:1;grid-row:2}
+.studio-topbar .brand-block>.tt-class-controls{grid-column:2;grid-row:1/3;margin-top:0}
+.tt-class-controls{display:flex;align-items:center;gap:5px;margin-top:2px;white-space:nowrap}
+.tt-class-controls label{font-size:10px;color:#b4c3d8}
+.tt-class-controls select{max-width:142px;min-width:100px;padding:3px 6px;border:1px solid #40516d;border-radius:6px;color:#fff;background:#21324a;font-weight:700;font-size:11px}
+.tt-class-controls button{padding:3px 6px;min-height:24px;border:1px solid #40516d;border-radius:6px;color:#e8eef8;background:#1e3049;font-size:10px;font-weight:800;cursor:pointer}
+.tt-class-controls.tt-class-stale{outline:1px solid #f59e0b;border-radius:5px}
+/* All three share the same real Seating student strip. */
+body.tt-grade-active #teacherScreen .student-strip{background:#0c1525}
+body.tt-grade-active #teacherScreen .student-strip .student-cards{display:flex}
+@media(max-width:1350px){.studio-topbar .brand-block{min-width:280px;column-gap:5px}.tt-class-controls #tt-class-rename{display:none}.tt-class-controls select{max-width:105px}}
+@media(max-width:1100px){.tt-class-controls button#tt-class-rename{display:none}.tt-class-controls select{max-width:110px}}
+
+/* STAGE 03.2 — centered accessible batch-class dialog, not a browser prompt. */
+.tt-class-modal[hidden]{display:none!important}
+.tt-class-modal{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.tt-class-modal-backdrop{position:absolute;inset:0;background:rgba(9,18,34,.66);backdrop-filter:blur(3px)}
+.tt-class-modal-box{position:relative;width:min(640px,calc(100vw - 40px));max-height:min(92vh,780px);overflow:auto;box-sizing:border-box;padding:24px 26px 22px;border-radius:18px;border:1px solid #cbd5e1;background:#fff;color:#172033;box-shadow:0 24px 76px rgba(0,0,0,.32);font-family:inherit}
+.tt-class-modal-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.tt-class-modal-top h2{font-size:21px;margin:0 0 7px;font-weight:900}.tt-class-modal-top p{margin:0 0 20px;color:#56657b;font-size:13px;line-height:1.5}
+.tt-class-modal-box .tt-class-close{flex:0 0 30px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#334155;padding:5px 7px;cursor:pointer}
+.tt-class-modal-label{display:block;font-size:12px;font-weight:900;margin-bottom:7px}
+#tt-class-names{display:block;box-sizing:border-box;width:100%;min-height:148px;max-height:260px;resize:vertical;padding:12px 14px;border-radius:10px;border:1px solid #aabbce;background:#f8fafc;color:#172033;line-height:1.6;font:600 14px/1.6 inherit}
+#tt-class-names:focus{outline:2px solid #2563eb;outline-offset:1px}
+.tt-class-modal-batch{display:flex;align-items:end;gap:9px;flex-wrap:wrap;margin-top:17px;border:1px solid #e2e8f0;border-radius:10px;padding:12px;background:#f8fafc}
+.tt-class-modal-batch>strong{flex-basis:100%;font-size:12px}.tt-class-modal-batch label{font-size:11px;color:#475569;display:flex;flex-direction:column;gap:4px}
+.tt-class-modal-batch input{box-sizing:border-box;width:74px;min-height:32px;border:1px solid #cbd5e1;border-radius:7px;padding:5px 7px;color:#172033;background:#fff}
+.tt-class-modal-batch button{min-height:33px;border:1px solid #94a3b8;border-radius:8px;padding:6px 13px;background:#e2e8f0;color:#172033;font-weight:800;cursor:pointer}
+.tt-class-modal-feedback{display:flex;flex-direction:column;gap:4px;min-height:43px;padding-top:10px;font-size:12px;color:#475569}#tt-class-error{color:#b91c1c;font-weight:800}
+.tt-class-modal-actions{display:flex;justify-content:flex-end;gap:9px;padding-top:8px}.tt-class-modal-actions button{border:1px solid #cbd5e1;border-radius:9px;padding:10px 18px;background:#eef2f7;color:#172033;font-weight:800;cursor:pointer}
+.tt-class-modal-actions .tt-class-primary{border-color:#1d4ed8;background:#2563eb;color:#fff}.tt-class-modal-actions button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:620px){.tt-class-modal-box{padding:18px}.tt-class-modal-batch{gap:6px}.tt-class-modal-top h2{font-size:18px}}
+
+/* STAGE 03.3 — one class-management entry point; edit current / add / delete in a single modal. */
+.tt-class-controls #tt-class-add{font-size:11px;font-weight:900;min-width:64px;padding:4px 8px;white-space:nowrap}
+.tt-class-modal-box{max-height:min(92vh,900px);width:min(670px,calc(100vw - 40px))}
+.tt-class-existing{max-height:205px;overflow:auto;border:1px solid #ccd7e5;border-radius:11px;padding:6px;background:#f8fafc;display:flex;flex-direction:column;gap:6px;margin:4px 0 16px}
+.tt-class-existing-row{display:grid;grid-template-columns:25px minmax(0,1fr) 78px;gap:8px;align-items:center}
+.tt-class-row-order{font-size:12px;font-weight:850;text-align:center;color:#64748b}
+.tt-class-existing-row input{box-sizing:border-box;width:100%;height:36px;padding:6px 10px;background:#fff;border:1px solid #cbd5e1;color:#172033;border-radius:7px;font-size:13px;font-weight:750}
+.tt-class-existing-row button{height:36px;background:#fff7f7;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;font-size:12px;font-weight:900;cursor:pointer}
+.tt-class-existing-row.pending-delete{opacity:.65}
+.tt-class-existing-row.pending-delete input{text-decoration:line-through;background:#fee2e2;color:#991b1b}
+.tt-class-existing-row .tt-class-undo{background:#f1f5f9;border-color:#cbd5e1;color:#334155}
+.tt-class-modal-label{margin-bottom:8px}
+.tt-class-danger[hidden]{display:none!important}
+.tt-class-danger{margin-top:14px;padding:15px;border:2px solid #dc2626;border-radius:12px;background:#fff1f2;color:#991b1b}
+.tt-class-danger>strong{font-size:17px;display:block;margin-bottom:7px}
+.tt-class-danger p{font-size:13px;font-weight:800;line-height:1.55;margin:6px 0}
+.tt-class-danger label{display:block;margin:11px 0 7px;font-size:12px;font-weight:700}
+.tt-class-danger input{box-sizing:border-box;width:100%;padding:9px 12px;border-radius:8px;border:1px solid #fb7185;background:white;color:#881337;font-size:14px;font-weight:900}
+.tt-class-danger-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.tt-class-danger-actions button{border-radius:9px;border:1px solid #e2e8f0;padding:10px 12px;background:white;color:#334155;font-weight:900;cursor:pointer}
+.tt-class-danger-actions .tt-class-delete-button{background:#b91c1c;border-color:#b91c1c;color:white}
+.tt-class-danger-actions button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:620px){.tt-class-existing-row{grid-template-columns:20px minmax(0,1fr) 60px;gap:4px}.tt-class-existing-row button{font-size:10px}}
+/* STAGE04: explicit EASY local-only mode, NORMAL still gated pending CAS proof */
+.tt-stage04-actions{display:flex;align-items:center;gap:5px;margin-left:4px}
+.tt-mode-pill{font-size:10px;background:#324358;color:#eaf3ff;border:1px solid #52677f;border-radius:7px;padding:4px 7px;white-space:nowrap;font-weight:900}
+.tt-stage04-actions button{font-size:10px;border:1px solid #52677f;border-radius:7px;background:#23334c;color:#fff;padding:5px 7px;white-space:nowrap;font-weight:800;cursor:pointer}
+.tt-stage04-actions .tt-normal-disabled{opacity:.5;cursor:not-allowed}
+.tt-backup-modal[hidden],#tt-backup-restore-confirm[hidden]{display:none!important}
+.tt-backup-modal{position:fixed;inset:0;z-index:10060;display:flex;justify-content:center;align-items:center;padding:16px}
+.tt-backup-shade{position:absolute;inset:0;background:rgba(8,19,36,.70);backdrop-filter:blur(3px)}
+.tt-backup-box{position:relative;box-sizing:border-box;width:min(650px,calc(100vw - 32px));max-height:min(90dvh,820px);overflow:auto;background:#fff;color:#172033;border-radius:16px;padding:22px 26px;box-shadow:0 22px 70px #0006;font-family:inherit}
+.tt-backup-box header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.tt-backup-box h2{font-size:21px;margin:0 0 5px}.tt-backup-box header p,.tt-backup-column p{font-size:12px;color:#64748b;line-height:1.55;margin:0 0 12px}
+.tt-backup-box header button{padding:5px 10px;background:#f1f5f9;border-radius:8px;border:1px solid #cbd5e1;font-size:18px}
+.tt-backup-mode{padding:10px 12px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:9px;font-size:12px;margin:16px 0}
+.tt-backup-mode span{float:right;color:#64748b}
+.tt-backup-column{border-top:1px solid #e2e8f0;padding:14px 0}.tt-backup-column h3{font-size:15px;margin:0 0 8px}
+.tt-backup-column button{border:0;border-radius:8px;background:#2563eb;color:white;padding:10px 13px;font-size:12px;font-weight:900;cursor:pointer}
+.tt-backup-column input[type=file]{max-width:100%;font-size:12px}
+#tt-backup-preview{font-size:12px;color:#334155;line-height:1.5;margin-top:10px}
+.tt-backup-red{background:#fff1f2;color:#991b1b!important;border:1px solid #fda4af;border-radius:8px;padding:12px;font-weight:850}
+#tt-backup-restore-confirm label{display:block;font-size:12px;font-weight:800;margin:12px 0}
+#tt-backup-restore-word{width:100px;padding:8px;border:1px solid #fda4af;border-radius:7px;margin-left:7px}
+#tt-backup-restore{background:#b91c1c}.tt-backup-column button:disabled{opacity:.4;cursor:not-allowed}
+.tt-backup-box footer{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid #e2e8f0;padding-top:12px}
+.tt-backup-box footer small{font-size:11px;color:#475569;line-height:1.5}.tt-backup-box footer small.error{color:#b91c1c}
+.tt-backup-box footer button{border:1px solid #cbd5e1;background:#f1f5f9;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800}
+@media(max-width:1200px){.tt-stage04-actions .tt-normal-disabled{display:none}}
+
+/* Stage04 compact HUD: keep save entry inside the existing class controls grid cell. */
+.tt-class-controls>.tt-stage04-actions{margin-left:1px}
+.tt-class-controls>.tt-stage04-actions #tt-full-backup{background:#233a5c;border-color:#547296;color:#e7f2ff;font-size:10px;padding:4px 6px;min-height:25px}
+@media(max-width:1200px){.tt-class-controls>.tt-stage04-actions #tt-full-backup{font-size:0;min-width:31px}.tt-class-controls>.tt-stage04-actions #tt-full-backup:after{content:'백업';font-size:10px}}
+
+.tt-class-recovery{margin-top:12px}
+.tt-class-recovery-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.tt-class-recovery-row button{min-height:34px;padding:0 12px;border-radius:8px;font-weight:800}
+.tt-start-blocked{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:#13233d}
+.tt-start-blocked>div{width:min(460px,100%);padding:24px;border-radius:16px;background:#fff;color:#172033}
+.tt-start-blocked h1{margin:0 0 10px;font-size:22px}
+.tt-start-blocked p{margin:0 0 16px;line-height:1.6}
+
+/* Top bar stays on one line down to laptop widths. */
+.studio-topbar .top-actions{flex-wrap:nowrap}
+.studio-topbar .top-actions>*,.studio-topbar .undo-actions button{white-space:nowrap}
+.studio-topbar .prototype-mode-switch{flex:0 1 auto;min-width:0}
+.tt-class-controls #tt-lock-open-settings{padding-inline:7px}
+@media(max-width:1760px){
+ .studio-topbar{gap:8px;padding-inline:10px}
+ .studio-topbar .brand-block{min-width:0;column-gap:8px}
+ .studio-topbar .top-actions{gap:5px}
+ .studio-topbar .top-actions button,.studio-topbar .top-actions a{padding-inline:9px}
+ .prototype-mode-switch button{padding:0 11px}
+ .tt-wide-label{display:none}
+ .undo-button{min-width:auto}
+}
+@media(max-width:1500px){
+ .studio-topbar .brand-block>strong{font-size:15px}
+ .studio-topbar .brand-block>span{display:none}
+ .studio-topbar .brand-block>strong{grid-row:1/3}
+ .tt-class-controls label{display:none}
+ .prototype-mode-switch button{padding:0 8px;font-size:13px}
+}
+@media(max-width:1280px){
+ .studio-topbar{height:auto;flex-wrap:wrap;justify-content:flex-start;row-gap:6px}
+ .studio-topbar .top-actions{margin-left:auto}
+}
+.tt-lock{position:fixed;inset:0;z-index:2000;display:grid;place-items:end center;padding:3vh 16px;background:#13233d}
+.tt-lock[hidden],.tt-lock-settings[hidden]{display:none}
+.tt-lock-card{width:min(380px,100%);padding:20px;border-radius:18px;background:#fff;color:#172033;text-align:center}
+.tt-lock-card h1{margin:0 0 12px;font-size:21px}
+.tt-lock-card form[hidden]{display:none}
+#tt-lock-pin,#tt-lock-code{box-sizing:border-box;width:100%;min-height:50px;margin-bottom:10px;padding:0 12px;border:2px solid #cbd5e1;border-radius:10px;font-size:24px;text-align:center}
+.tt-lock-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;touch-action:manipulation}
+.tt-lock-keys button{min-height:62px;border:1px solid #cbd5e1;border-radius:12px;background:#f1f5f9;color:#172033;font-size:24px;font-weight:800}
+button.tt-lock-ok{border:0;border-radius:12px;background:#2563eb;color:#fff;font-size:17px;font-weight:900}
+#tt-lock-recovery-form label{display:block;font-size:13px;font-weight:800;text-align:left}
+#tt-lock-recovery-form button{width:100%;min-height:50px}
+#tt-lock-message{min-height:20px;margin:10px 0 2px;color:#b91c1c;font-size:13px;font-weight:800}
+.tt-lock-link{border:0;background:none;color:#475569;font-size:13px;text-decoration:underline;padding:8px}
+.tt-lock-settings{position:fixed;inset:0;z-index:1900;display:grid;place-items:center;padding:20px;background:rgba(11,20,36,.7)}
+.tt-lock-settings-card{box-sizing:border-box;display:grid;gap:10px;width:min(440px,100%);max-height:90dvh;overflow:auto;padding:22px;border-radius:16px;background:#fff;color:#172033}
+.tt-lock-settings-card h2{margin:0;font-size:20px}
+.tt-lock-settings-card p{margin:0;color:#475569;font-size:13px;line-height:1.5}
+.tt-lock-settings-card label{display:grid;gap:4px;font-size:13px;font-weight:800}
+.tt-lock-settings-card label[hidden]{display:none}
+.tt-lock-settings-card input,.tt-lock-settings-card select{min-height:38px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px}
+.tt-lock-settings-card p.tt-lock-error{color:#b91c1c;font-weight:800}
+.tt-lock-settings-card p.tt-lock-error:empty{display:none}
+.tt-lock-code-box{display:grid;gap:4px;padding:12px;border-radius:10px;background:#fef9c3;font-size:13px}
+.tt-lock-code-box[hidden]{display:none}
+.tt-lock-code-box code{font-size:22px;font-weight:800;letter-spacing:.06em}
+.tt-lock-settings-actions{display:flex;align-items:center;gap:8px}
+.tt-lock-settings-actions span{flex:1}
+.tt-lock-settings-actions button{min-height:38px;padding:0 14px;border:1px solid #cbd5e1;border-radius:8px;background:#f1f5f9;font-weight:800}
+.tt-lock-settings-actions button[hidden]{display:none}
+.tt-lock-settings-actions button[type=submit]{border:0;background:#2563eb;color:#fff}
+.tt-lock-settings-actions .tt-lock-danger{color:#b91c1c}
+.tt-backup-pass{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:8px}
+.tt-backup-pass[hidden]{display:none}
+.tt-backup-pass label{display:grid;gap:4px;font-size:12px;font-weight:800}
+.tt-backup-pass input{min-height:34px;padding:3px 9px;border:1px solid #cbd5e1;border-radius:7px}
+.tt-backup-plain{display:block;margin:0 0 10px;font-size:12px;color:#475569}
+#tt-old-data{margin-top:14px}
+
+/* Student screens are used on the classroom board: buttons stay below the top third. */
+.playback-wrap{grid-template-rows:auto minmax(0,1fr) auto auto!important}
+.playback-head{display:contents!important}
+.playback-head h1{grid-column:1;grid-row:1}
+.playback-head-actions{grid-column:1;grid-row:3}
+.playback-controls{grid-column:1;grid-row:4}
+.viewport{grid-row:1/5!important}
+.playback-head-actions button,.play-btn{min-height:56px;font-size:17px}
+.simple-head{justify-content:space-between!important}
+.simple-actions button{min-height:56px}
+.pe-reveal-sidebar{display:flex;flex-direction:column}
+.pe-reveal-sidebar .pe-pitch-header{flex:1 1 auto;flex-direction:column;align-items:stretch;justify-content:space-between}
+.pe-reveal-sidebar .pe-pitch-actions{flex-direction:column;align-items:stretch}
+.pe-reveal-sidebar .pe-pitch-actions button{min-height:56px}
+html.tt-board #teacherScreen,html.tt-board #backToTeacher,html.tt-board #simpleBackToTeacher,html.tt-board #downloadJpg{display:none!important}
+#tt-board-empty{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:34vh 24px 24px;background:#13233d;color:#fff;font-size:clamp(20px,2vw,34px);font-weight:700;text-align:center}
+#tt-board-empty[hidden]{display:none}
+#tt-board-practice{position:fixed;left:12px;top:64px;z-index:40;width:176px;box-sizing:border-box;padding:10px;border-radius:10px;background:#fde68a;color:#172033;font-size:16px;font-weight:900;line-height:1.35;pointer-events:none}
+#tt-board-again{min-height:56px;border:0;border-radius:9px;background:#fde68a;color:#172033;font-size:17px;font-weight:900}
+#tt-board-empty button,#tt-board-back{min-height:56px;padding:0 22px;border:0;border-radius:10px;background:#fff;color:#172033;font-size:17px;font-weight:800}
+
+#tt-cloud-chip.is-alert{background:#fde68a;color:#172033;font-weight:800}
+.tt-cloud-mode{display:flex!important;grid-template-columns:none;flex-direction:row;align-items:flex-start;gap:8px;font-weight:600!important;line-height:1.5}
+.tt-cloud-mode input{min-height:0;margin-top:4px}
+.tt-cloud-card,.tt-diff-card{width:min(560px,100%)}
+.tt-diff-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tt-diff-sides>div{display:grid;gap:4px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;line-height:1.5}
+.tt-lock-settings-actions button[hidden]{display:none}
+#tt-diff-pull,#tt-diff-push{background:#2563eb;border:0;color:#fff}

@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_PREFIX="teacher-tools.seating";
-const STORAGE_KEY=`${STORAGE_PREFIX}.state.v1`;
+const STORAGE_KEY=window.__TT_STAGE031_CLASS.seatingKey;
 const LEGACY_STORAGE_KEYS=["classroom-seating-integrated-v6_7","classroom-seating-integrated-v6_4","classroom-seating-integrated-v6","classroom-seating-integrated-v5","classroom-seating-integrated-v4","classroom-seating-integrated-v3"];
 const BACKUP_FORMAT=`${STORAGE_PREFIX}.backup`;
 const BACKUP_FORMAT_VERSION=1;
@@ -377,7 +377,7 @@ function parseAndNormalizeState(raw){return normalizeCandidateState(JSON.parse(r
 const storageRuntime={sourceKey:null,lastKnownCanonicalRaw:null,loadIssue:null,saveBlocked:false,stale:false,migratedLegacy:false};
 function loadState(){
   try{
-    const current=localStorage.getItem(STORAGE_KEY);
+    const current=window.__TT_STORE.getItem(STORAGE_KEY);
     if(current!==null){
       storageRuntime.sourceKey=STORAGE_KEY;
       try{
@@ -402,8 +402,8 @@ function loadState(){
       }
       const canonicalRaw=JSON.stringify(migrated);
       try{
-        localStorage.setItem(STORAGE_KEY,canonicalRaw);
-        const verified=localStorage.getItem(STORAGE_KEY);
+        window.__TT_STORE.setItem(STORAGE_KEY,canonicalRaw);
+        const verified=window.__TT_STORE.getItem(STORAGE_KEY);
         if(verified!==canonicalRaw)throw new Error("저장 확인 값이 일치하지 않습니다.");
         parseAndNormalizeState(verified);
         storageRuntime.lastKnownCanonicalRaw=canonicalRaw;
@@ -531,13 +531,13 @@ function writeCanonicalState(state,{allowOverwrite=false}={}){
   let raw;
   try{raw=JSON.stringify(state)}catch(error){return{ok:false,error}}
   try{
-    const current=localStorage.getItem(STORAGE_KEY);
+    const current=window.__TT_STORE.getItem(STORAGE_KEY);
     if(!allowOverwrite&&current!==storageRuntime.lastKnownCanonicalRaw&&!(current===null&&storageRuntime.lastKnownCanonicalRaw===null)){
       storageRuntime.stale=true;
       return{ok:false,stale:true,error:new Error("다른 탭에서 저장 데이터가 변경되었습니다.")};
     }
-    localStorage.setItem(STORAGE_KEY,raw);
-    const verified=localStorage.getItem(STORAGE_KEY);
+    window.__TT_STORE.setItem(STORAGE_KEY,raw);
+    const verified=window.__TT_STORE.getItem(STORAGE_KEY);
     if(verified!==raw)throw new Error("저장 후 확인 값이 일치하지 않습니다.");
     parseAndNormalizeState(verified);
     storageRuntime.lastKnownCanonicalRaw=raw;storageRuntime.sourceKey=STORAGE_KEY;storageRuntime.stale=false;
@@ -785,12 +785,69 @@ function resetLayout(){
 }
 
 function renderStudentsInput(){$("studentInput").value=classState.students.map(s=>s.name).join("\n")}
-function applyStudentNames(){
+/* Same name keeps its student ID. A changed name never does unless the teacher links it here. */
+function rosterChangePlan(oldStudents,names){
+  const rest=[...oldStudents];
+  const lines=names.map(name=>{
+    const at=rest.findIndex(s=>s.name===name);
+    return{name,student:at>=0?rest.splice(at,1)[0]:null};
+  });
+  return{lines,removed:rest};
+}
+function askRosterLinks(plan,oldStudents){
+  const dialog=$("rosterChangeDialog"),rows=$("rosterChangeRows"),added=$("rosterChangeAdded"),error=$("rosterChangeError"),apply=$("rosterChangeApply"),cancel=$("rosterChangeCancel");
+  const newLines=plan.lines.map((line,index)=>({...line,index})).filter(line=>!line.student);
+  const selects=plan.removed.map(student=>{
+    const row=document.createElement("label");row.className="roster-change-row";
+    const name=document.createElement("span");name.textContent=student.name;
+    const select=document.createElement("select");select.setAttribute("aria-label",`${student.name} 처리 방법`);
+    select.add(new Option("명단에서 제외",""));
+    newLines.forEach(line=>select.add(new Option(`이름 변경: ${line.name}`,String(line.index))));
+    // A new name on the same line as the old one is most likely a rename.
+    const sameLine=oldStudents.indexOf(student);
+    if(newLines.some(line=>line.index===sameLine))select.value=String(sameLine);
+    row.append(name,select);rows.append(row);
+    return{student,select};
+  });
+  const chosen=()=>selects.map(item=>item.select.value).filter(Boolean);
+  const refresh=()=>{
+    const picked=chosen();
+    const fresh=newLines.filter(line=>!picked.includes(String(line.index))).map(line=>line.name);
+    added.textContent=fresh.length?`새로 추가: ${fresh.join(", ")}`:"";
+    const duplicated=new Set(picked).size!==picked.length;
+    error.textContent=duplicated?"같은 새 이름을 두 학생에게 연결할 수 없습니다.":"";
+    apply.disabled=duplicated;
+  };
+  rows.addEventListener("change",refresh);
+  refresh();
+  dialog.classList.remove("hidden");dialog.setAttribute("aria-hidden","false");
+  (selects[0]?.select||apply).focus();
+  return new Promise(resolve=>{
+    const finish=result=>{
+      apply.onclick=null;cancel.onclick=null;dialog.onkeydown=null;
+      rows.removeEventListener("change",refresh);rows.replaceChildren();
+      dialog.classList.add("hidden");dialog.setAttribute("aria-hidden","true");
+      resolve(result);
+    };
+    apply.onclick=()=>{
+      const links=new Map();
+      selects.forEach(item=>{if(item.select.value)links.set(Number(item.select.value),item.student)});
+      finish(links);
+    };
+    cancel.onclick=()=>finish(null);
+    dialog.onkeydown=event=>{if(event.key==="Escape"){event.preventDefault();finish(null)}};
+  });
+}
+async function applyStudentNames(){
   if(historyView)return;
   const names=$("studentInput").value.split("\n").map(s=>s.trim()).filter(Boolean),old=[...classState.students];
-  classState.students=names.map(name=>{
-    const at=old.findIndex(s=>s.name===name);
-    return at>=0?old.splice(at,1)[0]:{id:nextStudentId(),name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false};
+  const plan=rosterChangePlan(old,names);
+  const links=plan.removed.length?await askRosterLinks(plan,old):new Map();
+  if(!links)return;
+  classState.students=plan.lines.map((line,index)=>{
+    if(line.student)return line.student;
+    const linked=links.get(index);
+    return linked?{...linked,name:line.name}:{id:nextStudentId(),name:line.name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false};
   });
   const ids=new Set(classState.students.map(s=>s.id)),validSeats=new Set(usableCells().map(c=>c.id));
   classState.students.forEach(s=>{s.apartFrom=[...new Set((s.apartFrom||[]).filter(id=>ids.has(id)&&id!==s.id))].slice(0,3);if(s.fixedSeatId&&!validSeats.has(s.fixedSeatId))s.fixedSeatId=null;if(!["A","B","C"].includes(s.balanceLevel))s.balanceLevel="none"});
@@ -2320,7 +2377,10 @@ function buildPlaybackInput(){
 }
 function openPlayback(){
   if(!classState.assignments.length){alert("먼저 배치를 확정하세요.");return}
-  playbackData=buildPlaybackInput();playbackCompleted=false;$("simpleViewButton").classList.add("hidden");$("simpleView").classList.add("hidden");$("gameView").classList.remove("hidden");
+  showPlayback(buildPlaybackInput());
+}
+function showPlayback(data){
+  playbackData=data;playbackCompleted=false;$("simpleViewButton").classList.add("hidden");$("simpleView").classList.add("hidden");$("gameView").classList.remove("hidden");
   $("teacherScreen").classList.add("hidden");$("playbackScreen").classList.remove("hidden");
   buildPlaybackRoom();resetPlaybackDialogue();preparePlaybackStartState();renderTeacherCanvases();fitRoom();$("playbackStatus").textContent="준비 완료";
 }

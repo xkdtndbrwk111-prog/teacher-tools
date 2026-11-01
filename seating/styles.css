@@ -680,4 +680,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .seat-count-dialog-card p{margin:0;color:#475569;font-size:13px;line-height:1.65;white-space:pre-line}
 .seat-count-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .seat-count-dialog-actions button{min-width:92px}
+.roster-change-card{width:min(560px,calc(100vw - 40px))}
+.roster-change-rows{display:grid;gap:8px;margin-top:14px;max-height:40vh;overflow:auto}
+.roster-change-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);align-items:center;gap:10px;font-size:13px;font-weight:800;color:#1e293b}
+.roster-change-row select{width:100%;min-height:38px}
+.seat-count-dialog-card p.roster-change-added{margin-top:12px;font-weight:700}
+.seat-count-dialog-card p.roster-change-error{margin-top:6px;color:#b91c1c;font-weight:800}
+.seat-count-dialog-card p.roster-change-error:empty,.seat-count-dialog-card p.roster-change-added:empty{display:none}
 

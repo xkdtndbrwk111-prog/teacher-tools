@@ -1,7 +1,11 @@
 // Read-only view over the canonical Seating registry. Never writes or migrates it.
 export const STUDENT_STORAGE_KEY = 'teacher-tools.seating.state.v1';
+export const ACTIVE_ROSTER_KEY = 'tt.classroom.active-roster';
+export function isStudentStorageKey(key) {
+  return key === null || key === STUDENT_STORAGE_KEY || key === ACTIVE_ROSTER_KEY;
+}
 export function readStudents(storage = localStorage) {
-  const raw = storage.getItem(STUDENT_STORAGE_KEY);
+  const raw = storage.getItem(ACTIVE_ROSTER_KEY) ?? storage.getItem(STUDENT_STORAGE_KEY);
   if (raw === null) return Object.freeze([]);
   const state = JSON.parse(raw);
   if (!Array.isArray(state.students)) throw new Error('학생명단 형식을 확인해 주세요.');

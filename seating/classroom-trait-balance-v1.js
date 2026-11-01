@@ -8,14 +8,14 @@
   - Null/missing/invalid values remain UNASSIGNED, never level 2.
 */
 (()=>{
-  const STORAGE_KEY="teacher-tools.seating.pe-prototype.v2";
+  const STORAGE_KEY=window.__TT_STAGE031_CLASS.peKey;
   const AXES=["leadership","intelligence","charm","initiative"];
   const LEVELS=[1,2,3,4];
   let lastRaw, cached={};
 
   function readPrivateTraits(){
     let raw;
-    try{raw=localStorage.getItem(STORAGE_KEY)}catch{return{}}
+    try{raw=window.__TT_STORE.getItem(STORAGE_KEY)}catch{return{}}
     if(raw===lastRaw)return cached;
     lastRaw=raw;
     try{

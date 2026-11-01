@@ -1,0 +1,28 @@
+/* STAGE 03.1: ONE shared Seating grid and student strip for all three menus. */
+.tt-grade-tab{white-space:nowrap}
+.tt-grade-mount{display:none!important}
+body.tt-grade-active #teacherScreen>.studio>.workspace-column,
+body.tt-grade-active #teacherScreen>.studio>.tool-dock{display:none!important}
+body.tt-grade-active #teacherScreen>.studio>.tt-grade-mount{display:flex!important;grid-column:1/-1;grid-row:1;min-width:0;min-height:0;overflow:hidden;flex-direction:column;background:#edf2f8}
+body.tt-grade-active #teacherScreen>.studio>.student-strip{grid-column:1/-1;grid-row:2;display:block!important}
+body.tt-grade-active #teacherScreen>.studio-topbar .top-actions{visibility:hidden!important;pointer-events:none!important}
+body.tt-grade-active #teacherScreen>.studio{grid-template-columns:minmax(0,1fr) 340px!important;grid-template-rows:minmax(0,1fr) 158px!important}
+body.tt-grade-active #teacherScreen>.studio.student-collapsed{grid-template-rows:minmax(0,1fr) 42px!important}
+.tt-grade-mount-warning{display:none!important}
+.tt-grade-mount-warning.is-error{display:block!important;padding:5px 12px;background:#fff0f0;color:#a32121;font-size:11px}
+.tt-grade-iframe{display:block;flex:1;width:100%;border:0;background:#fff;min-height:0}
+@media(max-width:1000px){body.tt-grade-active #teacherScreen>.studio{grid-template-columns:1fr!important;grid-template-rows:minmax(420px,1fr) 158px!important}}
+
+/* STAGE 03.2 — fixed shared shell: three menus use exactly the same grid rows. */
+@media(min-width:1001px){
+ #teacherScreen.teacher-screen{display:flex!important;flex-direction:column!important;height:100dvh!important;min-height:0!important;overflow:hidden!important}
+ #teacherScreen>.studio-topbar{flex:0 0 auto!important;min-height:0!important}
+ #teacherScreen>.studio{display:grid!important;flex:1 1 auto!important;height:auto!important;min-height:0!important;overflow:hidden!important;grid-template-columns:minmax(0,1fr) 340px!important;grid-template-rows:minmax(0,1fr) 158px!important}
+ #teacherScreen>.studio.student-collapsed{grid-template-rows:minmax(0,1fr) 42px!important}
+ #teacherScreen>.studio>.workspace-column, #teacherScreen>.studio>.tool-dock, #teacherScreen>.studio>.tt-grade-mount{grid-row:1!important;min-height:0!important;height:100%!important;align-self:stretch!important}
+ #teacherScreen>.studio>.workspace-column{grid-column:1!important}
+ #teacherScreen>.studio>.tool-dock{grid-column:2!important}
+ #teacherScreen>.studio>.student-strip{grid-column:1/-1!important;grid-row:2!important;height:158px!important;min-height:0!important;max-height:158px!important;box-sizing:border-box!important;overflow:hidden!important}
+ #teacherScreen>.studio.student-collapsed>.student-strip{height:42px!important;max-height:42px!important}
+ body.tt-grade-active #teacherScreen>.studio>.tt-grade-mount{grid-column:1/-1!important;grid-row:1!important}
+}

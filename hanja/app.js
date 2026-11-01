@@ -1,4 +1,4 @@
-import {readStudents,STUDENT_STORAGE_KEY} from '../shared/student-registry.js';
+import {readStudents,isStudentStorageKey} from '../shared/student-registry.js';
 "use strict";
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";
@@ -841,7 +841,7 @@ $("exportXlsx").onclick=()=>{try{
  XLSX.writeFile(wb,"한자_학습_데이터.xlsx");
 }catch(e){notify(e.message)}};
 load();resetForm();renderDb();ensureHanjaGlassesAssets();refreshRoster();
-window.addEventListener("storage",e=>{if(e.key===STUDENT_STORAGE_KEY||e.key===null){if(!session)refreshRoster();else notify("학생명단이 변경되었습니다. 현재 수업은 시작할 때의 명단으로 계속합니다.")}if(e.key===KEY||e.key===null){storageBlocked=true;$("saveStatus").textContent="다른 탭에서 변경됨 · 새로고침 필요";notify("다른 탭의 한자 데이터가 변경되었습니다. 새로고침해 주세요.")}});
+window.addEventListener("storage",e=>{if(isStudentStorageKey(e.key)){if(!session)refreshRoster();else notify("학생명단이 변경되었습니다. 현재 수업은 시작할 때의 명단으로 계속합니다.")}if(e.key===KEY||e.key===null){storageBlocked=true;$("saveStatus").textContent="다른 탭에서 변경됨 · 새로고침 필요";notify("다른 탭의 한자 데이터가 변경되었습니다. 새로고침해 주세요.")}});
 const refreshRosterIfIdle=()=>{if(!session)refreshRoster()};
 window.addEventListener("pageshow",refreshRosterIfIdle);
 window.addEventListener("focus",refreshRosterIfIdle);

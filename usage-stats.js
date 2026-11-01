@@ -1,6 +1,11 @@
 "use strict";
 
 (() => {
+  // Count only the published site; local and test runs must not touch the production totals.
+  if (location.hostname !== "xkdtndbrwk111-prog.github.io") return;
+  // The board view opens inside the dashboard; only the manager itself counts as a launch.
+  if (new URLSearchParams(location.search).get("view") === "board") return;
+
   const CONFIG = Object.freeze({
     supabaseUrl: "https://rhtyktjebiunkchddxvg.supabase.co",
     publishableKey: "sb_publishable_SD1BpBEMqvj3Qv34ymUNFw_sqrgLwao",

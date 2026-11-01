@@ -1,0 +1,46 @@
+/* Keep the grade's own HEADER hidden; Seating header is the only common HUD. */
+.view-year{display:inline-flex;align-items:center;gap:6px;margin-left:8px;font-size:13px;font-weight:800}
+.view-year select{min-height:36px;padding:2px 8px;border-radius:8px}
+.is-read-only #assessment-form,.is-read-only #edit-numbers,.is-read-only #inactive-students,.is-read-only #export-seating-metrics{display:none!important}
+.number-edit-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.number-edit-row{display:flex;align-items:center;gap:10px;font-weight:800}
+.number-edit-row input{width:72px;min-height:38px;padding:4px 8px;text-align:right}
+.number-edit-actions{display:flex;gap:8px;margin-top:14px}
+.inactive-students{margin-top:18px;padding-top:14px;border-top:1px solid #d7dee8}
+.inactive-student-row{display:grid;grid-template-columns:minmax(90px,1fr) auto minmax(150px,1.4fr) auto;align-items:center;gap:10px;padding:8px 0}
+.studio-topbar{display:none!important}
+body{margin:0!important}
+#app{min-height:100dvh!important}
+/* Test-only: NEVER connect cloud accounts, import arbitrary workspaces or edit shared roster here. */
+#cloud-login,#cloud-save,#cloud-create,#cloud-find,#cloud-picker,#cloud-reload,#cloud-recover,#cloud-logout,#picker-key,#connect-seating-same-origin,#connect-seating-backup,#seating-backup-file,
+#class-form,#roster-ui,#import-json,#json-file,#load-sample,#reset,#year{display:none!important}
+.dock-tab[data-dock="cloud"],.dock-panel[data-dock-panel="cloud"]{display:none!important}
+.tt-grade-bridge-status{padding:7px 15px;background:#e8f2ff;color:#1f4a7d;border-bottom:1px solid #c1d8f8;font-size:12px;font-weight:700}
+.tt-grade-bridge-status.is-error{background:#fff1f1;color:#a12323}
+
+/* STAGE 03.1 — outer Seating student strip is the ONLY shared roster UI. */
+#app{height:100%!important;min-height:0!important}
+.teacher-screen{height:100%!important;min-height:0!important}
+.studio{height:100%!important;min-height:0!important;grid-template-columns:minmax(0,1fr) 340px!important;grid-template-rows:minmax(0,1fr)!important}
+.student-strip{display:none!important}
+.studio:has(.student-strip.hidden){grid-template-rows:minmax(0,1fr)!important}
+/* Retain the same right dock width and toolbar height as the Seating host. */
+.workspace-toolbar{height:56px!important;min-height:56px!important;box-sizing:border-box}
+.tt-grade-bridge-status{display:none!important}
+@media(max-width:1000px){.studio{grid-template-columns:1fr!important}}
+
+/* STAGE 03.2: grade iframe fills the shared host top row even with zero students/evaluations. */
+html,body{height:100%!important;min-height:0!important;overflow:hidden!important}
+#app.teacher-screen{display:flex!important;flex-direction:column!important;height:100%!important;min-height:0!important;max-height:100%!important;overflow:hidden!important}
+#app>.studio{display:grid!important;flex:1 1 auto!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;grid-template-columns:minmax(0,1fr) 340px!important;grid-template-rows:minmax(0,1fr)!important}
+#app>.studio>.workspace-column,#app>.studio>.tool-dock{display:flex!important;flex-direction:column!important;min-height:0!important;min-width:0!important;height:100%!important;align-self:stretch!important;overflow:hidden!important}
+#app>.studio>.workspace-column{grid-column:1!important;grid-row:1!important}
+#app>.studio>.tool-dock{grid-column:2!important;grid-row:1!important}
+#app>.studio>.workspace-column>.workspace{flex:1 1 auto!important;height:0!important;min-height:0!important;overflow:auto!important;background:linear-gradient(#e9edf2,#dce4ed)!important}
+#app>.studio>.tool-dock>.dock-body{flex:1 1 auto!important;height:0!important;overflow:auto!important}
+#app>.studio>.student-strip{display:none!important}
+@media(max-width:1000px){#app>.studio{grid-template-columns:minmax(0,1fr) 340px!important}}
+
+/* STAGE 03.4 dashboard: only the data-management tab on the right. */
+.tool-dock .dock-tabs.tt-dashboard-data-only{grid-template-columns:minmax(0,1fr)!important}
+.tool-dock .dock-tabs.tt-dashboard-data-only .dock-tab:not([data-dock="data"]){display:none!important}

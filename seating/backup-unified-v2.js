@@ -1,11 +1,12 @@
 "use strict";
 /* Seating Manager V1.00 — integrated classroom + PE backup, format v2.
-   Import commits both localStorage keys, verifies them, and reloads so
+   Import commits class and PE data in one transaction and reloads so
    the existing app and PE in-memory states are reconstructed together.
    No PE team assignments, reveals or history are exported. */
 (()=>{
-  const CLASS_KEY="teacher-tools.seating.state.v1";
-  const PE_KEY="teacher-tools.seating.pe-prototype.v2";
+  const CLASSROOM=window.__TT_STAGE031_CLASS;
+  const CLASS_KEY=CLASSROOM.seatingKey;
+  const PE_KEY=CLASSROOM.peKey;
   const TRAIT_KEYS=["leadership","intelligence","stamina","charm","initiative"];
   const SUCCESS_KEY="teacher-tools.seating.backup-import-notice.v2";
   const MAX_BYTES=10*1024*1024;
@@ -51,7 +52,7 @@
   function existingSnapshot(){
     // The existing student editor persists traits/fixed teams to a separate key.
     let raw;
-    try{raw=localStorage.getItem(PE_KEY)}catch{throw new Error("체육 능력치 저장소를 읽을 수 없습니다.")}
+    try{raw=window.__TT_STORE.getItem(PE_KEY)}catch{throw new Error("체육 능력치 저장소를 읽을 수 없습니다.")}
     let stored;
     try{stored=raw?JSON.parse(raw):{}}catch{throw new Error("체육 능력치 저장 데이터가 손상되었습니다. 기존 자료를 보관하고 복구해 주세요.")}
     if(!object(stored))throw new Error("체육 능력치 저장 데이터 형식이 올바르지 않습니다.");
@@ -108,42 +109,26 @@
     }
     return JSON.stringify(data);
   }
-  function restoreKey(key,prior){
-    if(prior===null)localStorage.removeItem(key);
-    else localStorage.setItem(key,prior);
-    if(localStorage.getItem(key)!==prior)throw new Error("이전 저장 데이터 복원이 확인되지 않았습니다.");
-  }
-  function atomicWrite(classData,peData,expectedPE){
-    // Avoid importing on top of changes from another browser tab.
-    const oldClass=localStorage.getItem(CLASS_KEY);
-    const oldPE=localStorage.getItem(PE_KEY);
-    if(oldPE!==expectedPE)throw new Error("다른 탭에서 체육 설정이 변경되었습니다. 새로고침 후 다시 시도하세요.");
-    if(storageRuntime.stale || oldClass!==storageRuntime.lastKnownCanonicalRaw){
-      throw new Error("다른 탭에서 학급 데이터가 바뀌었습니다. 새로고침 후 다시 시도하세요.");
-    }
+  async function atomicWrite(classData,peData,expectedPE){
+    const store=window.__TT_STORE;
+    const oldClass=store.getItem(CLASS_KEY);
+    const oldPE=store.getItem(PE_KEY);
+    const registry=JSON.parse(store.getItem(CLASSROOM.registryKey));
+    const entry=registry.classes.find(c=>c.id===CLASSROOM.activeId);
+    if(!entry||registry.activeId!==CLASSROOM.activeId)throw new Error("선택한 반을 확인하지 못했습니다. 새로고침 후 다시 시도하세요.");
+    const className=String(classData.className||"").trim();
+    if(!className||className.length>30)throw new Error("백업의 학급 이름은 1~30자여야 합니다.");
+    if(registry.classes.some(c=>c.id!==CLASSROOM.activeId&&c.name===className))throw new Error("‘"+className+"’ 반이 이미 있습니다. 그 반을 선택한 뒤 불러오거나 반 이름을 먼저 바꿔 주세요.");
+    entry.name=className;
+    if(oldPE!==expectedPE)throw new Error("체육 설정이 변경되었습니다. 새로고침 후 다시 시도하세요.");
+    if(storageRuntime.stale||oldClass!==storageRuntime.lastKnownCanonicalRaw)throw new Error("학급 데이터가 변경되었습니다. 새로고침 후 다시 시도하세요.");
     const classRaw=JSON.stringify(classData);
-    const peRaw=studentPEStorage(peData);
-    let started=false;
+    if(!validatePersistentState(JSON.parse(classRaw)).ok)throw new Error("학급 데이터 검증에 실패했습니다.");
+    normalizedSnapshot(peData,classData.students);
     try{
-      started=true;
-      localStorage.setItem(CLASS_KEY,classRaw);
-      if(localStorage.getItem(CLASS_KEY)!==classRaw)throw new Error("학급 데이터 저장 후 확인에 실패했습니다.");
-      localStorage.setItem(PE_KEY,peRaw);
-      if(localStorage.getItem(PE_KEY)!==peRaw)throw new Error("체육 능력치 저장 후 확인에 실패했습니다.");
-      if(!validatePersistentState(JSON.parse(localStorage.getItem(CLASS_KEY))).ok){
-        throw new Error("학급 데이터 저장 후 검증에 실패했습니다.");
-      }
-      normalizedSnapshot(peData,classData.students);
+      await store.commit({put:new Map([[CLASS_KEY,classRaw],[PE_KEY,studentPEStorage(peData)],[CLASSROOM.registryKey,JSON.stringify(registry)]])});
     }catch(error){
-      if(started){
-        try{restoreKey(CLASS_KEY,oldClass);restoreKey(PE_KEY,oldPE)}
-        catch(rollbackError){
-          storageRuntime.saveBlocked=true;
-          showStorageAlert("복원 중 저장 오류가 발생했고 이전 상태를 완전히 되돌리지 못했습니다. 현재 탭에서 추가 작업을 중단하고 기존 백업을 보관하세요.","error");
-          throw new Error("저장 및 되돌리기에 실패했습니다. 기존 백업 파일을 보존하고 새로고침하지 마세요.");
-        }
-      }
-      throw new Error("JSON 복원 실패: "+(error.message||"브라우저 저장 오류")+" (기존 데이터는 되돌렸습니다.)");
+      throw new Error("JSON 복원 실패: "+(error.message||"브라우저 저장 오류")+" (기존 데이터는 그대로입니다.)");
     }
   }
   function triggerDownload(payload){
@@ -154,6 +139,7 @@
   }
   function exportUnified(){
     try{
+      if(!confirm("이 파일은 암호 없이 저장됩니다. 학생 이름과 체육 능력치가 들어 있습니다.\n암호로 보호하려면 상단의 백업을 사용하세요. 계속할까요?"))return;
       triggerDownload(backupPayload());
       setTransferStatus("학급 데이터 + 5축 능력치 + 팀 고정 설정을 통합 JSON으로 내보냈습니다.","success");
     }catch(error){setTransferStatus("JSON 내보내기 실패: "+error.message,"error")}
@@ -162,17 +148,20 @@
     if(!file)return;
     setTransferStatus("학급과 5축 능력치 백업을 확인하는 중입니다.");
     try{
-      const expectedPE=localStorage.getItem(PE_KEY);
+      const expectedPE=window.__TT_STORE.getItem(PE_KEY);
       if(file.size>MAX_BYTES)throw new Error("백업 파일이 10MB를 초과합니다.");
       const parsed=parseBackupUnified(await file.text());
       const count=parsed.normalized.students.length;
       const warning=parsed.legacy?
         "\n\n주의: 예전 형식(JSON v1)에는 5축 능력치와 팀 고정 정보가 없습니다. 현재 학급과 이름·학생 ID가 일치하는 "+parsed.kept+"명 설정만 보존하고, 나머지는 미지정/고정 해제로 시작합니다. 복원을 진행할까요?":
         "\n\n학급 데이터와 5축 능력치·팀 고정 설정을 함께 교체합니다. 체육 팀 편성 결과는 복원하지 않습니다.";
-      if(!confirm("‘"+parsed.normalized.className+"’ 학급 "+count+"명의 데이터를 불러올까요?\n현재 이 브라우저의 학급 및 체육 설정이 교체됩니다."+warning)){
+      const incomingIds=new Set(parsed.normalized.students.map(s=>s.id));
+      const dropped=classState.students.filter(s=>!incomingIds.has(s.id)).length;
+      const gradeWarning=dropped?"\n\n주의: 지금 명단의 학생 "+dropped+"명이 이 파일에 없습니다. 그 학생들의 성적은 지워지지 않지만 명단에서 제외된 상태가 됩니다.":"";
+      if(!confirm("‘"+parsed.normalized.className+"’ 학급 "+count+"명의 데이터를 불러올까요?\n현재 선택한 반의 자리·체육 설정이 교체됩니다."+warning+gradeWarning)){
         setTransferStatus("백업 불러오기를 취소했습니다.");return;
       }
-      atomicWrite(parsed.normalized,parsed.peData,expectedPE);
+      await atomicWrite(parsed.normalized,parsed.peData,expectedPE);
       try{sessionStorage.setItem(SUCCESS_KEY,parsed.legacy?"구형 JSON 학급 복원 완료 · 일치 학생의 기존 5축 설정만 보존했습니다.":"통합 JSON 복원 완료 · 5축 능력치와 팀 고정 설정을 함께 복원했습니다.")}catch{}
       // Reload to reconstruct both in-memory stores and the 4-axis scorer.
       window.location.reload();
