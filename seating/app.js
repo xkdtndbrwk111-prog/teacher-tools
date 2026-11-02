@@ -516,6 +516,8 @@ function redoAction(){
 
 function setSaveStatus(message,kind=""){
   const node=$("saveStatus");if(!node)return;
+  // A pending "자동 저장" must not replace a newer message such as a failed send.
+  clearTimeout(saveTimer);
   node.textContent=message;node.classList.toggle("error",kind==="error");node.classList.toggle("warning",kind==="warning");
 }
 function showStorageAlert(message,kind="warning",showReload=false){
@@ -1496,9 +1498,20 @@ function chooseReservedEmptySeats(referenceAssignments=[],useGender=false){
   const selected=[];
   const groupBlankCounts=new Map();
 
+  // Blank seats must still leave every unfixed student a compatible seat.
+  const seatKind=seat=>seat.type==="male"||seat.type==="female"?seat.type:"any";
+  const free={male:0,female:0,any:0};
+  seats.filter(seat=>!fixedSeatIds.has(seat.id)).forEach(seat=>{free[seatKind(seat)]++});
+  const unfixed=assignmentStudents().filter(s=>!s.fixedSeatId);
+  const males=unfixed.filter(s=>s.gender==="male").length,females=unfixed.filter(s=>s.gender==="female").length,others=unfixed.length-males-females;
+  const canReserve=seat=>{
+    const left={...free};left[seatKind(seat)]--;
+    return others<=left.any&&males+others<=left.male+left.any&&females+others<=left.female+left.any&&unfixed.length<=left.male+left.female+left.any;
+  };
+
   for(let n=0;n<surplus;n++){
     const candidates=seats
-      .filter(seat=>!fixedSeatIds.has(seat.id)&&!selected.includes(seat.id))
+      .filter(seat=>!fixedSeatIds.has(seat.id)&&!selected.includes(seat.id)&&(!useGender||canReserve(seat)))
       .map(seat=>{
         const group=groupForSeat(seat.id,classState.groups);
         const groupId=group?.id||null;
@@ -1538,6 +1551,7 @@ function chooseReservedEmptySeats(referenceAssignments=[],useGender=false){
     const pick=nearBest[Math.floor(Math.random()*nearBest.length)]||candidates[0];
 
     selected.push(pick.seat.id);
+    free[seatKind(pick.seat)]--;
     if(pick.groupId)groupBlankCounts.set(pick.groupId,(groupBlankCounts.get(pick.groupId)||0)+1);
   }
 
@@ -2159,8 +2173,7 @@ function generateAssignment({allowSurplus=false}={}){
   for(let i=0;i<attempts;i++){
     const candidate=buildAssignmentCandidate(blankReference);
     if(!candidate.valid){
-      reason=candidate.reason;
-      if(candidate.hardFail)break;
+      if(candidate.hardFail){reason=candidate.reason;break}
       continue;
     }
 
@@ -2179,7 +2192,7 @@ function generateAssignment({allowSurplus=false}={}){
 
   if(!best){
     previewAssignments=[];previewRevision=null;renderLayout();
-    setAssignmentStatus(reason||"현재 조건으로 배치를 만들 수 없습니다.");
+    setAssignmentStatus(reason||"현재 조건으로 배치를 만들 수 없습니다. 좌석과 조건을 확인해 주세요.");
     recordUndoPoint();return;
   }
 
@@ -2228,6 +2241,8 @@ function snapshotEquivalentToCurrent(history,assignments){
 
 function confirmAssignment(){
   if(historyView){setAssignmentStatus("과거보기 모드에서는 배치를 확정할 수 없습니다.");return}
+  // No preview after a failed generate or a changed setting: the old seating no longer applies.
+  if(!previewAssignments.length&&previewRevision===null){setAssignmentStatus("확정할 새 배치가 없습니다. 새 배치를 생성하세요.");return}
 
   const sourceAssignments=(previewAssignments.length?previewAssignments:classState.assignments).map(a=>({...a}));
   if(!sourceAssignments.length){setAssignmentStatus("먼저 새 배치를 생성하세요.");return}

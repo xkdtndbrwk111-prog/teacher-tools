@@ -183,6 +183,51 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await p.locator('#endGame').click();
    await ctx.close();
   });
+  await step('남녀 자리: 이전 빈자리가 한쪽에 몰려도 새 배치가 만들어지고, 만들 수 없으면 이전 배치를 확정하지 않는다',async()=>{
+   const {ctx,p}=await open();
+   const setup=()=>p.evaluate(()=>{
+    const seats=usableCells().slice(0,24);
+    classState.layout.cells.filter(isUsable).forEach((c,i)=>{c.type=i%2?'female':'male'});
+    classState.students=classState.students.slice(0,10);
+    classState.students.forEach((s,i)=>{s.gender=i%2?'female':'male';s.fixedSeatId=null;s.assignmentExcluded=i===0});
+    const male=seats.filter(c=>c.type==='male'),female=seats.filter(c=>c.type==='female');
+    classState.assignments=[...male.slice(0,3),...female.slice(0,7)].map((c,i)=>({studentId:classState.students[i].id,seatId:c.id}));
+    classState.rules.completeRandom=false;classState.rules.genderSeats=true;
+    previewAssignments=classState.assignments.map(a=>({...a}));previewRevision=1;confirmedRevision=1;
+   });
+   for(let i=0;i<10;i++){
+    await setup();
+    const r=await p.evaluate(()=>{
+     generateAssignment({allowSurplus:true});
+     const cells=new Map(usableCells().map(c=>[c.id,c.type])),students=new Map(classState.students.map(s=>[s.id,s]));
+     return{count:previewAssignments.length,mismatch:previewAssignments.filter(a=>cells.get(a.seatId)!==students.get(a.studentId).gender).length,excluded:previewAssignments.some(a=>a.studentId===classState.students[0].id)};
+    });
+    assert.deepEqual(r,{count:9,mismatch:0,excluded:false});
+   }
+   await setup();
+   const before=await p.evaluate(()=>{
+    usableCells().forEach(c=>{c.type='female'});
+    generateAssignment({allowSurplus:true});
+    return{status:document.getElementById('assignmentStatus').textContent,preview:previewAssignments.length,assigned:JSON.stringify(classState.assignments),history:classState.history.length};
+   });
+   assert.equal(before.preview,0);
+   assert.doesNotMatch(before.status,/다른 후보/);
+   await p.evaluate(()=>confirmAssignment());
+   const after=await p.evaluate(()=>({status:document.getElementById('assignmentStatus').textContent,assigned:JSON.stringify(classState.assignments),history:classState.history.length}));
+   assert.equal(after.assigned,before.assigned);assert.equal(after.history,before.history);
+   assert.match(after.status,/새 배치를 생성/);
+   await ctx.close();
+  });
+  await step('저장 뒤 자동 저장 문구가 전송 결과와 실패 안내를 덮어쓰지 않는다',async()=>{
+   const {ctx,p}=await open();
+   await p.evaluate(()=>{saveState();setSaveStatus('작은 창 차단 안내','error')});
+   await wait(1500);
+   assert.deepEqual(await p.evaluate(()=>{const n=document.getElementById('saveStatus');return[n.textContent,n.classList.contains('error')]}),['작은 창 차단 안내',true]);
+   await p.evaluate(()=>saveState());
+   await wait(1500);
+   assert.match(await p.locator('#saveStatus').textContent(),/자동 저장/,'안내가 없으면 자동 저장 문구는 그대로');
+   await ctx.close();
+  });
   await step('페이지 오류가 없다',async()=>assert.deepEqual(errors,[]));
  }finally{await browser.close();server.kill()}
  const failed=results.filter(r=>!r).length;
