@@ -123,11 +123,17 @@ const hwpx=planHwpx();
    await sel.selectOption('상');await wait(150);
    assert.equal(await sel.inputValue(),'상');
    // Another subject redraws the sheet: the old description must not stay beside it.
-   await f.locator('#grade-subject').selectOption({index:0});await wait(200);
-   assert.equal(await f.locator('#grade-level-notes.hidden').count(),1,'다른 과목으로 바꾸면 설명을 비움');
-   await f.locator('#grade-subject').selectOption('국어');await wait(200);
    await f.locator('select.grade-input').nth(1).focus();
-   assert.match(await f.locator('#grade-level-notes').textContent(),/의견을 조정해요|올바른 문장/);
+   assert.match(await f.locator('#grade-level-notes').textContent(),/4\. 의견을 조정해요/);
+   // The sheet redraws when the window regains focus: the description stays, for the same assessment.
+   await p.evaluate(()=>window.dispatchEvent(new Event('focus')));await wait(500);
+   assert.match(await f.locator('#grade-level-notes:not(.hidden)').textContent(),/4\. 의견을 조정해요/,'다시 그려져도 설명 유지');
+   // A view without school-plan assessments hides it; coming back shows one again.
+   await f.locator('#grade-subject').selectOption({index:0});await wait(200);
+   const single=await f.locator('#grade-info').textContent();
+   if(!/올바른 문장|의견을 조정/.test(single))assert.equal(await f.locator('#grade-level-notes.hidden').count(),1,'학교 평가가 없는 화면은 설명 숨김');
+   await f.locator('#grade-subject').selectOption('국어');await wait(200);
+   assert.equal(await f.locator('#grade-level-notes:not(.hidden)').count(),1,'국어로 돌아오면 설명 보임');
    if(SHOTS)await p.screenshot({path:path.join(SHOTS,'plan-grade-pc.png')});
   });
   await step('PDF를 올리면 이유를 알리고, 내 AI 답을 붙여 넣어 평가를 만든다',async()=>{

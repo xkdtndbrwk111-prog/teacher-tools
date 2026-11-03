@@ -302,8 +302,17 @@ function renderClassDistribution(){
  $('class-dist-body').querySelectorAll('[data-dist-member]').forEach(el=>{const pick=()=>{st.selected=st.selected===el.dataset.distMember?null:el.dataset.distMember;renderClassDistribution();};el.onclick=pick;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
  if($('dist-personal'))$('dist-personal').onclick=()=>{const id=st.selected;$('class-dist-dialog').close();showStudent(id);};
 }
-function showLevelNotes(c,a){
+// The sheet redraws often (window focus, roster sync), so keep showing the assessment last looked at
+// while it is on the sheet, else the first school-plan assessment shown.
+let levelNotesFor=null;
+function refreshLevelNotes(assessments){
+ const withNotes=assessments.filter(x=>{const c=m.criteria.find(k=>k.assessmentId===x.id);return c?.custom&&Object.keys(c.levelNotes||{}).length;});
+ const a=withNotes.find(x=>x.id===levelNotesFor)||withNotes[0];
+ showLevelNotes(a?m.criteria.find(k=>k.assessmentId===a.id):null,a,false);
+}
+function showLevelNotes(c,a,remember=true){
  const box=$('grade-level-notes');if(!box)return;
+ if(remember&&a)levelNotesFor=a.id;
  const notes=c?.custom?c.levelNotes||{}:null;
  if(!notes||!Object.keys(notes).length){box.classList.add('hidden');box.innerHTML='';return;}
  const p=c.plan||{};
@@ -354,7 +363,7 @@ function renderGrades(){
   return `<tr data-row-member="${h(r.id)}" style="--sheet-row-height:${sheetRowHeights.get(r.id)||42}px"><th scope="row" class="sheet-row-num">${i+2}<span class="sheet-row-resize" data-resize-row="${h(r.id)}" title="드래그해 행 높이 조절"></span></th><td data-sheet-row="${i+1}" data-sheet-col="0">${h(r.className)}</td><td data-sheet-row="${i+1}" data-sheet-col="1">${r.number}</td><td class="sheet-student-name" data-sheet-row="${i+1}" data-sheet-col="2" data-edit-member="${h(r.id)}" title="더블클릭: 이름 수정"><strong>${h(r.name)}</strong></td>${cells}<td class="sheet-state-cell" data-sheet-row="${i+1}" data-sheet-col="${assessments.length+3}"><span class="cell-tag">${h(gradeRowStatus(r,assessments))}</span></td></tr>`;
  }).join(''):'<tr><td class="empty-state sheet-empty-row">표시할 학생이 없습니다.</td></tr>';
  setSheetWidths(assessments);updateGradeSummary(rows,assessments);
- $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';showLevelNotes(null);installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installSheetColumnMove();installGradeNameEditors(rows);
+ $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';refreshLevelNotes(assessments);installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installSheetColumnMove();installGradeNameEditors(rows);
  const inputs=[...table.querySelectorAll('.grade-input')];
  inputs.forEach((input,index)=>{
   const memberId=input.dataset.membership,assessmentId=input.dataset.assessment;
