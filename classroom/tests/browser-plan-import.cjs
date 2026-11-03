@@ -136,8 +136,39 @@ const hwpx=planHwpx();
    assert.equal(await f.locator('#grade-level-notes:not(.hidden)').count(),1,'국어로 돌아오면 설명 보임');
    if(SHOTS)await p.screenshot({path:path.join(SHOTS,'plan-grade-pc.png')});
   });
-  await step('PDF를 올리면 이유를 알리고, 내 AI 답을 붙여 넣어 평가를 만든다',async()=>{
+  await step('성적 입력: 직접 만든 평가는 왼쪽, 수행평가는 오른쪽에 굵은 선으로 나뉘고, 끌기는 같은 묶음 안에서만',async()=>{
+   await f.locator('.nav[data-page="assessments"]').click();await f.locator('[data-assess-mode="new"]').click();
+   await f.locator('input[name="subject"]').fill('국어');await f.locator('input[name="title"]').fill('받아쓰기');
+   await f.locator('#assessment-form input[type="checkbox"]').first().check();await f.locator('#assessment-form button[type="submit"]').click();await wait(200);
+   assert.deepEqual(await f.locator('.assess-section-title').evaluateAll(xs=>xs.map(x=>x.childNodes[0].textContent.trim())),['직접 만든 평가','수행평가 (학교 평가계획)']);
+   await f.locator('.nav[data-page="grades"]').click();await f.locator('#grade-subject').selectOption('국어');await wait(200);
+   const heads=await f.locator('.sheet-labels th[data-sheet-col]').evaluateAll(xs=>xs.slice(3,6).map(x=>({t:x.textContent,cls:x.className})));
+   assert.match(heads[0].t,/직접 만든 평가.*받아쓰기/);assert.match(heads[1].t,/수행평가.*2\. 올바른 문장/);
+   assert.match(heads[1].cls,/sheet-group-start/);assert.match(heads[1].cls,/sheet-plan/);assert.doesNotMatch(heads[0].cls,/sheet-plan/);
+   assert.ok(await f.locator('td.sheet-group-start').count()>=5,'아래 칸까지 굵은 선');
+   const w=await f.locator('.sheet-labels th.sheet-group-start').evaluate(e=>getComputedStyle(e).borderLeftWidth);assert.equal(w,'4px');
+   if(SHOTS)await p.screenshot({path:path.join(SHOTS,'grade-split-pc.png')});
+   // Dragging the first 수행평가 onto the teacher's column keeps it in its own group.
+   const a=await f.locator('.sheet-labels th.sheet-group-start').boundingBox(),b=await f.locator('.sheet-labels th[data-sheet-col="3"]').boundingBox();
+   await p.mouse.move(a.x+a.width/2,a.y+a.height/2);await p.mouse.down();for(let k=1;k<=6;k++)await p.mouse.move(a.x+a.width/2-(a.x-b.x)*k/6,a.y+a.height/2);await p.mouse.up();await wait(200);
+   assert.match(await f.locator('.sheet-labels th[data-sheet-col="3"]').textContent(),/받아쓰기/,'직접 만든 평가가 맨 앞 그대로');
+  });
+  await step('1학기·2학기를 바꾸면 그 학기 평가만 보이고, 평가 관리에서 학기를 옮길 수 있다',async()=>{
+   assert.equal(await f.locator('[data-semester="2"].on').count(),1,'11월은 2학기');
+   await f.locator('[data-semester="1"]').click();await wait(200);
+   assert.match(await f.locator('#grade-info').textContent(),/1학기 평가가 없습니다/);
+   await f.locator('[data-semester="2"]').click();await wait(200);
    await f.locator('.nav[data-page="assessments"]').click();
+   const sel=f.locator('.assess-item',{hasText:'받아쓰기'}).locator('[data-semester-of]');
+   assert.equal(await sel.inputValue(),'2');await sel.selectOption('1');await wait(200);
+   assert.equal(await f.locator('.assess-item',{hasText:'받아쓰기'}).count(),0,'2학기 목록에서 빠짐');
+   await f.locator('[data-semester="1"]').click();await wait(200);
+   assert.equal(await f.locator('.assess-item',{hasText:'받아쓰기'}).count(),1,'1학기 목록에 보임');
+   assert.equal(await f.locator('#new-semester').inputValue(),'1','새 평가 만들기 학기도 1학기');
+   await f.locator('[data-semester="2"]').click();await wait(200);
+  });
+  await step('PDF를 올리면 이유를 알리고, 내 AI 답을 붙여 넣어 평가를 만든다',async()=>{
+   await f.locator('.nav[data-page="assessments"]').click();await f.locator('[data-assess-mode="plan"]').click();
    await f.locator('#pi-upload').setInputFiles({name:'평가계획.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\n%test')});
    await f.locator('.pi-reason').waitFor();assert.match(await f.locator('.pi-reason').textContent(),/PDF/);
    assert.equal(await f.locator('details.pi-ai[open]').count(),1);

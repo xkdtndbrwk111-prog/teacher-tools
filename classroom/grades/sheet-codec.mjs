@@ -6,7 +6,7 @@ export const TABLES=Object.freeze({
   TT_CLASSES:['id','name'],
   TT_STUDENTS:['id','name','seatingLinkJSON'],
   TT_MEMBERSHIPS:['id','studentId','classId','number','active'],
-  TT_ASSESSMENTS:['id','title','subject','classIdsJSON'],
+  TT_ASSESSMENTS:['id','title','subject','classIdsJSON','metaJSON'],
   TT_CRITERIA:['id','assessmentId','name','type','maxScore','levelCount','levelsJSON','unit','recordDirection'],
   TT_GRADES:['assessmentId','criterionId','membershipId','value']
 });
@@ -15,7 +15,7 @@ const rowsOf=(w,ownerSub,revision,savedAt)=>({
  TT_CLASSES:w.classes.map(r=>[r.id,r.name]),
  TT_STUDENTS:w.students.map(r=>[r.id,r.name,r.seatingLink?JSON.stringify(r.seatingLink):'']),
  TT_MEMBERSHIPS:w.memberships.map(r=>[r.id,r.studentId,r.classId,r.number,r.active?'TRUE':'FALSE']),
- TT_ASSESSMENTS:w.assessments.map(r=>[r.id,r.title,r.subject,JSON.stringify(r.classIds)]),
+ TT_ASSESSMENTS:w.assessments.map(r=>[r.id,r.title,r.subject,JSON.stringify(r.classIds),r.semester?JSON.stringify({semester:r.semester}):'']),
  TT_CRITERIA:w.criteria.map(r=>[r.id,r.assessmentId,r.name,r.type||'score',r.maxScore??'',r.levelCount??'',r.levels?JSON.stringify(r.custom?{names:r.levels,notes:r.levelNotes||{},...(r.plan?{plan:r.plan}:{})}:r.levels):'',r.unit||'',r.recordDirection||'']),
  TT_GRADES:w.gradeValues.map(r=>[r.assessmentId,r.criterionId,r.membershipId,r.value===null?'':r.value])
 });
@@ -28,8 +28,12 @@ export function encodeTables(workspace,ownerSub,revision,savedAt=new Date().toIS
 }
 const text=v=>String(v??'');
 const json=(v,fallback)=>v===''?fallback:JSON.parse(text(v));
+// Columns added later; a sheet saved before them has the shorter header and reads as before.
+const ADDED_COLUMNS={TT_ASSESSMENTS:1};
 function checkHeaders(name,rows){
- const hdr=TABLES[name];if(!Array.isArray(rows)||JSON.stringify(rows[0])!==JSON.stringify(hdr))throw Error(`SHEET_HEADERS_INVALID:${name}`);
+ const hdr=TABLES[name],got=JSON.stringify(rows?.[0]);
+ const ok=Array.isArray(rows)&&(got===JSON.stringify(hdr)||Boolean(ADDED_COLUMNS[name])&&got===JSON.stringify(hdr.slice(0,hdr.length-ADDED_COLUMNS[name])));
+ if(!ok)throw Error(`SHEET_HEADERS_INVALID:${name}`);
  if(rows.length>20002)throw Error('SHEET_TOO_LARGE');
 }
 export function decodeTables(tables,expectedYear,expectedSub){
@@ -44,7 +48,7 @@ export function decodeTables(tables,expectedYear,expectedSub){
   classes:get('TT_CLASSES').map(([id,name])=>({id:text(id),name:text(name)})),
   students:get('TT_STUDENTS').map(([id,name,link])=>({...{id:text(id),name:text(name)},...(link?{seatingLink:json(link,null)}:{})})),
   memberships:get('TT_MEMBERSHIPS').map(([id,studentId,classId,number,active])=>({id:text(id),studentId:text(studentId),classId:text(classId),number:Number(number),active:active===true||text(active).toUpperCase()==='TRUE'})),
-  assessments:get('TT_ASSESSMENTS').map(([id,title,subject,ids])=>({id:text(id),title:text(title),subject:text(subject),classIds:json(ids,[])})),
+  assessments:get('TT_ASSESSMENTS').map(([id,title,subject,ids,meta])=>{const r={id:text(id),title:text(title),subject:text(subject),classIds:json(ids,[])};const x=meta?json(meta,{}):{};if(x.semester)r.semester=String(x.semester);return r;}),
   criteria:get('TT_CRITERIA').map(([id,assessmentId,name,type,maxScore,levelCount,levels,unit,recordDirection])=>{
    const r={id:text(id),assessmentId:text(assessmentId),name:text(name),type:text(type)||'score'};
    if(r.type==='score')r.maxScore=Number(maxScore);

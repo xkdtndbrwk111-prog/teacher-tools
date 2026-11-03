@@ -27,6 +27,7 @@
           <button class="toolbtn nav" type="button" data-page="grades">④ 성적 입력</button>
           <button class="toolbtn nav" type="button" data-page="traits">⑤ 능력치 연동</button>
           <label class="view-year">학년도 <select id="view-year" aria-label="볼 학년도"></select></label>
+          <div class="semester-switch" role="group" aria-label="학기"><button type="button" data-semester="1">1학기</button><button type="button" data-semester="2">2학기</button></div>
         </nav>
         <span class="toolbar-spacer"></span><span id="grade-toolbar-subject" class="grade-toolbar-subject hidden" aria-live="polite"></span><span class="assignment-status" id="crumb">대시보드</span>
       </section>
@@ -62,7 +63,7 @@
               <section class="panel hidden" id="plan-import-panel"><div class="panel-top"><div><h2>수행평가 불러오기</h2><p>학교알리미에 공시된 우리 학교 평가계획에서 수행평가와 단계 기준(잘함·보통·노력요함, 상·중·하 등)을 그대로 가져옵니다.</p></div></div><div id="plan-import"></div></section>
               <section class="panel" id="new-assessment-panel"><div class="panel-top"><div><h2>새 평가 만들기</h2><p>학급에 적용할 평가 방식과 기준을 설정합니다.</p></div></div>
                 <form id="assessment-form" class="stack-form">
-                  <label>과목<input name="subject" placeholder="예: 수학" maxlength="50" required></label>
+                  <div class="form-row"><label>과목<input name="subject" placeholder="예: 수학" maxlength="50" required></label><label>학기<select name="semester" id="new-semester"><option value="1">1학기</option><option value="2">2학기</option></select></label></div>
                   <label>평가명<input name="title" placeholder="예: 1단원 분수 평가" maxlength="100" required></label>
                   <fieldset class="type-fieldset"><legend>평가 방식</legend>
                     <div class="type-switch" role="radiogroup" aria-label="평가 방식 선택">

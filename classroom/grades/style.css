@@ -391,3 +391,18 @@ input,select,textarea{border:1px solid var(--line);border-radius:8px;color:#1720
 .grade-table .sheet-labels th{height:auto;min-height:37px;padding-top:5px;padding-bottom:5px}
 .grade-table .sheet-labels th[data-long="1"]{font-size:11px;line-height:1.2}
 .grade-table .sheet-labels th[data-long="2"]{font-size:10.5px;line-height:1.18}
+
+/* 1학기 | 2학기 */
+.semester-switch{display:inline-flex;border:1px solid #30415d;border-radius:9px;overflow:hidden;margin-left:6px}
+.semester-switch button{min-height:38px;padding:0 14px;border:0;background:#16243a;color:#cbd5e1;font-weight:850;font-size:13px}
+.semester-switch button.on{background:#fbbf24;color:#172033}
+.assess-section-title{margin:14px 0 6px;padding-bottom:6px;border-bottom:2px solid #172033;font-size:13px;font-weight:900}.assess-section-title small{color:#64748b;font-weight:700}
+.assess-section-title:first-child{margin-top:0}
+.assess-semester{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#64748b;font-weight:800}.assess-semester select{min-height:30px;border:1px solid var(--line);border-radius:7px;font-size:12px}
+/* The teacher's own assessments | the school's 수행평가: a heavy line and a tinted header split them. */
+.grade-table th.sheet-plan{background:#eef4ff}
+.grade-table .sheet-labels th.sheet-plan{background:#e6efff}
+.grade-table td.sheet-plan{background:#fbfdff}
+.grade-table .sheet-group-start{border-left:4px solid #1d4ed8!important}
+.sheet-group-tag{display:block;width:100%;font-style:normal;font-size:9.5px;font-weight:900;letter-spacing:.02em;text-align:center;margin-bottom:2px}
+.sheet-group-tag.own{color:#475569}.sheet-group-tag.plan{color:#1d4ed8}

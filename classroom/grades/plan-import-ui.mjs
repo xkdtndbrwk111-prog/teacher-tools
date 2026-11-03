@@ -71,14 +71,14 @@ export function mountPlanImport(root,api){
    for(const it of items){
     const many=count.get(it.subject+'|'+it.unit)>1;
     const title=cut(it.unit?(many&&it.element?`${it.unit} · ${it.element}`:it.unit):it.element||it.code||'수행평가',100);
-    addAssessment(copy,{title,subject:cut(it.subject||'기타',50),criterion:cut(it.element||it.unit||'수행평가',80),gradeType:'level',classIds:[...st.classIds],
+    addAssessment(copy,{semester:st.semester,title,subject:cut(it.subject||'기타',50),criterion:cut(it.element||it.unit||'수행평가',80),gradeType:'level',classIds:[...st.classIds],
      customLevels:it.levels.map(l=>l.name),levelNotes:Object.fromEntries(it.levels.map(l=>[l.name,l.note])),
      plan:{school:st.school?.name||'',schoolCode:st.school?.code||'',grade:st.grade,semester:st.semester,period:it.period,code:it.code,standard:it.standard,unit:it.unit,element:it.element,area:it.area,method:it.method,file:cut(st.result.source,200)}});
    }
    validateWorkspace(copy);
   }catch(e){api.toast('평가를 만들지 못했습니다: '+e.message,true);return;}
   api.setM(copy);api.markChanged();
-  st.picked=new Set();api.toast(`수행평가 ${items.length}개를 만들었습니다. ④ 성적 입력에서 단계를 입력하세요.`);api.render();
+  st.picked=new Set();api.toast(`${st.semester}학기 수행평가 ${items.length}개를 만들었습니다. ④ 성적 입력에서 단계를 입력하세요.`);api.setSemester?.(st.semester);api.render();
  }
  function render(){
   const m=api.getM(),off=api.readOnly()?'disabled':'';

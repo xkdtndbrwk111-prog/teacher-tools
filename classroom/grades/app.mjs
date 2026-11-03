@@ -1,4 +1,4 @@
-import {levelsOf,setMemberNumbers,schoolYear,SCHEMA,LEVEL_SETS,createSeatingMetricsExport,classAssessmentDistribution,getCriterionType,formatGrade,extractSeatingRoster,connectSeatingProfiles,fresh,sample,addClass,renameClass,addStudent,renameStudent,deactivateStudent,addAssessment,setGrade,getGrade,roster,restoreWorkspace,gradeCsv,validateWorkspace} from './model.mjs';
+import {inSemester,levelsOf,setMemberNumbers,schoolYear,SCHEMA,LEVEL_SETS,createSeatingMetricsExport,classAssessmentDistribution,getCriterionType,formatGrade,extractSeatingRoster,connectSeatingProfiles,fresh,sample,addClass,renameClass,addStudent,renameStudent,deactivateStudent,addAssessment,setGrade,getGrade,roster,restoreWorkspace,gradeCsv,validateWorkspace} from './model.mjs';
 import {loadDraft,writeDraft,deleteDraft,listDrafts} from './storage.mjs';
 import {buildStudentSubjectDashboard} from './student-dashboard.mjs';
 import {GoogleCloud} from './google-cloud.mjs';
@@ -102,12 +102,16 @@ function renderAssessments(){
  const checks=$('class-checks');const previous=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
  if(!previous.size&&selectedClass)previous.add(selectedClass);
  checks.innerHTML=m.classes.length?m.classes.map(c=>`<label class="check"><input type="checkbox" name="targetClass" value="${h(c.id)}" ${previous.has(c.id)?'checked':''}> ${h(c.name)}</label>`).join(''):'<div class="empty-state">학급을 먼저 등록하세요.</div>';
- const list=$('assessment-list');list.innerHTML=m.assessments.length?m.assessments.slice().reverse().map(a=>{
+ const shownList=semAssessments(),list=$('assessment-list');
+ const section=(title,items)=>items.length?`<div class="assess-section-title">${title} <small>${items.length}개</small></div>`+items.map(assessItem).join(''):'';
+ list.innerHTML=shownList.length?section('직접 만든 평가',shownList.filter(a=>!isPlanAssessment(a)).reverse())+section('수행평가 (학교 평가계획)',shownList.filter(isPlanAssessment).reverse()):`<div class="empty-state">${m.assessments.length?`${selectedSemester}학기 평가가 없습니다.`:'등록된 평가가 없습니다.'}</div>`;
+ function assessItem(a){
   const c=m.criteria.find(x=>x.assessmentId===a.id),type=getCriterionType(c);
   const label=type==='level'?(c.custom?levelsOf(c).join('·'):`${c.levelCount}단계`):type==='other'?`기타 · ${c.unit}`:`점수 · ${c.maxScore}점`;
   const direction=type==='other'?c.recordDirection=== 'lower'?'낮을수록 우수':c.recordDirection==='higher'?'높을수록 우수':'방향 설정 필요':'';
-  return `<div class="assess-item"><span class="type-tag ${type}">${h(label)}</span><br><strong>${h(a.subject)} · ${h(a.title)}</strong><small>${h(c.name)}${type==='other'?` · ${h(direction)}`:''} · ${a.classIds.map(id=>m.classes.find(x=>x.id===id)?.name).filter(Boolean).map(h).join(' · ')}<br>학급별 평균·표준편차로 상대 위치 계산</small><div class="assess-actions"><button type="button" class="mini" data-open-grade="${h(a.id)}">성적 입력 →</button>${type==='other'?`<button type="button" class="mini" data-edit-direction="${h(a.id)}">기록 방향 변경</button>`:''}</div>${type==='other'?`<div class="interpretation-editor hidden" data-direction-editor="${h(a.id)}"><label>좋은 점수의 방향성<select class="interpret-direction"><option value="" ${!['higher','lower'].includes(c.recordDirection)?'selected':''}>방향 선택</option><option value="higher" ${c.recordDirection==='higher'?'selected':''}>높을수록 우수 (윗몸일으키기)</option><option value="lower" ${c.recordDirection==='lower'?'selected':''}>낮을수록 우수 (달리기)</option></select></label><button type="button" class="primary" data-save-direction="${h(a.id)}">방향 저장</button></div>`:''}</div>`;
- }).join(''):'<div class="empty-state">등록된 평가가 없습니다.</div>';
+  return `<div class="assess-item"><span class="type-tag ${type}">${h(label)}</span><br><strong>${h(a.subject)} · ${h(a.title)}</strong><small>${h(c.name)}${type==='other'?` · ${h(direction)}`:''} · ${a.classIds.map(id=>m.classes.find(x=>x.id===id)?.name).filter(Boolean).map(h).join(' · ')}<br>학급별 평균·표준편차로 상대 위치 계산</small><div class="assess-actions"><button type="button" class="mini" data-open-grade="${h(a.id)}">성적 입력 →</button><label class="assess-semester">학기<select data-semester-of="${h(a.id)}" ${readOnlyYear?'disabled':''}><option value="" ${semesterOf(a)?'':'selected'}>미정 (두 학기 모두)</option><option value="1" ${semesterOf(a)==='1'?'selected':''}>1학기</option><option value="2" ${semesterOf(a)==='2'?'selected':''}>2학기</option></select></label>${type==='other'?`<button type="button" class="mini" data-edit-direction="${h(a.id)}">기록 방향 변경</button>`:''}</div>${type==='other'?`<div class="interpretation-editor hidden" data-direction-editor="${h(a.id)}"><label>좋은 점수의 방향성<select class="interpret-direction"><option value="" ${!['higher','lower'].includes(c.recordDirection)?'selected':''}>방향 선택</option><option value="higher" ${c.recordDirection==='higher'?'selected':''}>높을수록 우수 (윗몸일으키기)</option><option value="lower" ${c.recordDirection==='lower'?'selected':''}>낮을수록 우수 (달리기)</option></select></label><button type="button" class="primary" data-save-direction="${h(a.id)}">방향 저장</button></div>`:''}</div>`;
+ }
+ list.querySelectorAll('[data-semester-of]').forEach(s=>s.onchange=()=>{const a=m.assessments.find(x=>x.id===s.dataset.semesterOf);if(!a||readOnlyYear)return;if(s.value)a.semester=s.value;else{delete a.semester;const c=m.criteria.find(x=>x.assessmentId===a.id);if(c?.plan?.semester)delete c.plan.semester;}markChanged();render();toast(s.value?`${s.value}학기 평가로 옮겼습니다.`:'학기를 미정으로 바꿨습니다. 두 학기 모두에 보입니다.');});
  list.querySelectorAll('[data-open-grade]').forEach(b=>b.onclick=()=>{selectedAssessment=b.dataset.openGrade;selectedGradeSubject=m.assessments.find(a=>a.id===selectedAssessment)?.subject||'';selectedGradeClass='all';go('grades')});
  list.querySelectorAll('[data-edit-direction]').forEach(b=>b.onclick=()=>{list.querySelector(`[data-direction-editor="${b.dataset.editDirection}"]`)?.classList.toggle('hidden')});
  list.querySelectorAll('[data-save-direction]').forEach(b=>b.onclick=()=>{
@@ -138,9 +142,12 @@ function loadSheetLayout(){
 }
 let sheetLayout=loadSheetLayout(),sheetRowHeights=new Map(),gradeViewAssessments=[],gradeViewRows=[];
 function displayAssessments(){
- if(selectedGradeSubject===undefined && m.assessments.length)selectedGradeSubject=m.assessments.find(a=>a.id===selectedAssessment)?.subject||m.assessments[0].subject;
- if(selectedGradeSubject&&!m.assessments.some(a=>a.subject===selectedGradeSubject))selectedGradeSubject=m.assessments[0]?.subject||'';
- return selectedGradeSubject?m.assessments.filter(a=>a.subject===selectedGradeSubject):m.assessments.filter(a=>a.id===selectedAssessment);
+ const list=semAssessments();
+ if(selectedGradeSubject===undefined && list.length)selectedGradeSubject=list.find(a=>a.id===selectedAssessment)?.subject||list[0].subject;
+ if(selectedGradeSubject&&!list.some(a=>a.subject===selectedGradeSubject))selectedGradeSubject=list[0]?.subject||'';
+ if(!selectedGradeSubject&&!list.some(a=>a.id===selectedAssessment))selectedAssessment=list[0]?.id||selectedAssessment;
+ const shown=selectedGradeSubject?list.filter(a=>a.subject===selectedGradeSubject):list.filter(a=>a.id===selectedAssessment);
+ return [...shown.filter(a=>!isPlanAssessment(a)),...shown.filter(isPlanAssessment)];
 }
 function currentGradeRows(assessments){const ids=new Set(assessments.flatMap(a=>a.classIds));return roster(m).filter(r=>ids.has(r.classId)&&(selectedGradeClass==='all'||r.classId===selectedGradeClass)&&(!filter||r.name.includes(filter)));}
 function sheetColumnWidth(col){if(col.kind==='fixed')return sheetLayout.fixed[col.index];if(col.kind==='status')return sheetLayout.status;return sheetLayout.results[col.id]||sheetLayout.defaultResult;}
@@ -257,7 +264,8 @@ function renderTraitLink(){
 }
 // Class distribution: a teacher-only modal over the grade sheet. Nothing here leaves the grade manager.
 let distState=null;
-const distClassIds=()=>[...new Set(m.assessments.flatMap(a=>a.classIds))].filter(id=>m.classes.some(c=>c.id===id));
+const distView=()=>({...m,assessments:semAssessments()});
+const distClassIds=()=>[...new Set(semAssessments().flatMap(a=>a.classIds))].filter(id=>m.classes.some(c=>c.id===id));
 function openClassDistribution(){
  const ids=distClassIds();
  if(!ids.length){toast('평가를 먼저 만들어 주세요.',true);return;}
@@ -284,19 +292,19 @@ function distributionChart(data,selected){
 function renderClassDistribution(){
  const st=distState;if(!st)return;
  const ids=distClassIds();if(!ids.includes(st.classId))st.classId=ids[0];
- const subjects=classDistributionSubjects(m,st.classId);if(!subjects.includes(st.subject))st.subject=subjects[0]||'';
- const units=classDistributionAssessments(m,st.classId,st.subject);
+ const view=distView(),subjects=classDistributionSubjects(view,st.classId);if(!subjects.includes(st.subject))st.subject=subjects[0]||'';
+ const units=classDistributionAssessments(view,st.classId,st.subject);
  if(st.assessmentId&&!units.some(a=>a.id===st.assessmentId))st.assessmentId=units[0]?.id||null;
- const data=st.subject?buildClassDistribution(m,st.classId,{subject:st.subject,assessmentId:st.assessmentId}):{title:'',status:'no_comparable_assessments',points:[],excluded:[]};
+ const data=st.subject?buildClassDistribution(view,st.classId,{subject:st.subject,assessmentId:st.assessmentId}):{title:'',status:'no_comparable_assessments',points:[],excluded:[]};
  if(st.selected&&!data.points.some(p=>p.membershipId===st.selected))st.selected=null;
  const unitMode=Boolean(st.assessmentId),sel=data.points.find(p=>p.membershipId===st.selected);
  const controls=`<div class="dist-controls"><label>반<select id="dist-class">${ids.map(id=>`<option value="${h(id)}" ${id===st.classId?'selected':''}>${h(m.classes.find(c=>c.id===id).name)}</option>`).join('')}</select></label><div class="dist-mode" role="group" aria-label="보기 방식"><button type="button" data-dist-mode="subject" class="${unitMode?'':'on'}" aria-pressed="${!unitMode}">교과 전체</button><button type="button" data-dist-mode="unit" class="${unitMode?'on':''}" aria-pressed="${unitMode}" ${units.length?'':'disabled'}>단원별</button></div><label>교과<select id="dist-subject">${subjects.map(s=>`<option ${s===st.subject?'selected':''}>${h(s)}</option>`).join('')}</select></label>${unitMode?`<label>단원<select id="dist-unit">${units.map(a=>`<option value="${h(a.id)}" ${a.id===st.assessmentId?'selected':''}>${h(a.title)}</option>`).join('')}</select></label>`:''}</div>`;
  const chart=data.points.length?distributionChart(data,st.selected):`<div class="dist-empty">표준점수를 낼 수 있는 학생이 없습니다. (${h(distributionReason(data.status))})</div>`;
  const detail=sel?`<div class="dist-detail"><strong>${h(sel.name)}</strong><span>${sel.number}번 · 반 ${sel.rank}등 / ${data.points.length}명</span><span>표준점수 <b>${zDisplay(sel.z)}</b> · ${h(sel.detail)}</span><button type="button" class="ghost" id="dist-personal">개인 화면 보기</button></div>`:'<div class="dist-detail dist-detail-hint">이름을 누르면 그 학생의 자리와 점수를 보여 줍니다.</div>';
  const list=`<ol class="dist-list">${data.points.map(p=>`<li><button type="button" data-dist-member="${h(p.membershipId)}" class="${p.membershipId===st.selected?'on':''}"><span>${p.rank}</span><strong>${h(p.name)}</strong><em>${zDisplay(p.z)}</em></button></li>`).join('')}</ol>${data.excluded.length?`<div class="dist-excluded"><strong>계산 제외 ${data.excluded.length}명</strong>${data.excluded.map(x=>`<span>${x.number}번 ${h(x.name)} · ${h(x.reason)}</span>`).join('')}</div>`:''}`;
- $('class-dist-body').innerHTML=`${controls}<div class="dist-main"><div class="dist-chart-wrap"><div class="dist-chart-title">${h(data.title)} · 표준점수 ${data.points.length}명</div>${chart}${detail}</div><aside class="dist-side"><div class="dist-side-title">표준점수 순서</div>${list}</aside></div>`;
+ $('class-dist-body').innerHTML=`${controls}<div class="dist-main"><div class="dist-chart-wrap"><div class="dist-chart-title">${selectedSemester}학기 · ${h(data.title)} · 표준점수 ${data.points.length}명</div>${chart}${detail}</div><aside class="dist-side"><div class="dist-side-title">표준점수 순서</div>${list}</aside></div>`;
  $('dist-class').onchange=e=>{st.classId=e.target.value;st.selected=null;renderClassDistribution();};
- $('dist-subject').onchange=e=>{st.subject=e.target.value;st.assessmentId=st.assessmentId?classDistributionAssessments(m,st.classId,st.subject)[0]?.id||null:null;st.selected=null;renderClassDistribution();};
+ $('dist-subject').onchange=e=>{st.subject=e.target.value;st.assessmentId=st.assessmentId?classDistributionAssessments(view,st.classId,st.subject)[0]?.id||null:null;st.selected=null;renderClassDistribution();};
  if($('dist-unit'))$('dist-unit').onchange=e=>{st.assessmentId=e.target.value;st.selected=null;renderClassDistribution();};
  document.querySelectorAll('[data-dist-mode]').forEach(b=>b.onclick=()=>{st.assessmentId=b.dataset.distMode==='unit'?units[0]?.id||null:null;renderClassDistribution();});
  $('class-dist-body').querySelectorAll('[data-dist-member]').forEach(el=>{const pick=()=>{st.selected=st.selected===el.dataset.distMember?null:el.dataset.distMember;renderClassDistribution();};el.onclick=pick;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
@@ -320,24 +328,39 @@ function showLevelNotes(c,a,remember=true){
  box.classList.remove('hidden');
 }
 let planImport=null;
+const SEMESTER_KEY='tt.classroom.semester.v1';
+let selectedSemester=(()=>{try{const v=localStorage.getItem(SEMESTER_KEY);if(v==='1'||v==='2')return v;}catch{}const mo=new Date().getMonth()+1;return mo>=3&&mo<=8?'1':'2';})();
+// 수행평가 imported before semesters were stored still carry the semester they were imported for.
+const semesterOf=a=>a.semester||m.criteria.find(c=>c.assessmentId===a.id)?.plan?.semester||'';
+const semAssessments=()=>m.assessments.filter(a=>inSemester({semester:semesterOf(a)},selectedSemester));
+const isPlanAssessment=a=>Boolean(m.criteria.find(c=>c.assessmentId===a.id)?.custom);
+function setSemester(s){
+ selectedSemester=s;try{localStorage.setItem(SEMESTER_KEY,s)}catch{}
+ document.querySelectorAll('[data-semester]').forEach(b=>{b.classList.toggle('on',b.dataset.semester===s);b.setAttribute('aria-pressed',String(b.dataset.semester===s));});
+ const ns=$('new-semester');if(ns)ns.value=s;
+ if(planImport){planImport.state.semester=s;planImport.render();}
+ render();
+}
+document.querySelectorAll('[data-semester]').forEach(b=>b.onclick=()=>setSemester(b.dataset.semester));
+queueMicrotask(()=>{document.querySelectorAll('[data-semester]').forEach(b=>{b.classList.toggle('on',b.dataset.semester===selectedSemester);b.setAttribute('aria-pressed',String(b.dataset.semester===selectedSemester));});const ns=$('new-semester');if(ns)ns.value=selectedSemester;});
 function setAssessMode(mode){
  document.querySelectorAll('[data-assess-mode]').forEach(b=>{const on=b.dataset.assessMode===mode;b.classList.toggle('on',on);b.setAttribute('aria-selected',String(on));});
  $('plan-import-panel').classList.toggle('hidden',mode!=='plan');$('new-assessment-panel').classList.toggle('hidden',mode==='plan');
- if(mode==='plan'){planImport ||= mountPlanImport($('plan-import'),{getM:()=>m,setM:v=>{m=v},markChanged,render,toast,readOnly:()=>readOnlyYear,selectedClass:()=>selectedClass});planImport.render();}
+ if(mode==='plan'){planImport ||= mountPlanImport($('plan-import'),{getM:()=>m,setM:v=>{m=v},markChanged,render,toast,readOnly:()=>readOnlyYear,selectedClass:()=>selectedClass,setSemester:s=>{if(s!==selectedSemester)setSemester(s);}});planImport.render();}
 }
 document.querySelectorAll('[data-assess-mode]').forEach(b=>b.onclick=()=>setAssessMode(b.dataset.assessMode));
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
 function renderGrades(){
  const pick=$('grade-assessment');
- pick.innerHTML=m.assessments.length?m.assessments.map(a=>`<option value="${h(a.id)}" ${a.id===selectedAssessment?'selected':''}>${h(a.subject)} · ${h(a.title)}</option>`).join(''):'<option value="">평가를 먼저 만들어주세요</option>';
- const subjectPick=$('grade-subject'),subjects=[...new Set(m.assessments.map(a=>a.subject))];
- if(selectedGradeSubject===undefined && m.assessments.length)selectedGradeSubject=m.assessments.find(a=>a.id===selectedAssessment)?.subject||m.assessments[0].subject;
+ pick.innerHTML=semAssessments().length?semAssessments().map(a=>`<option value="${h(a.id)}" ${a.id===selectedAssessment?'selected':''}>${h(a.subject)} · ${h(a.title)}</option>`).join(''):'<option value="">평가를 먼저 만들어주세요</option>';
+ const subjectPick=$('grade-subject'),subjects=[...new Set(semAssessments().map(a=>a.subject))];
+ if(selectedGradeSubject===undefined && semAssessments().length)selectedGradeSubject=semAssessments().find(a=>a.id===selectedAssessment)?.subject||semAssessments()[0].subject;
  if(selectedGradeSubject&&!subjects.includes(selectedGradeSubject))selectedGradeSubject=subjects[0]||'';
  subjectPick.innerHTML=`<option value="">평가 하나씩 보기</option>`+subjects.map(sub=>`<option value="${h(sub)}" ${selectedGradeSubject===sub?'selected':''}>${h(sub)} · 평가 전체</option>`).join('');
  $('grade-assessment').closest('label').classList.toggle('hidden',Boolean(selectedGradeSubject));
  const assessments=displayAssessments(),tabs=$('class-tabs'),table=$('grade-rows'),thead=$('grade-table').querySelector('thead');
  gradeViewAssessments=assessments;
- if(!assessments.length){$('grade-toolbar-subject').textContent='과목 미선택';tabs.innerHTML='';table.innerHTML='<tr><td class="empty-state sheet-empty-row">선택된 평가가 없습니다.</td></tr>';gradeViewRows=[];$('grade-summary').textContent='';$('export-csv').disabled=true;$('grade-info').textContent='평가 관리에서 평가를 만들어주세요.';$('grade-guide').textContent='평가 생성 후 입력 가능합니다.';$('sheet-cell-info').textContent='셀을 선택하세요';return;}
+ if(!assessments.length){$('grade-toolbar-subject').textContent='과목 미선택';tabs.innerHTML='';table.innerHTML='<tr><td class="empty-state sheet-empty-row">선택된 평가가 없습니다.</td></tr>';gradeViewRows=[];$('grade-summary').textContent='';$('export-csv').disabled=true;$('grade-info').textContent=m.assessments.length?`${selectedSemester}학기 평가가 없습니다. 위에서 학기를 바꾸거나 평가 관리에서 만들어 주세요.`:'평가 관리에서 평가를 만들어주세요.';showLevelNotes(null);$('grade-guide').textContent='평가 생성 후 입력 가능합니다.';$('sheet-cell-info').textContent='셀을 선택하세요';return;}
  $('export-csv').disabled=false;
  const classIds=[...new Set(assessments.flatMap(a=>a.classIds))],classes=classIds.map(id=>m.classes.find(c=>c.id===id)).filter(Boolean);
  if(selectedGradeClass!=='all'&&!classIds.includes(selectedGradeClass))selectedGradeClass='all';
@@ -349,16 +372,21 @@ function renderGrades(){
  $('grade-guide').textContent='방향키: 상하좌우 셀 이동 · Tab: 오른쪽 · Enter: 아래쪽 · 드래그: 범위 선택 후 Ctrl/Cmd+C 복사'+(assessments.length>1&&!readOnlyYear?' · 평가 제목 끌기: 순서 바꾸기':'');
  const colHeaders=['학급','번호','학생 이름',...assessments.map(a=>a.title),'상태'];
  const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?(c.custom?'':`${c.levelCount}단계`):type==='other'?c.unit:`${c.maxScore}점`;}),''];
- const movable=i=>assessments.length>1&&!readOnlyYear&&i>=3&&i<3+assessments.length,moveAttr=i=>movable(i)?` class="sheet-movable" data-move-assessment="${h(assessments[i-3].id)}"`:'';
- thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)}${label.length>24?' data-long="2"':label.length>14?' data-long="1"':''} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
+ const movable=i=>assessments.length>1&&!readOnlyYear&&i>=3&&i<3+assessments.length;
+ const planCol=i=>i>=3&&i<3+assessments.length&&isPlanAssessment(assessments[i-3]),firstPlan=assessments.findIndex(isPlanAssessment);
+ const split=firstPlan>0,groupClass=i=>[planCol(i)?'sheet-plan':'',split&&i===3+firstPlan?'sheet-group-start':''].filter(Boolean).join(' ');
+ const moveAttr=i=>{const cls=[movable(i)?'sheet-movable':'',groupClass(i)].filter(Boolean).join(' ');return (cls?` class="${cls}"`:'')+(movable(i)?` data-move-assessment="${h(assessments[i-3].id)}" data-group="${planCol(i)?'plan':'own'}"`:'');};
+ const groupTag=i=>split&&i===3?'<em class="sheet-group-tag own">직접 만든 평가</em>':firstPlan>=0&&i===3+firstPlan?'<em class="sheet-group-tag plan">수행평가</em>':'';
+ thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)}${label.length>24?' data-long="2"':label.length>14?' data-long="1"':''} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${groupTag(i)}${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
  const rows=currentGradeRows(assessments);gradeViewRows=rows;
  table.innerHTML=rows.length?rows.map((r,i)=>{
   const cells=assessments.map((a,j)=>{
-   if(!a.classIds.includes(r.classId))return `<td class="sheet-na-cell" data-sheet-row="${i+1}" data-sheet-col="${j+3}" title="이 학급에는 연결되지 않은 평가">—</td>`;
+   const gc=groupClass(j+3);
+   if(!a.classIds.includes(r.classId))return `<td class="sheet-na-cell ${gc}" data-sheet-row="${i+1}" data-sheet-col="${j+3}" title="이 학급에는 연결되지 않은 평가">—</td>`;
    const c=m.criteria.find(x=>x.assessmentId===a.id),type=getCriterionType(c),v=getGrade(m,a.id,r.id),key=`${a.id}|${r.id}`;
    const label=h(`${r.className} ${r.name} ${a.subject} ${a.title}`);
    const field=type==='level'?`<select class="grade-input ${edited.has(key)?'dirty':''}" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}"><option value="">— 미입력 —</option>${c.levels.map(item=>`<option value="${h(item)}" ${v===item?'selected':''} ${c.custom&&c.levelNotes?.[item]?`title="${h(c.levelNotes[item])}"`:''}>${h(item)}</option>`).join('')}</select>`:`<input class="grade-input ${edited.has(key)?'dirty':''}" inputmode="decimal" autocomplete="off" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}" value="${v===null?'':h(v)}">${type==='other'?`<span class="unit-label sheet-unit">${h(c.unit)}</span>`:''}`;
-   return `<td class="sheet-entry-cell" data-sheet-row="${i+1}" data-sheet-col="${j+3}">${field}</td>`;
+   return `<td class="sheet-entry-cell ${gc}" data-sheet-row="${i+1}" data-sheet-col="${j+3}">${field}</td>`;
   }).join('');
   return `<tr data-row-member="${h(r.id)}" style="--sheet-row-height:${sheetRowHeights.get(r.id)||42}px"><th scope="row" class="sheet-row-num">${i+2}<span class="sheet-row-resize" data-resize-row="${h(r.id)}" title="드래그해 행 높이 조절"></span></th><td data-sheet-row="${i+1}" data-sheet-col="0">${h(r.className)}</td><td data-sheet-row="${i+1}" data-sheet-col="1">${r.number}</td><td class="sheet-student-name" data-sheet-row="${i+1}" data-sheet-col="2" data-edit-member="${h(r.id)}" title="더블클릭: 이름 수정"><strong>${h(r.name)}</strong></td>${cells}<td class="sheet-state-cell" data-sheet-row="${i+1}" data-sheet-col="${assessments.length+3}"><span class="cell-tag">${h(gradeRowStatus(r,assessments))}</span></td></tr>`;
  }).join(''):'<tr><td class="empty-state sheet-empty-row">표시할 학생이 없습니다.</td></tr>';
@@ -536,24 +564,27 @@ function installSheetColumnMove(){
  table.addEventListener('pointerdown',e=>{
   const head=e.target.closest('[data-move-assessment]');
   if(!head||e.button!==0||readOnlyYear||e.target.closest('.sheet-resize'))return;
-  const from=gradeViewAssessments.findIndex(a=>a.id===head.dataset.moveAssessment);if(from<0)return;
-  e.preventDefault();clearSheetRangeSelection();sheetColumnDrag={from,to:null,startX:e.clientX,active:false};
+  const group=head.dataset.group,ids=gradeViewAssessments.filter(a=>(isPlanAssessment(a)?'plan':'own')===group).map(a=>a.id);
+  const from=ids.indexOf(head.dataset.moveAssessment);if(from<0)return;
+  e.preventDefault();clearSheetRangeSelection();sheetColumnDrag={from,to:null,startX:e.clientX,active:false,group,ids,col:Number(table.querySelector(`.sheet-labels [data-move-assessment="${CSS.escape(head.dataset.moveAssessment)}"]`)?.dataset.sheetCol)};
  });
  document.addEventListener('pointermove',e=>{
   const drag=sheetColumnDrag;if(!drag||!table.isConnected)return;
-  if(!drag.active){if(Math.abs(e.clientX-drag.startX)<7)return;drag.active=true;sheetColumnCells(drag.from+3).forEach(el=>el.classList.add('sheet-col-dragging'));}
-  const heads=[...table.querySelectorAll('.sheet-labels [data-move-assessment]')];
+  if(!drag.active){if(Math.abs(e.clientX-drag.startX)<7)return;drag.active=true;sheetColumnCells(drag.col).forEach(el=>el.classList.add('sheet-col-dragging'));}
+  const heads=[...table.querySelectorAll(`.sheet-labels [data-move-assessment][data-group="${drag.group}"]`)];
   let to=heads.length;for(let i=0;i<heads.length;i++){const b=heads[i].getBoundingClientRect();if(e.clientX<b.left+b.width/2){to=i;break;}}
   drag.to=to;
   table.querySelectorAll('.sheet-drop-before,.sheet-drop-after').forEach(el=>el.classList.remove('sheet-drop-before','sheet-drop-after'));
-  if(to!==drag.from&&to!==drag.from+1){if(to<heads.length)sheetColumnCells(to+3).forEach(el=>el.classList.add('sheet-drop-before'));else sheetColumnCells(heads.length+2).forEach(el=>el.classList.add('sheet-drop-after'));}
+  if(to!==drag.from&&to!==drag.from+1){if(to<heads.length)sheetColumnCells(Number(heads[to].dataset.sheetCol)).forEach(el=>el.classList.add('sheet-drop-before'));else sheetColumnCells(Number(heads.at(-1).dataset.sheetCol)).forEach(el=>el.classList.add('sheet-drop-after'));}
   const box=table.closest('.sheet-scroll'),b=box?.getBoundingClientRect();
   if(b){if(e.clientX<b.left+40)box.scrollLeft-=14;else if(e.clientX>b.right-40)box.scrollLeft+=14;}
  });
  document.addEventListener('pointerup',()=>{
   const drag=sheetColumnDrag;sheetColumnDrag=null;clearSheetColumnMarks();if(!drag?.active||drag.to===null)return;
   const to=drag.to>drag.from?drag.to-1:drag.to;if(to===drag.from)return;
-  const order=gradeViewAssessments.map(a=>a.id);order.splice(to,0,order.splice(drag.from,1)[0]);moveAssessmentOrder(order);
+  const ids=[...drag.ids];ids.splice(to,0,ids.splice(drag.from,1)[0]);
+  const other=gradeViewAssessments.filter(a=>(isPlanAssessment(a)?'plan':'own')!==drag.group).map(a=>a.id);
+  moveAssessmentOrder(drag.group==='own'?[...ids,...other]:[...other,...ids]);
  });
  document.addEventListener('pointercancel',()=>{sheetColumnDrag=null;clearSheetColumnMarks();});
 }
@@ -728,7 +759,7 @@ $('year').onchange=async()=>{toast('지금은 이번 학년도만 볼 수 있습
 $('open-class-dist').onclick=openClassDistribution;$('class-dist-close').onclick=()=>$('class-dist-dialog').close();
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>go(b.dataset.page));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));$('dock-next').onclick=()=>go($('dock-next').dataset.go);document.querySelectorAll('.dock-tab').forEach(b=>b.onclick=()=>activateDock(b.dataset.dock));document.querySelectorAll('input[name="gradeType"]').forEach(i=>i.onchange=updateType);$('level-count').onchange=updateType;updateType();
 $('class-form').onsubmit=e=>{e.preventDefault();if(true){toast('학생과 학급은 자리배치 메뉴에서만 수정합니다.',true);return;}try{const c=addClass(m,$('new-class').value);selectedClass=c.id;$('new-class').value='';markChanged();render();toast('새 학급이 등록되었습니다.')}catch(x){toast(x.message,true)}};
-$('assessment-form').onsubmit=e=>{e.preventDefault();try{const c=new BroadcastChannel('tt-classroom-changes');c.postMessage({important:true});c.close()}catch{};const form=e.currentTarget;const fd=new FormData(form);try{const gradeType=fd.get('gradeType');if(gradeType==='other'&&!['higher','lower'].includes(fd.get('recordDirection')))throw Error('기타 기록의 우수 방향을 선택해 주세요.');const a=addAssessment(m,{title:fd.get('title'),subject:fd.get('subject'),gradeType,criterion:gradeType==='level'?fd.get('criterionLevel'):gradeType==='other'?fd.get('criterionOther'):fd.get('criterionScore'),unit:fd.get('recordUnit'),recordDirection:fd.get('recordDirection'),levelCount:fd.get('levelCount'),maxScore:fd.get('maxScore'),classIds:fd.getAll('targetClass')});selectedAssessment=a.id;selectedGradeClass='all';markChanged();form.reset();updateType();render();toast('평가를 생성했습니다.')}catch(x){toast(x.message,true)}};
+$('assessment-form').onsubmit=e=>{e.preventDefault();try{const c=new BroadcastChannel('tt-classroom-changes');c.postMessage({important:true});c.close()}catch{};const form=e.currentTarget;const fd=new FormData(form);try{const gradeType=fd.get('gradeType');if(gradeType==='other'&&!['higher','lower'].includes(fd.get('recordDirection')))throw Error('기타 기록의 우수 방향을 선택해 주세요.');const a=addAssessment(m,{title:fd.get('title'),subject:fd.get('subject'),gradeType,criterion:gradeType==='level'?fd.get('criterionLevel'):gradeType==='other'?fd.get('criterionOther'):fd.get('criterionScore'),unit:fd.get('recordUnit'),recordDirection:fd.get('recordDirection'),levelCount:fd.get('levelCount'),maxScore:fd.get('maxScore'),classIds:fd.getAll('targetClass'),semester:fd.get('semester')||selectedSemester});selectedAssessment=a.id;selectedGradeClass='all';markChanged();form.reset();$('new-semester').value=selectedSemester;updateType();render();toast('평가를 생성했습니다.')}catch(x){toast(x.message,true)}};
 $('grade-subject').onchange=e=>{selectedGradeSubject=e.target.value;selectedGradeClass='all';renderGrades()};$('grade-assessment').onchange=e=>{selectedAssessment=e.target.value;selectedGradeSubject='';selectedGradeClass='all';renderGrades()};$('student-search').oninput=e=>{filter=e.target.value.trim();renderGrades()};
 $('export-seating-metrics').onclick=()=>{try{const data=createSeatingMetricsExport(m);download(`classroom_${year}_SEATING_METRICS.json`,JSON.stringify(data,null,2),'application/json;charset=utf-8');toast('자리배치용 상대평가 자료를 내려받았습니다. 학생 ID 연결과 5축 선택은 자리배치에서 진행합니다.')}catch(e){toast(e.message,true)}};
 $('export-json').onclick=()=>{try{validateWorkspace(m);download(`classroom_${year}_LOCAL_BACKUP.json`,JSON.stringify(m,null,2),'application/json;charset=utf-8');toast('JSON 백업을 내려받았습니다. Google Sheets 저장과 별개입니다.')}catch(x){toast(x.message,true)}};

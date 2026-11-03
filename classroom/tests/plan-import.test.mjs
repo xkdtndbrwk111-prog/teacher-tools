@@ -51,3 +51,16 @@ test('PDF·압축 파일은 이유를 알려 주고 AI 정리로 넘긴다',asyn
  const pdf=await readPlanFile('a.pdf',new TextEncoder().encode('%PDF-1.7 ...'));assert.equal(pdf.kind,'pdf');assert.match(pdf.reason,/PDF/);
  const zip=await readPlanFile('a.zip',new Uint8Array([0x50,0x4b,3,4]));assert.equal(zip.kind,'zip');
 });
+test('평가마다 학기를 저장하고, 학기 열이 없던 예전 시트도 그대로 읽는다',async()=>{
+ const {inSemester}=await import('../grades/model.mjs');
+ const {m,c}=ws();
+ const a1=addAssessment(m,{title:'1단원',subject:'수학',criterion:'점수',maxScore:100,classIds:[c.id],semester:'1'});
+ assert.equal(a1.semester,'1');assert.equal(inSemester(a1,'2'),false);assert.equal(inSemester({},'2'),true,'학기 미정은 두 학기 모두');
+ assert.throws(()=>addAssessment(m,{title:'x',subject:'x',criterion:'점수',maxScore:10,classIds:[c.id],semester:'3'}),/학기/);
+ const tables=encodeTables(m,'sub-1','rev-12345');
+ assert.deepEqual(tables.TT_ASSESSMENTS[0],['id','title','subject','classIdsJSON','metaJSON']);
+ assert.equal(decodeTables(tables,2026,'sub-1').workspace.assessments.find(x=>x.id===a1.id).semester,'1');
+ // A sheet saved before the column existed: 4 header cells, rows without the 5th value.
+ const old=structuredClone(tables);old.TT_ASSESSMENTS=old.TT_ASSESSMENTS.map(r=>r.slice(0,4));
+ const back=decodeTables(old,2026,'sub-1').workspace;assert.equal(back.assessments.length,m.assessments.length);assert.equal(back.assessments[0].semester,undefined);
+});

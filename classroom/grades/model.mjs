@@ -4,6 +4,9 @@ export const LEVEL_SETS = Object.freeze({3:Object.freeze(['매우잘함','잘함
 export const getCriterionType = c => c?.type === 'level' ? 'level' : c?.type === 'other' ? 'other' : 'score';
 // A school's own level names (상·중·하, ◎○△, 우수·보통·향상필요 ...) come with a school plan; other level
 // assessments use the fixed sets above.
+// An assessment belongs to 1학기 or 2학기; one without a semester (made before semesters) shows in both.
+export const SEMESTERS = Object.freeze(['1','2']);
+export const inSemester = (a, semester) => !a?.semester || !semester || a.semester === semester;
 export const levelsOf = c => c?.custom ? (Array.isArray(c.levels) ? c.levels : []) : (LEVEL_SETS[c?.levelCount] || []);
 const PLAN_FIELDS=['school','schoolCode','year','semester','grade','period','code','standard','unit','element','area','method','file'];
 function cleanPlan(plan){
@@ -74,7 +77,7 @@ export function renameStudent(m, membershipId, name) {
 export function deactivateStudent(m, membershipId) {
  const mem=m.memberships.find(x=>x.id===membershipId);if(!mem) throw Error('학급 소속을 찾을 수 없습니다.');mem.active=false;
 }
-export function addAssessment(m, {title,subject,criterion,maxScore,classIds,gradeType='score',levelCount=3,unit='',recordDirection='',customLevels=null,levelNotes=null,plan=undefined }) {
+export function addAssessment(m, {title,subject,criterion,maxScore,classIds,gradeType='score',levelCount=3,unit='',recordDirection='',customLevels=null,levelNotes=null,plan=undefined,semester='' }) {
  title=str(title);subject=str(subject);criterion=str(criterion)|| (gradeType==='level'?'평가 수준':'점수');
  if(!title || title.length>100 || !subject || subject.length>50 || !criterion || criterion.length>80) throw Error('평가 정보를 확인하세요.');
  if(!['score','level','other'].includes(gradeType)) throw Error('평가 방식은 점수·단계·기타 중 선택하세요.');
@@ -100,7 +103,8 @@ export function addAssessment(m, {title,subject,criterion,maxScore,classIds,grad
   newCriterion={type:'score',maxScore:max};
  }
  const ids=[...new Set(classIds||[])];if(!ids.length || ids.some(id=>!m.classes.some(c=>c.id===id))) throw Error('적용할 학급을 선택하세요.');
- const a={id:gid(),title,subject,classIds:ids};m.assessments.push(a);
+ semester=String(semester||'');if(semester&&!SEMESTERS.includes(semester))throw Error('학기는 1학기 또는 2학기로 고르세요.');
+ const a={id:gid(),title,subject,classIds:ids,...(semester?{semester}:{})};m.assessments.push(a);
  m.criteria.push({id:gid(),assessmentId:a.id,name:criterion,...newCriterion});return a;
 }
 export function setGrade(m, assessmentId, membershipId, value) {
@@ -138,7 +142,7 @@ export function validateWorkspace(w) {
  for(const student of w.students)if(student.seatingLink!==undefined&&!validSeatingLink(student.seatingLink))throw Error('자리배치 아바타 연결 데이터 오류');
  const unique=new Set();
  for(const mem of w.memberships)if(!indexes.students.has(mem.studentId)||!indexes.classes.has(mem.classId)||!Number.isInteger(mem.number)||mem.number<1)throw Error('학급 소속 ID 오류');
- for(const a of w.assessments)if(!Array.isArray(a.classIds)||!a.classIds.length||a.classIds.some(id=>!indexes.classes.has(id)))throw Error('평가 연결 ID 오류');
+ for(const a of w.assessments){if(!Array.isArray(a.classIds)||!a.classIds.length||a.classIds.some(id=>!indexes.classes.has(id)))throw Error('평가 연결 ID 오류');if(a.semester!==undefined&&!SEMESTERS.includes(a.semester))throw Error('평가 학기 오류');}
  for(const c of w.criteria){
   if(!indexes.assessments.has(c.assessmentId) || !str(c.name) || c.name.length>80) throw Error('평가 기준 오류');
   if(c.type!==undefined && !['score','level','other'].includes(c.type)) throw Error('평가 방식 오류');
