@@ -288,3 +288,10 @@ input,select,textarea{border:1px solid var(--line);border-radius:8px;color:#1720
 .personal-table th{text-align:center;white-space:nowrap}
 .personal-table td small{display:block;color:#64748b;font-size:10px;margin-top:6px}
 @media(max-width:620px){.student-detail-inner{padding:13px}.student-detail-view{padding:7px}.personal-subject-list{grid-template-columns:1fr;max-height:none}.personal-detail-heading{flex-direction:column;align-items:flex-start}.normal-large{width:100%}.personal-section-heading{flex-wrap:wrap}.personal-summary strong{font-size:18px}}
+
+/* Result columns move by dragging their header; the blue line shows where the column will land. */
+.grade-table th.sheet-movable{cursor:grab;touch-action:none;user-select:none}
+.grade-table th.sheet-movable:active{cursor:grabbing}
+.grade-table .sheet-col-dragging{background:#e8f0fe!important;opacity:.7}
+.grade-table .sheet-drop-before{box-shadow:inset 3px 0 0 #1a73e8}
+.grade-table .sheet-drop-after{box-shadow:inset -3px 0 0 #1a73e8}

@@ -157,6 +157,67 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    assert.deepEqual((await f.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value))).slice(0,4),['90','85','70','']);
    await ctx.close();
   });
+  const gradeSheet=async(viewport,titles)=>{
+   const {ctx,p}=await open(viewport);
+   await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin:BASE});
+   await p.click('#tt-grade-tab');
+   const f=p.frameLocator('.tt-grade-iframe');
+   await p.waitForFunction(()=>/공통 명단 연결/.test(document.getElementById('tt-stage03-status')?.textContent||''));
+   for(const title of titles){
+    await f.locator('.nav[data-page="assessments"]').click();
+    await f.locator('input[name="subject"]').fill('수학');await f.locator('input[name="title"]').fill(title);
+    await f.locator('#assessment-form input[type="checkbox"]').first().check();
+    await f.locator('#assessment-form button[type="submit"]').click();await wait(120);
+   }
+   await f.locator('.nav[data-page="grades"]').click();
+   await f.locator('input.grade-input').first().waitFor();
+   const values=()=>f.locator('#grade-rows tr').evaluateAll(trs=>trs.map(tr=>[...tr.querySelectorAll('.grade-input')].map(e=>e.value)));
+      const heads=()=>f.locator('.sheet-labels [data-move-assessment]').evaluateAll(xs=>xs.map(e=>e.childNodes[0].textContent.trim()));
+   // A real Ctrl/Cmd+V with the clipboard filled the way a spreadsheet fills it.
+   const paste=async(cell,text)=>{await cell.click();await cell.evaluate((el,t)=>navigator.clipboard.writeText(t),text);await p.keyboard.press(process.platform==='darwin'?'Meta+V':'Control+V');await wait(250);return f.locator('#toast').textContent();};
+   return{ctx,p,f,values,heads,paste};
+  };
+  await step('구글시트에서 복사한 점수: "95점", 전각 숫자, 따옴표 칸, 틀린 칸, 넘치는 줄, 한 칸도 붙여 넣는다',async()=>{
+   const {ctx,f,values,paste}=await gradeSheet({width:1600,height:1000},['1단원','2단원','3단원']);
+   const n=(await values()).length;assert.ok(n>=5,'학생 '+n);
+   const lines=['95점\t８０\t"70"','90\tabc\t85 점',...Array.from({length:n},()=>'50\t50\t50')];
+   const msg=await paste(f.locator('input.grade-input').first(),lines.join('\r\n')+'\r\n');
+   const v=await values();
+   assert.deepEqual(v[0],['95','80','70']);
+   assert.deepEqual(v[1],['90','','85']);
+   assert.deepEqual(v[n-1],['50','50','50']);
+   assert.equal(await f.locator('#grade-rows tr').nth(1).locator('.grade-input').nth(1).evaluate(e=>e.classList.contains('error')),true,'틀린 칸 표시');
+   assert.match(msg,/형식이 맞지 않는 1칸/);assert.match(msg,/표 밖으로 나가는 6칸 제외/);
+   const names=await f.locator('#grade-rows .sheet-student-name').evaluateAll(xs=>xs.map(e=>e.textContent.trim()));
+   await paste(f.locator('#grade-rows tr').nth(2).locator('.grade-input').nth(2),'88점');
+   assert.deepEqual((await values())[2],['50','50','88']);
+   assert.deepEqual(await f.locator('#grade-rows .sheet-student-name').evaluateAll(xs=>xs.map(e=>e.textContent.trim())),names,'이름은 그대로');
+   await ctx.close();
+  });
+  for(const [label,viewport] of [['PC',{width:1600,height:1000}],['태블릿',{width:1024,height:768}]])await step(`단원 열 머리를 끌어 순서를 바꾸면 점수도 함께 옮겨진다 (${label})`,async()=>{
+   const {ctx,p,f,values,heads}=await gradeSheet(viewport,['1단원','2단원','3단원']);
+   const inputs=f.locator('#grade-rows tr').first().locator('.grade-input');
+   for(let i=0;i<3;i++){await inputs.nth(i).fill(String(70+i));await inputs.nth(i).press('Enter');}
+   assert.deepEqual(await heads(),['1단원','2단원','3단원']);
+   const drag=async(from,to,side)=>{const a=await f.locator('.sheet-labels [data-move-assessment]').nth(from).boundingBox(),b=await f.locator('.sheet-labels [data-move-assessment]').nth(to).boundingBox();
+    await p.mouse.move(a.x+a.width/2,a.y+a.height/2);await p.mouse.down();
+    for(let k=1;k<=8;k++)await p.mouse.move(a.x+a.width/2+(b.x+(side==='left'?8:b.width-8)-a.x-a.width/2)*k/8,b.y+b.height/2);
+    assert.ok(await f.locator('.sheet-drop-before,.sheet-drop-after').count()>0,'파란 줄 표시');
+    await p.mouse.up();await wait(200);};
+   await drag(2,0,'left');
+   assert.deepEqual(await heads(),['3단원','1단원','2단원']);
+   assert.deepEqual((await values())[0],['72','70','71']);
+   await drag(0,2,'right');
+   assert.deepEqual(await heads(),['1단원','2단원','3단원']);
+   // The letter row works too, and a plain click on a header changes nothing.
+   const l=await f.locator('.sheet-letters [data-move-assessment]').nth(0).boundingBox();
+   await p.mouse.click(l.x+l.width/2,l.y+l.height/2);await wait(100);
+   assert.deepEqual(await heads(),['1단원','2단원','3단원']);
+   await f.locator('.nav[data-page="assessments"]').click();await f.locator('.nav[data-page="grades"]').click();await wait(150);
+   assert.deepEqual(await heads(),['1단원','2단원','3단원'],'다른 화면에 다녀와도 순서 유지');
+   for(const b of await f.locator('.sheet-labels [data-move-assessment]').evaluateAll(xs=>xs.map(e=>e.getBoundingClientRect().top)))assert.ok(b>=0);
+   await ctx.close();
+  });
   await step('성적표: 키보드로 칸을 옮기면 화면 밖으로 나가지 않게 따라 움직인다',async()=>{
    const {ctx,p}=await open({width:1100,height:520});
    await p.click('#tt-grade-tab');

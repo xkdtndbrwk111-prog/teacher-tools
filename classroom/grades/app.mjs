@@ -214,10 +214,11 @@ function renderGrades(){
  const first=assessments[0],subject=selectedGradeSubject;
  $('grade-info').textContent=subject?`${subject} · 평가 ${assessments.length}개를 나란히 입력 · 과목 내 단원별 독립 저장`:`${first.subject} · ${first.title}`;
  $('grade-toolbar-subject').textContent=subject?`${subject} · ${assessments.length}개 평가`:`${first.subject} · ${first.title}`;
- $('grade-guide').textContent='방향키: 상하좌우 셀 이동 · Tab: 오른쪽 · Enter: 아래쪽 · 드래그: 범위 선택 후 Ctrl/Cmd+C 복사';
+ $('grade-guide').textContent='방향키: 상하좌우 셀 이동 · Tab: 오른쪽 · Enter: 아래쪽 · 드래그: 범위 선택 후 Ctrl/Cmd+C 복사'+(assessments.length>1&&!readOnlyYear?' · 평가 제목 끌기: 순서 바꾸기':'');
  const colHeaders=['학급','번호','학생 이름',...assessments.map(a=>a.title),'상태'];
  const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?`${c.levelCount}단계`:type==='other'?c.unit:`${c.maxScore}점`;}),''];
- thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th title="${h(label)}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}" title="${h(label)}${details[i]?` · ${h(details[i])}`:''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
+ const movable=i=>assessments.length>1&&!readOnlyYear&&i>=3&&i<3+assessments.length,moveAttr=i=>movable(i)?` class="sheet-movable" data-move-assessment="${h(assessments[i-3].id)}"`:'';
+ thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
  const rows=currentGradeRows(assessments);gradeViewRows=rows;
  table.innerHTML=rows.length?rows.map((r,i)=>{
   const cells=assessments.map((a,j)=>{
@@ -230,7 +231,7 @@ function renderGrades(){
   return `<tr data-row-member="${h(r.id)}" style="--sheet-row-height:${sheetRowHeights.get(r.id)||42}px"><th scope="row" class="sheet-row-num">${i+2}<span class="sheet-row-resize" data-resize-row="${h(r.id)}" title="드래그해 행 높이 조절"></span></th><td data-sheet-row="${i+1}" data-sheet-col="0">${h(r.className)}</td><td data-sheet-row="${i+1}" data-sheet-col="1">${r.number}</td><td class="sheet-student-name" data-sheet-row="${i+1}" data-sheet-col="2" data-edit-member="${h(r.id)}" title="더블클릭: 이름 수정"><strong>${h(r.name)}</strong></td>${cells}<td class="sheet-state-cell" data-sheet-row="${i+1}" data-sheet-col="${assessments.length+3}"><span class="cell-tag">${h(gradeRowStatus(r,assessments))}</span></td></tr>`;
  }).join(''):'<tr><td class="empty-state sheet-empty-row">표시할 학생이 없습니다.</td></tr>';
  setSheetWidths(assessments);updateGradeSummary(rows,assessments);
- $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installGradeNameEditors(rows);
+ $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installSheetColumnMove();installGradeNameEditors(rows);
  const inputs=[...table.querySelectorAll('.grade-input')];
  inputs.forEach((input,index)=>{
   const memberId=input.dataset.membership,assessmentId=input.dataset.assessment;
@@ -263,21 +264,8 @@ function renderGrades(){
    if(e.key==='Tab'&&!commit())e.preventDefault();
   });
   input.onpaste=e=>{
-   const t=e.clipboardData?.getData('text/plain')||'';if(!/[\t\n\r]/.test(t))return;
-   e.preventDefault();const grid=t.replace(/\r/g,'').trimEnd().split('\n').map(line=>line.split('\t'));
-   const startRow=rows.indexOf(r),startCol=col;
-   if(startRow+grid.length>rows.length||grid.some(row=>startCol+row.length>assessments.length)){toast('붙여넣을 범위가 표시된 성적표를 초과합니다.',true);return;}
-   const updates=[];
-   for(let y=0;y<grid.length;y++)for(let x=0;x<grid[y].length;x++){
-    const targetRow=rows[startRow+y],targetAssessment=assessments[startCol+x];
-    if(!targetAssessment.classIds.includes(targetRow.classId)){toast('연결되지 않은 학급의 평가 칸에는 붙여넣을 수 없습니다.',true);return;}
-    updates.push({memberId:targetRow.id,assessmentId:targetAssessment.id,value:grid[y][x]});
-   }
-   try{const copy=structuredClone(m);updates.forEach(v=>setGrade(copy,v.assessmentId,v.memberId,v.value));m=copy;
-    updates.forEach(v=>edited.add(`${v.assessmentId}|${v.memberId}`));markChanged();renderGrades();
-    table.querySelector(`.grade-input[data-assessment="${CSS.escape(assessmentId)}"][data-membership="${CSS.escape(memberId)}"]`)?.focus();
-    toast(`${updates.length}개 성적을 반영했습니다.`);
-   }catch(x){toast('붙여넣기 중단: '+x.message,true);}
+   const t=e.clipboardData?.getData('text/plain')||'';if(!t)return;
+   e.preventDefault();pasteGradeText(t,rows.indexOf(r),col);
   };
   input.closest('.sheet-entry-cell').addEventListener('click',()=>{if(document.activeElement!==input){input.focus();if(input instanceof HTMLInputElement)input.select();}});
  });
@@ -335,7 +323,7 @@ function installSheetRangeCopy(){
  if(table.dataset.rangeCopyBound)return;table.dataset.rangeCopyBound='true';
  const position=target=>{const el=target?.closest?.('[data-sheet-row][data-sheet-col]');return el&&table.contains(el)?{row:Number(el.dataset.sheetRow),col:Number(el.dataset.sheetCol)}:null;};
  table.addEventListener('pointerdown',e=>{
-  if(e.button!==0||e.pointerType==='touch'||e.target.closest('.sheet-resize,.sheet-row-resize,.sheet-rename-field'))return;
+  if(e.button!==0||e.pointerType==='touch'||e.target.closest('.sheet-resize,.sheet-row-resize,.sheet-rename-field,[data-move-assessment]'))return;
   const start=position(e.target);if(!start)return;
   clearSheetRangeSelection();sheetCopyDrag={start,last:start,startX:e.clientX,startY:e.clientY,active:false};
  });
@@ -352,6 +340,90 @@ function installSheetRangeCopy(){
   if(!sheetCopyRange||(sheetCopyRange.lowR===sheetCopyRange.highR&&sheetCopyRange.lowC===sheetCopyRange.highC))return;
   e.clipboardData?.setData('text/plain',selectedSheetText());e.preventDefault();toast('선택한 셀을 복사했습니다.');
  });
+}
+// Text copied from Excel or Google Sheets: tab-separated; a quoted cell may hold tabs, line breaks or "" quotes.
+function parseSheetText(text){
+ const grid=[[]];let cell='',quoted=false;
+ for(let i=0;i<text.length;i++){
+  const ch=text[i];
+  if(quoted){if(ch==='"'){if(text[i+1]==='"'){cell+='"';i++;}else quoted=false;}else cell+=ch;continue;}
+  if(ch==='"'&&cell==='')quoted=true;
+  else if(ch==='\t'){grid.at(-1).push(cell);cell='';}
+  else if(ch==='\n'){grid.at(-1).push(cell);cell='';grid.push([]);}
+  else if(ch!=='\r')cell+=ch;
+ }
+ grid.at(-1).push(cell);
+ while(grid.length&&grid.at(-1).every(v=>v.trim()===''))grid.pop();
+ return grid;
+}
+// Spreadsheets often carry display text such as "95점", "1,200", full-width digits or a dash for an empty cell.
+function cleanPastedValue(value,criterion){
+ let v=String(value).replace(/[ 　]/g,' ').replace(/[０-９．]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xfee0)).trim();
+ if(/^[-–—]$/.test(v))return '';
+ const type=getCriterionType(criterion);if(type==='level')return v;
+ v=v.replace(/\s+/g,'');if(/^\d{1,3}(,\d{3})+(\.\d+)?/.test(v))v=v.replace(/,/g,'');
+ return type==='other'?v:v.replace(/점$/,'');
+}
+function pasteGradeText(text,startRow,startCol){
+ const rows=gradeViewRows,assessments=gradeViewAssessments;
+ const grid=parseSheetText(text);if(!grid.length)return;
+ // Only score cells are written, in place from the chosen cell; names and titles are never read from the paste.
+ const targets=[];let outside=0,blocked=0;
+ grid.forEach((line,y)=>{const r=rows[startRow+y];if(r)targets.push({row:r,cells:line});else outside+=line.filter(v=>v.trim()).length;});
+ const copy=structuredClone(m),changed=[],bad=[];
+ targets.forEach(({row,cells})=>cells.forEach((raw,x)=>{
+  const a=assessments[startCol+x];
+  if(!a){if(raw.trim())outside++;return;}
+  if(!a.classIds.includes(row.classId)){if(raw.trim())blocked++;return;}
+  const c=copy.criteria.find(z=>z.assessmentId===a.id);
+  try{const before=getGrade(copy,a.id,row.id),after=setGrade(copy,a.id,row.id,cleanPastedValue(raw,c));changed.push({key:`${a.id}|${row.id}`,same:before===after});}
+  catch(err){bad.push({assessmentId:a.id,memberId:row.id,message:err.message});}
+ }));
+ const focusId=document.activeElement?.dataset?.assessment,focusMember=document.activeElement?.dataset?.membership;
+ if(changed.length){m=copy;changed.forEach(v=>{if(!v.same)edited.add(v.key)});if(changed.some(v=>!v.same))markChanged();renderGrades();}
+ const table=$('grade-rows'),cell=(aid,mid)=>table.querySelector(`.grade-input[data-assessment="${CSS.escape(aid)}"][data-membership="${CSS.escape(mid)}"]`);
+ bad.forEach(v=>cell(v.assessmentId,v.memberId)?.classList.add('error'));
+ if(focusId&&focusMember)cell(focusId,focusMember)?.focus();
+ const notes=[];
+ if(bad.length)notes.push(`형식이 맞지 않는 ${bad.length}칸은 그대로 둠(빨간 칸: ${bad[0].message})`);
+ if(outside)notes.push(`표 밖으로 나가는 ${outside}칸 제외`);
+ if(blocked)notes.push(`이 학급과 연결되지 않은 평가 ${blocked}칸 제외`);
+ toast((changed.length?`${changed.length}칸을 붙여 넣었습니다.`:'붙여 넣은 칸이 없습니다.')+(notes.length?' '+notes.join(' · '):''),!changed.length||bad.length>0);
+}
+// Dragging a result column's header (letter or title) moves that assessment among the ones shown side by side.
+let sheetColumnDrag=null;
+function sheetColumnCells(col){return $('grade-table').querySelectorAll(`[data-sheet-col="${col}"],[data-letter-col="${col}"]`);}
+function clearSheetColumnMarks(){$('grade-table').querySelectorAll('.sheet-col-dragging,.sheet-drop-before,.sheet-drop-after').forEach(el=>el.classList.remove('sheet-col-dragging','sheet-drop-before','sheet-drop-after'));}
+function moveAssessmentOrder(order){
+ const byId=new Map(m.assessments.map(a=>[a.id,a])),shown=new Set(order);let k=0;
+ m.assessments=m.assessments.map(a=>shown.has(a.id)?byId.get(order[k++]):a);
+ markChanged();render();toast('평가 순서를 바꿨습니다.');
+}
+function installSheetColumnMove(){
+ const table=$('grade-table');if(table.dataset.columnMoveBound)return;table.dataset.columnMoveBound='true';
+ table.addEventListener('pointerdown',e=>{
+  const head=e.target.closest('[data-move-assessment]');
+  if(!head||e.button!==0||readOnlyYear||e.target.closest('.sheet-resize'))return;
+  const from=gradeViewAssessments.findIndex(a=>a.id===head.dataset.moveAssessment);if(from<0)return;
+  e.preventDefault();clearSheetRangeSelection();sheetColumnDrag={from,to:null,startX:e.clientX,active:false};
+ });
+ document.addEventListener('pointermove',e=>{
+  const drag=sheetColumnDrag;if(!drag||!table.isConnected)return;
+  if(!drag.active){if(Math.abs(e.clientX-drag.startX)<7)return;drag.active=true;sheetColumnCells(drag.from+3).forEach(el=>el.classList.add('sheet-col-dragging'));}
+  const heads=[...table.querySelectorAll('.sheet-labels [data-move-assessment]')];
+  let to=heads.length;for(let i=0;i<heads.length;i++){const b=heads[i].getBoundingClientRect();if(e.clientX<b.left+b.width/2){to=i;break;}}
+  drag.to=to;
+  table.querySelectorAll('.sheet-drop-before,.sheet-drop-after').forEach(el=>el.classList.remove('sheet-drop-before','sheet-drop-after'));
+  if(to!==drag.from&&to!==drag.from+1){if(to<heads.length)sheetColumnCells(to+3).forEach(el=>el.classList.add('sheet-drop-before'));else sheetColumnCells(heads.length+2).forEach(el=>el.classList.add('sheet-drop-after'));}
+  const box=table.closest('.sheet-scroll'),b=box?.getBoundingClientRect();
+  if(b){if(e.clientX<b.left+40)box.scrollLeft-=14;else if(e.clientX>b.right-40)box.scrollLeft+=14;}
+ });
+ document.addEventListener('pointerup',()=>{
+  const drag=sheetColumnDrag;sheetColumnDrag=null;clearSheetColumnMarks();if(!drag?.active||drag.to===null)return;
+  const to=drag.to>drag.from?drag.to-1:drag.to;if(to===drag.from)return;
+  const order=gradeViewAssessments.map(a=>a.id);order.splice(to,0,order.splice(drag.from,1)[0]);moveAssessmentOrder(order);
+ });
+ document.addEventListener('pointercancel',()=>{sheetColumnDrag=null;clearSheetColumnMarks();});
 }
 function installGradeNameEditors(rows){return; // STAGE03: names are edited ONLY by the Seating host.
 
