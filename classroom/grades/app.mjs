@@ -291,7 +291,10 @@ function revealSheetCell(input){
  if(c.left<left)box.scrollLeft-=left-c.left;else if(c.right>right)box.scrollLeft+=c.right-right;
  box.scrollIntoView({block:'nearest',inline:'nearest'});
 }
-$('grade-table').addEventListener('focusin',e=>{if(e.target.classList?.contains('grade-input'))revealSheetCell(e.target);});
+// Only keyboard moves scroll. A click, or the browser giving focus back when the window returns, must not move the sheet under the pointer.
+let sheetKeyMove=false;
+$('grade-table').addEventListener('keydown',e=>{sheetKeyMove=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter','Tab'].includes(e.key);},true);
+$('grade-table').addEventListener('focusin',e=>{if(sheetKeyMove&&e.target.classList?.contains('grade-input'))revealSheetCell(e.target);sheetKeyMove=false;});
 // Spreadsheet-style rectangular selection is COPY ONLY. It never writes grade values.
 let sheetCopyRange=null;
 let sheetCopyDrag=null;

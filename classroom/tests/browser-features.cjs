@@ -178,6 +178,26 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    for(let i=0;i<6;i++){await first.page().keyboard.press('ArrowLeft');await wait(40);await seen('왼쪽 '+i)}
    for(let i=0;i<5;i++){await first.page().keyboard.press('Tab');await wait(40);await seen('Tab '+i)}
    for(let i=0;i<4;i++){await first.page().keyboard.press('Enter');await wait(40);await seen('Enter '+i)}
+   // Coming back from another window: the browser refocuses the last cell, then the click must land where it was aimed.
+   const box=f.locator('.sheet-scroll');
+   await box.evaluate(b=>{b.scrollTop=b.scrollHeight;b.scrollLeft=0});await wait(60);
+   const aim=f.locator('input.grade-input').nth(1);await box.evaluate(b=>{b.scrollTop=0});await wait(40);
+   await first.page().keyboard.press('Escape');
+   const last=await first.evaluate(()=>document.activeElement.getAttribute('aria-label'));
+   await first.evaluate(()=>{const a=document.activeElement,b=a.closest('.sheet-scroll');b.scrollTop=0;b.scrollLeft=0;a.blur();window.dispatchEvent(new Event('blur'));window.__keep=a});
+   await wait(40);
+   await first.evaluate(()=>{const b=document.querySelector('.sheet-scroll');window.__top=b.scrollTop;window.__left=b.scrollLeft;window.__keep.focus({preventScroll:true});window.dispatchEvent(new Event('focus'))});
+   await wait(40);
+   assert.deepEqual(await first.evaluate(()=>{const b=document.querySelector('.sheet-scroll');return[b.scrollTop-window.__top,b.scrollLeft-window.__left]}),[0,0],'돌아왔을 때 표가 움직이지 않음');
+   // Every cell in view, including ones cut off at the edges: the one aimed at is the one chosen, and the sheet stays put.
+   const spots=await first.evaluate(()=>{const b=document.querySelector('.sheet-scroll'),r=b.getBoundingClientRect(),head=b.querySelector('thead').getBoundingClientRect().bottom,out=[];for(const i of document.querySelectorAll('input.grade-input')){const c=i.closest('td').getBoundingClientRect(),x=(Math.max(c.left,r.left)+Math.min(c.right,r.left+b.clientWidth))/2,y=(Math.max(c.top,head)+Math.min(c.bottom,r.top+b.clientHeight))/2;if(c.right>r.left+4&&c.left<r.left+b.clientWidth-4&&c.bottom>head+4&&c.top<r.top+b.clientHeight-4&&document.elementFromPoint(x,y)?.closest('td')===i.closest('td'))out.push({x,y,label:i.getAttribute('aria-label')})}return out});
+   assert.ok(spots.length>=2,'보이는 칸 '+spots.length);
+   const fb=await p.locator('.tt-grade-iframe').boundingBox();
+   for(const spot of spots.slice(0,10)){
+    await first.evaluate(()=>{window.__keep=document.activeElement;window.__keep.blur()});await wait(20);await first.evaluate(()=>window.__keep.focus({preventScroll:true}));await wait(20);
+    await p.mouse.click(fb.x+spot.x,fb.y+spot.y);await wait(60);
+    assert.equal(await first.evaluate(()=>document.activeElement.getAttribute('aria-label')),spot.label,'클릭한 칸이 선택됨 (이전 칸 '+last+')');
+   }
    await ctx.close();
   });
   await step('한자 매니저: 명단, 문제 등록, 게임 진행',async()=>{
