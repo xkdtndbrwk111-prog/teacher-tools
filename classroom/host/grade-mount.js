@@ -46,10 +46,15 @@
   if(isActive())return;
   document.activeElement?.blur?.();
   document.body.classList.add('tt-grade-active');bar.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===tab));tab.setAttribute('aria-pressed','true');
-  if(!frame){frame=document.createElement('iframe');frame.className='tt-grade-iframe';frame.title='성적 관리';frame.src='../classroom/grades/index.html';frame.loading='eager';panel.append(frame)}
+  if(!frame)ensureFrame();
   else sendRoster();height();
  });
+ function ensureFrame(){frame=document.createElement('iframe');frame.className='tt-grade-iframe';frame.title='성적 관리';frame.src='../classroom/grades/index.html';frame.loading='eager';panel.append(frame)}
  window.__TT_STAGE031_SEND_ROSTER=sendRoster;
+ // After the level count changes, the grade tab (loaded out of sight if needed) re-ranks linked axes.
+ window.__TT_TRAIT_RERANK=()=>{if(!frame)ensureFrame();else if(bridgeReady)sendRoster()};
+ // A load that finds an unfinished re-rank (the page closed in between) finishes it too.
+ queueMicrotask(()=>{if(window.__TT_PE_TRAITS?.snapshot().rerankPending)window.__TT_TRAIT_RERANK()});
  // 성적 연결 in the student tab: open the grade tab on its trait link page.
  function openTraitPage(){pendingTraitOpen=false;frame.contentWindow.postMessage({type:'TT_TRAIT_LINK_OPEN',installId:TEST_INSTALL_ID},location.origin)}
  window.__TT_OPEN_TRAIT_LINK=()=>{pendingTraitOpen=true;if(!isActive())tab.click();if(frame&&bridgeReady){sendRoster();openTraitPage()}};
@@ -57,7 +62,7 @@
  window.addEventListener('message',e=>{
   if(e.origin!==location.origin||e.source!==frame?.contentWindow||!e.data||e.data.installId!==TEST_INSTALL_ID)return;
   if(e.data.type!=='TT_TRAIT_LINK_SAVE'&&e.data.type!=='TT_TRAIT_LINK_APPLY')return;
-  const reply=(ok,message,changed=0)=>frame.contentWindow.postMessage({type:'TT_TRAIT_LINK_RESULT',installId:TEST_INSTALL_ID,ok,message,changed},location.origin);
+  const reply=(ok,message,changed=0)=>frame.contentWindow.postMessage({type:'TT_TRAIT_LINK_RESULT',installId:TEST_INSTALL_ID,ok,message,changed,auto:e.data.auto===true},location.origin);
   if(e.data.sourceInstanceId!==TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId)return reply(false,'다른 반의 요청이라 반영하지 않았습니다.');
   const api=window.__TT_PE_TRAITS;if(!api)return reply(false,'자리배치 능력치를 찾지 못했습니다.');
   try{

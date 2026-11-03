@@ -18,7 +18,7 @@ let year=schoolYear(),m=fresh(year),page='overview',selectedClass=null,selectedA
 function toast(msg,isError=false){const t=$('toast');t.textContent=msg;t.classList.toggle('error',isError);t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,4200);}
 function download(name,content,mime){const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 function draftKey(){return `TT_STAGE03_${stage03InstallId||'UNBOUND'}_${year}`;}
-function markChanged(){if(readOnlyYear)return;changeCounter++;if(cloudMode)cloudDirty=true;m.updatedAt=new Date().toISOString();$('draft-state').textContent=cloudMode?'● 미저장 변경 있음 · Sheets 저장 필요':'◌ 임시 보관 중';updateCloudUI();clearTimeout(timer);timer=setTimeout(async()=>{try{validateWorkspace(m);stage03PendingDraft=writeDraft(draftKey(),structuredClone(m));await stage03PendingDraft;persistFailed=false;$('draft-state').textContent=cloudMode?(cloudDirty?'● 이 기기에 임시 보관됨 · Sheets 미저장':'● Sheets 저장 확인됨'):'● 이 기기에 임시 보관됨';}catch(e){persistFailed=true;$('draft-state').textContent='⚠ 임시 보관 실패';toast('브라우저 임시 보관에 실패했습니다. JSON 백업을 내려받으세요.',true);}},500);}
+function markChanged(){if(readOnlyYear)return;changeCounter++;if(cloudMode)cloudDirty=true;m.updatedAt=new Date().toISOString();$('draft-state').textContent=cloudMode?'● 미저장 변경 있음 · Sheets 저장 필요':'◌ 임시 보관 중';updateCloudUI();scheduleTraitSync();clearTimeout(timer);timer=setTimeout(async()=>{try{validateWorkspace(m);stage03PendingDraft=writeDraft(draftKey(),structuredClone(m));await stage03PendingDraft;persistFailed=false;$('draft-state').textContent=cloudMode?(cloudDirty?'● 이 기기에 임시 보관됨 · Sheets 미저장':'● Sheets 저장 확인됨'):'● 이 기기에 임시 보관됨';}catch(e){persistFailed=true;$('draft-state').textContent='⚠ 임시 보관 실패';toast('브라우저 임시 보관에 실패했습니다. JSON 백업을 내려받으세요.',true);}},500);}
 function syncSelection(){if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;if(!m.assessments.some(a=>a.id===selectedAssessment))selectedAssessment=m.assessments[0]?.id||null;const a=m.assessments.find(x=>x.id===selectedAssessment);if(!a || (selectedGradeClass!=='all'&&!a.classIds.includes(selectedGradeClass)))selectedGradeClass='all';}
 function go(next){const priorPage=page;page=next;$('grade-toolbar-subject').classList.toggle('hidden',next!=='grades');if(next==='grades'&&priorPage!==next)activateDock('grades');selectedMemberId=null;$('student-detail').classList.add('hidden');document.querySelectorAll('.nav').forEach(b=>{b.classList.toggle('active',b.dataset.page===next);b.classList.toggle('on',b.dataset.page===next);});document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('hidden',x.dataset.view!==next));const n=names[next];$('crumb').textContent=n[0];$('eyebrow').textContent=n[1];$('heading').textContent=n[2];$('subheading').textContent=next==='classes'?'':n[3];render();}
 function render(){syncSelection();updateCloudUI();$('n-classes').textContent=m.classes.length;$('n-students').textContent=m.memberships.filter(x=>x.active).length;$('n-assessments').textContent=m.assessments.length;$('n-grades').textContent=m.gradeValues.filter(x=>x.value!==null).length;renderOverview();renderClasses();renderAssessments();renderGrades();renderTraitLink();updateDock();renderStudentStrip();applyReadOnly();}
@@ -209,6 +209,24 @@ function traitLinkPlan(cls){
  }
  return plan;
 }
+// Linked axes follow grades at once: on turning a link on, choosing subjects, any grade change,
+// and a level count change in seating. Only levels that differ are sent.
+function syncLinkedTraits(){
+ if(!hostTraits||readOnlyYear)return;
+ const cls=m.classes.find(c=>c.stage03SourceId===hostSourceId);if(!cls)return;
+ const values=traitLinkValues(cls,traitLinkPlan(cls)),diff={};
+ for(const [id,row] of Object.entries(values)){const now=hostTraits.values[id]||{};const d=Object.fromEntries(Object.entries(row).filter(([k,v])=>now[k]!==v));if(Object.keys(d).length)diff[id]=d;}
+ if(!Object.keys(diff).length&&!hostTraits.rerankPending)return;
+ hostTraits.rerankPending=false;
+ for(const [id,d] of Object.entries(diff))hostTraits.values[id]={...hostTraits.values[id],...d};
+ postTraitLink('TT_TRAIT_LINK_APPLY',{values:diff,auto:true});
+}
+function scheduleTraitSync(){clearTimeout(scheduleTraitSync.timer);scheduleTraitSync.timer=setTimeout(()=>{syncLinkedTraits();if(page==='traits')renderTraitLink();},250);}
+function traitLinkValues(cls,plan){
+ const values={};
+ for(const mem of roster(m,cls.id)){const row={};plan.forEach(p=>{const v=p.levels.get(mem.id);if(v!==undefined)row[p.k]=v;});if(Object.keys(row).length&&mem.stage03SeatingId)values[mem.stage03SeatingId]=row;}
+ return values;
+}
 function renderTraitLink(){
  const box=$('trait-link');if(!box)return;
  const cls=hostSourceId&&m.classes.find(c=>c.stage03SourceId===hostSourceId);
@@ -225,22 +243,16 @@ function renderTraitLink(){
   const now=hostTraits.values[mem.stage03SeatingId]||{};
   const cells=plan.map(p=>{const next=p.levels.get(mem.id),before=now[p.k]??null;
    if(next===undefined)return `<td class="trait-keep">${traitLabel(before,scale)} <small>성적 없음 · 그대로</small></td>`;
-   if(next!==before)changes++;
-   return `<td class="${next!==before?'trait-change':''}">${traitLabel(before,scale)} → <b>${traitLabel(next,scale)}</b></td>`;}).join('');
+   if(next!==before){changes++;return `<td class="trait-change">${traitLabel(before,scale)} → <b>${traitLabel(next,scale)}</b></td>`;}
+   return `<td><b>${traitLabel(next,scale)}</b></td>`;}).join('');
   return `<tr><td>${mem.number}</td><td>${h(mem.name)}</td>${cells}</tr>`;
  }).join('');
  const notes=plan.flatMap(p=>[!p.subjects.length?`${p.label}: 교과를 골라 주세요.`:'',p.skipped.length?`${p.label}: 표준점수를 낼 수 없는 평가 ${p.skipped.length}개 제외(결과 5명 미만·모두 같은 점수·기록 방향 미정)`:'',p.subjects.length&&!p.used?`${p.label}: 계산할 수 있는 평가가 없습니다.`:'']).filter(Boolean);
- const preview=plan.length?`<div class="trait-preview-head"><h3>미리보기 · ${h(cls.name)} · ${scale}단계</h3><span>${changes?`바뀌는 칸 ${changes}개`:'바뀌는 칸 없음'}</span></div>${notes.length?`<ul class="trait-notes">${notes.map(x=>`<li>${h(x)}</li>`).join('')}</ul>`:''}<div class="table-wrap trait-preview-wrap"><table class="trait-preview"><thead><tr><th>번호</th><th>이름</th>${plan.map(p=>`<th>${p.label}<small>${h(p.subjects.join('·')||'교과 미선택')}</small></th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="trait-actions"><span>반 안 순위로 ${scale}등분합니다. 같은 점수는 같은 단계입니다. 여러 평가는 평가별 표준점수의 평균으로 순위를 매깁니다.</span><button type="button" class="primary" id="trait-apply" ${changes&&!readOnlyYear?'':'disabled'}>능력치에 반영</button></div>`:'<div class="trait-note trait-empty">성적 연동으로 고른 축이 없습니다. 위에서 축을 성적 연동으로 바꾸고 교과를 골라 주세요.</div>';
+ const preview=plan.length?`<div class="trait-apply-bar is-auto ${changes?'is-busy':''}"><div><strong>${readOnlyYear?'지난 학년도 · 읽기 전용':changes?`자동 반영 중 · ${changes}칸`:'자동 반영됨'}</strong><span>성적 연동 축은 연동을 켜거나, 교과를 고르거나, 성적이 바뀌면 바로 자리배치 능력치에 반영됩니다.</span></div></div><div class="trait-preview-head"><h3>현재 단계 · ${h(cls.name)} · ${scale}단계</h3></div>${notes.length?`<ul class="trait-notes">${notes.map(x=>`<li>${h(x)}</li>`).join('')}</ul>`:''}<div class="table-wrap trait-preview-wrap"><table class="trait-preview"><thead><tr><th>번호</th><th>이름</th>${plan.map(p=>`<th>${p.label}<small>${h(p.subjects.join('·')||'교과 미선택')}</small></th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="trait-actions"><span>반 안 순위로 ${scale}등분합니다. 같은 점수는 같은 단계입니다. 여러 평가는 평가별 표준점수의 평균으로 순위를 매깁니다.</span></div>`:'<div class="trait-note trait-empty">성적 연동으로 고른 축이 없습니다. 위에서 축을 성적 연동으로 바꾸고 교과를 골라 주세요.</div>';
  box.innerHTML=`<div class="trait-link-class">${h(cls.name)} · 능력치 ${scale}단계 <small>단계 수는 자리배치 학생 탭에서 바꿉니다.</small></div><div class="trait-link-axes">${axes}</div>${preview}`;
- const save=()=>{postTraitLink('TT_TRAIT_LINK_SAVE',{config:{modes:{...hostTraits.modes},subjects:structuredClone(hostTraits.subjects)}});renderTraitLink();};
+ const save=()=>{postTraitLink('TT_TRAIT_LINK_SAVE',{config:{modes:{...hostTraits.modes},subjects:structuredClone(hostTraits.subjects)}});syncLinkedTraits();renderTraitLink();};
  box.querySelectorAll('[data-trait-mode]').forEach(b=>b.onclick=()=>{if(readOnlyYear)return;hostTraits.modes[b.dataset.traitMode]=b.dataset.value;save();});
  box.querySelectorAll('[data-trait-subject]').forEach(c=>c.onchange=()=>{if(readOnlyYear)return;const k=c.dataset.traitSubject,list=new Set(hostTraits.subjects[k]||[]);c.checked?list.add(c.value):list.delete(c.value);hostTraits.subjects[k]=[...list];save();});
- $('trait-apply')?.addEventListener('click',()=>{
-  if(readOnlyYear)return;
-  const values={};
-  for(const mem of members){const row={};plan.forEach(p=>{const v=p.levels.get(mem.id);if(v!==undefined)row[p.k]=v;});if(Object.keys(row).length&&mem.stage03SeatingId)values[mem.stage03SeatingId]=row;}
-  postTraitLink('TT_TRAIT_LINK_APPLY',{values});
- });
 }
 // Class distribution: a teacher-only modal over the grade sheet. Nothing here leaves the grade manager.
 let distState=null;
@@ -901,10 +913,11 @@ window.addEventListener('message',e=>{
  }else if(msg.type==='TT_TRAIT_LINK_OPEN' && msg.installId===stage03InstallId){
   go('traits');
  }else if(msg.type==='TT_TRAIT_LINK_RESULT' && msg.installId===stage03InstallId){
-  toast(msg.message,!msg.ok);
+  if(!msg.ok)toast(msg.message,true);
+  else if(!msg.auto||(page==='traits'&&msg.changed))toast(msg.auto?`성적 연동 축 자동 반영 · 바뀐 칸 ${msg.changed}개`:msg.message);
  }else if(msg.type==='TT_STAGE03_ROSTER'){
   hostTraits=msg.traits&&typeof msg.traits==='object'?msg.traits:null;hostSourceId=msg.sourceInstanceId;
-  stage03ProjectionBusy=stage03ProjectionBusy.then(()=>stage03ApplyHost(msg)).catch(err=>{stage03Report('⚠ 명단 동기화 보류: '+err.message,true)});
+  stage03ProjectionBusy=stage03ProjectionBusy.then(()=>stage03ApplyHost(msg)).then(syncLinkedTraits).catch(err=>{stage03Report('⚠ 명단 동기화 보류: '+err.message,true)});
  }else if(msg.type==='TT_STAGE03_FLUSH'){
   const installId=msg.installId,id=msg.id;
   stage03ProjectionBusy=stage03ProjectionBusy.then(async()=>{let ok=false;

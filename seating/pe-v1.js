@@ -31,7 +31,7 @@ let peFixedEditTeam=0;
 window.__TT_PE_TRAITS={
   snapshot(){
     const settings=traitSettings();
-    return{scale:settings.scale,modes:{...settings.modes},subjects:Object.fromEntries(Object.entries(settings.subjects).map(([k,v])=>[k,[...v]])),
+    return{scale:settings.scale,rerankPending:settings.rerankPending===true,modes:{...settings.modes},subjects:Object.fromEntries(Object.entries(settings.subjects).map(([k,v])=>[k,[...v]])),
       values:Object.fromEntries(classState.students.map((st,i)=>[st.id,{...ensurePEStudent(st,i).traits}]))};
   },
   saveLink(config){
@@ -49,6 +49,8 @@ window.__TT_PE_TRAITS={
       const traits=ensurePEStudent(st,i).traits;
       TRAITS.forEach(([k])=>{if(settings.modes[k]==="linked"&&levels.includes(next[k])&&traits[k]!==next[k]){traits[k]=next[k];changed++;}});
     });
+    // traitSettings() rebuilds the object, so clear the flag on the live one.
+    delete peState.traitSettings.rerankPending;
     persistPE();renderStudentInspector();if(mode==="pe")renderPE();
     return changed;
   }
@@ -68,6 +70,7 @@ function traitSettings(){
     subjects[k]=Array.isArray(raw.subjects?.[k])?[...new Set(raw.subjects[k].filter(x=>typeof x==="string"&&x.trim()&&x.length<=50).map(x=>x.trim()))].slice(0,30):[];
   });
   peState.traitSettings={scale:raw.scale===8?8:4,modes,subjects};
+  if(raw.rerankPending===true)peState.traitSettings.rerankPending=true;
   return peState.traitSettings;
 }
 const traitScale=()=>traitSettings().scale;
@@ -95,6 +98,8 @@ function setTraitScale(next){
     }
   }
   settings.scale=next;
+  // Linked axes are ranks from grades, not hand values: the grade tab splits them again for the new count.
+  if(TRAITS.some(([k])=>settings.modes[k]==="linked"))settings.rerankPending=true;
 }
 function ensurePEStudent(student,index){
   if(!peState[student.id]){
@@ -225,7 +230,7 @@ renderStudentInspector=function(){
   section.innerHTML=`<div class="trait-head"><span class="inspector-label">5축 특성 · 비공개</span><div class="trait-scale" role="group" aria-label="능력치 단계 수">${[4,8].map(n=>`<button type="button" data-trait-scale="${n}" class="${scale===n?'on':''}" aria-pressed="${scale===n}">${n}단계</button>`).join("")}</div><button type="button" class="trait-grade-link" id="traitGradeLink">성적 연결</button></div><div class="trait-radar-wrap trait-scale-${scale}">${radarSvg(values,TRAITS.map(x=>x[1]),active)}<div class="trait-grid">${TRAITS.map(([k,label],i)=>`<div class="trait-row ${active[i]?'':'inactive-axis'} ${linked(k)?'trait-linked':''}"><span>${label}${linked(k)?`<em class="trait-linked-tag" title="성적 연동 · ${escapeHtml(settings.subjects[k].join(', ')||'교과 미선택')}">연동</em>`:''}</span>${traitLevels().map(v=>`<button type="button" data-trait="${k}" data-value="${v}" class="${traits[k]===v?'on':''}" ${linked(k)?'disabled title="성적 연동 축입니다. 성적 관리의 능력치 연동에서 반영하거나 수동으로 바꾸세요."':''}>${traitLabel(v)}</button>`).join("")}</div>`).join("")}</div></div><div class="trait-hint">${mode==="classroom"?"교실 균형 계산: 통솔 · 지력 · 매력 · 적극 / 체력 제외":"체육 균형 계산: 체력 · 통솔 · 적극 · 매력 / 지력 제외"}</div>${mode==="pe"?`<div class="pe-fixed-team"><span class="inspector-label">체육 팀 고정</span><select id="peFixedTeam"><option value="0">자동 배정</option>${Array.from({length:peState.teamCount||4},(_,i)=>`<option value="${i+1}" ${data.fixedTeam===i+1?'selected':''}>${i+1}팀 고정</option>`).join("")}</select></div>`:""}`;
   const anchor=root.querySelectorAll(".inspector-section")[1]||root.firstChild;anchor?.after(section);
   section.querySelectorAll("[data-trait]").forEach(btn=>btn.onclick=()=>{if(traitSettings().modes[btn.dataset.trait]==="linked")return;traits[btn.dataset.trait]=Number(btn.dataset.value);persistPE();renderStudentInspector();if(mode==="pe")renderPE()});
-  section.querySelectorAll("[data-trait-scale]").forEach(btn=>btn.onclick=()=>{setTraitScale(Number(btn.dataset.traitScale));persistPE();renderStudentInspector();if(mode==="pe")renderPE();window.__TT_STAGE031_SEND_ROSTER?.()});
+  section.querySelectorAll("[data-trait-scale]").forEach(btn=>btn.onclick=()=>{setTraitScale(Number(btn.dataset.traitScale));persistPE();renderStudentInspector();if(mode==="pe")renderPE();if(traitSettings().rerankPending)window.__TT_TRAIT_RERANK?.();else window.__TT_STAGE031_SEND_ROSTER?.()});
   $("traitGradeLink").onclick=()=>window.__TT_OPEN_TRAIT_LINK?.();
   const fixed=$("peFixedTeam");if(fixed)fixed.onchange=e=>{data.fixedTeam=Number(e.target.value);persistPE();peAssignments=[];peConfirmed=[];renderStudentInspector();renderPE();updateModeChrome()};
   persistPE();

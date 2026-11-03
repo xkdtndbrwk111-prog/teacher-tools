@@ -71,23 +71,25 @@ async function step(name,fn){
    await f.locator('[data-view="traits"]:not(.hidden)').waitFor();
    assert.match(await f.locator('#trait-link').textContent(),/능력치 4단계/);
   });
-  await step('지력은 국어·수학, 체력은 체육으로 연동하고 반영하면 연동 축만 바뀐다',async()=>{
+  const levelsAre=(p,axis,scale,order=i=>i)=>p.waitForFunction(([axis,want])=>{const s=JSON.parse(window.__TT_STORE.getItem(window.__TT_STAGE031_CLASS.peKey)||'{}');return classState.students.every((st,i)=>s[st.id]?.traits?.[axis]===want[i])},[axis,Array.from({length:n},(_,i)=>expected(order(i),n,scale))],{timeout:8000});
+  await step('성적 연동을 켜고 교과를 고르면 버튼 없이 바로 반영되고, 연동 축만 바뀐다',async()=>{
    await makeGrades(p,f,n);
    await f.locator('.nav[data-page="traits"]').click();
    await f.locator('[data-trait-mode="intelligence"][data-value="linked"]').click();await wait(150);
-   await f.locator('[data-trait-subject="intelligence"][value="국어"]').check();await wait(150);
-   await f.locator('[data-trait-subject="intelligence"][value="수학"]').check();await wait(150);
+   assert.equal(await f.locator('#trait-apply').count(),0,'반영 버튼 없음');
+   await f.locator('[data-trait-subject="intelligence"][value="국어"]').check();
+   await levelsAre(p,'intelligence',4);
+   await f.locator('[data-trait-subject="intelligence"][value="수학"]').check();await wait(300);
    await f.locator('[data-trait-mode="stamina"][data-value="linked"]').click();await wait(150);
-   await f.locator('[data-trait-subject="stamina"][value="체육"]').check();await wait(200);
+   await f.locator('[data-trait-subject="stamina"][value="체육"]').check();
+   await levelsAre(p,'stamina',4,i=>n-1-i);
+   await levelsAre(p,'intelligence',4);
    assert.equal(await f.locator('[data-trait-subject="stamina"][value="국어"]').isChecked(),false);
-   assert.ok(await f.locator('.trait-preview td.trait-change').count()>=n,'바뀌는 칸');
+   await wait(300);
+   assert.match(await f.locator('.trait-apply-bar.is-auto').textContent(),/자동 반영됨/);
+   assert.equal(await f.locator('.trait-preview td.trait-change').count(),0);
    if(SHOTS)await p.screenshot({path:path.join(SHOTS,'traits-pc.png')});
-   await f.locator('#trait-apply').click();await wait(400);
-   assert.match(await f.locator('#toast').textContent(),/능력치에 반영했습니다/);
-   for(let i=0;i<n;i++){const t=await traitsOf(p,i);
-    assert.equal(t.intelligence,expected(i,n,4),'지력 '+i);assert.equal(t.stamina,expected(n-1-i,n,4),'체력 '+i);}
    const t0=await traitsOf(p,0);assert.equal(t0.leadership,3);assert.equal(t0.charm,1);assert.equal(t0.initiative,2);
-   assert.equal(await f.locator('#trait-apply').isDisabled(),true,'다시 반영할 것이 없음');
   });
   await step('학생 탭: 연동 축은 잠기고 표시가 붙으며, 수동 축은 그대로 바꿀 수 있다',async()=>{
    await p.click('#modeClassroom');await wait(300);await p.click('[data-tab="student"]');
@@ -98,12 +100,15 @@ async function step(name,fn){
    await setTrait(p,'charm',3);assert.equal((await traitsOf(p,0)).charm,3);
    if(SHOTS)await p.locator('#studentInspector').screenshot({path:path.join(SHOTS,'student-tab-pc.png')});
   });
-  await step('8단계로 바꾼 뒤 다시 반영하면 8등분된다',async()=>{
+  await step('단계 수를 4→8로 바꾸면 성적 연동 축은 버튼 없이 8등분되고, 수동 축은 2배가 된다',async()=>{
    await p.click('.trait-prototype [data-trait-scale="8"]');
+   await levelsAre(p,'intelligence',8);
+   for(let i=0;i<n;i++)assert.equal((await traitsOf(p,i)).stamina,expected(n-1-i,n,8),'체력 '+i);
+   assert.equal((await traitsOf(p,0)).charm,6,'수동 축은 2배');
+   assert.equal((await pe(p)).traitSettings.rerankPending,undefined);
    await p.click('#traitGradeLink');await f.locator('[data-view="traits"]:not(.hidden)').waitFor();await wait(300);
    assert.match(await f.locator('#trait-link').textContent(),/능력치 8단계/);
-   await f.locator('#trait-apply').click();await wait(400);
-   for(let i=0;i<n;i++)assert.equal((await traitsOf(p,i)).intelligence,expected(i,n,8),'지력 '+i);
+   assert.match(await f.locator('.trait-apply-bar').textContent(),/자동 반영됨/);
   });
   await step('수동으로 되돌리면 잠금이 풀리고 마지막 값은 남는다',async()=>{
    await f.locator('[data-trait-mode="stamina"][data-value="manual"]').click();await wait(200);
@@ -118,6 +123,25 @@ async function step(name,fn){
    await p.click('#modePE');await wait(200);await p.click('#generateAssignment');await wait(300);
    assert.ok(await p.locator('.pe-member').count()>=n);
    await p.click('#modeClassroom');await wait(200);
+  });
+  await step('성적 관리를 연 적 없는 새 화면에서 8→4로 바꿔도 연동 축이 다시 나뉜다',async()=>{
+   await p.reload();await p.waitForFunction(()=>typeof classState!=='undefined'&&document.getElementById('tt-lock-now'));
+   await p.click('[data-tab="student"]');
+   assert.equal(await p.locator('.tt-grade-iframe').count(),0,'성적 관리 아직 안 열림');
+   await p.click('.trait-prototype [data-trait-scale="4"]');
+   await levelsAre(p,'intelligence',4);
+   assert.equal((await traitsOf(p,0)).charm,3,'수동 축은 예전 값');
+   assert.equal(await p.locator('body.tt-grade-active').count(),0,'화면은 자리배치 그대로');
+  });
+  await step('성적을 고치면 성적 연동 축이 바로 다시 계산된다',async()=>{
+   await p.click('#tt-grade-tab');await f.locator('.nav[data-page="grades"]').click();
+   for(const subject of ['국어','수학']){
+    await f.locator('#grade-subject').selectOption(subject);await wait(150);
+    const last=f.locator('input.grade-input').nth(n-1);await last.fill('100');await last.press('Enter');await wait(150);
+   }
+   const id=await p.evaluate(()=>classState.students.at(-1).id);
+   await p.waitForFunction(id=>JSON.parse(window.__TT_STORE.getItem(window.__TT_STAGE031_CLASS.peKey)).traitSettings&&JSON.parse(window.__TT_STORE.getItem(window.__TT_STAGE031_CLASS.peKey))[id].traits.intelligence===4,id,{timeout:8000});
+   assert.equal((await traitsOf(p,1)).intelligence<=4,true);
   });
   await ctx.close();
   await step('태블릿: 학생 탭 8단계 줄과 능력치 연동 화면이 넘치지 않는다',async()=>{
