@@ -2,6 +2,28 @@
 export const ABILITY_AXES=Object.freeze({intelligence:'지력',stamina:'체력',leadership:'지도력',charm:'매력',initiative:'적극성'});
 export const LEVEL_SETS = Object.freeze({3:Object.freeze(['매우잘함','잘함','보통']),4:Object.freeze(['매우잘함','잘함','보통','노력요함']),5:Object.freeze(['수','우','미','양','가'])});
 export const getCriterionType = c => c?.type === 'level' ? 'level' : c?.type === 'other' ? 'other' : 'score';
+// A school's own level names (상·중·하, ◎○△, 우수·보통·향상필요 ...) come with a school plan; other level
+// assessments use the fixed sets above.
+export const levelsOf = c => c?.custom ? (Array.isArray(c.levels) ? c.levels : []) : (LEVEL_SETS[c?.levelCount] || []);
+const PLAN_FIELDS=['school','schoolCode','year','semester','grade','period','code','standard','unit','element','area','method','file'];
+function cleanPlan(plan){
+ if(plan===undefined||plan===null)return undefined;
+ if(typeof plan!=='object'||Array.isArray(plan))throw Error('수행평가 정보 형식 오류');
+ const out={};
+ for(const k of PLAN_FIELDS){const v=plan[k];if(v===undefined||v==='')continue;
+  if(Array.isArray(v)){if(v.length>10||v.some(x=>typeof x!=='string'||x.length>60))throw Error('수행평가 정보 형식 오류');out[k]=v.map(x=>x.trim());}
+  else{if(typeof v!=='string'&&typeof v!=='number')throw Error('수행평가 정보 형식 오류');const t=String(v).trim();if(t.length>2000)throw Error('수행평가 정보가 너무 깁니다.');if(t)out[k]=t;}}
+ return out;
+}
+function cleanCustomLevels(levels,notes){
+ if(!Array.isArray(levels)||levels.length<2||levels.length>5)throw Error('단계는 2~5개여야 합니다.');
+ const names=levels.map(x=>str(x));
+ if(names.some(x=>!x||x.length>20)||new Set(names).size!==names.length)throw Error('단계 이름을 확인하세요.');
+ const n={};
+ if(notes!==undefined&&notes!==null){if(typeof notes!=='object'||Array.isArray(notes))throw Error('단계 설명 형식 오류');
+  for(const [k,v] of Object.entries(notes)){if(!names.includes(k))continue;if(typeof v!=='string'||v.length>1500)throw Error('단계 설명이 너무 깁니다.');if(v.trim())n[k]=v.trim();}}
+ return {levels:names,levelNotes:n};
+}
 export const formatGrade = (criterion, value) => value === null || value === undefined ? '— 미입력 —' : getCriterionType(criterion) === 'other' ? `${value}${criterion.unit}` : getCriterionType(criterion) === 'score' ? `${value}점` : String(value);
 export const SCHEMA = 'tt.classroom.workspace.v1';
 export const gid = () => (globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -52,16 +74,22 @@ export function renameStudent(m, membershipId, name) {
 export function deactivateStudent(m, membershipId) {
  const mem=m.memberships.find(x=>x.id===membershipId);if(!mem) throw Error('학급 소속을 찾을 수 없습니다.');mem.active=false;
 }
-export function addAssessment(m, {title,subject,criterion,maxScore,classIds,gradeType='score',levelCount=3,unit='',recordDirection='' }) {
+export function addAssessment(m, {title,subject,criterion,maxScore,classIds,gradeType='score',levelCount=3,unit='',recordDirection='',customLevels=null,levelNotes=null,plan=undefined }) {
  title=str(title);subject=str(subject);criterion=str(criterion)|| (gradeType==='level'?'평가 수준':'점수');
  if(!title || title.length>100 || !subject || subject.length>50 || !criterion || criterion.length>80) throw Error('평가 정보를 확인하세요.');
  if(!['score','level','other'].includes(gradeType)) throw Error('평가 방식은 점수·단계·기타 중 선택하세요.');
  if(gradeType==='other'&&!['higher','lower'].includes(recordDirection))throw Error('기타 평가의 우수 방향을 선택하세요.');
  let newCriterion;
  if(gradeType==='level') {
+  if(customLevels){
+   const custom=cleanCustomLevels(customLevels,levelNotes);
+   newCriterion={type:'level',custom:true,levelCount:custom.levels.length,...custom,maxScore:null};
+   const p=cleanPlan(plan);if(p)newCriterion.plan=p;
+  }else{
   const levels=LEVEL_SETS[Number(levelCount)];
   if(!levels) throw Error('단계 수는 3, 4, 5 중에서 선택하세요.');
   newCriterion={type:'level',levelCount:Number(levelCount),levels:[...levels],maxScore:null};
+  }
  } else if(gradeType==='other') {
   unit=str(unit);
   if(!unit || unit.length>12 || /[<>\\]/.test(unit)) throw Error('기타 평가 단위는 1~12자로 입력하세요. (예: 초, m, 회)');
@@ -81,7 +109,7 @@ export function setGrade(m, assessmentId, membershipId, value) {
  const input=str(value);
  let normalized;
  if(getCriterionType(c)==='level') {
-  if(input!==''&&!LEVEL_SETS[c.levelCount]?.includes(input)) throw Error(`이 평가는 ${c.levelCount}단계 중 하나를 선택하세요.`);
+  if(input!==''&&!levelsOf(c).includes(input)) throw Error(`이 평가는 ${levelsOf(c).join('·')} 중 하나를 선택하세요.`);
   normalized=input===''?null:input;
  } else if(getCriterionType(c)==='other') {
   const cleaned=input.endsWith(c.unit)?input.slice(0,-c.unit.length).trim():input;
@@ -116,14 +144,18 @@ export function validateWorkspace(w) {
   if(c.type!==undefined && !['score','level','other'].includes(c.type)) throw Error('평가 방식 오류');
   if(c.abilityAxis!==undefined && c.abilityAxis!=='' && !Object.hasOwn(ABILITY_AXES,c.abilityAxis))throw Error('평가 능력치 연결 값 오류');
   if(getCriterionType(c)==='other' && c.recordDirection!==undefined && !['higher','lower'].includes(c.recordDirection))throw Error('기타 평가 해석 방향 오류');
-  if(getCriterionType(c)==='level'){
+  if(getCriterionType(c)==='level'&&c.custom){
+   const custom=cleanCustomLevels(c.levels,c.levelNotes);
+   if(c.levelCount!==custom.levels.length||custom.levels.some((v,i)=>v!==c.levels[i]))throw Error('평가 단계 구성 오류');
+   cleanPlan(c.plan);
+  }else if(getCriterionType(c)==='level'){
    const levels=LEVEL_SETS[c.levelCount];
    if(!levels||!Array.isArray(c.levels)||c.levels.length!==levels.length||c.levels.some((v,i)=>v!==levels[i])) throw Error('평가 단계 구성 오류');
   }else if(getCriterionType(c)==='other') {
    if(!str(c.unit)||c.unit.length>12||/[<>\\]/.test(c.unit))throw Error('기타 평가 단위 오류');
   }else if(!Number.isFinite(c.maxScore)||c.maxScore<=0||c.maxScore>10000) throw Error('평가 만점 오류');
  }
- for(const v of w.gradeValues){const a=w.assessments.find(x=>x.id===v.assessmentId), c=w.criteria.find(x=>x.id===v.criterionId&&x.assessmentId===v.assessmentId),mem=w.memberships.find(x=>x.id===v.membershipId);if(!a||!c||!mem||!a.classIds.includes(mem.classId)|| (v.value!==null && (getCriterionType(c)==='level' ? !LEVEL_SETS[c.levelCount]?.includes(v.value) : (typeof v.value!=='number'||!Number.isFinite(v.value)||v.value<0|| (getCriterionType(c)==='other' ? (v.value>999999999||!Number.isInteger(v.value*1000)) : v.value>c.maxScore))))) throw Error('성적-학생-평가 ID 오귀속/값 오류');const k=`${v.assessmentId}|${v.criterionId}|${v.membershipId}`;if(unique.has(k))throw Error('중복 성적 키');unique.add(k);}
+ for(const v of w.gradeValues){const a=w.assessments.find(x=>x.id===v.assessmentId), c=w.criteria.find(x=>x.id===v.criterionId&&x.assessmentId===v.assessmentId),mem=w.memberships.find(x=>x.id===v.membershipId);if(!a||!c||!mem||!a.classIds.includes(mem.classId)|| (v.value!==null && (getCriterionType(c)==='level' ? !levelsOf(c).includes(v.value) : (typeof v.value!=='number'||!Number.isFinite(v.value)||v.value<0|| (getCriterionType(c)==='other' ? (v.value>999999999||!Number.isInteger(v.value*1000)) : v.value>c.maxScore))))) throw Error('성적-학생-평가 ID 오귀속/값 오류');const k=`${v.assessmentId}|${v.criterionId}|${v.membershipId}`;if(unique.has(k))throw Error('중복 성적 키');unique.add(k);}
  return true;
 }
 export function restoreWorkspace(input, year, {allowYearChange=false}={}) {

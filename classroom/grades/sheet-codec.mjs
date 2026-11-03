@@ -16,7 +16,7 @@ const rowsOf=(w,ownerSub,revision,savedAt)=>({
  TT_STUDENTS:w.students.map(r=>[r.id,r.name,r.seatingLink?JSON.stringify(r.seatingLink):'']),
  TT_MEMBERSHIPS:w.memberships.map(r=>[r.id,r.studentId,r.classId,r.number,r.active?'TRUE':'FALSE']),
  TT_ASSESSMENTS:w.assessments.map(r=>[r.id,r.title,r.subject,JSON.stringify(r.classIds)]),
- TT_CRITERIA:w.criteria.map(r=>[r.id,r.assessmentId,r.name,r.type||'score',r.maxScore??'',r.levelCount??'',r.levels?JSON.stringify(r.levels):'',r.unit||'',r.recordDirection||'']),
+ TT_CRITERIA:w.criteria.map(r=>[r.id,r.assessmentId,r.name,r.type||'score',r.maxScore??'',r.levelCount??'',r.levels?JSON.stringify(r.custom?{names:r.levels,notes:r.levelNotes||{},...(r.plan?{plan:r.plan}:{})}:r.levels):'',r.unit||'',r.recordDirection||'']),
  TT_GRADES:w.gradeValues.map(r=>[r.assessmentId,r.criterionId,r.membershipId,r.value===null?'':r.value])
 });
 export function encodeTables(workspace,ownerSub,revision,savedAt=new Date().toISOString()){
@@ -48,7 +48,8 @@ export function decodeTables(tables,expectedYear,expectedSub){
   criteria:get('TT_CRITERIA').map(([id,assessmentId,name,type,maxScore,levelCount,levels,unit,recordDirection])=>{
    const r={id:text(id),assessmentId:text(assessmentId),name:text(name),type:text(type)||'score'};
    if(r.type==='score')r.maxScore=Number(maxScore);
-   if(r.type==='level'){r.maxScore=null;r.levelCount=Number(levelCount);r.levels=json(levels,[])}
+   if(r.type==='level'){r.maxScore=null;r.levelCount=Number(levelCount);const v=json(levels,[]);
+    if(Array.isArray(v))r.levels=v;else{r.custom=true;r.levels=v?.names||[];r.levelNotes=v?.notes||{};if(v?.plan)r.plan=v.plan;}}
    if(r.type==='other'){r.maxScore=null;r.unit=text(unit);r.recordDirection=text(recordDirection)}
    return r;
   }),

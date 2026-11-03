@@ -1,10 +1,11 @@
-import {setMemberNumbers,schoolYear,SCHEMA,LEVEL_SETS,createSeatingMetricsExport,classAssessmentDistribution,getCriterionType,formatGrade,extractSeatingRoster,connectSeatingProfiles,fresh,sample,addClass,renameClass,addStudent,renameStudent,deactivateStudent,addAssessment,setGrade,getGrade,roster,restoreWorkspace,gradeCsv,validateWorkspace} from './model.mjs';
+import {levelsOf,setMemberNumbers,schoolYear,SCHEMA,LEVEL_SETS,createSeatingMetricsExport,classAssessmentDistribution,getCriterionType,formatGrade,extractSeatingRoster,connectSeatingProfiles,fresh,sample,addClass,renameClass,addStudent,renameStudent,deactivateStudent,addAssessment,setGrade,getGrade,roster,restoreWorkspace,gradeCsv,validateWorkspace} from './model.mjs';
 import {loadDraft,writeDraft,deleteDraft,listDrafts} from './storage.mjs';
 import {buildStudentSubjectDashboard} from './student-dashboard.mjs';
 import {GoogleCloud} from './google-cloud.mjs';
 import {GOOGLE_CLIENT_ID} from './google-config.mjs';
 import {projectRoster,inactiveMembers,relinkInactiveMembership} from './roster-projection.mjs';
 import {TRAIT_AXES,classSubjects,rankTraitLevels} from './trait-link.mjs';
+import {mountPlanImport} from './plan-import-ui.mjs';
 import {buildClassDistribution,classDistributionSubjects,classDistributionAssessments,distributionReason,stackChips} from './class-distribution.mjs';
 
 const $=id=>document.getElementById(id);
@@ -103,7 +104,7 @@ function renderAssessments(){
  checks.innerHTML=m.classes.length?m.classes.map(c=>`<label class="check"><input type="checkbox" name="targetClass" value="${h(c.id)}" ${previous.has(c.id)?'checked':''}> ${h(c.name)}</label>`).join(''):'<div class="empty-state">학급을 먼저 등록하세요.</div>';
  const list=$('assessment-list');list.innerHTML=m.assessments.length?m.assessments.slice().reverse().map(a=>{
   const c=m.criteria.find(x=>x.assessmentId===a.id),type=getCriterionType(c);
-  const label=type==='level'?`${c.levelCount}단계`:type==='other'?`기타 · ${c.unit}`:`점수 · ${c.maxScore}점`;
+  const label=type==='level'?(c.custom?levelsOf(c).join('·'):`${c.levelCount}단계`):type==='other'?`기타 · ${c.unit}`:`점수 · ${c.maxScore}점`;
   const direction=type==='other'?c.recordDirection=== 'lower'?'낮을수록 우수':c.recordDirection==='higher'?'높을수록 우수':'방향 설정 필요':'';
   return `<div class="assess-item"><span class="type-tag ${type}">${h(label)}</span><br><strong>${h(a.subject)} · ${h(a.title)}</strong><small>${h(c.name)}${type==='other'?` · ${h(direction)}`:''} · ${a.classIds.map(id=>m.classes.find(x=>x.id===id)?.name).filter(Boolean).map(h).join(' · ')}<br>학급별 평균·표준편차로 상대 위치 계산</small><div class="assess-actions"><button type="button" class="mini" data-open-grade="${h(a.id)}">성적 입력 →</button>${type==='other'?`<button type="button" class="mini" data-edit-direction="${h(a.id)}">기록 방향 변경</button>`:''}</div>${type==='other'?`<div class="interpretation-editor hidden" data-direction-editor="${h(a.id)}"><label>좋은 점수의 방향성<select class="interpret-direction"><option value="" ${!['higher','lower'].includes(c.recordDirection)?'selected':''}>방향 선택</option><option value="higher" ${c.recordDirection==='higher'?'selected':''}>높을수록 우수 (윗몸일으키기)</option><option value="lower" ${c.recordDirection==='lower'?'selected':''}>낮을수록 우수 (달리기)</option></select></label><button type="button" class="primary" data-save-direction="${h(a.id)}">방향 저장</button></div>`:''}</div>`;
  }).join(''):'<div class="empty-state">등록된 평가가 없습니다.</div>';
@@ -301,6 +302,21 @@ function renderClassDistribution(){
  $('class-dist-body').querySelectorAll('[data-dist-member]').forEach(el=>{const pick=()=>{st.selected=st.selected===el.dataset.distMember?null:el.dataset.distMember;renderClassDistribution();};el.onclick=pick;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
  if($('dist-personal'))$('dist-personal').onclick=()=>{const id=st.selected;$('class-dist-dialog').close();showStudent(id);};
 }
+function showLevelNotes(c,a){
+ const box=$('grade-level-notes');if(!box)return;
+ const notes=c?.custom?c.levelNotes||{}:null;
+ if(!notes||!Object.keys(notes).length){box.classList.add('hidden');box.innerHTML='';return;}
+ const p=c.plan||{};
+ box.innerHTML=`<strong>${h(a.title)}</strong>${p.element||p.code?`<small>${h([p.code,p.element].filter(Boolean).join(' '))}</small>`:''}${levelsOf(c).map(n=>`<div><b>${h(n)}</b><span>${h(notes[n]||'')}</span></div>`).join('')}`;
+ box.classList.remove('hidden');
+}
+let planImport=null;
+function setAssessMode(mode){
+ document.querySelectorAll('[data-assess-mode]').forEach(b=>{const on=b.dataset.assessMode===mode;b.classList.toggle('on',on);b.setAttribute('aria-selected',String(on));});
+ $('plan-import-panel').classList.toggle('hidden',mode!=='plan');$('new-assessment-panel').classList.toggle('hidden',mode==='plan');
+ if(mode==='plan'){planImport ||= mountPlanImport($('plan-import'),{getM:()=>m,setM:v=>{m=v},markChanged,render,toast,readOnly:()=>readOnlyYear,selectedClass:()=>selectedClass});planImport.render();}
+}
+document.querySelectorAll('[data-assess-mode]').forEach(b=>b.onclick=()=>setAssessMode(b.dataset.assessMode));
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
 function renderGrades(){
  const pick=$('grade-assessment');
@@ -323,7 +339,7 @@ function renderGrades(){
  $('grade-toolbar-subject').textContent=subject?`${subject} · ${assessments.length}개 평가`:`${first.subject} · ${first.title}`;
  $('grade-guide').textContent='방향키: 상하좌우 셀 이동 · Tab: 오른쪽 · Enter: 아래쪽 · 드래그: 범위 선택 후 Ctrl/Cmd+C 복사'+(assessments.length>1&&!readOnlyYear?' · 평가 제목 끌기: 순서 바꾸기':'');
  const colHeaders=['학급','번호','학생 이름',...assessments.map(a=>a.title),'상태'];
- const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?`${c.levelCount}단계`:type==='other'?c.unit:`${c.maxScore}점`;}),''];
+ const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?(c.custom?levelsOf(c).join('·'):`${c.levelCount}단계`):type==='other'?c.unit:`${c.maxScore}점`;}),''];
  const movable=i=>assessments.length>1&&!readOnlyYear&&i>=3&&i<3+assessments.length,moveAttr=i=>movable(i)?` class="sheet-movable" data-move-assessment="${h(assessments[i-3].id)}"`:'';
  thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
  const rows=currentGradeRows(assessments);gradeViewRows=rows;
@@ -332,7 +348,7 @@ function renderGrades(){
    if(!a.classIds.includes(r.classId))return `<td class="sheet-na-cell" data-sheet-row="${i+1}" data-sheet-col="${j+3}" title="이 학급에는 연결되지 않은 평가">—</td>`;
    const c=m.criteria.find(x=>x.assessmentId===a.id),type=getCriterionType(c),v=getGrade(m,a.id,r.id),key=`${a.id}|${r.id}`;
    const label=h(`${r.className} ${r.name} ${a.subject} ${a.title}`);
-   const field=type==='level'?`<select class="grade-input ${edited.has(key)?'dirty':''}" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}"><option value="">— 미입력 —</option>${c.levels.map(item=>`<option value="${h(item)}" ${v===item?'selected':''}>${h(item)}</option>`).join('')}</select>`:`<input class="grade-input ${edited.has(key)?'dirty':''}" inputmode="decimal" autocomplete="off" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}" value="${v===null?'':h(v)}">${type==='other'?`<span class="unit-label sheet-unit">${h(c.unit)}</span>`:''}`;
+   const field=type==='level'?`<select class="grade-input ${edited.has(key)?'dirty':''}" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}"><option value="">— 미입력 —</option>${c.levels.map(item=>`<option value="${h(item)}" ${v===item?'selected':''} ${c.custom&&c.levelNotes?.[item]?`title="${h(c.levelNotes[item])}"`:''}>${h(item)}</option>`).join('')}</select>`:`<input class="grade-input ${edited.has(key)?'dirty':''}" inputmode="decimal" autocomplete="off" aria-label="${label}" data-membership="${h(r.id)}" data-assessment="${h(a.id)}" value="${v===null?'':h(v)}">${type==='other'?`<span class="unit-label sheet-unit">${h(c.unit)}</span>`:''}`;
    return `<td class="sheet-entry-cell" data-sheet-row="${i+1}" data-sheet-col="${j+3}">${field}</td>`;
   }).join('');
   return `<tr data-row-member="${h(r.id)}" style="--sheet-row-height:${sheetRowHeights.get(r.id)||42}px"><th scope="row" class="sheet-row-num">${i+2}<span class="sheet-row-resize" data-resize-row="${h(r.id)}" title="드래그해 행 높이 조절"></span></th><td data-sheet-row="${i+1}" data-sheet-col="0">${h(r.className)}</td><td data-sheet-row="${i+1}" data-sheet-col="1">${r.number}</td><td class="sheet-student-name" data-sheet-row="${i+1}" data-sheet-col="2" data-edit-member="${h(r.id)}" title="더블클릭: 이름 수정"><strong>${h(r.name)}</strong></td>${cells}<td class="sheet-state-cell" data-sheet-row="${i+1}" data-sheet-col="${assessments.length+3}"><span class="cell-tag">${h(gradeRowStatus(r,assessments))}</span></td></tr>`;
@@ -344,7 +360,7 @@ function renderGrades(){
   const memberId=input.dataset.membership,assessmentId=input.dataset.assessment;
   const r=rows.find(x=>x.id===memberId),a=assessments.find(x=>x.id===assessmentId),key=`${assessmentId}|${memberId}`,col=assessments.indexOf(a);
   const isLevel=getCriterionType(m.criteria.find(x=>x.assessmentId===assessmentId))==='level';
-  function refreshInfo(){$('sheet-cell-info').textContent=`${spreadsheetColumnName(3+col)}${rows.indexOf(r)+2} · ${r.className} ${r.number}번 ${r.name} · ${a.subject} ${a.title}`;}
+  function refreshInfo(){$('sheet-cell-info').textContent=`${spreadsheetColumnName(3+col)}${rows.indexOf(r)+2} · ${r.className} ${r.number}번 ${r.name} · ${a.subject} ${a.title}`;showLevelNotes(m.criteria.find(x=>x.assessmentId===assessmentId),a);}
   input.addEventListener('focus',()=>{refreshInfo();input.closest('tr')?.classList.add('sheet-focused-row')});
   input.addEventListener('blur',()=>input.closest('tr')?.classList.remove('sheet-focused-row'));
   input.addEventListener('input',()=>input.classList.remove('error'));

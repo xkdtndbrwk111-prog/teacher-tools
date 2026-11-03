@@ -119,4 +119,10 @@ NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-t
 NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-distribution.cjs
 ```
 
+```bash
+NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-plan-import.cjs
+```
+
+`classroom/relay/schoolinfo-plan/`은 학교알리미 평가계획 파일을 대신 받아 주는 Supabase Edge Function입니다. 학생 정보는 다루지 않으며, 학교 이름 검색에는 학교알리미 OpenAPI 인증키(`SCHOOLINFO_API_KEY`)가 필요합니다.
+
 브라우저 시험은 설치된 Google Chrome을 임시 프로필로 사용합니다. `browser-cloud.cjs`는 실제 Google이 아닌 시험용 대역과 통신합니다.
