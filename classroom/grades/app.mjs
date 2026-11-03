@@ -339,9 +339,9 @@ function renderGrades(){
  $('grade-toolbar-subject').textContent=subject?`${subject} · ${assessments.length}개 평가`:`${first.subject} · ${first.title}`;
  $('grade-guide').textContent='방향키: 상하좌우 셀 이동 · Tab: 오른쪽 · Enter: 아래쪽 · 드래그: 범위 선택 후 Ctrl/Cmd+C 복사'+(assessments.length>1&&!readOnlyYear?' · 평가 제목 끌기: 순서 바꾸기':'');
  const colHeaders=['학급','번호','학생 이름',...assessments.map(a=>a.title),'상태'];
- const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?(c.custom?levelsOf(c).join('·'):`${c.levelCount}단계`):type==='other'?c.unit:`${c.maxScore}점`;}),''];
+ const details=['','','',...assessments.map(a=>{const c=m.criteria.find(x=>x.assessmentId===a.id);const type=getCriterionType(c);return type==='level'?(c.custom?'':`${c.levelCount}단계`):type==='other'?c.unit:`${c.maxScore}점`;}),''];
  const movable=i=>assessments.length>1&&!readOnlyYear&&i>=3&&i<3+assessments.length,moveAttr=i=>movable(i)?` class="sheet-movable" data-move-assessment="${h(assessments[i-3].id)}"`:'';
- thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
+ thead.innerHTML=`<tr class="sheet-letters"><th class="sheet-corner" aria-hidden="true"></th>${colHeaders.map((label,i)=>`<th data-letter-col="${i}"${moveAttr(i)} title="${h(label)}${movable(i)?' · 끌어서 순서 바꾸기':''}">${spreadsheetColumnName(i)}<span class="sheet-resize" data-resize-col="${i}" title="드래그해 열 너비 변경"></span></th>`).join('')}</tr><tr class="sheet-labels"><th class="sheet-row-num">1</th>${colHeaders.map((label,i)=>`<th data-sheet-row="0" data-sheet-col="${i}"${moveAttr(i)}${label.length>24?' data-long="2"':label.length>14?' data-long="1"':''} title="${h(label)}${details[i]?` · ${h(details[i])}`:''}${movable(i)?' · 끌어서 순서 바꾸기':''}">${h(label)}${details[i]?`<small class="grade-unit-hint">${h(details[i])}</small>`:''}</th>`).join('')}</tr>`;
  const rows=currentGradeRows(assessments);gradeViewRows=rows;
  table.innerHTML=rows.length?rows.map((r,i)=>{
   const cells=assessments.map((a,j)=>{
@@ -354,7 +354,7 @@ function renderGrades(){
   return `<tr data-row-member="${h(r.id)}" style="--sheet-row-height:${sheetRowHeights.get(r.id)||42}px"><th scope="row" class="sheet-row-num">${i+2}<span class="sheet-row-resize" data-resize-row="${h(r.id)}" title="드래그해 행 높이 조절"></span></th><td data-sheet-row="${i+1}" data-sheet-col="0">${h(r.className)}</td><td data-sheet-row="${i+1}" data-sheet-col="1">${r.number}</td><td class="sheet-student-name" data-sheet-row="${i+1}" data-sheet-col="2" data-edit-member="${h(r.id)}" title="더블클릭: 이름 수정"><strong>${h(r.name)}</strong></td>${cells}<td class="sheet-state-cell" data-sheet-row="${i+1}" data-sheet-col="${assessments.length+3}"><span class="cell-tag">${h(gradeRowStatus(r,assessments))}</span></td></tr>`;
  }).join(''):'<tr><td class="empty-state sheet-empty-row">표시할 학생이 없습니다.</td></tr>';
  setSheetWidths(assessments);updateGradeSummary(rows,assessments);
- $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installSheetColumnMove();installGradeNameEditors(rows);
+ $('sheet-cell-info').textContent='결과 입력 셀을 선택하세요';showLevelNotes(null);installSheetColumnResizers(assessments);installSheetRowResizers();installSheetRangeCopy();installSheetColumnMove();installGradeNameEditors(rows);
  const inputs=[...table.querySelectorAll('.grade-input')];
  inputs.forEach((input,index)=>{
   const memberId=input.dataset.membership,assessmentId=input.dataset.assessment;

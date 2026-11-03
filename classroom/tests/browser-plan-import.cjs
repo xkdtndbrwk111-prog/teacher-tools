@@ -114,11 +114,20 @@ const hwpx=planHwpx();
    await f.locator('#grade-subject').selectOption('국어');await wait(200);
    const sel=f.locator('select.grade-input').first();
    assert.deepEqual(await sel.locator('option').allTextContents(),['— 미입력 —','상','중','하']);
+   assert.equal(await f.locator('.sheet-labels .grade-unit-hint').count(),0,'학교 단계 평가는 제목 아래 단계 이름을 쓰지 않음');
+   const clip=await f.locator('.sheet-labels th[data-sheet-col="3"]').evaluate(th=>({sh:th.scrollHeight,ch:th.clientHeight,w:th.scrollWidth,cw:th.clientWidth}));
+   assert.ok(clip.sh<=clip.ch+1,'긴 제목이 잘리지 않음 '+JSON.stringify(clip));
    await sel.focus();
    await f.locator('#grade-level-notes:not(.hidden)').waitFor();
    assert.match(await f.locator('#grade-level-notes').textContent(),/상.*설명 상.*중.*하/s);
    await sel.selectOption('상');await wait(150);
    assert.equal(await sel.inputValue(),'상');
+   // Another subject redraws the sheet: the old description must not stay beside it.
+   await f.locator('#grade-subject').selectOption({index:0});await wait(200);
+   assert.equal(await f.locator('#grade-level-notes.hidden').count(),1,'다른 과목으로 바꾸면 설명을 비움');
+   await f.locator('#grade-subject').selectOption('국어');await wait(200);
+   await f.locator('select.grade-input').nth(1).focus();
+   assert.match(await f.locator('#grade-level-notes').textContent(),/의견을 조정해요|올바른 문장/);
    if(SHOTS)await p.screenshot({path:path.join(SHOTS,'plan-grade-pc.png')});
   });
   await step('PDF를 올리면 이유를 알리고, 내 AI 답을 붙여 넣어 평가를 만든다',async()=>{
