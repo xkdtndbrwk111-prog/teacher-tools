@@ -114,7 +114,7 @@ async function hwpTables(bytes){
 // ---- rules ----
 export const CODE=/\[\s*(\d)\s*([가-힣]{1,8}?)\s*(\d{1,2})\s*-\s*(\d{1,2})\s*\]/;
 const SUBJ={국:'국어',사:'사회',도:'도덕',수:'수학',과:'과학',실:'실과',체:'체육',음:'음악',미:'미술',영:'영어',바:'바른 생활',슬:'슬기로운 생활',즐:'즐거운 생활'};
-export const LEVEL_WORDS=new Set(['매우잘함','잘함','보통','보통임','노력요함','노력바람','노력필요','향상필요','할수있음','우수','우수함','매우우수','미흡','도달','미도달','부분도달','상','중','하','◎','○','◯','△','●','A','B','C']);
+export const LEVEL_WORDS=new Set(['매우잘함','잘함','보통','보통임','노력요함','노력바람','노력필요','향상필요','할수있음','우수','우수함','매우우수','미흡','도달','미도달','부분도달','기초','기본','심화','발전','노력','양호','보완','보완필요','미달','상','중','하','◎','○','◯','△','●','A','B','C']);
 const norm=t=>String(t||'').replace(/\(\s*\d+\s*점\s*\)|[\s·・∙ㆍ.:()]/g,'');
 const isLevelSet=names=>names.length>=3&&names.length<=5&&new Set(names).size===names.length&&names.every(n=>LEVEL_WORDS.has(n));
 export function subjectOf(code,title=''){
