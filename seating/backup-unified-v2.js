@@ -14,6 +14,18 @@
   const own=(object,key)=>Object.prototype.hasOwnProperty.call(object,key);
   const object=value=>value!==null&&typeof value==="object"&&!Array.isArray(value);
 
+  function normalizedSettings(raw){
+    if(raw===undefined)return{scale:4,modes:Object.fromEntries(TRAIT_KEYS.map(k=>[k,"manual"])),subjects:Object.fromEntries(TRAIT_KEYS.map(k=>[k,[]]))};
+    if(!object(raw)||(raw.scale!==4&&raw.scale!==8))throw new Error("능력치 단계 설정이 올바르지 않습니다.");
+    const modes=Object.create(null),subjects=Object.create(null);
+    for(const axis of TRAIT_KEYS){
+      const m=raw.modes?.[axis]??"manual",list=raw.subjects?.[axis]??[];
+      if(m!=="manual"&&m!=="linked")throw new Error("능력치 연동 방식이 올바르지 않습니다.");
+      if(!Array.isArray(list)||list.length>30||list.some(x=>typeof x!=="string"||!x.trim()||x.length>50))throw new Error("능력치 연동 교과 형식이 올바르지 않습니다.");
+      modes[axis]=m;subjects[axis]=[...list];
+    }
+    return{scale:raw.scale,modes,subjects};
+  }
   function normalizedSnapshot(snapshot,roster){
     if(!object(snapshot)||!Number.isInteger(snapshot.teamCount)||snapshot.teamCount<2||snapshot.teamCount>6||!object(snapshot.students)){
       throw new Error("체육 설정의 팀 수 또는 학생 데이터 형식이 올바르지 않습니다.");
@@ -24,6 +36,7 @@
     if(supplied.length!==ids.size||supplied.some(id=>!ids.has(id))){
       throw new Error("체육 설정의 학생 ID가 학급 명단과 일치하지 않습니다.");
     }
+    const traitSettings=normalizedSettings(snapshot.traitSettings),levels=traitSettings.scale===8?[1,2,3,4,5,6,7,8]:[1,2,3,4];
     const safeStudents=Object.create(null);
     for(const student of roster){
       const entry=snapshot.students[student.id];
@@ -38,14 +51,19 @@
       const traits=Object.create(null);
       for(const axis of TRAIT_KEYS){
         const value=entry.traits[axis];
-        if(value!==null&&![1,2,3,4].includes(value)){
-          throw new Error("체육 5축 능력치에는 미지정 또는 1~4단계만 사용할 수 있습니다.");
+        if(value!==null&&!levels.includes(value)){
+          throw new Error(`체육 5축 능력치에는 미지정 또는 1~${traitSettings.scale}단계만 사용할 수 있습니다.`);
         }
         traits[axis]=value;
       }
-      safeStudents[student.id]={traits,fixedTeam:entry.fixedTeam};
+      const record={traits,fixedTeam:entry.fixedTeam};
+      if(entry.prev4!==undefined&&traitSettings.scale===8){
+        if(!object(entry.prev4))throw new Error("이전 4단계 능력치 형식이 올바르지 않습니다.");
+        record.prev4=Object.fromEntries(TRAIT_KEYS.map(axis=>{const v=entry.prev4[axis]??null;if(v!==null&&![1,2,3,4].includes(v))throw new Error("이전 4단계 능력치 형식이 올바르지 않습니다.");return[axis,v]}));
+      }
+      safeStudents[student.id]=record;
     }
-    return{teamCount:snapshot.teamCount,students:safeStudents};
+    return{teamCount:snapshot.teamCount,traitSettings,students:safeStudents};
   }
 
   function emptyRecord(){return{traits:Object.fromEntries(TRAIT_KEYS.map(key=>[key,null])),fixedTeam:0};}
@@ -66,8 +84,9 @@
         traits[axis]=value===undefined?null:value;
       }
       records[student.id]={traits,fixedTeam:record?.fixedTeam===undefined?0:record.fixedTeam};
+      if(record?.prev4!==undefined)records[student.id].prev4=record.prev4;
     }
-    return normalizedSnapshot({teamCount,students:records},classState.students);
+    return normalizedSnapshot({teamCount,traitSettings:stored.traitSettings,students:records},classState.students);
   }
   function legacyPE(normalized){
     // V1 has no PE snapshot. Reuse settings ONLY for a matching class, ID and name.
@@ -81,7 +100,7 @@
       next[s.id]=match?(old.students[s.id]||emptyRecord()):emptyRecord();
       if(match)kept++;
     }
-    return{snapshot:normalizedSnapshot({teamCount:old.teamCount,students:next},normalized.students),kept};
+    return{snapshot:normalizedSnapshot({teamCount:old.teamCount,traitSettings:old.traitSettings,students:next},normalized.students),kept};
   }
   function backupPayload(){
     const base=buildBackupPayload(classState);
@@ -103,9 +122,11 @@
   function studentPEStorage(snapshot){
     const data=Object.create(null);
     data.teamCount=snapshot.teamCount;
+    data.traitSettings=snapshot.traitSettings;
     for(const [id,student] of Object.entries(snapshot.students)){
-      if(id==="__proto__"||id==="constructor"||id==="prototype")throw new Error("지원하지 않는 학생 ID입니다.");
+      if(id==="__proto__"||id==="constructor"||id==="prototype"||id==="traitSettings"||id==="teamCount")throw new Error("지원하지 않는 학생 ID입니다.");
       data[id]={traits:{...student.traits},fixedTeam:student.fixedTeam};
+      if(student.prev4)data[id].prev4={...student.prev4};
     }
     return JSON.stringify(data);
   }

@@ -10,7 +10,6 @@
 (()=>{
   const STORAGE_KEY=window.__TT_STAGE031_CLASS.peKey;
   const AXES=["leadership","intelligence","charm","initiative"];
-  const LEVELS=[1,2,3,4];
   let lastRaw, cached={};
 
   function readPrivateTraits(){
@@ -31,6 +30,8 @@
     const studentsById=new Map(classState.students.map(s=>[s.id,s]));
     const assignmentBySeat=new Map(assignments.map(a=>[a.seatId,a.studentId]));
     const privateState=readPrivateTraits();
+    const scale=privateState.traitSettings?.scale===8?8:4;
+    const LEVELS=Array.from({length:scale},(_,i)=>i+1);
 
     const groups=classState.groups.map(group=>{
       const members=[];
@@ -47,15 +48,15 @@
     // Each axis is evaluated independently, with equal importance.
     for(const axis of AXES){
       const counts=groups.map(members=>{
-        const histogram=[0,0,0,0];
+        const histogram=Array(scale).fill(0);
         for(const studentId of members){
           const value=privateState[studentId]?.traits?.[axis];
           if(LEVELS.includes(value))histogram[value-1]++;
         }
         return{size:members.length,histogram,known:histogram.reduce((a,b)=>a+b,0)};
       });
-      const allLevels=[0,0,0,0];
-      for(const entry of counts)for(let level=0;level<4;level++)allLevels[level]+=entry.histogram[level];
+      const allLevels=Array(scale).fill(0);
+      for(const entry of counts)for(let level=0;level<scale;level++)allLevels[level]+=entry.histogram[level];
       const allKnown=allLevels.reduce((a,b)=>a+b,0);
       if(!allKnown)continue; // Entirely unspecified axis: not an average.
 
@@ -66,8 +67,8 @@
         const coverageGap=group.known-expectedKnown;
         score+=4*coverageGap*coverageGap/Math.max(1,expectedKnown);
 
-        // Balance the four rating categories independently, normalized for group size.
-        for(let level=0;level<4;level++){
+        // Balance each rating category independently, normalized for group size.
+        for(let level=0;level<scale;level++){
           const expected=group.known*allLevels[level]/allKnown;
           const gap=group.histogram[level]-expected;
           score+=6*gap*gap/Math.max(1,group.known);

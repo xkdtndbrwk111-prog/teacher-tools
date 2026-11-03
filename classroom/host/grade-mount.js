@@ -9,20 +9,20 @@
  const panel=document.createElement('section');panel.className='tt-grade-mount';panel.id='tt-grade-mount';panel.setAttribute('aria-label','성적 관리');
  panel.innerHTML='<div id="tt-stage03-status" class="tt-grade-mount-warning" role="status">자리배치 명단과 연결하는 중 · Google 저장 없음</div>';
  teacher.querySelector(':scope > .studio .student-strip').before(panel);
- let frame=null,bridgeReady=false,pendingFlush=null,allowLeave=false;
+ let frame=null,bridgeReady=false,pendingFlush=null,allowLeave=false,pendingTraitOpen=false;
  const isActive=()=>document.body.classList.contains('tt-grade-active');
  function snapshot(){
   // Read live seating state first; only project strict ID-based view, never names as keys.
   const s=classState;
   if(!s||!Array.isArray(s.students))throw Error('자리배치 학생명단을 찾을 수 없습니다.');
-  return {type:'TT_STAGE03_ROSTER',installId:TEST_INSTALL_ID,sourceInstanceId:TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId,className:s.className||'우리 반',students:s.students.map(x=>({id:x.id,name:x.name,gender:x.gender,visual:x.visual}))};
+  return {type:'TT_STAGE03_ROSTER',installId:TEST_INSTALL_ID,sourceInstanceId:TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId,className:s.className||'우리 반',students:s.students.map(x=>({id:x.id,name:x.name,gender:x.gender,visual:x.visual})),traits:window.__TT_PE_TRAITS?.snapshot()||null};
  }
  function sendRoster(){if(!frame||!bridgeReady)return;try{frame.contentWindow.postMessage(snapshot(),location.origin)}catch(e){setStatus('⚠ 명단 전달 실패: '+e.message,true)}}
  function setStatus(s,error=false){const el=document.getElementById('tt-stage03-status');if(el){el.textContent=s;el.classList.toggle('is-error',error)}}
  window.addEventListener('message',e=>{
   if(e.origin!==location.origin||e.source!==frame?.contentWindow||!e.data)return;
   if(e.data.type!=='TT_STAGE03_READY'&&e.data.installId!==TEST_INSTALL_ID)return;
-  if(e.data.type==='TT_STAGE03_READY'){bridgeReady=true;sendRoster()}
+  if(e.data.type==='TT_STAGE03_READY'){bridgeReady=true;sendRoster();if(pendingTraitOpen)openTraitPage()}
   if(e.data.type==='TT_STAGE03_SYNC_RESULT')setStatus(e.data.message,Boolean(e.data.error));
   if(e.data.type==='TT_STAGE03_FLUSH_ACK'&&pendingFlush&&e.data.id===pendingFlush.id){const p=pendingFlush;pendingFlush=null;p.resolve(Boolean(e.data.ok));if(!e.data.ok)setStatus('⚠ 브라우저 성적 저장 실패: 화면 이동 보류',true)}
  });
@@ -50,6 +50,22 @@
   else sendRoster();height();
  });
  window.__TT_STAGE031_SEND_ROSTER=sendRoster;
+ // 성적 연결 in the student tab: open the grade tab on its trait link page.
+ function openTraitPage(){pendingTraitOpen=false;frame.contentWindow.postMessage({type:'TT_TRAIT_LINK_OPEN',installId:TEST_INSTALL_ID},location.origin)}
+ window.__TT_OPEN_TRAIT_LINK=()=>{pendingTraitOpen=true;if(!isActive())tab.click();if(frame&&bridgeReady){sendRoster();openTraitPage()}};
+ // The grade tab may change only which axes are linked and the levels of linked axes, for the class shown now.
+ window.addEventListener('message',e=>{
+  if(e.origin!==location.origin||e.source!==frame?.contentWindow||!e.data||e.data.installId!==TEST_INSTALL_ID)return;
+  if(e.data.type!=='TT_TRAIT_LINK_SAVE'&&e.data.type!=='TT_TRAIT_LINK_APPLY')return;
+  const reply=(ok,message,changed=0)=>frame.contentWindow.postMessage({type:'TT_TRAIT_LINK_RESULT',installId:TEST_INSTALL_ID,ok,message,changed},location.origin);
+  if(e.data.sourceInstanceId!==TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId)return reply(false,'다른 반의 요청이라 반영하지 않았습니다.');
+  const api=window.__TT_PE_TRAITS;if(!api)return reply(false,'자리배치 능력치를 찾지 못했습니다.');
+  try{
+   if(e.data.type==='TT_TRAIT_LINK_SAVE'){api.saveLink(e.data.config);reply(true,'연동 설정을 저장했습니다.');}
+   else{const changed=api.applyLinked(e.data.values);reply(true,`능력치에 반영했습니다. 바뀐 칸 ${changed}개`,changed);}
+  }catch(err){reply(false,'능력치 반영 실패: '+err.message)}
+  sendRoster();
+ });
  window.__TT_STAGE031_FLUSH_GRADE=()=>isActive()?flushGrade():Promise.resolve(true);
  window.addEventListener('message',e=>{
   if(e.origin!==location.origin||e.source!==frame?.contentWindow||e.data?.type!=='TT_STAGE031_SWITCH_CLASS'||e.data.installId!==TEST_INSTALL_ID)return;

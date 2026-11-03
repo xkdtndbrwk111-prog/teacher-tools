@@ -25,6 +25,7 @@
           <button class="toolbtn nav" type="button" data-page="classes">② 학급 · 학생</button>
           <button class="toolbtn nav" type="button" data-page="assessments">③ 평가 관리</button>
           <button class="toolbtn nav" type="button" data-page="grades">④ 성적 입력</button>
+          <button class="toolbtn nav" type="button" data-page="traits">⑤ 능력치 연동</button>
           <label class="view-year">학년도 <select id="view-year" aria-label="볼 학년도"></select></label>
         </nav>
         <span class="toolbar-spacer"></span><span id="grade-toolbar-subject" class="grade-toolbar-subject hidden" aria-live="polite"></span><span class="assignment-status" id="crumb">대시보드</span>
@@ -89,6 +90,9 @@
                 <div class="sheet-tab-bar"><span class="sheet-tab-label">학급 시트</span><div id="class-tabs" class="tabs" role="tablist" aria-label="학급 시트 선택"></div><span class="sheet-tab-count" id="grade-summary"></span></div>
               </div>
             </section>
+          </section>
+          <section class="page hidden" data-view="traits">
+            <section class="panel trait-link-panel"><div class="panel-top"><div><h2>5축 능력치 연동</h2><p>축마다 수동 또는 성적 연동을 고릅니다. 성적 연동 축은 고른 교과의 반 안 순위로 단계를 정하고, 아래 반영 버튼을 누를 때만 자리배치 능력치가 바뀝니다. 성적 점수는 자리배치로 보내지 않습니다.</p></div></div><div id="trait-link"></div></section>
           </section>
           <footer class="footer"><span>교실 매니저 · 이 브라우저에만 저장 · Google 미연결</span></footer>
         </div>

@@ -15,8 +15,9 @@ const PE_KEY=window.__TT_STAGE031_CLASS.peKey;
 const TRAITS=[
   ["leadership","통솔"],["intelligence","지력"],["stamina","체력"],["charm","매력"],["initiative","적극"]
 ];
-const LEVELS=[4,3,2,1];
+const LEVELS4=[4,3,2,1],LEVELS8=[8,7,6,5,4,3,2,1];
 const LEVEL_LABEL={4:"매",3:"잘",2:"보",1:"노",null:"·"};
+const TRAIT_MODES=["manual","linked"];
 const TEAM_COLORS=["#2563eb","#dc2626","#16a34a","#ea580c","#7c3aed","#0891b2"];
 
 let mode="classroom";
@@ -26,18 +27,82 @@ let peConfirmed=[];
 let peShowAllAbilities=false;
 let peFixedEditTeam=0;
 
+// The grade tab reads this class's trait settings and writes only linked axes through this bridge.
+window.__TT_PE_TRAITS={
+  snapshot(){
+    const settings=traitSettings();
+    return{scale:settings.scale,modes:{...settings.modes},subjects:Object.fromEntries(Object.entries(settings.subjects).map(([k,v])=>[k,[...v]])),
+      values:Object.fromEntries(classState.students.map((st,i)=>[st.id,{...ensurePEStudent(st,i).traits}]))};
+  },
+  saveLink(config){
+    const settings=traitSettings();
+    TRAITS.forEach(([k])=>{
+      if(TRAIT_MODES.includes(config?.modes?.[k]))settings.modes[k]=config.modes[k];
+      if(Array.isArray(config?.subjects?.[k]))settings.subjects[k]=config.subjects[k];
+    });
+    traitSettings();persistPE();renderStudentInspector();if(mode==="pe")renderPE();
+  },
+  applyLinked(values){
+    const settings=traitSettings(),levels=traitLevels();let changed=0;
+    classState.students.forEach((st,i)=>{
+      const next=values?.[st.id];if(!next||typeof next!=="object")return;
+      const traits=ensurePEStudent(st,i).traits;
+      TRAITS.forEach(([k])=>{if(settings.modes[k]==="linked"&&levels.includes(next[k])&&traits[k]!==next[k]){traits[k]=next[k];changed++;}});
+    });
+    persistPE();renderStudentInspector();if(mode==="pe")renderPE();
+    return changed;
+  }
+};
 function loadPEState(){
   try{return JSON.parse(window.__TT_STORE.getItem(PE_KEY))||{}}catch{return{}}
 }
 function persistPE(){
   try{window.__TT_STORE.setItem(PE_KEY,JSON.stringify(peState))}catch{}
 }
+// Per-class trait settings: 4 or 8 levels, and per axis either typed by hand or filled from grades.
+function traitSettings(){
+  const raw=peState.traitSettings&&typeof peState.traitSettings==="object"&&!Array.isArray(peState.traitSettings)?peState.traitSettings:{};
+  const modes={},subjects={};
+  TRAITS.forEach(([k])=>{
+    modes[k]=TRAIT_MODES.includes(raw.modes?.[k])?raw.modes[k]:"manual";
+    subjects[k]=Array.isArray(raw.subjects?.[k])?[...new Set(raw.subjects[k].filter(x=>typeof x==="string"&&x.trim()&&x.length<=50).map(x=>x.trim()))].slice(0,30):[];
+  });
+  peState.traitSettings={scale:raw.scale===8?8:4,modes,subjects};
+  return peState.traitSettings;
+}
+const traitScale=()=>traitSettings().scale;
+const traitLevels=()=>traitScale()===8?LEVELS8:LEVELS4;
+const traitLabel=v=>traitScale()===8?(v===null?"·":String(v)):LEVEL_LABEL[v];
+// Shapes and team balance always work on the 4-level size, so 8 levels only add detail.
+const traitUnit=v=>v===null||v===undefined?v:v*4/traitScale();
+function studentRecords(){return Object.entries(peState).filter(([id,v])=>id!=="teamCount"&&id!=="traitSettings"&&v&&typeof v==="object"&&v.traits)}
+// 4 → 8 doubles and remembers the 4-level value. 8 → 4 returns to it if the 8-level value was not
+// changed since; a changed value is halved and rounded down, never below 1.
+function setTraitScale(next){
+  const settings=traitSettings();if(next!==4&&next!==8||settings.scale===next)return;
+  for(const [,record] of studentRecords()){
+    const traits=record.traits;
+    if(next===8){
+      record.prev4=Object.fromEntries(TRAITS.map(([k])=>[k,LEVELS4.includes(traits[k])?traits[k]:null]));
+      TRAITS.forEach(([k])=>{traits[k]=LEVELS4.includes(traits[k])?traits[k]*2:null});
+    }else{
+      const prev=record.prev4||{};
+      TRAITS.forEach(([k])=>{
+        const v=LEVELS8.includes(traits[k])?traits[k]:null,old=LEVELS4.includes(prev[k])?prev[k]:null;
+        traits[k]=old!==null&&v===old*2?old:v===null?null:Math.max(1,Math.floor(v/2));
+      });
+      delete record.prev4;
+    }
+  }
+  settings.scale=next;
+}
 function ensurePEStudent(student,index){
   if(!peState[student.id]){
     peState[student.id]={traits:Object.fromEntries(TRAITS.map(([k])=>[k,null])),fixedTeam:0};
   }
   peState[student.id].traits ||= {};
-  TRAITS.forEach(([k])=>{if(!LEVELS.includes(peState[student.id].traits[k]))peState[student.id].traits[k]=null});
+  const levels=traitLevels();
+  TRAITS.forEach(([k])=>{if(!levels.includes(peState[student.id].traits[k]))peState[student.id].traits[k]=null});
   if(!Number.isInteger(peState[student.id].fixedTeam))peState[student.id].fixedTeam=0;
   return peState[student.id];
 }
@@ -74,7 +139,7 @@ function injectStyles(){
     .pe-board.pe-count-4 .pe-team-body{grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px;padding:11px}
     .pe-board.pe-count-4 .pe-member{min-height:88px}
     .pe-member{position:relative;min-height:82px;border:1px solid #d7dee8;border-radius:10px;background:#f8fafc;display:flex;align-items:center;gap:6px;padding:6px 7px;cursor:pointer;user-select:none}.pe-member:hover{border-color:#94a3b8;background:#fff}.pe-member.fixed{box-shadow:inset 0 0 0 2px #f59e0b;background:#fffbeb}.pe-member.fixed::after{content:"🔒";position:absolute;right:6px;top:5px;font-size:12px}.pe-member.pe-just-fixed{animation:peLockPulse .28s ease-out}@keyframes peLockPulse{0%{transform:scale(.97)}60%{transform:scale(1.025)}100%{transform:scale(1)}}.pe-member .student-mini-sprite{flex:0 0 auto}.pe-member strong{font-size:13px;line-height:1.2}.pe-member em{font-style:normal;font-size:10px;color:#92400e;font-weight:900;display:block;margin-top:3px}.pe-empty{padding:24px;color:#94a3b8;font-size:12px;text-align:center;grid-column:1/-1}
-    .trait-radar-wrap{display:grid;grid-template-columns:132px 1fr;gap:9px;align-items:center}.trait-radar{width:132px;height:132px}.trait-grid{display:flex;flex-direction:column;gap:5px}.trait-row{display:grid;grid-template-columns:36px repeat(4,1fr);gap:4px;align-items:center}.trait-row>span{font-size:11px;font-weight:900;color:#475569}.trait-row button{height:29px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;font-weight:950;padding:0}.trait-row button.on{background:#172033;color:#fff;border-color:#172033}.trait-row.inactive-axis{opacity:.38}.trait-hint{margin-top:7px;font-size:10px;color:#64748b;line-height:1.45}.trait-legend{display:flex;justify-content:center;gap:8px;margin-top:4px;font-size:10px;color:#64748b}.trait-legend b{color:#172033}
+    .trait-radar-wrap{display:grid;grid-template-columns:132px 1fr;gap:9px;align-items:center}.trait-radar{width:132px;height:132px}.trait-grid{display:flex;flex-direction:column;gap:5px}.trait-row{display:grid;grid-template-columns:36px repeat(4,1fr);gap:4px;align-items:center}.trait-radar-wrap.trait-scale-8{grid-template-columns:1fr;justify-items:center}.trait-scale-8 .trait-grid{width:100%}.trait-scale-8 .trait-row{grid-template-columns:36px repeat(8,1fr);gap:3px}.trait-row>span{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.1}.trait-row button:disabled{cursor:not-allowed;opacity:.55}.trait-row button.on:disabled{opacity:.85}.trait-linked-tag{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#e8f0fe;border-radius:5px;padding:1px 4px;white-space:nowrap}.trait-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}.trait-head .inspector-label{margin:0;flex:1 1 auto}.trait-scale{display:flex;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden}.trait-scale button{height:30px;padding:0 9px;border:0;background:#fff;color:#475569;font-size:11px;font-weight:900}.trait-scale button.on{background:#172033;color:#fff}.trait-grade-link{height:30px;padding:0 10px;border:1px solid #1d4ed8;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:900}.trait-row>span{font-size:11px;font-weight:900;color:#475569}.trait-row button{height:29px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;font-weight:950;padding:0}.trait-row button.on{background:#172033;color:#fff;border-color:#172033}.trait-row.inactive-axis{opacity:.38}.trait-hint{margin-top:7px;font-size:10px;color:#64748b;line-height:1.45}.trait-legend{display:flex;justify-content:center;gap:8px;margin-top:4px;font-size:10px;color:#64748b}.trait-legend b{color:#172033}
     .pe-fixed-team{margin-top:10px}.pe-fixed-team select{margin-top:5px}
     /* Preserve the original 3×2 dock-tab footprint in PE mode.
        Classroom-only tabs stay visible but are intentionally inactive in this prototype. */
@@ -154,11 +219,14 @@ renderStudentInspector=function(){
   const idx=classState.students.findIndex(s=>s.id===student.id),data=ensurePEStudent(student,idx),traits=data.traits;
   root.querySelector(".trait-prototype")?.remove();
   const section=document.createElement("div");section.className="inspector-section trait-prototype";
-  const values=TRAITS.map(([k])=>traits[k]);
+  const values=TRAITS.map(([k])=>traitUnit(traits[k]));
   const active=TRAITS.map(([k])=>mode==="classroom"?k!=="stamina":k!=="intelligence");
-  section.innerHTML=`<span class="inspector-label">5축 특성 · 비공개</span><div class="trait-radar-wrap">${radarSvg(values,TRAITS.map(x=>x[1]),active)}<div class="trait-grid">${TRAITS.map(([k,label],i)=>`<div class="trait-row ${active[i]?'':'inactive-axis'}"><span>${label}</span>${LEVELS.map(v=>`<button type="button" data-trait="${k}" data-value="${v}" class="${traits[k]===v?'on':''}">${LEVEL_LABEL[v]}</button>`).join("")}</div>`).join("")}</div></div><div class="trait-hint">${mode==="classroom"?"교실 균형 계산: 통솔 · 지력 · 매력 · 적극 / 체력 제외":"체육 균형 계산: 체력 · 통솔 · 적극 · 매력 / 지력 제외"}</div>${mode==="pe"?`<div class="pe-fixed-team"><span class="inspector-label">체육 팀 고정</span><select id="peFixedTeam"><option value="0">자동 배정</option>${Array.from({length:peState.teamCount||4},(_,i)=>`<option value="${i+1}" ${data.fixedTeam===i+1?'selected':''}>${i+1}팀 고정</option>`).join("")}</select></div>`:""}`;
+  const settings=traitSettings(),scale=settings.scale,linked=k=>settings.modes[k]==="linked";
+  section.innerHTML=`<div class="trait-head"><span class="inspector-label">5축 특성 · 비공개</span><div class="trait-scale" role="group" aria-label="능력치 단계 수">${[4,8].map(n=>`<button type="button" data-trait-scale="${n}" class="${scale===n?'on':''}" aria-pressed="${scale===n}">${n}단계</button>`).join("")}</div><button type="button" class="trait-grade-link" id="traitGradeLink">성적 연결</button></div><div class="trait-radar-wrap trait-scale-${scale}">${radarSvg(values,TRAITS.map(x=>x[1]),active)}<div class="trait-grid">${TRAITS.map(([k,label],i)=>`<div class="trait-row ${active[i]?'':'inactive-axis'} ${linked(k)?'trait-linked':''}"><span>${label}${linked(k)?`<em class="trait-linked-tag" title="성적 연동 · ${escapeHtml(settings.subjects[k].join(', ')||'교과 미선택')}">연동</em>`:''}</span>${traitLevels().map(v=>`<button type="button" data-trait="${k}" data-value="${v}" class="${traits[k]===v?'on':''}" ${linked(k)?'disabled title="성적 연동 축입니다. 성적 관리의 능력치 연동에서 반영하거나 수동으로 바꾸세요."':''}>${traitLabel(v)}</button>`).join("")}</div>`).join("")}</div></div><div class="trait-hint">${mode==="classroom"?"교실 균형 계산: 통솔 · 지력 · 매력 · 적극 / 체력 제외":"체육 균형 계산: 체력 · 통솔 · 적극 · 매력 / 지력 제외"}</div>${mode==="pe"?`<div class="pe-fixed-team"><span class="inspector-label">체육 팀 고정</span><select id="peFixedTeam"><option value="0">자동 배정</option>${Array.from({length:peState.teamCount||4},(_,i)=>`<option value="${i+1}" ${data.fixedTeam===i+1?'selected':''}>${i+1}팀 고정</option>`).join("")}</select></div>`:""}`;
   const anchor=root.querySelectorAll(".inspector-section")[1]||root.firstChild;anchor?.after(section);
-  section.querySelectorAll("[data-trait]").forEach(btn=>btn.onclick=()=>{traits[btn.dataset.trait]=Number(btn.dataset.value);persistPE();renderStudentInspector();if(mode==="pe")renderPE()});
+  section.querySelectorAll("[data-trait]").forEach(btn=>btn.onclick=()=>{if(traitSettings().modes[btn.dataset.trait]==="linked")return;traits[btn.dataset.trait]=Number(btn.dataset.value);persistPE();renderStudentInspector();if(mode==="pe")renderPE()});
+  section.querySelectorAll("[data-trait-scale]").forEach(btn=>btn.onclick=()=>{setTraitScale(Number(btn.dataset.traitScale));persistPE();renderStudentInspector();if(mode==="pe")renderPE();window.__TT_STAGE031_SEND_ROSTER?.()});
+  $("traitGradeLink").onclick=()=>window.__TT_OPEN_TRAIT_LINK?.();
   const fixed=$("peFixedTeam");if(fixed)fixed.onchange=e=>{data.fixedTeam=Number(e.target.value);persistPE();peAssignments=[];peConfirmed=[];renderStudentInspector();renderPE();updateModeChrome()};
   persistPE();
 };
@@ -230,7 +298,7 @@ function teamTargets(n,total,fixedCounts=[]){
   remaining.slice(0,extra-required.length).forEach(i=>targets[i]++);
   return targets;
 }
-function peVector(student){const t=ensurePEStudent(student,classState.students.indexOf(student)).traits;return[t.stamina,t.leadership,t.initiative,t.charm]}
+function peVector(student){const t=ensurePEStudent(student,classState.students.indexOf(student)).traits;return[t.stamina,t.leadership,t.initiative,t.charm].map(traitUnit)}
 function peGender(student){return student.gender==='male'?'male':student.gender==='female'?'female':'unknown'}
 function scoreTeams(teams,targets){
   const vectors=teams.map(team=>{const sums=[0,0,0,0];team.forEach(s=>peVector(s).forEach((v,i)=>sums[i]+=v));return sums});

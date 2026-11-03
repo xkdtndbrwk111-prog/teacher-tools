@@ -4,10 +4,11 @@ import {buildStudentSubjectDashboard} from './student-dashboard.mjs';
 import {GoogleCloud} from './google-cloud.mjs';
 import {GOOGLE_CLIENT_ID} from './google-config.mjs';
 import {projectRoster,inactiveMembers,relinkInactiveMembership} from './roster-projection.mjs';
+import {TRAIT_AXES,classSubjects,rankTraitLevels} from './trait-link.mjs';
 
 const $=id=>document.getElementById(id);
 const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const names={overview:['대시보드','CLASSROOM OVERVIEW','교실 관리 대시보드','학급, 학생, 평가를 하나의 작업공간에서 관리합니다.'],classes:['학급 · 학생명단','CLASS & STUDENT DIRECTORY','학급 · 학생명단','학급별 명단을 등록하고 관리합니다.'],assessments:['평가 관리','ASSESSMENT MANAGEMENT','평가 관리','같은 평가를 여러 학급에 연결합니다.'],grades:['성적 입력','GRADE WORKSPACE','성적 입력','점수·단계·기타 기록으로 평가 결과를 입력하고 학급별로 확인합니다.']};
+const names={overview:['대시보드','CLASSROOM OVERVIEW','교실 관리 대시보드','학급, 학생, 평가를 하나의 작업공간에서 관리합니다.'],classes:['학급 · 학생명단','CLASS & STUDENT DIRECTORY','학급 · 학생명단','학급별 명단을 등록하고 관리합니다.'],assessments:['평가 관리','ASSESSMENT MANAGEMENT','평가 관리','같은 평가를 여러 학급에 연결합니다.'],grades:['성적 입력','GRADE WORKSPACE','성적 입력','점수·단계·기타 기록으로 평가 결과를 입력하고 학급별로 확인합니다.'],traits:['능력치 연동','TRAIT LINK','5축 능력치 연동','자리배치 학생 탭의 5축 능력치를 성적과 연결합니다.']};
 const cloud=new GoogleCloud(GOOGLE_CLIENT_ID);
 let cloudMode=false,cloudDirty=false,cloudFileKey=null,changeCounter=0;
 let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve();
@@ -19,7 +20,7 @@ function draftKey(){return `TT_STAGE03_${stage03InstallId||'UNBOUND'}_${year}`;}
 function markChanged(){if(readOnlyYear)return;changeCounter++;if(cloudMode)cloudDirty=true;m.updatedAt=new Date().toISOString();$('draft-state').textContent=cloudMode?'● 미저장 변경 있음 · Sheets 저장 필요':'◌ 임시 보관 중';updateCloudUI();clearTimeout(timer);timer=setTimeout(async()=>{try{validateWorkspace(m);stage03PendingDraft=writeDraft(draftKey(),structuredClone(m));await stage03PendingDraft;persistFailed=false;$('draft-state').textContent=cloudMode?(cloudDirty?'● 이 기기에 임시 보관됨 · Sheets 미저장':'● Sheets 저장 확인됨'):'● 이 기기에 임시 보관됨';}catch(e){persistFailed=true;$('draft-state').textContent='⚠ 임시 보관 실패';toast('브라우저 임시 보관에 실패했습니다. JSON 백업을 내려받으세요.',true);}},500);}
 function syncSelection(){if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;if(!m.assessments.some(a=>a.id===selectedAssessment))selectedAssessment=m.assessments[0]?.id||null;const a=m.assessments.find(x=>x.id===selectedAssessment);if(!a || (selectedGradeClass!=='all'&&!a.classIds.includes(selectedGradeClass)))selectedGradeClass='all';}
 function go(next){const priorPage=page;page=next;$('grade-toolbar-subject').classList.toggle('hidden',next!=='grades');if(next==='grades'&&priorPage!==next)activateDock('grades');selectedMemberId=null;$('student-detail').classList.add('hidden');document.querySelectorAll('.nav').forEach(b=>{b.classList.toggle('active',b.dataset.page===next);b.classList.toggle('on',b.dataset.page===next);});document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('hidden',x.dataset.view!==next));const n=names[next];$('crumb').textContent=n[0];$('eyebrow').textContent=n[1];$('heading').textContent=n[2];$('subheading').textContent=next==='classes'?'':n[3];render();}
-function render(){syncSelection();updateCloudUI();$('n-classes').textContent=m.classes.length;$('n-students').textContent=m.memberships.filter(x=>x.active).length;$('n-assessments').textContent=m.assessments.length;$('n-grades').textContent=m.gradeValues.filter(x=>x.value!==null).length;renderOverview();renderClasses();renderAssessments();renderGrades();updateDock();renderStudentStrip();applyReadOnly();}
+function render(){syncSelection();updateCloudUI();$('n-classes').textContent=m.classes.length;$('n-students').textContent=m.memberships.filter(x=>x.active).length;$('n-assessments').textContent=m.assessments.length;$('n-grades').textContent=m.gradeValues.filter(x=>x.value!==null).length;renderOverview();renderClasses();renderAssessments();renderGrades();renderTraitLink();updateDock();renderStudentStrip();applyReadOnly();}
 function applyReadOnly(){
  document.body.classList.toggle('is-read-only',readOnlyYear);
  if(!readOnlyYear)return;
@@ -193,6 +194,52 @@ function updateGradeSummary(rows,assessments){
  const counted=rows.map(r=>a.classIds.includes(r.classId)?getGrade(m,a.id,r.id):null).filter(v=>v!==null);
  if(level)$('grade-summary').textContent=`${label} · ${c.levels.map(item=>`${item} ${counted.filter(v=>v===item).length}명`).join(' · ')}`;
  else $('grade-summary').textContent=`${label} · 평균 ${counted.length?(counted.reduce((x,y)=>x+y,0)/counted.length).toFixed(2):'—'}${other?` ${c.unit}`:'점'}`;
+}
+// Trait link: the seating host sends this class's trait settings with the roster and applies only linked axes.
+let hostTraits=null,hostSourceId=null;
+const traitLabel=(v,scale)=>v===null||v===undefined?'·':scale===8?String(v):({4:'매',3:'잘',2:'보',1:'노'})[v];
+function postTraitLink(type,body){window.parent.postMessage({type,installId:stage03InstallId,sourceInstanceId:hostSourceId,...body},location.origin);}
+function traitLinkPlan(cls){
+ const plan=[];
+ for(const [k,label] of TRAIT_AXES){
+  if(hostTraits.modes[k]!=='linked')continue;
+  const subjects=hostTraits.subjects[k]||[];
+  plan.push({k,label,subjects,...(subjects.length?rankTraitLevels(m,cls.id,subjects,hostTraits.scale):{levels:new Map(),skipped:[],used:0})});
+ }
+ return plan;
+}
+function renderTraitLink(){
+ const box=$('trait-link');if(!box)return;
+ const cls=hostSourceId&&m.classes.find(c=>c.stage03SourceId===hostSourceId);
+ if(!hostTraits||!cls){box.innerHTML='<div class="empty-state">자리배치에서 반을 연결하면 사용할 수 있습니다.</div>';return;}
+ const scale=hostTraits.scale,subjects=classSubjects(m,cls.id),off=readOnlyYear?'disabled':'';
+ const axes=TRAIT_AXES.map(([k,label])=>{
+  const linked=hostTraits.modes[k]==='linked',chosen=hostTraits.subjects[k]||[],gone=chosen.filter(x=>!subjects.includes(x));
+  const choices=linked?(subjects.length?subjects.map(sub=>`<label class="trait-subject"><input type="checkbox" data-trait-subject="${k}" value="${h(sub)}" ${chosen.includes(sub)?'checked':''} ${off}><span>${h(sub)}</span></label>`).join('')+gone.map(sub=>`<label class="trait-subject is-missing" title="이 반에 이 교과 평가가 없습니다"><input type="checkbox" data-trait-subject="${k}" value="${h(sub)}" checked ${off}><span>${h(sub)} · 평가 없음</span></label>`).join(''):'<span class="trait-note">이 반에 연결된 평가가 없습니다. ③ 평가 관리에서 먼저 만들어 주세요.</span>'):'<span class="trait-note">자리배치 학생 탭에서 직접 정합니다.</span>';
+  return `<div class="trait-link-row ${linked?'is-linked':''}"><strong>${label}</strong><div class="trait-mode" role="group" aria-label="${label} 방식">${[['manual','수동'],['linked','성적 연동']].map(([v,t])=>`<button type="button" data-trait-mode="${k}" data-value="${v}" class="${hostTraits.modes[k]===v?'on':''}" aria-pressed="${hostTraits.modes[k]===v}" ${off}>${t}</button>`).join('')}</div><div class="trait-subjects">${choices}</div></div>`;
+ }).join('');
+ const plan=traitLinkPlan(cls),members=roster(m,cls.id);
+ let changes=0;
+ const body=members.map(mem=>{
+  const now=hostTraits.values[mem.stage03SeatingId]||{};
+  const cells=plan.map(p=>{const next=p.levels.get(mem.id),before=now[p.k]??null;
+   if(next===undefined)return `<td class="trait-keep">${traitLabel(before,scale)} <small>성적 없음 · 그대로</small></td>`;
+   if(next!==before)changes++;
+   return `<td class="${next!==before?'trait-change':''}">${traitLabel(before,scale)} → <b>${traitLabel(next,scale)}</b></td>`;}).join('');
+  return `<tr><td>${mem.number}</td><td>${h(mem.name)}</td>${cells}</tr>`;
+ }).join('');
+ const notes=plan.flatMap(p=>[!p.subjects.length?`${p.label}: 교과를 골라 주세요.`:'',p.skipped.length?`${p.label}: 표준점수를 낼 수 없는 평가 ${p.skipped.length}개 제외(결과 5명 미만·모두 같은 점수·기록 방향 미정)`:'',p.subjects.length&&!p.used?`${p.label}: 계산할 수 있는 평가가 없습니다.`:'']).filter(Boolean);
+ const preview=plan.length?`<div class="trait-preview-head"><h3>미리보기 · ${h(cls.name)} · ${scale}단계</h3><span>${changes?`바뀌는 칸 ${changes}개`:'바뀌는 칸 없음'}</span></div>${notes.length?`<ul class="trait-notes">${notes.map(x=>`<li>${h(x)}</li>`).join('')}</ul>`:''}<div class="table-wrap trait-preview-wrap"><table class="trait-preview"><thead><tr><th>번호</th><th>이름</th>${plan.map(p=>`<th>${p.label}<small>${h(p.subjects.join('·')||'교과 미선택')}</small></th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="trait-actions"><span>반 안 순위로 ${scale}등분합니다. 같은 점수는 같은 단계입니다. 여러 평가는 평가별 표준점수의 평균으로 순위를 매깁니다.</span><button type="button" class="primary" id="trait-apply" ${changes&&!readOnlyYear?'':'disabled'}>능력치에 반영</button></div>`:'<div class="trait-note trait-empty">성적 연동으로 고른 축이 없습니다. 위에서 축을 성적 연동으로 바꾸고 교과를 골라 주세요.</div>';
+ box.innerHTML=`<div class="trait-link-class">${h(cls.name)} · 능력치 ${scale}단계 <small>단계 수는 자리배치 학생 탭에서 바꿉니다.</small></div><div class="trait-link-axes">${axes}</div>${preview}`;
+ const save=()=>{postTraitLink('TT_TRAIT_LINK_SAVE',{config:{modes:{...hostTraits.modes},subjects:structuredClone(hostTraits.subjects)}});renderTraitLink();};
+ box.querySelectorAll('[data-trait-mode]').forEach(b=>b.onclick=()=>{if(readOnlyYear)return;hostTraits.modes[b.dataset.traitMode]=b.dataset.value;save();});
+ box.querySelectorAll('[data-trait-subject]').forEach(c=>c.onchange=()=>{if(readOnlyYear)return;const k=c.dataset.traitSubject,list=new Set(hostTraits.subjects[k]||[]);c.checked?list.add(c.value):list.delete(c.value);hostTraits.subjects[k]=[...list];save();});
+ $('trait-apply')?.addEventListener('click',()=>{
+  if(readOnlyYear)return;
+  const values={};
+  for(const mem of members){const row={};plan.forEach(p=>{const v=p.levels.get(mem.id);if(v!==undefined)row[p.k]=v;});if(Object.keys(row).length&&mem.stage03SeatingId)values[mem.stage03SeatingId]=row;}
+  postTraitLink('TT_TRAIT_LINK_APPLY',{values});
+ });
 }
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
 function renderGrades(){
@@ -464,6 +511,7 @@ const dockGuide={
  overview:['대시보드','학급과 평가를 한눈에 확인합니다. 먼저 학급을 만든 뒤 학생과 평가를 등록해 주세요.','학급 만들기로 이동 →','classes'],
  classes:['학급 · 학생명단','한 학급씩 만들고 학생 이름을 등록합니다. 여러 이름을 줄바꿈해서 한 번에 등록할 수도 있습니다.','평가 관리로 이동 →','assessments'],
  assessments:['평가 관리','점수·3/4/5단계·기타 단위 기록형 중 하나를 선택합니다. 평가 한 개를 여러 학급에 연결할 수 있습니다.','성적 입력으로 이동 →','grades'],
+ traits:['능력치 연동','축마다 수동 또는 성적 연동을 고릅니다. 성적 연동 축은 고른 교과의 반 안 순위로 단계를 정합니다.','성적 입력으로 이동 →','grades'],
  grades:['성적 입력','점수·기타 기록은 숫자로, 단계 평가는 목록에서 선택합니다. 전체 학급과 각 반을 전환하며 확인합니다.','평가 관리로 이동 →','assessments']
 };
 function updateDock(){
@@ -801,7 +849,12 @@ window.addEventListener('message',e=>{
  if(msg.type==='TT_STAGE031_SELECT_STUDENT' && msg.installId===stage03InstallId){
   const target=m.memberships.find(mem=>mem.active&&mem.classId===selectedClass&&mem.stage03SeatingId===msg.seatingStudentId);
   if(target)showStudent(target.id);
+ }else if(msg.type==='TT_TRAIT_LINK_OPEN' && msg.installId===stage03InstallId){
+  go('traits');
+ }else if(msg.type==='TT_TRAIT_LINK_RESULT' && msg.installId===stage03InstallId){
+  toast(msg.message,!msg.ok);
  }else if(msg.type==='TT_STAGE03_ROSTER'){
+  hostTraits=msg.traits&&typeof msg.traits==='object'?msg.traits:null;hostSourceId=msg.sourceInstanceId;
   stage03ProjectionBusy=stage03ProjectionBusy.then(()=>stage03ApplyHost(msg)).catch(err=>{stage03Report('⚠ 명단 동기화 보류: '+err.message,true)});
  }else if(msg.type==='TT_STAGE03_FLUSH'){
   const installId=msg.installId,id=msg.id;

@@ -111,4 +111,8 @@ NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-f
 NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-cloud.cjs
 ```
 
+```bash
+NODE_PATH=<Playwright 설치 위치>/node_modules node classroom/tests/browser-traits.cjs
+```
+
 브라우저 시험은 설치된 Google Chrome을 임시 프로필로 사용합니다. `browser-cloud.cjs`는 실제 Google이 아닌 시험용 대역과 통신합니다.
