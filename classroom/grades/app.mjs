@@ -282,6 +282,16 @@ function renderGrades(){
   input.closest('.sheet-entry-cell').addEventListener('click',()=>{if(document.activeElement!==input){input.focus();if(input instanceof HTMLInputElement)input.select();}});
  });
 }
+// The browser scrolls a focused cell into the table's box but not clear of the sticky header, so the cell can stay hidden under it.
+function revealSheetCell(input){
+ const box=input.closest('.sheet-scroll'),cell=input.closest('td,th')||input;if(!box)return;
+ const head=box.querySelector('thead')?.getBoundingClientRect().height||0,b=box.getBoundingClientRect(),c=cell.getBoundingClientRect();
+ const top=b.top+box.clientTop+head,bottom=b.top+box.clientTop+box.clientHeight,left=b.left+box.clientLeft,right=left+box.clientWidth;
+ if(c.top<top)box.scrollTop-=top-c.top;else if(c.bottom>bottom)box.scrollTop+=c.bottom-bottom;
+ if(c.left<left)box.scrollLeft-=left-c.left;else if(c.right>right)box.scrollLeft+=c.right-right;
+ box.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+$('grade-table').addEventListener('focusin',e=>{if(e.target.classList?.contains('grade-input'))revealSheetCell(e.target);});
 // Spreadsheet-style rectangular selection is COPY ONLY. It never writes grade values.
 let sheetCopyRange=null;
 let sheetCopyDrag=null;

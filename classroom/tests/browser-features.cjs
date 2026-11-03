@@ -157,6 +157,29 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    assert.deepEqual((await f.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value))).slice(0,4),['90','85','70','']);
    await ctx.close();
   });
+  await step('성적표: 키보드로 칸을 옮기면 화면 밖으로 나가지 않게 따라 움직인다',async()=>{
+   const {ctx,p}=await open({width:1100,height:520});
+   await p.click('#tt-grade-tab');
+   const f=p.frameLocator('.tt-grade-iframe');
+   await p.waitForFunction(()=>/공통 명단 연결/.test(document.getElementById('tt-stage03-status')?.textContent||''));
+   for(let i=0;i<7;i++){
+    await f.locator('.nav[data-page="assessments"]').click();
+    await f.locator('input[name="subject"]').fill('수학');await f.locator('input[name="title"]').fill('평가'+i);
+    await f.locator('#assessment-form input[type="checkbox"]').first().check();
+    await f.locator('#assessment-form button[type="submit"]').click();await wait(120);
+   }
+   await f.locator('.nav[data-page="grades"]').click();
+   const first=f.locator('input.grade-input').first();await first.waitFor();await first.focus();
+   const seen=async why=>{const r=await first.evaluate(()=>{const c=document.activeElement.closest('td,th')||document.activeElement,cr=c.getBoundingClientRect(),box=c.closest('.sheet-scroll').getBoundingClientRect(),head=c.closest('table').querySelector('thead').getBoundingClientRect(),top=Math.max(box.top,head.bottom),win=window.frameElement?window.frameElement.getBoundingClientRect():null;return{inside:cr.top>=top-1&&cr.bottom<=box.bottom+1&&cr.left>=box.left-1&&cr.right<=box.right+1,inWindow:cr.top>=0&&cr.bottom<=innerHeight+1&&cr.left>=0&&cr.right<=innerWidth+1,cr:[cr.left,cr.top,cr.right,cr.bottom].map(Math.round),box:[box.left,top,box.right,box.bottom].map(Math.round),H:innerHeight,label:document.activeElement.getAttribute('aria-label')}});assert.ok(r.inside&&r.inWindow,why+' '+JSON.stringify(r))};
+   const n=await f.locator('input.grade-input').count();assert.ok(n>=50,'칸 수 '+n);
+   for(let i=0;i<9;i++){await first.page().keyboard.press('ArrowDown');await wait(40);await seen('아래 '+i)}
+   for(let i=0;i<6;i++){await first.page().keyboard.press('ArrowRight');await wait(40);await seen('오른쪽 '+i)}
+   for(let i=0;i<9;i++){await first.page().keyboard.press('ArrowUp');await wait(40);await seen('위 '+i)}
+   for(let i=0;i<6;i++){await first.page().keyboard.press('ArrowLeft');await wait(40);await seen('왼쪽 '+i)}
+   for(let i=0;i<5;i++){await first.page().keyboard.press('Tab');await wait(40);await seen('Tab '+i)}
+   for(let i=0;i<4;i++){await first.page().keyboard.press('Enter');await wait(40);await seen('Enter '+i)}
+   await ctx.close();
+  });
   await step('한자 매니저: 명단, 문제 등록, 게임 진행',async()=>{
    const {ctx,p}=await open();
    await p.goto(BASE+'/hanja/');
