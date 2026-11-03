@@ -322,3 +322,32 @@ input,select,textarea{border:1px solid var(--line);border-radius:8px;color:#1720
 .trait-preview td.trait-keep{color:#94a3b8}.trait-preview td small{font-size:10px}
 .trait-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}.trait-actions span{font-size:11px;color:#64748b;flex:1 1 260px}
 @media(max-width:760px){.trait-link-row{grid-template-columns:52px minmax(0,1fr)}.trait-subjects{grid-column:1/-1}}
+
+/* Teacher-only class distribution modal. */
+.grade-dock-actions{display:grid;gap:8px}
+.class-dist-dialog:not([open]){display:none}
+.class-dist-dialog{width:min(1500px,96vw);height:min(94vh,1000px);max-width:none;max-height:none;padding:18px 20px;border:0;border-radius:14px;background:#fff;color:var(--text);box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.class-dist-dialog::backdrop{background:rgba(5,13,27,.6)}
+.class-dist-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.class-dist-head h2{margin:0 0 4px;font-size:20px}.class-dist-head p{margin:0;font-size:12px;color:#b45309;font-weight:700}
+.class-dist-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px}
+.dist-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}.dist-controls label{display:grid;gap:4px;font-size:11px;font-weight:800;color:#475569}.dist-controls select{min-height:40px;min-width:150px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;background:#fff}
+.dist-mode{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}.dist-mode button{min-height:40px;padding:0 16px;border:0;background:#fff;color:#475569;font-weight:850;font-size:13px}.dist-mode button.on{background:#172033;color:#fff}.dist-mode button:disabled{opacity:.45;cursor:not-allowed}
+.dist-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px}
+.dist-chart-wrap{min-height:0;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.dist-chart-title{font-size:14px;font-weight:900}
+.dist-chart{width:100%;height:auto;display:block}
+.dist-chip rect{fill:#fff;stroke:#2563eb;stroke-width:1.6}.dist-chip text{font-size:13px;font-weight:800;fill:#1e3a8a;pointer-events:none}
+.dist-chip{cursor:pointer}.dist-chip:hover rect{fill:#eff6ff}.dist-chip:focus{outline:none}.dist-chip:focus-visible rect{stroke-width:3}
+.dist-chip.on rect{fill:#1d4ed8;stroke:#1d4ed8}.dist-chip.on text{fill:#fff}
+.dist-empty{padding:40px 12px;text-align:center;color:#64748b;font-size:13px}
+.dist-detail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:10px 12px;border-radius:10px;background:#eff6ff;font-size:13px}.dist-detail strong{font-size:15px}.dist-detail b{color:#1d4ed8}.dist-detail .ghost{margin-left:auto;min-height:36px}
+.dist-detail-hint{background:#f8fafc;color:#64748b;font-size:12px}
+.dist-side{min-height:0;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:10px}
+.dist-side-title{font-size:12px;font-weight:900;color:#475569;margin:2px 4px 8px}
+.dist-list{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.dist-list button{width:100%;display:grid;grid-template-columns:28px 1fr auto;gap:6px;align-items:center;min-height:36px;padding:0 8px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:13px;color:var(--text)}
+.dist-list button:hover{background:#f1f5f9}.dist-list button.on{background:#1d4ed8;color:#fff}
+.dist-list span{color:#94a3b8;font-size:11px;font-weight:800}.dist-list button.on span{color:#dbeafe}.dist-list em{font-style:normal;font-weight:800;font-variant-numeric:tabular-nums}
+.dist-excluded{margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0;display:grid;gap:3px;font-size:11px;color:#64748b}.dist-excluded strong{color:#b45309;font-size:12px}
+@media(max-width:1180px){.dist-main{display:flex;flex-direction:column;overflow:auto}.dist-chart-wrap{flex:none;overflow-x:auto;overflow-y:visible}.dist-side{flex:none;overflow:visible}.dist-list{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.class-dist-dialog{padding:14px}}
+.dist-chart{min-width:760px;flex:none}

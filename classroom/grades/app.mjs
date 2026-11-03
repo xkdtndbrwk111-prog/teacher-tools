@@ -5,6 +5,7 @@ import {GoogleCloud} from './google-cloud.mjs';
 import {GOOGLE_CLIENT_ID} from './google-config.mjs';
 import {projectRoster,inactiveMembers,relinkInactiveMembership} from './roster-projection.mjs';
 import {TRAIT_AXES,classSubjects,rankTraitLevels} from './trait-link.mjs';
+import {buildClassDistribution,classDistributionSubjects,classDistributionAssessments,distributionReason,stackChips} from './class-distribution.mjs';
 
 const $=id=>document.getElementById(id);
 const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -240,6 +241,53 @@ function renderTraitLink(){
   for(const mem of members){const row={};plan.forEach(p=>{const v=p.levels.get(mem.id);if(v!==undefined)row[p.k]=v;});if(Object.keys(row).length&&mem.stage03SeatingId)values[mem.stage03SeatingId]=row;}
   postTraitLink('TT_TRAIT_LINK_APPLY',{values});
  });
+}
+// Class distribution: a teacher-only modal over the grade sheet. Nothing here leaves the grade manager.
+let distState=null;
+const distClassIds=()=>[...new Set(m.assessments.flatMap(a=>a.classIds))].filter(id=>m.classes.some(c=>c.id===id));
+function openClassDistribution(){
+ const ids=distClassIds();
+ if(!ids.length){toast('평가를 먼저 만들어 주세요.',true);return;}
+ const assess=m.assessments.find(a=>a.id===selectedAssessment);
+ const classId=selectedGradeClass!=='all'&&ids.includes(selectedGradeClass)?selectedGradeClass:ids.includes(selectedClass)?selectedClass:ids[0];
+ distState={classId,subject:selectedGradeSubject||assess?.subject||'',assessmentId:selectedGradeSubject?null:(assess?.id||null),selected:null};
+ renderClassDistribution();
+ const dlg=$('class-dist-dialog');if(!dlg.open)dlg.showModal();
+}
+function distributionChart(data,selected){
+ const W=1100,pad=54,chipW=62,chipH=24,gap=4,xOf=z=>pad+(Math.max(-3.2,Math.min(3.2,z))+3.2)/6.4*(W-2*pad);
+ const chips=stackChips(data.points,xOf,chipW),rows=Math.max(1,...chips.map(c=>c.row+1));
+ const top=18,curveH=Math.max(240,rows*(chipH+gap)+36),base=top+curveH,H=base+46;
+ const y=u=>base-Math.exp(-u*u/2)*(curveH-8);
+ const curve=Array.from({length:129},(_,i)=>{const u=-3.2+i*.05;return `${i?'L':'M'}${xOf(u).toFixed(1)},${y(u).toFixed(1)}`}).join(' ');
+ const guides=[-3,-2,-1,0,1,2,3].map(v=>`<line x1="${xOf(v)}" y1="${top}" x2="${xOf(v)}" y2="${base}" stroke="${v===0?'#94a3b8':'#e2e8f0'}" ${Math.abs(v)===1?'stroke-dasharray="5 4"':''}/><text x="${xOf(v)}" y="${base+20}" text-anchor="middle" font-size="13" fill="#64748b">${v>0?'+':''}${v}</text>`).join('');
+ const labels=`<text x="${xOf(0)}" y="${base+38}" text-anchor="middle" font-size="12" fill="#94a3b8">평균</text><text x="${xOf(-1)}" y="${base+38}" text-anchor="middle" font-size="12" fill="#cbd5e1">−1 표준편차</text><text x="${xOf(1)}" y="${base+38}" text-anchor="middle" font-size="12" fill="#cbd5e1">+1 표준편차</text>`;
+ const marks=chips.map(c=>{
+  const on=c.membershipId===selected,cy=base-(c.row+1)*(chipH+gap),name=c.name.length>4?c.name.slice(0,4)+'…':c.name;
+  return `<g class="dist-chip ${on?'on':''}" data-dist-member="${h(c.membershipId)}" tabindex="0" role="button" aria-label="${h(c.name)} 표준점수 ${zDisplay(c.z)}"><title>${h(c.name)} · ${zDisplay(c.z)} · ${h(c.detail)}</title><rect x="${c.x-chipW/2}" y="${cy}" width="${chipW}" height="${chipH}" rx="7"/><text x="${c.x}" y="${cy+16}" text-anchor="middle">${h(name)}</text></g>`;
+ }).join('');
+ return `<svg class="dist-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(data.title)} 학급 표준점수 분포, 학생 ${data.points.length}명"><path d="${curve} L${xOf(3.2)},${base} L${xOf(-3.2)},${base} Z" fill="#f1f5f9"/>${guides}<line x1="${pad}" y1="${base}" x2="${W-pad}" y2="${base}" stroke="#94a3b8"/><path d="${curve}" fill="none" stroke="#64748b" stroke-width="2.6"/>${labels}${marks}</svg>`;
+}
+function renderClassDistribution(){
+ const st=distState;if(!st)return;
+ const ids=distClassIds();if(!ids.includes(st.classId))st.classId=ids[0];
+ const subjects=classDistributionSubjects(m,st.classId);if(!subjects.includes(st.subject))st.subject=subjects[0]||'';
+ const units=classDistributionAssessments(m,st.classId,st.subject);
+ if(st.assessmentId&&!units.some(a=>a.id===st.assessmentId))st.assessmentId=units[0]?.id||null;
+ const data=st.subject?buildClassDistribution(m,st.classId,{subject:st.subject,assessmentId:st.assessmentId}):{title:'',status:'no_comparable_assessments',points:[],excluded:[]};
+ if(st.selected&&!data.points.some(p=>p.membershipId===st.selected))st.selected=null;
+ const unitMode=Boolean(st.assessmentId),sel=data.points.find(p=>p.membershipId===st.selected);
+ const controls=`<div class="dist-controls"><label>반<select id="dist-class">${ids.map(id=>`<option value="${h(id)}" ${id===st.classId?'selected':''}>${h(m.classes.find(c=>c.id===id).name)}</option>`).join('')}</select></label><div class="dist-mode" role="group" aria-label="보기 방식"><button type="button" data-dist-mode="subject" class="${unitMode?'':'on'}" aria-pressed="${!unitMode}">교과 전체</button><button type="button" data-dist-mode="unit" class="${unitMode?'on':''}" aria-pressed="${unitMode}" ${units.length?'':'disabled'}>단원별</button></div><label>교과<select id="dist-subject">${subjects.map(s=>`<option ${s===st.subject?'selected':''}>${h(s)}</option>`).join('')}</select></label>${unitMode?`<label>단원<select id="dist-unit">${units.map(a=>`<option value="${h(a.id)}" ${a.id===st.assessmentId?'selected':''}>${h(a.title)}</option>`).join('')}</select></label>`:''}</div>`;
+ const chart=data.points.length?distributionChart(data,st.selected):`<div class="dist-empty">표준점수를 낼 수 있는 학생이 없습니다. (${h(distributionReason(data.status))})</div>`;
+ const detail=sel?`<div class="dist-detail"><strong>${h(sel.name)}</strong><span>${sel.number}번 · 반 ${sel.rank}등 / ${data.points.length}명</span><span>표준점수 <b>${zDisplay(sel.z)}</b> · ${h(sel.detail)}</span><button type="button" class="ghost" id="dist-personal">개인 화면 보기</button></div>`:'<div class="dist-detail dist-detail-hint">이름을 누르면 그 학생의 자리와 점수를 보여 줍니다.</div>';
+ const list=`<ol class="dist-list">${data.points.map(p=>`<li><button type="button" data-dist-member="${h(p.membershipId)}" class="${p.membershipId===st.selected?'on':''}"><span>${p.rank}</span><strong>${h(p.name)}</strong><em>${zDisplay(p.z)}</em></button></li>`).join('')}</ol>${data.excluded.length?`<div class="dist-excluded"><strong>계산 제외 ${data.excluded.length}명</strong>${data.excluded.map(x=>`<span>${x.number}번 ${h(x.name)} · ${h(x.reason)}</span>`).join('')}</div>`:''}`;
+ $('class-dist-body').innerHTML=`${controls}<div class="dist-main"><div class="dist-chart-wrap"><div class="dist-chart-title">${h(data.title)} · 표준점수 ${data.points.length}명</div>${chart}${detail}</div><aside class="dist-side"><div class="dist-side-title">표준점수 순서</div>${list}</aside></div>`;
+ $('dist-class').onchange=e=>{st.classId=e.target.value;st.selected=null;renderClassDistribution();};
+ $('dist-subject').onchange=e=>{st.subject=e.target.value;st.assessmentId=st.assessmentId?classDistributionAssessments(m,st.classId,st.subject)[0]?.id||null:null;st.selected=null;renderClassDistribution();};
+ if($('dist-unit'))$('dist-unit').onchange=e=>{st.assessmentId=e.target.value;st.selected=null;renderClassDistribution();};
+ document.querySelectorAll('[data-dist-mode]').forEach(b=>b.onclick=()=>{st.assessmentId=b.dataset.distMode==='unit'?units[0]?.id||null:null;renderClassDistribution();});
+ $('class-dist-body').querySelectorAll('[data-dist-member]').forEach(el=>{const pick=()=>{st.selected=st.selected===el.dataset.distMember?null:el.dataset.distMember;renderClassDistribution();};el.onclick=pick;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
+ if($('dist-personal'))$('dist-personal').onclick=()=>{const id=st.selected;$('class-dist-dialog').close();showStudent(id);};
 }
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
 function renderGrades(){
@@ -640,6 +688,7 @@ async function loadYear(y){
 }
 for(let y=schoolYear()-2;y<=schoolYear()+3;y++){const opt=document.createElement('option');opt.value=String(y);opt.textContent=y+'학년도';if(y===year)opt.selected=true;$('year').append(opt)}
 $('year').onchange=async()=>{toast('지금은 이번 학년도만 볼 수 있습니다.',true);$('year').value=String(year);return;if(cloudOpBusy||cloud.busy){toast('Google 파일 확인 또는 저장 작업이 끝난 뒤 학년도를 바꿔 주세요.',true);$('year').value=String(year);return;}if(cloudMode&&cloudDirty){toast('먼저 현재 작업을 Sheets에 저장하거나 JSON 백업으로 보관해 주세요.',true);$('year').value=String(year);return;}await waitToSave().catch(()=>{});await loadYear($('year').value)};
+$('open-class-dist').onclick=openClassDistribution;$('class-dist-close').onclick=()=>$('class-dist-dialog').close();
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>go(b.dataset.page));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));$('dock-next').onclick=()=>go($('dock-next').dataset.go);document.querySelectorAll('.dock-tab').forEach(b=>b.onclick=()=>activateDock(b.dataset.dock));document.querySelectorAll('input[name="gradeType"]').forEach(i=>i.onchange=updateType);$('level-count').onchange=updateType;updateType();
 $('class-form').onsubmit=e=>{e.preventDefault();if(true){toast('학생과 학급은 자리배치 메뉴에서만 수정합니다.',true);return;}try{const c=addClass(m,$('new-class').value);selectedClass=c.id;$('new-class').value='';markChanged();render();toast('새 학급이 등록되었습니다.')}catch(x){toast(x.message,true)}};
 $('assessment-form').onsubmit=e=>{e.preventDefault();try{const c=new BroadcastChannel('tt-classroom-changes');c.postMessage({important:true});c.close()}catch{};const form=e.currentTarget;const fd=new FormData(form);try{const gradeType=fd.get('gradeType');if(gradeType==='other'&&!['higher','lower'].includes(fd.get('recordDirection')))throw Error('기타 기록의 우수 방향을 선택해 주세요.');const a=addAssessment(m,{title:fd.get('title'),subject:fd.get('subject'),gradeType,criterion:gradeType==='level'?fd.get('criterionLevel'):gradeType==='other'?fd.get('criterionOther'):fd.get('criterionScore'),unit:fd.get('recordUnit'),recordDirection:fd.get('recordDirection'),levelCount:fd.get('levelCount'),maxScore:fd.get('maxScore'),classIds:fd.getAll('targetClass')});selectedAssessment=a.id;selectedGradeClass='all';markChanged();form.reset();updateType();render();toast('평가를 생성했습니다.')}catch(x){toast(x.message,true)}};

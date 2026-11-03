@@ -109,7 +109,7 @@
           <div class="dock-title"><h2>성적 입력 도구</h2><span>평가 선택 및 학생 검색</span></div>
           <div class="grade-tools"><label for="grade-subject">과목별 함께 보기<select id="grade-subject"></select></label><label for="grade-assessment">개별 평가 선택<select id="grade-assessment"></select></label><label for="student-search">학생 검색<input id="student-search" placeholder="학생 이름으로 검색" autocomplete="off"></label></div>
           <div class="grade-dock-description" id="grade-info" role="status"></div>
-          <div class="grade-dock-actions"><button class="ghost full" type="button" id="export-csv">현재 평가 CSV 내보내기</button></div>
+          <div class="grade-dock-actions"><button class="primary full" type="button" id="open-class-dist">학급 분포 보기</button><button class="ghost full" type="button" id="export-csv">현재 평가 CSV 내보내기</button></div>
           <div class="grade-dock-hint" id="grade-guide">방향키·Tab·Enter: 셀 이동</div>
           <div class="grade-dock-hint">학생 이름은 자리배치 메뉴에서만 수정<br>마우스 드래그로 범위 선택 → Ctrl/Cmd+C 복사<br>머리글 오른쪽 경계: 열 너비 조절<br>행 번호 아래 경계: 행 높이 조절<br>성적은 이 브라우저에만 저장됩니다.</div>
         </section>
@@ -163,6 +163,10 @@
     </section>
   </div>
 </div>
+<dialog class="class-dist-dialog" id="class-dist-dialog" aria-labelledby="class-dist-title">
+  <div class="class-dist-head"><div><h2 id="class-dist-title">학급 표준점수 분포</h2><p>교사용 · 교실 매니저 안에서만 보입니다. 칠판·대시보드로 보내지 않습니다.</p></div><button type="button" class="ghost" id="class-dist-close">닫기</button></div>
+  <div id="class-dist-body" class="class-dist-body"></div>
+</dialog>
 <dialog class="sheets-save-dialog" id="sheets-save-dialog" aria-labelledby="sheets-dialog-title" aria-describedby="sheets-dialog-description">
   <div class="sheets-dialog-content">
     <h2 id="sheets-dialog-title">Google Sheets에 저장</h2>
