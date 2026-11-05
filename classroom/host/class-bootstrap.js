@@ -37,5 +37,6 @@
   await window.__TT_LOCK.start();
   for(const src of SCRIPTS)await load(src);
   window.__TT_LOCK.mount();
+  await load('../classroom/host/hud-shell.js');
  }).catch(error=>domReady().then(()=>stop(error)));
 })();
