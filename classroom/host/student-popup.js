@@ -87,14 +87,43 @@
     }
   }
   const randomSession=()=>Array.from(crypto.getRandomValues(new Uint8Array(20)),n=>n.toString(16).padStart(2,'0')).join('');
+  // The preview is not public until the CURRENT version has been confirmed.
+  function seatingApproved(){
+    return Boolean(classState.assignments.length&&previewRevision!==null&&confirmedRevision===previewRevision&&!historyView);
+  }
+  function peApproved(data){
+    if(!data||!Array.isArray(data.teams))return false;
+    const people=data.teams.flat();
+    const roster=new Set(classState.students.map(item=>item.id));
+    const ids=people.map(item=>item.id);
+    return roster.size>0&&ids.length===roster.size&&new Set(ids).size===ids.length&&ids.every(id=>roster.has(id));
+  }
+  function presentationReady(){
+    if(document.body.classList.contains('tt-grade-active'))return false;
+    try{
+      if(document.body.classList.contains('pe-mode'))return peApproved(window.__TT_PE_PUBLIC_VIEW?.snapshot?.());
+      return seatingApproved();
+    }catch{return false}
+  }
+  function refreshPresentationButton(){
+    const ready=presentationReady();
+    const pe=document.body.classList.contains('pe-mode');
+    const label=pe?'팀 발표 ▶':'학생 발표 ▶';
+    if(control.textContent!==label)control.textContent=label;
+    control.disabled=!ready;
+    control.classList.toggle('tt-student-ready',ready);
+    control.classList.toggle('tt-student-unready',!ready);
+    control.setAttribute('aria-label',label+(ready?' · 클릭하여 학생용 창 열기':' · 확정 후 이용 가능'));
+    control.title=ready?'확정된 자료를 학생 화면으로 발표':'먼저 '+(pe?'팀을':'자리배치를')+' 확정해 주세요';
+  }
   function snapshot(){
     if(document.body.classList.contains('tt-grade-active'))throw Error('성적 관리 화면에서는 학생 창을 열 수 없습니다.');
     if(document.body.classList.contains('pe-mode')){
       const data=window.__TT_PE_PUBLIC_VIEW?.snapshot?.();
-      if(!data)throw Error('먼저 새 팀 편성 후 팀을 확정해 주세요.');
+      if(!peApproved(data))throw Error('먼저 새 팀 편성 후 팀을 확정해 주세요.');
       return {kind:'pe',payload:data};
     }
-    if(!classState.assignments.length)throw Error('먼저 자리배치를 확정해 주세요.');
+    if(!seatingApproved())throw Error('먼저 현재 자리배치를 확정해 주세요.');
     return {kind:'seating',payload:buildPlaybackInput()};
   }
   function show(){
@@ -141,6 +170,19 @@
     box.append(label,grant,status);menu.append(box);
   }
   control.addEventListener('click',event=>{event.stopImmediatePropagation();event.preventDefault();show()},{capture:true});
+  // Status, mode and history updates arrive from the existing editor modules.
+  // Periodic reconciliation also covers in-memory undo/class changes with no DOM notice.
+  const readinessObserver=new MutationObserver(refreshPresentationButton);
+  const statusNode=document.getElementById('assignmentStatus');
+  if(statusNode)readinessObserver.observe(statusNode,{childList:true,characterData:true,subtree:true});
+  readinessObserver.observe(document.body,{attributes:true,attributeFilter:['class']});
+  readinessObserver.observe(control,{childList:true,characterData:true,subtree:true});
+  for(const id of ['generateAssignment','confirmAssignment','undoButton','redoButton']){
+    document.getElementById(id)?.addEventListener('click',()=>queueMicrotask(refreshPresentationButton));
+  }
+  const readinessTimer=setInterval(refreshPresentationButton,1250);
+  window.addEventListener('pagehide',()=>{clearInterval(readinessTimer);readinessObserver.disconnect()},{once:true});
+  refreshPresentationButton();
   window.__TT_STUDENT_POPUP={
     chooseTarget,requestPermission:()=>getScreens(true),
     setAutoTarget(v){autoTarget=Boolean(v);try{localStorage.setItem('tt.student-window.auto-target',autoTarget?'1':'0')}catch{}announce(autoTarget?'학생 창 자동 모니터 배치 켜짐':'학생 창 자동 모니터 배치 꺼짐')},

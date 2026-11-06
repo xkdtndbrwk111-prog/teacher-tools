@@ -47,5 +47,6 @@
   await load('../classroom/host/hud-shell.js');
   await load('../classroom/host/board-status.js');
   await load('../classroom/host/student-popup.js');
+  await load('../classroom/host/settings-window.js');
  }).catch(error=>domReady().then(()=>stop(error)));
 })();
