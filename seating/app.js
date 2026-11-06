@@ -432,6 +432,7 @@ let confirmedRevision=classState.assignments.length?0:null;
 let historyView=null;
 let groupEdit={active:false,id:null,name:"",color:GROUP_COLORS[0],seatIds:new Set(),painting:false,mode:"add"};
 let playbackData=null,playbackStudents=[],playbackToken=0,playbackRunning=false,playbackCompleted=false;
+let playbackRate=1;
 let playbackRoomWidth=999,playbackRoomHeight=1120,playbackDoorCenterX=873,playbackDoorSpawn={x:873,y:116},playbackDoorExit={x:873,y:258};
 let doorEntryChain=Promise.resolve();
 let playbackTeacherDir=0,teacherSpeechTimer=null,teacherProximityTimer=null,teacherSpeechSerial=0;
@@ -2399,10 +2400,10 @@ function openPlayback(){
 function showPlayback(data){
   playbackData=data;playbackCompleted=false;$("simpleViewButton").classList.add("hidden");$("simpleView").classList.add("hidden");$("gameView").classList.remove("hidden");
   $("teacherScreen").classList.add("hidden");$("playbackScreen").classList.remove("hidden");
-  buildPlaybackRoom();resetPlaybackDialogue();preparePlaybackStartState();renderTeacherCanvases();fitRoom();$("playbackStatus").textContent="준비 완료";
+  buildPlaybackRoom();resetPlaybackDialogue();preparePlaybackStartState();renderTeacherCanvases();fitRoom();$("playbackStatus").textContent="준비 완료";updatePlaybackControls();
 }
 function backToTeacher(){
-  playbackToken++;playbackRunning=false;resetPlaybackDialogue();$("playbackScreen").classList.add("hidden");$("teacherScreen").classList.remove("hidden");document.querySelectorAll(".play-btn").forEach(b=>b.disabled=false);$("simpleView").classList.add("hidden");$("gameView").classList.remove("hidden");
+  playbackToken++;playbackRunning=false;resetPlaybackDialogue();$("playbackScreen").classList.add("hidden");$("teacherScreen").classList.remove("hidden");updatePlaybackControls();$("simpleView").classList.add("hidden");$("gameView").classList.remove("hidden");
 }
 function setBg(el,url){el.style.backgroundImage=`url("${url}")`}
 function buildPlaybackRoom(){
@@ -2651,7 +2652,21 @@ function hidePlaybackAll(){
   $("room").querySelectorAll(".walker,.launch-sprite-overlay").forEach(e=>e.remove());
   clearHistoryStartState();
 }
-function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+// Virtual-clock wait. Switching 1×/5× changes even waits already in progress.
+function sleep(ms,runId=playbackToken){
+  return new Promise(resolve=>{
+    if(runId!==playbackToken||ms<=0){resolve();return}
+    let remaining=ms,last=performance.now();
+    const tick=now=>{
+      if(runId!==playbackToken){resolve();return}
+      remaining-=Math.max(0,now-last)*playbackRate;
+      last=now;
+      if(remaining<=0){resolve();return}
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
 const NAV_CELL=6,NAV_DESK_MARGIN=18,NAV_TOP_LIMIT=214,NAV_SIDE_MARGIN=14,NAV_BOTTOM_MARGIN=14,WALK_PX_PER_SEC=118;
 class MinHeap{constructor(){this.a=[]}push(node,priority){const n={node,priority};this.a.push(n);let i=this.a.length-1;while(i>0){const p=(i-1)>>1;if(this.a[p].priority<=priority)break;this.a[i]=this.a[p];i=p}this.a[i]=n}pop(){if(!this.a.length)return null;const root=this.a[0],last=this.a.pop();if(this.a.length){this.a[0]=last;let i=0;while(true){let l=i*2+1,r=l+1,b=i;if(l<this.a.length&&this.a[l].priority<this.a[b].priority)b=l;if(r<this.a.length&&this.a[r].priority<this.a[b].priority)b=r;if(b===i)break;[this.a[i],this.a[b]]=[this.a[b],this.a[i]];i=b}}return root.node}get size(){return this.a.length}}
 function roomRectToLocal(el,roomR,scale){const room=$("room"),border=parseFloat(getComputedStyle(room).borderLeftWidth)||0,r=el.getBoundingClientRect();return{left:(r.left-roomR.left)/scale-border,top:(r.top-roomR.top)/scale-border,right:(r.right-roomR.left)/scale-border,bottom:(r.bottom-roomR.top)/scale-border}}
@@ -2746,41 +2761,61 @@ function getPreviousSeatExit(s,nav){
   return{x:(d.left+d.right)/2,y:d.bottom+30};
 }
 function directionForSegment(a,b){const dx=b.x-a.x,dy=b.y-a.y;return Math.abs(dx)>Math.abs(dy)?(dx<0?"left":"right"):(dy<0?"up":"down")}
-function moveWalker(w,x,y,ms,dir,speed,runId){return new Promise(resolve=>{if(runId!==playbackToken){resolve();return}let frame=0;setWalkerFrame(w,dir,frame);const tick=setInterval(()=>{frame=(frame+1)%3;setWalkerFrame(w,dir,frame)},Math.max(80,260/speed));w.style.transition=`left ${ms}ms linear, top ${ms}ms linear`;requestAnimationFrame(()=>{w.style.left=`${x}px`;w.style.top=`${y}px`});setTimeout(()=>{clearInterval(tick);resolve()},ms+20)})}
-async function walkPath(w,path,speed,mul,runId){if(!path||path.length<2)return;for(let i=1;i<path.length;i++){if(runId!==playbackToken)return;const a=path[i-1],b=path[i],distance=Math.hypot(b.x-a.x,b.y-a.y);await moveWalker(w,b.x,b.y,Math.max(55,distance/(WALK_PX_PER_SEC*speed*mul)*1000),directionForSegment(a,b),speed*mul,runId)}}
-async function queueDoorEntry(w,speed,mul,runId){
+// Position interpolation uses the same virtual clock as delays.
+function moveWalker(w,x,y,virtualMs,dir,runId){
+  return new Promise(resolve=>{
+    if(runId!==playbackToken){resolve();return}
+    const startX=parseFloat(w.style.left)||0,startY=parseFloat(w.style.top)||0;
+    let elapsed=0,last=performance.now(),frame=-1;
+    w.style.transition='none';
+    const tick=now=>{
+      if(runId!==playbackToken){resolve();return}
+      elapsed+=Math.max(0,now-last)*playbackRate;
+      last=now;
+      const progress=Math.min(1,elapsed/Math.max(1,virtualMs));
+      w.style.left=String(startX+(x-startX)*progress)+'px';
+      w.style.top=String(startY+(y-startY)*progress)+'px';
+      const nextFrame=Math.floor(elapsed/200)%3;
+      if(frame!==nextFrame){frame=nextFrame;setWalkerFrame(w,dir,frame)}
+      if(progress>=1){resolve();return}
+      requestAnimationFrame(tick);
+    };
+    setWalkerFrame(w,dir,0);
+    requestAnimationFrame(tick);
+  });
+}
+async function walkPath(w,path,mul,runId){
+  if(!path||path.length<2)return;
+  for(let i=1;i<path.length;i++){
+    if(runId!==playbackToken)return;
+    const a=path[i-1],b=path[i],distance=Math.hypot(b.x-a.x,b.y-a.y);
+    await moveWalker(w,b.x,b.y,Math.max(55,distance/(WALK_PX_PER_SEC*mul)*1000),directionForSegment(a,b),runId);
+  }
+}
+async function queueDoorEntry(w,mul,runId){
   let release;
   const previous=doorEntryChain;
   doorEntryChain=new Promise(resolve=>{release=resolve});
   await previous;
   if(runId!==playbackToken){release();return false}
-
-  w.style.visibility="visible";
-  w.style.left=`${playbackDoorSpawn.x}px`;
-  w.style.top=`${playbackDoorSpawn.y}px`;
-  w.style.zIndex="25";
-
-  await moveWalker(
-    w,
-    playbackDoorExit.x,
-    playbackDoorExit.y,
-    560/(speed*mul),
-    "down",
-    speed*mul,
-    runId
-  );
-  release();
-  return runId===playbackToken;
+  w.style.visibility='visible';
+  w.style.left=String(playbackDoorSpawn.x)+'px';
+  w.style.top=String(playbackDoorSpawn.y)+'px';
+  w.style.zIndex='25';
+  try{
+    await moveWalker(w,playbackDoorExit.x,playbackDoorExit.y,560/mul,'down',runId);
+    return runId===playbackToken;
+  }finally{release()}
 }
-async function animateOne(s,index,speed,runId,plan){
+async function animateOne(s,index,runId,plan){
   if(plan?.stay)return;
 
   const historyMode=Boolean(plan?.fromHistory);
   const wave=[0,160,70,240,110,310][index%6];
   const delay=historyMode
-    ? (index*45+40+Math.random()*100)/speed
-    : (index*95+wave+120+Math.random()*260)/speed;
-  await sleep(delay);if(runId!==playbackToken)return;
+    ? (index*45+40+Math.random()*100)
+    : (index*95+wave+120+Math.random()*260);
+  await sleep(delay,runId);if(runId!==playbackToken)return;
 
   const mul=.92+Math.random()*.2,w=document.createElement("div");
   w.className="walker";
@@ -2813,17 +2848,18 @@ async function animateOne(s,index,speed,runId,plan){
     setWalkerFrame(launch,"up",1);
 
     await new Promise(requestAnimationFrame);
+    if(runId!==playbackToken){launch.remove();w.remove();return}
     removeHistoryStartForStudent(s.id);
-    await sleep(Math.max(45,100/speed));
+    await sleep(100,runId);
+    if(runId!==playbackToken){launch.remove();w.remove();return}
 
     const egressDistance=Math.hypot(exitPoint.x-visualStart.x,exitPoint.y-visualStart.y);
     await moveWalker(
       launch,
       exitPoint.x,
       exitPoint.y,
-      Math.max(90,egressDistance/(WALK_PX_PER_SEC*speed*mul)*1000),
+      Math.max(90,egressDistance/(WALK_PX_PER_SEC*mul)*1000),
       directionForSegment(visualStart,exitPoint),
-      speed*mul,
       runId
     );
 
@@ -2842,12 +2878,14 @@ async function animateOne(s,index,speed,runId,plan){
     w.style.visibility="visible";
     launch.remove();
     await new Promise(requestAnimationFrame);
+    if(runId!==playbackToken){w.remove();return}
   }else{
     w.style.visibility="hidden";
     w.style.left=`${playbackDoorSpawn.x}px`;
     w.style.top=`${playbackDoorSpawn.y}px`;
-    await sleep((45+Math.random()*90)/speed);
-    const entered=await queueDoorEntry(w,speed,mul,runId);
+    await sleep(45+Math.random()*90,runId);
+    if(runId!==playbackToken){w.remove();return}
+    const entered=await queueDoorEntry(w,mul,runId);
     if(!entered){w.remove();return}
   }
 
@@ -2856,20 +2894,43 @@ async function animateOne(s,index,speed,runId,plan){
 
   const path=plan?.path||[];
   if(path.length){
-    if(historyMode)await walkPath(w,[plan.exitPoint,...path],speed,mul,runId);
-    else await walkPath(w,[playbackDoorExit,...path],speed,mul,runId);
+    if(historyMode)await walkPath(w,[plan.exitPoint,...path],mul,runId);
+    else await walkPath(w,[playbackDoorExit,...path],mul,runId);
   }
   if(runId!==playbackToken){w.remove();return}
 
   showSeat(s);handleSeatSpeech(s);
   requestAnimationFrame(()=>requestAnimationFrame(()=>w.remove()));
 }
-function markPlaybackComplete(){clearInterval(teacherProximityTimer);teacherProximityTimer=null;playbackCompleted=true;$("simpleViewButton").classList.remove("hidden");$("playbackStatus").textContent="✨ 배치 완료! · 간단 자리표도 볼 수 있습니다."}
+function updatePlaybackControls(){
+  const one=$('run1'),five=$('run5');
+  for(const [button,rate] of [[one,1],[five,5]]){
+    button.disabled=false;
+    button.classList.toggle('is-rate-active',playbackRunning&&playbackRate===rate);
+    button.setAttribute('aria-pressed',String(playbackRunning&&playbackRate===rate));
+  }
+  $('instant').disabled=false;
+  one.textContent=playbackRunning?'1× 전환':'▶ 1× 시작';
+  five.textContent=playbackRunning?'5× 전환':'▶ 5× 시작';
+}
+function markPlaybackComplete(){
+  clearInterval(teacherProximityTimer);teacherProximityTimer=null;
+  playbackCompleted=true;
+  $('simpleViewButton').classList.remove('hidden');
+  $('playbackStatus').textContent='✨ 배치 완료! · 간단 자리표도 볼 수 있습니다.';
+  updatePlaybackControls();
+}
 async function runPlayback(speed){
-  if(playbackRunning)return;
+  playbackRate=speed===5?5:1;
+  if(playbackRunning){
+    updatePlaybackControls();
+    $('playbackStatus').textContent='진행 중 · '+playbackRate+'배속';
+    return;
+  }
   playbackToken++;const runId=playbackToken;playbackRunning=true;playbackCompleted=false;
-  $("simpleViewButton").classList.add("hidden");
-  document.querySelectorAll(".play-btn").forEach(b=>b.disabled=true);
+  $('simpleViewButton').classList.add('hidden');
+  $('playbackStatus').textContent='진행 중 · '+playbackRate+'배속';
+  updatePlaybackControls();
 
   doorEntryChain=Promise.resolve();
   const nav=buildNavigationGrid(),traffic=Array.from({length:nav.rows},()=>new Float32Array(nav.cols));
@@ -2916,14 +2977,13 @@ async function runPlayback(speed){
   showTeacherSpeech("얘들아~ 뛰지 말거라",teacherPoint,2100);
   startTeacherProximityMonitor(runId);
 
-  await Promise.all(queue.map((s,i)=>animateOne(s,i,speed,runId,plans.get(s))));
+  await Promise.all(queue.map((s,i)=>animateOne(s,i,runId,plans.get(s))));
   if(runId===playbackToken){
     playbackRunning=false;
-    document.querySelectorAll(".play-btn").forEach(b=>b.disabled=false);
     markPlaybackComplete();
   }
 }
-function finishPlayback(){playbackToken++;playbackRunning=false;resetPlaybackDialogue();hidePlaybackAll();playbackStudents.forEach(showSeat);document.querySelectorAll(".play-btn").forEach(b=>b.disabled=false);markPlaybackComplete()}
+function finishPlayback(){playbackToken++;playbackRunning=false;resetPlaybackDialogue();hidePlaybackAll();playbackStudents.forEach(showSeat);markPlaybackComplete()}
 function fitRoom(){
   if($("playbackScreen").classList.contains("hidden")||$("gameView").classList.contains("hidden"))return;
   const shell=$("roomShell"),viewport=document.querySelector(".viewport");
@@ -3041,7 +3101,7 @@ function bindUI(){
   $("seatCountCancel").onclick=closeSeatCountDialog;$("seatCountProceed").onclick=()=>{closeSeatCountDialog();generateAssignment({allowSurplus:true})};
   $("newGroup").onclick=()=>startGroupEdit();$("saveGroup").onclick=saveGroup;$("cancelGroup").onclick=cancelGroupEdit;
   $("className").onchange=e=>{classState.className=e.target.value.trim().slice(0,30)||"우리 반";saveState();renderTopTitle()};
-  $("backToTeacher").onclick=backToTeacher;$("simpleBackToTeacher").onclick=backToTeacher;$("run1").onclick=()=>runPlayback(1);$("run5").onclick=()=>runPlayback(5);$("instant").onclick=finishPlayback;
+  $("backToTeacher").onclick=backToTeacher;$("simpleBackToTeacher").onclick=backToTeacher;$("run1").onclick=()=>runPlayback(1);$("run5").onclick=()=>runPlayback(5);$("instant").onclick=finishPlayback;updatePlaybackControls();
   $("simpleViewButton").onclick=openSimpleView;$("backToGame").onclick=backToGame;$("downloadJpg").onclick=downloadSimpleJpg;
   $("exportJson").onclick=exportClassData;$("importJson").onclick=()=>$("importJsonFile").click();$("importJsonFile").onchange=event=>importClassData(event.target.files?.[0]);$("reloadStorage").onclick=()=>location.reload();
   window.addEventListener("resize",()=>{fitRoom();fitEditorGrid()});

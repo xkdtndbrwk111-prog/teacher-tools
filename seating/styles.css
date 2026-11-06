@@ -688,3 +688,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .seat-count-dialog-card p.roster-change-error{margin-top:6px;color:#b91c1c;font-weight:800}
 .seat-count-dialog-card p.roster-change-error:empty,.seat-count-dialog-card p.roster-change-added:empty{display:none}
 
+
+/* Live 1× ⇄ 5× switching; speed buttons never lock while playback runs. */
+.play-btn.is-rate-active{border-color:#164b81!important;box-shadow:0 0 0 3px #ffffff,0 0 0 6px rgba(37,150,232,.62);filter:saturate(1.15);transform:scale(1.025)}
+.play-btn:not(:disabled){cursor:pointer}
+.play-btn:focus-visible{outline:3px solid #1c89dd;outline-offset:4px}
+@media(prefers-reduced-motion:reduce){.play-btn.is-rate-active{transform:none}}
