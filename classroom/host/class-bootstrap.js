@@ -20,13 +20,20 @@
   const message='브라우저 저장에 실패했습니다. 전체 백업 파일을 저장한 뒤 저장 공간을 확인해 주세요. ('+(event.detail?.message||'원인 불명')+')';
   if(typeof showStorageAlert==='function')showStorageAlert(message,'error');else alert(message);
  });
- Promise.all([store.ready,domReady()]).then(async([{installId,prefix,board}])=>{
+ Promise.all([store.ready,domReady()]).then(async([{installId,prefix,board,student}])=>{
   const registryKey=prefix+'.classes';
   const registry=JSON.parse(store.getItem(registryKey));
   if(!registry||!Array.isArray(registry.classes)||!registry.classes.some(c=>c.id===registry.activeId))throw Error('학급 목록이 손상되었습니다. 자료는 변경하지 않았습니다.');
   const makeKey=(id,kind)=>prefix+'.'+id+'.'+kind;
   window.__TT_STAGE031_CLASS={installId,prefix,registryKey,activeId:registry.activeId,seatingKey:makeKey(registry.activeId,'seating'),peKey:makeKey(registry.activeId,'pe'),makeKey};
   store.setRosterSource(window.__TT_STAGE031_CLASS.seatingKey);
+  if(student){
+   document.documentElement.classList.add('tt-student-only');
+   await load('app.js?v=20261010-seatdrag2');
+   await load('pe-v1.js?v=20261103-t8b');
+   await load('../classroom/host/student-window.js');
+   return;
+  }
   if(board){
    document.documentElement.classList.add('tt-board');
    await load('app.js?v=20261010-seatdrag2');
@@ -39,5 +46,6 @@
   window.__TT_LOCK.mount();
   await load('../classroom/host/hud-shell.js');
   await load('../classroom/host/board-status.js');
+  await load('../classroom/host/student-popup.js');
  }).catch(error=>domReady().then(()=>stop(error)));
 })();

@@ -152,12 +152,13 @@
   return{installId,prefix};
  }
  // The board view shows data sent from the manager and must leave nothing behind in this browser.
- if(new URLSearchParams(location.search).get('view')==='board'){
-  prefix='tt.board';
+ const publicView=new URLSearchParams(location.search).get('view');
+ if(publicView==='board'||publicView==='student'){
+  prefix=publicView==='student'?'tt.student':'tt.board';
   memory.set(prefix+'.classes',JSON.stringify({version:1,activeId:'board',classes:[{id:'board',name:'칠판'}]}));
   api.setItem=(key,value)=>{memory.set(key,String(value))};
   api.removeItem=key=>{memory.delete(key)};
-  api.ready=Promise.resolve({installId:'board',prefix,board:true});
+  api.ready=Promise.resolve({installId:publicView,prefix,board:publicView==='board',student:publicView==='student'});
   api.setRosterSource=()=>{};
   window.__TT_STORE=api;
   return;

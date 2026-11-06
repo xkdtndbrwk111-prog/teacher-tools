@@ -923,5 +923,44 @@ document.querySelectorAll('[data-pe-surface]').forEach(btn=>{
 });
 setPEPitchSurface(pePitch.surface);
 updateModeChrome();renderStudentInspector();renderStudentStrip();renderPE();
+// Public viewer transfer: only confirmed team order, student names and display sprite URLs.
+window.__TT_PE_PUBLIC_VIEW={
+ snapshot(){
+  if(!peConfirmed.length||peConfirmed.length!==(peState.teamCount||4))return null;
+  const ids=peConfirmed.flat();
+  if(ids.length!==classState.students.length||new Set(ids).size!==ids.length)return null;
+  const teams=pePitchSnapshot();
+  return teams.every(t=>t.length>0)?{teams,surface:pePitch.surface,showLines:pePitch.showLines}:null;
+ },
+ show(payload){
+  if(!payload||!Array.isArray(payload.teams)||payload.teams.length<2||payload.teams.length>6)throw Error('팀 자료 형식이 올바르지 않습니다.');
+  const teams=payload.teams.map((group,index)=>{
+   if(!Array.isArray(group)||group.length<1||group.length>80)throw Error('팀 인원 형식이 올바르지 않습니다.');
+   return group.map(member=>{
+    if(typeof member.name!=='string'||typeof member.src!=='string')throw Error('학생 자료가 올바르지 않습니다.');
+    const url=new URL(member.src,location.href);
+    if(url.origin!==location.origin)throw Error('외부 캐릭터 파일은 불러오지 않습니다.');
+    return {id:String(member.id||''),team:index,name:member.name.slice(0,50),src:url.href};
+   });
+  });
+  pePitch.teams=teams;
+  pePitch.showLines=Boolean(payload.showLines);
+  setPEPitchSurface(payload.surface==='dirt'?'dirt':'grass');
+  resetPEEntrance();
+  $('pePitchTeamCount').textContent=`${teams.length}팀 · ${teams.flat().length}명`;
+  $('pePitchReveal').classList.add('is-open');
+  $('pePitchReveal').setAttribute('aria-hidden','false');
+  document.body.classList.add('pe-pitch-open');
+  for(const member of teams.flat()){
+   if(pePitch.images.has(member.src))continue;
+   const img=new Image(),record={img,status:'loading'};
+   pePitch.images.set(member.src,record);
+   img.onload=()=>{record.status='loaded';updatePEPitchStatus();drawPEPitch()};
+   img.onerror=()=>{record.status='failed';updatePEPitchStatus();drawPEPitch()};
+   img.src=member.src;
+  }
+  updatePEPitchStatus();drawPEPitch();
+ }
+};
 })();
 

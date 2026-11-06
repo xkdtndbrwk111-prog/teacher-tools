@@ -1,0 +1,4 @@
+/* Student window shows only the original student playback/PE stage. */
+.tt-student-only #teacherScreen{display:none!important}
+.tt-student-only #backToTeacher,.tt-student-only #simpleBackToTeacher,.tt-student-only #pePitchBack{display:none!important}
+.tt-student-only #pePitchReveal.is-open{z-index:100005}
