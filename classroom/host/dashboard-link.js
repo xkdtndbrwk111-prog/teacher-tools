@@ -46,6 +46,7 @@
  }
  const markLinked=()=>{try{localStorage.setItem(LINKED,'1')}catch{}};
  function sendToBoard(){
+  if(send.disabled){setSaveStatus('Windows 대시보드 배경화면에 연결되지 않았습니다.','warning');return}
   if(!classState.assignments.length){setSaveStatus('확정한 배치가 없어 칠판으로 보내지 못했습니다.','warning');return}
   viaInbox(async()=>{
    const roster=await rosterNow();
@@ -61,7 +62,7 @@
  // The app's own handler has already run by the time this listener fires.
  confirmButton.addEventListener('click',()=>{
   let linked=false;try{linked=localStorage.getItem(LINKED)==='1'}catch{}
-  if(linked&&!historyView&&classState.assignments.length&&confirmedRevision===previewRevision)sendToBoard();
+  if(linked&&!send.disabled&&!historyView&&classState.assignments.length&&confirmedRevision===previewRevision)sendToBoard();
  });
 
  // Coins: the ledger lives on the dashboard PC, so balances, history and settings come back from there.

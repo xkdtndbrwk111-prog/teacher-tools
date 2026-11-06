@@ -38,5 +38,6 @@
   for(const src of SCRIPTS)await load(src);
   window.__TT_LOCK.mount();
   await load('../classroom/host/hud-shell.js');
+  await load('../classroom/host/board-status.js');
  }).catch(error=>domReady().then(()=>stop(error)));
 })();
