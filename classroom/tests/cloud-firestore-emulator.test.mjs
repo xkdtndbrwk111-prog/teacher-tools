@@ -41,9 +41,12 @@ integration('10 teachers register 200 isolated students and open one survey',asy
 });
 
 integration('teacher identity owns class scope and cannot be spoofed',async()=>{
- const classA=scope('teacher-01',1);
+ const classA=scope('teacher-01',1),classB=scope('teacher-02',2),classC=scope('teacher-03',3);
  assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classA.classId}&month=5`,{teacher:'teacher-01'}))[0],200);
+ assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classB.classId}&month=5`,{teacher:'teacher-02'}))[0],200);
+ assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classC.classId}&month=5`,{teacher:'teacher-03'}))[0],200);
  assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classA.classId}&month=5`,{teacher:'teacher-02'}))[0],403);
+ assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classA.classId}&month=5`,{teacher:'teacher-03'}))[0],403);
  const first=studentsFor('teacher-01')[0];
  assert.equal((await request('/api/v2/login',{method:'POST',data:{ownerId:'teacher-02',classId:classA.classId,year:2026,id:first.id,code:codes.get(first.id)}}))[0],401);
 });
