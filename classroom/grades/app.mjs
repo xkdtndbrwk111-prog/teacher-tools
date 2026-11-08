@@ -30,27 +30,25 @@ function applyReadOnly(){
 }
 async function fillYearChoices(){
  const start=`TT_STAGE03_${stage03InstallId}_`;
- const years=new Set([schoolYear()]);
+ const years=new Set([schoolYear(),schoolYear()-1,schoolYear()-2,year]);
  for(const row of await listDrafts(start)){const y=Number(row.key.slice(start.length));if(Number.isInteger(y))years.add(y)}
  $('view-year').replaceChildren(...[...years].sort((a,b)=>b-a).map(y=>new Option(y===schoolYear()?`${y} (이번 학년도)`:String(y),String(y))));
  $('view-year').value=String(year);
 }
-$('view-year').onchange=async()=>{
- const next=Number($('view-year').value);
- try{
-  await stage03ProjectionBusy;
-  await stage03Flush();
-  readOnlyYear=next!==schoolYear();
-  year=next;
-  const draft=await loadDraft(draftKey());
-  if(draft)validateWorkspace(draft);
-  m=draft||fresh(year);
-  selectedClass=null;selectedAssessment=null;selectedGradeClass='all';selectedMemberId=null;$('student-detail').classList.add('hidden');edited.clear();
-  render();
-  if(readOnlyYear)stage03Report(`${year}학년도 보기 · 읽기 전용입니다. 고치려면 이번 학년도로 돌아오세요.`);
-  else window.parent.postMessage({type:'TT_STAGE03_READY',installId:null},location.origin);
- }catch(e){$('view-year').value=String(year);toast('학년도를 바꾸지 못했습니다: '+e.message,true)}
-};
+async function switchViewYear(next){
+ if(!Number.isInteger(next)||next<2000||next>2100)throw Error('학년도가 올바르지 않습니다.');
+ await stage03ProjectionBusy;await stage03Flush();
+ const nextKey=`TT_STAGE03_${stage03InstallId||'UNBOUND'}_${next}`;
+ const draft=await loadDraft(nextKey);if(draft)validateWorkspace(draft);
+ year=next;readOnlyYear=next!==schoolYear();m=draft||fresh(next);
+ if(![...$('view-year').options].some(o=>Number(o.value)===next))$('view-year').add(new Option(String(next),String(next)));
+ $('view-year').value=String(next);selectedClass=null;selectedAssessment=null;selectedGradeClass='all';selectedMemberId=null;$('student-detail').classList.add('hidden');edited.clear();render();
+ if(readOnlyYear)stage03Report(`${year}학년도 보기 · 읽기 전용입니다. 고치려면 이번 학년도로 돌아오세요.`);
+ else window.parent.postMessage({type:'TT_STAGE03_READY',installId:null},location.origin);
+ window.parent.postMessage({type:'TT_SHARED_YEAR_CHANGED',installId:stage03InstallId,year},location.origin);
+}
+$('view-year').onchange=async()=>{const next=Number($('view-year').value);try{await switchViewYear(next)}catch(e){$('view-year').value=String(year);toast('학년도를 바꾸지 못했습니다: '+e.message,true)}};
+
 function renderOverview(){const cls=$('overview-classes'),asses=$('overview-assessments');cls.innerHTML=m.classes.length?m.classes.map(c=>`<div class="tile"><div><strong>${h(c.name)}</strong><small>학생 ${m.memberships.filter(x=>x.classId===c.id&&x.active).length}명</small></div><span class="mini-pill">학급</span></div>`).join(''):'<div class="empty-state">등록된 학급이 없습니다.<br>상단 반 관리에서 등록할 수 있습니다.</div>';asses.innerHTML=m.assessments.length?m.assessments.slice(-6).reverse().map(a=>`<div class="tile"><div><strong>${h(a.title)}</strong><small>${h(a.subject)} · ${h(getCriterionType(m.criteria.find(x=>x.assessmentId===a.id))==='level'?'단계 평가':getCriterionType(m.criteria.find(x=>x.assessmentId===a.id))==='other'?'기타 기록':'점수 평가')} · ${a.classIds.length}개 학급 연결</small></div><span class="mini-pill">평가</span></div>`).join(''):'<div class="empty-state">등록된 평가가 없습니다.<br>평가 관리 메뉴에서 새 평가를 등록할 수 있습니다.</div>';}
 let numberEditing=false;
 function renderInactiveStudents(c){
@@ -963,7 +961,9 @@ async function stage03ApplyHost(message){
 window.addEventListener('message',e=>{
  if(e.source!==window.parent||e.origin!==location.origin||!e.data||typeof e.data!=='object')return;
  const msg=e.data;
- if(msg.type==='TT_STAGE031_SELECT_STUDENT' && msg.installId===stage03InstallId){
+ if(msg.type==='TT_SHARED_YEAR_SET'){
+  stage03ProjectionBusy.then(()=>{if(!stage03InstallId||msg.installId!==stage03InstallId)throw Error('성적 명단 연결이 아직 준비되지 않았습니다.');return switchViewYear(Number(msg.year))}).then(()=>window.parent.postMessage({type:'TT_SHARED_YEAR_ACK',installId:stage03InstallId,id:msg.id,ok:true,year},location.origin)).catch(error=>window.parent.postMessage({type:'TT_SHARED_YEAR_ACK',installId:stage03InstallId,id:msg.id,ok:false,year,message:error.message},location.origin));
+ }else if(msg.type==='TT_STAGE031_SELECT_STUDENT' && msg.installId===stage03InstallId){
   const target=m.memberships.find(mem=>mem.active&&mem.classId===selectedClass&&mem.stage03SeatingId===msg.seatingStudentId);
   if(target)showStudent(target.id);
  }else if(msg.type==='TT_TRAIT_LINK_OPEN' && msg.installId===stage03InstallId){

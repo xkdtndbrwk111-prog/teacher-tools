@@ -53,6 +53,14 @@ window.__TT_PE_TRAITS={
     delete peState.traitSettings.rerankPending;
     persistPE();renderStudentInspector();if(mode==="pe")renderPE();
     return changed;
+  },
+  async applyApprovedCharm({classId,scale,changes}){
+    if(classId!==window.__TT_STAGE031_CLASS.activeId||scale!==traitScale()||traitSettings().modes.charm!=='manual'||!Array.isArray(changes)||!changes.length)throw Error('학급·단계 또는 수동 설정이 변경되었습니다.');
+    const ids=new Set(),levels=traitLevels(),before=structuredClone(peState),next=structuredClone(peState),audit=[];
+    for(const item of changes){const student=classState.students.find(s=>String(s.id)===item.id);if(!student||ids.has(item.id)||!levels.includes(item.value))throw Error('학생 또는 단계가 올바르지 않습니다.');ids.add(item.id);const current=peState[item.id]?.traits?.charm??null;if(current!==item.expected)throw Error('기존 값이 변경되었습니다. 다시 계산하세요.');next[item.id]??={traits:{},fixedTeam:0};next[item.id].traits??={};next[item.id].traits.charm=item.value;audit.push({studentId:item.id,before:current,after:item.value})}
+    next.lifeCharmHistory=Array.isArray(next.lifeCharmHistory)?next.lifeCharmHistory:[];next.lifeCharmHistory.push({classId,scale,at:new Date().toISOString(),changes:audit});
+    if(JSON.stringify(peState)!==JSON.stringify(before))throw Error('능력치가 변경되었습니다. 다시 시도하세요.');
+    await window.__TT_STORE.commit({put:new Map([[PE_KEY,JSON.stringify(next)]])});peState=next;renderStudentInspector();if(mode==='pe')renderPE();return {ok:true,changes:audit};
   }
 };
 function loadPEState(){

@@ -6,6 +6,7 @@
  const teacher=document.getElementById('teacherScreen');
  if(!bar||!teacher?.querySelector(':scope > .studio')){console.error('[TT_STAGE03] 호스트 구조 불일치');return;}
  const tab=document.createElement('button');tab.id='tt-grade-tab';tab.type='button';tab.className='tt-grade-tab';tab.textContent='📊 성적 관리';tab.setAttribute('aria-pressed','false');bar.append(tab);
+ const lifeTab=document.getElementById('tt-life-tab');if(lifeTab)bar.insertBefore(tab,lifeTab);
  const panel=document.createElement('section');panel.className='tt-grade-mount';panel.id='tt-grade-mount';panel.setAttribute('aria-label','성적 관리');
  panel.innerHTML='<div id="tt-stage03-status" class="tt-grade-mount-warning" role="status">자리배치 명단과 연결하는 중 · Google 저장 없음</div>';
  teacher.querySelector(':scope > .studio .student-strip').before(panel);
@@ -23,9 +24,19 @@
   if(e.origin!==location.origin||e.source!==frame?.contentWindow||!e.data)return;
   if(e.data.type!=='TT_STAGE03_READY'&&e.data.installId!==TEST_INSTALL_ID)return;
   if(e.data.type==='TT_STAGE03_READY'){bridgeReady=true;sendRoster();if(pendingTraitOpen)openTraitPage()}
+  if(e.data.type==='TT_SHARED_YEAR_CHANGED')window.dispatchEvent(new CustomEvent('tt-shared-year',{detail:{year:e.data.year}}));
+  if(e.data.type==='TT_SHARED_YEAR_ACK'&&yearPending?.id===e.data.id){const pending=yearPending;yearPending=null;clearTimeout(pending.timer);e.data.ok?pending.resolve(e.data.year):pending.reject(Error(e.data.message||'학년도 전환 실패'));}
   if(e.data.type==='TT_STAGE03_SYNC_RESULT')setStatus(e.data.message,Boolean(e.data.error));
   if(e.data.type==='TT_STAGE03_FLUSH_ACK'&&pendingFlush&&e.data.id===pendingFlush.id){const p=pendingFlush;pendingFlush=null;p.resolve(Boolean(e.data.ok));if(!e.data.ok)setStatus('⚠ 브라우저 성적 저장 실패: 화면 이동 보류',true)}
  });
+ let yearPending=null,yearSequence=0;
+ window.__TT_SET_SHARED_YEAR=async year=>{
+  if(yearPending)throw Error('학년도 전환이 진행 중입니다.');
+  if(!frame)ensureFrame();
+  const deadline=Date.now()+7000;while(!bridgeReady&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+  if(!bridgeReady)throw Error('성적 관리 연결을 확인할 수 없습니다.');
+  return new Promise((resolve,reject)=>{const id=++yearSequence,timer=setTimeout(()=>{if(yearPending?.id===id){yearPending=null;reject(Error('학년도 전환 응답이 없습니다.'))}},7000);yearPending={id,resolve,reject,timer};frame.contentWindow.postMessage({type:'TT_SHARED_YEAR_SET',installId:TEST_INSTALL_ID,id,year},location.origin)});
+ };
  let sequence=0;
  function flushGrade(){if(!frame||!bridgeReady)return Promise.resolve(true);if(pendingFlush)return pendingFlush.promise;
   const id=++sequence;let resolve;const promise=new Promise(r=>{resolve=r});pendingFlush={id,resolve,promise};frame.contentWindow.postMessage({type:'TT_STAGE03_FLUSH',installId:TEST_INSTALL_ID,id},location.origin);
