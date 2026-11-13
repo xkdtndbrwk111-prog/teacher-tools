@@ -21,6 +21,9 @@
   -->
 
   <script src="./hub.js?v=linked-tools-3" defer></script>
+  <!-- Deployment-owned setting: keep empty until an authenticated HTTPS TEST download endpoint exists. -->
+  <meta name="tt-test-download-url" content="https://drive.google.com/uc?export=download&amp;id=1D9gVlZ_bvChA9OqhJgsWyLT_93XmM8de">
+  <script src="./test-download-gate.js?v=1" defer></script>
   <!-- Feedback Board paused: no auth popup initialization or Supabase board reads.
   <script src="./feedback-auth-bridge.js?v=project-b-url-20261015" defer></script>
   <script src="./feedback-transport.js?v=fb-hub-1" defer></script>
@@ -37,17 +40,32 @@
   <div class="shell">
 
     <header class="site-header">
-      <a
-        class="brand"
-        href="./"
-        aria-label="역사보리꼬리 공작소 홈"
-      >
-        <span class="brand-mark" aria-hidden="true">
-          T<span>t</span>
-        </span>
-        역사보리꼬리 공작소
-      </a>
+      <div class="brand">
+        <button
+          id="tt-test-download-trigger"
+          class="brand-mark"
+          type="button"
+          aria-label="Teacher Tools 로고"
+          title="Teacher Tools"
+        >T<span>t</span></button>
+        <a class="brand-name" href="./" aria-label="역사보리꼬리 공작소 홈">역사보리꼬리 공작소</a>
+      </div>
     </header>
+
+    <div
+      id="tt-test-download-notice"
+      class="tt-test-download-notice"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tt-test-download-title"
+      hidden
+    >
+      <div class="tt-test-download-card">
+        <h2 id="tt-test-download-title">테스트판 다운로드</h2>
+        <p>본인 전용 TEST 파일 서버가 아직 연결되지 않았습니다. 인증된 다운로드 주소가 등록되면 이 메뉴에서 내려받을 수 있습니다.</p>
+        <button id="tt-test-download-close" type="button">확인</button>
+      </div>
+    </div>
 
     <main>
 
