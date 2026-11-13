@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "status": "unreleased",
+  "published": false,
+  "version": null,
+  "releaseDate": null,
+  "packageUrl": null,
+  "sha256": null,
+  "notes": "Reserved for the future stable Teacher Tools dashboard release. No installable release is published."
+}
