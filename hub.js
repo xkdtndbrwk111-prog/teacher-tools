@@ -51,14 +51,14 @@ const APPS = [
   {
     id: "dashboard",
     title: "교실 대시보드",
-    description: "시간표와 급식, 자리표, 수업 도구를 전자칠판 한 화면에",
+    description: "시간표와 급식, 자리표, 수업 도구를 전자칠판 한 화면에 · 정식판 준비 중",
     type: "internal",
     status: "development",
     linked: true,
-    url: "./dashboard/TeacherTools_V1_13.zip",
-    download: true,
+    url: null, // Stable release only; never link a private TEST artifact here.
+    download: false,
     badge: "Windows",
-    action: "Windows용 내려받기",
+    action: "정식판 공개 후 내려받기",
     arrow: "↓",
     icon: "seats",
     color: "blue",
