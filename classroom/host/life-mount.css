@@ -24,3 +24,4 @@ body.tt-life-active #teacherScreen>.studio>.tt-life-panel{display:flex!important
 @media(max-width:900px){.life-workspace{grid-template-columns:minmax(0,1fr)}.life-side{display:none}}
 
 #life-qr svg{display:block;width:160px;height:160px;image-rendering:pixelated}#life-qr.life-qr-large svg{width:min(360px,90%);height:auto}
+.life-cloud-connect{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;padding:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px}.life-cloud-connect>div{display:flex;flex-direction:column;min-width:240px;margin-right:auto}.life-cloud-connect small{font-size:11px;color:#64748b}.life-cloud-connect strong{font-size:13px;color:#172033;margin-top:3px}.tt-life-panel #life-cloud-login{background:#2563eb;border-color:#2563eb;color:#fff}

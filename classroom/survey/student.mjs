@@ -2,6 +2,8 @@ import {applyDraftValues,createDraftCipher,deleteDraft,draftValues,loadDraft,pur
 
 const $=id=>document.getElementById(id),months=[3,4,5,6,7,9,10,11,12];
 let token=null,surveyObserver=null,monthRequest=0,draftTimer=null,draftCredential=null,activeDraftFlush=null;
+const query=new URLSearchParams(location.search),requestedMonth=months.includes(Number(query.get('month')))?Number(query.get('month')):null;
+for(const [name,key] of [['ownerId','owner'],['year','year'],['classId','class']]){const value=query.get(key),input=$('login').elements[name];if(value&&input){input.value=value;input.readOnly=true;if(name==='ownerId')$('owner-field').hidden=true}}
 
 async function api(path,{method='GET',data,credential=token}={}){
  let response;
@@ -22,7 +24,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 $('login').addEventListener('submit',async event=>{
  event.preventDefault();const form=event.currentTarget;clear();
- try{const data=new FormData(form),code=String(data.get('code')),result=await api('/api/v2/login',{method:'POST',credential:null,data:{year:Number(data.get('year')),classId:data.get('classId'),id:data.get('id'),code}});token=result.token;draftCredential=code;void purgeExpiredDrafts();form.elements.code.value='';form.hidden=true;$('surveys').hidden=false;$('logout').hidden=false;status('로그인했습니다. 월을 선택하세요.')}
+ try{const data=new FormData(form),code=String(data.get('code')),result=await api('/api/v2/login',{method:'POST',credential:null,data:{ownerId:data.get('ownerId'),year:Number(data.get('year')),classId:data.get('classId'),id:data.get('id'),code}});token=result.token;draftCredential=code;void purgeExpiredDrafts();form.elements.code.value='';form.hidden=true;$('surveys').hidden=false;$('logout').hidden=false;status(requestedMonth?`${requestedMonth}월 설문을 불러오고 있습니다.`:'로그인했습니다. 월을 선택하세요.');if(requestedMonth)await openMonth(requestedMonth)}
  catch(error){status(`로그인 실패: ${error.message}`)}
 });
 

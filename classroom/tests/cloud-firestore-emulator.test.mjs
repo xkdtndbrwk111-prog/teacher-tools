@@ -51,6 +51,17 @@ integration('teacher identity owns class scope and cannot be spoofed',async()=>{
  assert.equal((await request('/api/v2/login',{method:'POST',data:{ownerId:'teacher-02',classId:classA.classId,year:2026,id:first.id,code:codes.get(first.id)}}))[0],401);
 });
 
+integration('roster sync preserves existing codes, updates names and suspends removed students',async()=>{
+ const teacher='sync-teacher',classScope=scope(teacher,99),first=[{id:'sync-1',name:'가상 동기화 1'},{id:'sync-2',name:'가상 동기화 2'}];
+ const [createdStatus,created]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students:first}});assert.equal(createdStatus,200);assert.equal(created.codes.length,2);
+ const code1=created.codes.find(row=>row.id==='sync-1').code,second=[{id:'sync-1',name:'가상 개명 1'},{id:'sync-3',name:'가상 동기화 3'}];
+ const [syncStatus,synced]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students:second}});assert.equal(syncStatus,200);assert.deepEqual(synced.codes.map(row=>row.id),['sync-3']);
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,id:'sync-1',code:code1}}))[0],200,'기존 학생 코드를 유지');
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,id:'sync-2',code:created.codes.find(row=>row.id==='sync-2').code}}))[0],401,'빠진 학생은 비활성');
+ const [,status]=await request(`/api/v2/teacher/status?year=${classScope.year}&classId=${classScope.classId}&month=5`,{teacher});assert.deepEqual(status.students.map(row=>[row.id,row.name]),[['sync-1','가상 개명 1'],['sync-3','가상 동기화 3']]);
+ assert.equal((await request(`/api/v2/teacher/status?year=${classScope.year}&classId=${classScope.classId}&month=5`,{teacher:'other-sync-teacher'}))[0],403);
+});
+
 integration('200 students log in and concentrated submissions create exactly 200 response documents',async()=>{
  await request('/__test/metrics/reset',{method:'POST'});
  for(let index=1;index<=10;index++){

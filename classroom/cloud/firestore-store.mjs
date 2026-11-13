@@ -31,7 +31,21 @@ export class FirestoreSurveyStore{
  async reissue(scope,id){const ref=this.studentRef(scope,id),code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');await this.db.runTransaction(async tx=>{const snap=await tx.get(ref);this.countRead();if(!snap.exists)throw Object.assign(Error('학생을 찾을 수 없습니다.'),{status:404});tx.update(ref,{codeSalt:salt,codeHash:digest(code,salt),codeVersion:Number(snap.data().codeVersion||0)+1,updatedAt:now()})});this.countWrite('managementWrites');return {code}}
  async openSurvey(scope,month,open){const ref=this.surveyRef(scope,month);await ref.set({month:validMonth(month),surveyVersion:'V0.2',open:Boolean(open),updatedAt:now()},{merge:true});this.countWrite('managementWrites');return {ok:true}}
  async student(scope){const snap=await this.read(this.studentRef(scope));return snap.exists?{...snap.data(),ref:snap.ref}:null}
- async students(scope){const snap=await this.query(this.root(scope.ownerId,scope.classId,scope.year).collection('students').orderBy('studentId'));return snap.docs.map(doc=>doc.data())}
+ async allStudents(scope){const snap=await this.query(this.root(scope.ownerId,scope.classId,scope.year).collection('students').orderBy('studentId'));return snap.docs.map(doc=>doc.data())}
+ async students(scope){return (await this.allStudents(scope)).filter(student=>student.status==='ACTIVE')}
+ async syncRoster({ownerId,classId,year,students}){
+  if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(student=>student?.id)).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});
+  await this.assertClassOwner(ownerId,classId,{claim:true});
+  const scope={ownerId,classId,year},existing=await this.allStudents(scope),byId=new Map(existing.map(student=>[student.studentId,student])),wanted=new Set(),batch=this.db.batch(),codes=[];let writes=0;
+  for(const item of students){
+   const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름');wanted.add(id);const current=byId.get(id),ref=this.studentRef(scope,id);
+   if(!current){const code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');batch.create(ref,{studentId:id,displayName:name,status:'ACTIVE',codeSalt:salt,codeHash:digest(code,salt),codeVersion:1,updatedAt:now()});codes.push({id,name,code});writes++}
+   else if(current.displayName!==name||current.status!=='ACTIVE'){batch.set(ref,{displayName:name,status:'ACTIVE',updatedAt:now()},{merge:true});writes++}
+  }
+  for(const current of existing)if(current.status==='ACTIVE'&&!wanted.has(current.studentId)){batch.set(this.studentRef(scope,current.studentId),{status:'SUSPENDED',updatedAt:now()},{merge:true});writes++}
+  if(writes){await batch.commit();this.countWrite('managementWrites',writes)}
+  return {codes,students:students.map(student=>({id:String(student.id),name:String(student.name)})),unchanged:writes===0};
+ }
  async selectedStudents(scope,ids){const unique=[...new Set(ids)];if(!unique.length)return [];const snapshots=await this.db.getAll(...unique.map(id=>this.studentRef(scope,id)));this.countRead(snapshots.length);return snapshots.filter(snapshot=>snapshot.exists).map(snapshot=>snapshot.data())}
  async survey(scope,month){const snap=await this.read(this.surveyRef(scope,month));return snap.exists?snap.data():null}
  async response(scope,studentId=scope.studentId,month=scope.month){const snap=await this.read(this.responseRef(scope,studentId,month));return snap.exists?snap.data():null}
