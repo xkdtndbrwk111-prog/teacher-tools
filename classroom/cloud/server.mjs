@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
 import {initializeApp,applicationDefault} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';
 import {createTeacherVerifier,createStudentSessions,bearer} from './auth.mjs';
@@ -11,6 +12,19 @@ const store=new FirestoreSurveyStore(db),teacherAuth=createTeacherVerifier({allo
 const port=Number(process.env.PORT||8080),allowedOrigins=new Set(String(process.env.ALLOWED_ORIGINS||'').split(',').map(value=>value.trim()).filter(Boolean)),loginLimit=Number(process.env.LOGIN_LIMIT||6),loginIpLimit=Number(process.env.LOGIN_IP_LIMIT||60),loginWindowMs=Number(process.env.LOGIN_WINDOW_MS||60000);
 if(!emulator&&!allowedOrigins.size)throw Error('ALLOWED_ORIGINS is required in production');
 const out=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))};
+const staticFiles=new Map([
+ ['/classroom/survey/student.html',[new URL('../survey/student.html',import.meta.url),'text/html; charset=utf-8']],
+ ['/classroom/survey/student.mjs',[new URL('../survey/student.mjs',import.meta.url),'text/javascript; charset=utf-8']],
+ ['/classroom/survey/student.css',[new URL('../survey/student.css',import.meta.url),'text/css; charset=utf-8']],
+ ['/classroom/survey/draft-store.mjs',[new URL('../survey/draft-store.mjs',import.meta.url),'text/javascript; charset=utf-8']],
+ ['/classroom/host/life-mount.css',[new URL('../host/life-mount.css',import.meta.url),'text/css; charset=utf-8']],
+]);
+async function staticResponse(path,method,res){
+ if(method!=='GET'&&method!=='HEAD')return false;
+ if(path==='/'){res.writeHead(302,{Location:'/classroom/survey/student.html','Cache-Control':'no-store'});res.end();return true}
+ const entry=staticFiles.get(path);if(!entry)return false;
+ const data=await readFile(entry[0]);res.writeHead(200,{'Content-Type':entry[1],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});if(method==='GET')res.end(data);else res.end();return true;
+}
 async function body(req){let text='';for await(const chunk of req){text+=chunk;if(text.length>65536)throw Object.assign(Error('요청 크기 초과'),{status:413})}try{return JSON.parse(text||'{}')}catch{throw Object.assign(Error('JSON 형식 오류'),{status:400})}}
 function cors(req,res){const origin=req.headers.origin;if(origin&&!allowedOrigins.has(origin))throw Object.assign(Error('허용되지 않은 출처'),{status:403});if(origin){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS')}}
 const scopeFrom=(ownerId,value)=>({ownerId,classId:value.classId,year:Number(value.year)});
@@ -20,6 +34,7 @@ const server=createServer(async(req,res)=>{
  try{
   cors(req,res);if(req.method==='OPTIONS'){res.writeHead(204);return res.end()}
   const url=new URL(req.url,'http://localhost'),path=url.pathname,method=req.method;
+  if(await staticResponse(path,method,res))return;
   if(path==='/healthz')return out(res,200,{ok:true,emulator});
   if(allowTestAuth&&path==='/__test/metrics'&&method==='GET')return out(res,200,store.snapshotMetrics());
   if(allowTestAuth&&path==='/__test/metrics/reset'&&method==='POST'){store.resetMetrics();return out(res,200,{ok:true})}
