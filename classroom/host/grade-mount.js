@@ -46,6 +46,8 @@
   if(isActive())return;
   document.activeElement?.blur?.();
   document.body.classList.add('tt-grade-active');bar.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===tab));tab.setAttribute('aria-pressed','true');
+  // The seating parent is inactive whenever grades owns the content.
+  bar.querySelector('#modeClassroom')?.setAttribute('aria-pressed','false');
   if(!frame)ensureFrame();
   else sendRoster();height();
  });
