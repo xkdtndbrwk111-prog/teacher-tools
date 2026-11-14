@@ -113,8 +113,8 @@ body.pe-mode .pe-toolbar:has(.pe-pitch-toolbar-choice) .pe-toolbar-note{max-widt
 #teacherScreen>.tt-seating-submodes button:focus-visible{
  outline:2px solid #93c5fd;outline-offset:2px;
 }
-/* Keep the workspace's vertical position stable when switching to grades. */
-body.tt-grade-active #teacherScreen>.tt-seating-submodes{visibility:hidden;pointer-events:none}
+/* Only the seating module exposes its child navigation; grades keeps its full height. */
+body.tt-grade-active #teacherScreen>.tt-seating-submodes{display:none!important}
 @media(max-width:600px){
  #teacherScreen>.tt-seating-submodes{gap:6px;padding:5px 8px}
  #teacherScreen>.tt-seating-submodes button{padding:0 12px;font-size:12px}
