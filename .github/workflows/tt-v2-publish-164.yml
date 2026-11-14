@@ -1,0 +1,49 @@
+name: Publish verified V1.64 V2 pilot candidate
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/tt-v2-publish-164.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: tt-v2-publish-164
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Publish only the independently verified immutable candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/"$GH_REPO"/actions/artifacts/14119016968/zip > candidate.zip
+          python3 - <<'PY'
+          import zipfile, hashlib, json, base64
+          from pathlib import Path
+          z = Path("candidate.zip")
+          assert hashlib.sha256(z.read_bytes()).hexdigest() == "6912710ae9ab17b9d41121960f838eb8835eab469ea10d239994b7a84f106c57"
+          with zipfile.ZipFile(z) as f:
+              raw = f.read("latest-v2-candidate.json")
+          assert hashlib.sha256(raw).hexdigest() == "9598a0271228ec456a3c9ab17133610f999e66494398b3eb9b407b93e003364c"
+          Path("verified-feed.json").write_bytes(raw)
+          Path("create.json").write_text(json.dumps({"message":"Publish independently verified V1.64.0 V2 pilot feed","branch":"main","content":base64.b64encode(raw).decode("ascii")}))
+          PY
+          endpoint="repos/$GH_REPO/contents/stable/content-v4/latest.json"
+          if gh api "$endpoint?ref=main" > existing.json 2> lookup.err; then
+            python3 - <<'PY'
+          import json,base64,pathlib
+          assert base64.b64decode(json.loads(pathlib.Path("existing.json").read_text())["content"]) == pathlib.Path("verified-feed.json").read_bytes()
+          PY
+            echo 'Identical pilot feed already published.'
+          else
+            grep -q 'HTTP 404' lookup.err
+            gh api --method PUT "$endpoint" --input create.json --jq '.commit.sha'
+          fi
+          echo 'Only the V2 pilot feed was written. No key access; original update channels untouched.'
