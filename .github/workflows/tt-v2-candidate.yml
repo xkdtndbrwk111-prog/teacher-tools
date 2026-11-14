@@ -54,9 +54,24 @@ jobs:
           assert b'V1.63.5 STABLE PILOT' in html
           count=html.count(b'1.63.5')
           assert 1<=count<=30
-          new_html=html.replace(b'1.63.5',b'1.64.0')
+          text=html.decode('utf-8')
+          a="(()=>{const m=/^(\\d{1,3}),(\\d{1,3}),(\\d{1,3}),(\\d{1,3})$/.exec(new URLSearchParams(location.search).get('inset')||'');if(!m)return;const root=document.documentElement.style;['--il','--it','--ir','--ib'].forEach((name,i)=>root.setProperty(name,m[i+1]+'px'))})();"
+          b="""(()=>{const m=/^(\\d{1,3}),(\\d{1,3}),(\\d{1,3}),(\\d{1,3})$/.exec(new URLSearchParams(location.search).get('inset')||'');if(!m)return;const root=document.documentElement.style,requested=m.slice(1).map(Number);let frame=0;
+          function sync(){frame=0;const s=window.screen;const full=!!document.fullscreenElement;const budget=(actual,available,total)=>full?0:Math.min(total,Math.max(0,Math.round(actual-available)));const x=budget(innerWidth,s.availWidth,requested[0]+requested[2]),y=budget(innerHeight,s.availHeight,requested[1]+requested[3]);const left=Math.min(requested[0],x),top=Math.min(requested[1],y);[left,top,x-left,y-top].forEach((v,i)=>{const name=['--il','--it','--ir','--ib'][i],value=v+'px';if(root.getPropertyValue(name)!==value)root.setProperty(name,value)})}
+          function schedule(){if(!frame)frame=requestAnimationFrame(sync)}sync();window.addEventListener('resize',schedule);document.addEventListener('fullscreenchange',schedule);window.visualViewport?.addEventListener('resize',schedule)})();"""
+          assert text.count(a)==1
+          text=text.replace(a,b)
+          a="ttGridObserver.observe(gridBox);requestAnimationFrame(ttGridSync);"
+          b="ttGridObserver.observe(gridBox);requestAnimationFrame(ttGridSync);\nlet ttGridFrame=0;function ttGridSchedule(){if(!ttGridFrame)ttGridFrame=requestAnimationFrame(()=>{ttGridFrame=0;ttGridSync()})}window.addEventListener('resize',ttGridSchedule);document.addEventListener('fullscreenchange',ttGridSchedule);window.visualViewport?.addEventListener('resize',ttGridSchedule);"
+          assert text.count(a)==1
+          text=text.replace(a,b)
+          a='body>main.grid{margin-left:0!important;margin-right:0!important;margin-bottom:4px!important}'
+          b='body>main.grid{flex:1 1 0%;min-height:0;min-width:0;margin-left:0!important;margin-right:0!important;margin-bottom:4px!important}'
+          assert text.count(a)==1
+          text=text.replace(a,b)
+          new_html=text.replace('1.63.5','1.64.0').encode('utf-8')
+          assert sha(new_html)=='5165238b4f7bce3e7c498c79c9e1bc533010561efd4441b6bccc8bf25241a58e'
           new_rel=rel.replace(b'1.63.5',b'1.64.0')
-          assert new_html.replace(b'1.64.0',b'1.63.5')==html
           assert new_rel.replace(b'1.64.0',b'1.63.5')==rel
           assert b'V1.64.0 STABLE PILOT' in new_html
           new=json.loads(new_rel)
@@ -68,7 +83,7 @@ jobs:
           (root/'release-1.64.0.json').write_bytes(new_rel)
           (root/'candidate-payload.json').write_bytes(json.dumps(target,separators=(',',':')).encode('utf-8'))
           (root/'source-payload.json').unlink()
-          print('PASS: old signed content verified; migration candidate changes version text only; replacements=',count)
+          print('PASS: old signed content verified; migration candidate contains exact pinned viewport patch; version replacements=',count)
           '@ | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'tt-build.py') -Encoding utf8
           python (Join-Path $env:RUNNER_TEMP 'tt-build.py') $dir
           if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
