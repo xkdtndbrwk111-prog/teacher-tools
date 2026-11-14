@@ -38,7 +38,7 @@
   allowLeave=true;button.click();allowLeave=false;
  }
  // Capture old buttons before the PE listener to flush the grade draft first.
- bar.querySelectorAll('button:not(#tt-grade-tab)').forEach(button=>button.addEventListener('click',e=>{
+ [...bar.querySelectorAll('button:not(#tt-grade-tab)'),...teacher.querySelectorAll('.tt-seating-submodes button')].forEach(button=>button.addEventListener('click',e=>{
   if(!isActive()||allowLeave)return;e.stopImmediatePropagation();e.preventDefault();void leaveGrade(button);
  },true));
  const height=()=>{}; // Shared studio grid defines the same height in every module.
