@@ -1,0 +1,187 @@
+name: V1.64.1 schedule extension pilot release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/tt-v1641-pilot.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: tt-v1641-pilot
+  cancel-in-progress: false
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: teacher-tools-signing
+    outputs:
+      feed_sha: ${{ steps.sign.outputs.feed_sha }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9998895f5dda95396a6cf75442cfad7f516a288c
+          persist-credentials: false
+      - name: Verify old signature and build isolated candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content -LiteralPath 'stable/content-v4/latest.json' -Raw | ConvertFrom-Json
+          $raw = [Convert]::FromBase64String(($source.payloadChunks -join ''))
+          $old = [System.Security.Cryptography.RSA]::Create()
+          try {
+            $p = [System.Security.Cryptography.RSAParameters]::new()
+            $p.Modulus = [Convert]::FromBase64String('uJWav5jiIgqwKanGoBnw1QWyhpxsyjkWu8l2RdlxipSygIpnJk2eWHUT5B88i+3fOAvo72NYaEtNZYLkmCVue0Ex2tzzPa9VAgbMyer0VxG2Mort6P2qGilNu3hX0wgtgUbJC5ee75MOO0bUTUwoZRiSnDoWif5c8JCvM6ALvYskFbVkHjqP9ydpcMGura726q1wLLD7Iw+DtQgWP9g083VN+fhFFd2+z/lfmHkR8ljwkBrFbMwpHnEYU8oblcS0gkq/Es/9pldZ7idrG8iYxiXim68594CZBzvoMo9G5/axig/9A/pxrG23fP7posJBvN7ZF4vKRQqkEp/E1swZ7Q==')
+            $p.Exponent = [Convert]::FromBase64String('AQAB')
+            $old.ImportParameters($p)
+            if (-not $old.VerifyData($raw,[Convert]::FromBase64String($source.signature),[System.Security.Cryptography.HashAlgorithmName]::SHA256,[System.Security.Cryptography.RSASignaturePadding]::Pkcs1)) { throw 'Original V1.64.0 V2 signature invalid' }
+          } finally { $old.Dispose() }
+          $dir = Join-Path $env:RUNNER_TEMP 'tt-v1641-candidate'
+          New-Item -ItemType Directory -Path $dir -ErrorAction Stop | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $dir 'source-payload.json'),$raw)
+          @'
+          import base64,gzip,hashlib,io,json,pathlib,sys
+          root=pathlib.Path(sys.argv[1])
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          enc=lambda b:base64.b64encode(b).decode('ascii')
+          source=json.loads((root/'source-payload.json').read_bytes())
+          assert source['schema']=='TT-STABLE-CONTENT-SNAPSHOT-3' and source['channel']=='stable' and source['toVersion']=='1.64.0'
+          with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(source['htmlGzip'],validate=True))) as f:
+              html=f.read(16*1024*1024+1)
+          rel=base64.b64decode(source['releaseBytes'],validate=True)
+          assert sha(html)==source['afterHtmlSha']=='5165238b4f7bce3e7c498c79c9e1bc533010561efd4441b6bccc8bf25241a58e'
+          assert sha(rel)==source['afterReleaseSha']=='96ce77c3d830a0dd58f7ca33549666b90ace34755c3ed24e1ab1f87e458548d9'
+          s=html.decode()
+          j=r'''function ttEventName(r){return String(r?.name||'').trim().replace(/\s+/g,'')}
+          function ttEventDay(s,n){const d=new Date(s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8)+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10).replace(/-/g,'')}
+          async function ttFetchEventsExtended(url,request=fetch){
+           const start=new URL(url,'http://localhost').searchParams.get('date'),end=ttEventDay(start,45);
+           async function read(u){const res=await request(u,{cache:'no-store'}),data=await res.json();if(!res.ok||!Array.isArray(data.rows))throw Error(data.error||'일정 조회 실패');return data}
+           const data=await read(url),rows=[],seen=new Set();
+           const add=r=>{const id=r.date+'|'+ttEventName(r);if(!seen.has(id)){seen.add(id);rows.push({...r})}};
+           for(const r of data.rows)if(r.date>=start&&r.date<=end&&ttEventName(r))add(r);
+           let active=new Map(rows.filter(r=>r.date===end).map(r=>[ttEventName(r),r.date]));
+           let cursor=ttEventDay(end,1);
+           for(let page=0;active.size&&page<8;page++){
+            const through=ttEventDay(cursor,45);let extra;
+            try{extra=await read('/api/events?date='+cursor)}catch{break}
+            const index=new Map();for(const r of extra.rows){if(r.date<cursor||r.date>through)continue;const k=ttEventName(r);if(!active.has(k))continue;index.set(r.date+'|'+k,r)}
+            for(const [k,last] of active){let day=ttEventDay(last,1);while(day<=through&&index.has(day+'|'+k)){add(index.get(day+'|'+k));active.set(k,day);day=ttEventDay(day,1)}if(day<=through)active.delete(k)}
+            cursor=ttEventDay(through,1);
+           }
+           for(const r of rows)if(active.get(ttEventName(r))===r.date)r.endUnconfirmed=true;
+           return {...data,rows,rangeEnd:end};
+          }
+          function groupNeisVacations(rows){
+           const out=[],groups=new Map();
+           for(const item of rows){const k=ttEventName(item);if(item.source!=='나이스'||!k){out.push(item);continue}if(!groups.has(k))groups.set(k,new Map());const g=groups.get(k),old=g.get(item.date);g.set(item.date,old?{...old,endUnconfirmed:old.endUnconfirmed||item.endUnconfirmed}:item)}
+           for(const g of groups.values()){
+            let batch=[];const flush=()=>{if(!batch.length)return;const last=batch[batch.length-1];out.push({...batch[0],...(batch.length>1?{endDate:last.date}:{}),endUnconfirmed:!!last.endUnconfirmed});batch=[]};
+            for(const e of [...g.values()].sort((a,b)=>a.date.localeCompare(b.date))){if(batch.length&&e.date!==ttEventDay(batch[batch.length-1].date,1))flush();batch.push(e)}flush();
+           }
+           return out.sort((a,b)=>a.date.localeCompare(b.date));
+          }
+          '''
+          helpers,group=j.split('function groupNeisVacations(',1)
+          def rep(a,b):
+              global s
+              assert s.count(a)==1,a
+              s=s.replace(a,b)
+          rep('async function loadData(){',helpers+'async function loadData(){')
+          a=s.index('function groupNeisVacations(')
+          b=s.index(' function renderEvents(d)',a)
+          s=s[:a]+'function groupNeisVacations('+group.rstrip()+s[b:]
+          rep("let res=await fetch(url,{cache:'no-store'});let data=await res.json();", "let res=name==='events'?{ok:true}:await fetch(url,{cache:'no-store'});let data=name==='events'?await ttFetchEventsExtended(url):await res.json();")
+          rep("(name==='meal'?'-v15':'')", "(name==='meal'?'-v15':name==='events'?'-v1641':'')")
+          rep("textDate(r.endDate).replace('/','.'):textDate(r.date))", "textDate(r.endDate).replace('/','.')+(r.endUnconfirmed?'~':''):textDate(r.date)+(r.endUnconfirmed?'~':''))")
+          rep("esc(r.source)+'</small></span></button>'", "esc(r.source)+(r.endUnconfirmed?' · 종료일 미확인':'')+'</small></span></button>'")
+          new_html=s.replace('1.64.0','1.64.1').encode()
+          new_rel=rel.replace(b'1.64.0',b'1.64.1').replace(b'2026-11-14',b'2026-11-15')
+          assert sha(new_html)=='de0bb9509f05a53470bd7aa521a7f0eae880d42efd93075ae48c5f3299557d7c'
+          assert sha(new_rel)=='a097ba7241c506311687a2408a0bc15fc4b6739d2105182d250d7df3da23a7c3'
+          target={'schema':'TT-STABLE-CONTENT-SNAPSHOT-3','channel':'stable','toVersion':'1.64.1','bases':[{'version':'1.64.0','htmlSha':sha(html),'releaseSha':sha(rel)}],'afterHtmlSha':sha(new_html),'afterReleaseSha':sha(new_rel),'releaseBytes':enc(new_rel),'htmlGzip':enc(gzip.compress(new_html,mtime=0))}
+          (root/'candidate-payload.json').write_bytes(json.dumps(target,separators=(',',':')).encode())
+          (root/'source-payload.json').unlink()
+          print('PASS: exact locally tested V1.64.1 hashes')
+          '@ | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'tt-build.py') -Encoding utf8
+          python (Join-Path $env:RUNNER_TEMP 'tt-build.py') $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+      - name: Sign candidate using approved V2 key
+        id: sign
+        shell: pwsh
+        env:
+          TT_PFX: ${{ secrets.TT_SIGNING_PFX_B64 }}
+          TT_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert=$null; $signer=$null; $verifier=$null; $bytes=$null
+          try {
+            if ([string]::IsNullOrWhiteSpace($env:TT_PFX) -or [string]::IsNullOrEmpty($env:TT_PASSWORD)) { throw 'Missing secret' }
+            $bytes=[Convert]::FromBase64String($env:TT_PFX)
+            $cert=[System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes,$env:TT_PASSWORD,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            if ($cert.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant() -ne '0e0e1b970de3d8e16c721ea170f947f9d0cfcda34eca24e8a324ba29b55497cd' -or -not $cert.HasPrivateKey) { throw 'Unexpected signing certificate' }
+            $signer=[System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+            $verifier=[System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($cert)
+            if ($signer.KeySize -ne 2048) { throw 'Unexpected key size' }
+            $dir=Join-Path $env:RUNNER_TEMP 'tt-v1641-candidate'
+            $raw=[IO.File]::ReadAllBytes((Join-Path $dir 'candidate-payload.json'))
+            $hash=[System.Security.Cryptography.HashAlgorithmName]::SHA256
+            $pad=[System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            $sig=$signer.SignData($raw,$hash,$pad)
+            if ($sig.Length -ne 256 -or -not $verifier.VerifyData($raw,$sig,$hash,$pad)) { throw 'Signature invalid' }
+            $bad=[byte[]]$raw.Clone(); $bad[0]=$bad[0] -bxor 1
+            if ($verifier.VerifyData($bad,$sig,$hash,$pad)) { throw 'Tamper accepted' }
+            $b64=[Convert]::ToBase64String($raw)
+            $chunks=@(for($i=0;$i -lt $b64.Length;$i+=6000){$b64.Substring($i,[Math]::Min(6000,$b64.Length-$i))})
+            $json=@{payloadChunks=$chunks;signature=[Convert]::ToBase64String($sig)} | ConvertTo-Json -Compress -Depth 4
+            [IO.File]::WriteAllText((Join-Path $dir 'latest-v2-candidate.json'),$json,[Text.UTF8Encoding]::new($false))
+            $feedHash=(Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $dir 'latest-v2-candidate.json')).Hash.ToLowerInvariant()
+            "feed_sha=$feedHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Remove-Item -LiteralPath (Join-Path $dir 'candidate-payload.json')
+            Write-Host 'PASS: candidate signed by V2 key, signature verified, tamper rejected. No repository or feed write.'
+          } catch {
+            Write-Host '::error::V2 candidate signing failed; sensitive details suppressed.'
+            exit 1
+          } finally {
+            if ($signer) { $signer.Dispose() }; if ($verifier) { $verifier.Dispose() }; if ($cert) { $cert.Dispose() }
+            if ($bytes) { [Array]::Clear($bytes,0,$bytes.Length) }
+            Remove-Item Env:TT_PFX,Env:TT_PASSWORD -ErrorAction SilentlyContinue
+          }
+      - name: Retain public candidate only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tt-v1641-public-pilot-candidate
+          path: ${{ runner.temp }}/tt-v1641-candidate
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.run_id }}
+      EXPECTED_SHA: ${{ needs.candidate.outputs.feed_sha }}
+    steps:
+      - name: Publish signed pilot only after successful validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name=="tt-v1641-public-pilot-candidate" and .expired==false) | .id')
+          test -n "$artifact"
+          gh api "repos/$GH_REPO/actions/artifacts/$artifact/zip" > candidate.zip
+          python3 - <<'PY'
+          import json,base64,hashlib,os,zipfile,pathlib
+          with zipfile.ZipFile('candidate.zip') as z: raw=z.read('latest-v2-candidate.json')
+          assert hashlib.sha256(raw).hexdigest()==os.environ['EXPECTED_SHA']
+          p=json.loads(base64.b64decode(''.join(json.loads(raw)['payloadChunks'])))
+          assert p['toVersion']=='1.64.1' and p['afterHtmlSha']=='de0bb9509f05a53470bd7aa521a7f0eae880d42efd93075ae48c5f3299557d7c'
+          pathlib.Path('request.json').write_text(json.dumps({'message':'Release V1.64.1 calendar continuation to V2 pilot','branch':'main','sha':'69d4be6d538369dd96e6528244fdfe0997249650','content':base64.b64encode(raw).decode()}))
+          PY
+          gh api --method PUT "repos/$GH_REPO/contents/stable/content-v4/latest.json" --input request.json --jq '.commit.sha'
+          echo 'V1.64.1 V2 pilot published. No legacy or public stable feed changed.'
