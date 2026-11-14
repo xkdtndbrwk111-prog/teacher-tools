@@ -162,10 +162,20 @@ function injectStyles(){
 }
 
 function injectModeUI(){
-  const sw=document.createElement("div");sw.className="prototype-mode-switch";sw.innerHTML=`<button id="modeClassroom" class="on" type="button">🏫 학급 자리배치</button><button id="modePE" type="button">⚽ 체육 모둠</button>`;
-  document.querySelector(".studio-topbar").insertBefore(sw,document.querySelector(".top-actions"));
-  // Product title is rendered without the former prototype badge.
-  $("modeClassroom").onclick=()=>setMode("classroom");$("modePE").onclick=()=>setMode("pe");
+  // Keep the outer navigation compact. Seating and PE are two views inside "자리배치".
+  // Existing IDs remain intact so grade-mount can flush grades before switching modules.
+  const sw=document.createElement("div");sw.className="prototype-mode-switch";
+  sw.innerHTML=`<button id="modeClassroom" class="on" type="button" aria-pressed="true">🪑 자리배치</button>`;
+  const header=document.querySelector(".studio-topbar");
+  header.insertBefore(sw,document.querySelector(".top-actions"));
+  const sub=document.createElement("nav");sub.className="tt-seating-submodes";
+  sub.setAttribute("aria-label","자리배치 세부 메뉴");
+  sub.innerHTML=`<button id="tt-seat-subtab" class="on" type="button" aria-pressed="true">🏫 학급 자리</button><button id="modePE" type="button" aria-pressed="false">⚽ 체육 모둠</button>`;
+  header.after(sub);
+  // Clicks reuse the original mode switching logic; no student, team or grade data changes.
+  $("modeClassroom").onclick=()=>setMode("classroom");
+  $("tt-seat-subtab").onclick=()=>setMode("classroom");
+  $("modePE").onclick=()=>setMode("pe");
 
   const toolbar=document.createElement("section");toolbar.className="pe-toolbar";toolbar.innerHTML=`<div class="pe-team-count"><strong>팀 수</strong>${[2,3,4,5,6].map(n=>`<button type="button" data-team-count="${n}">${n}팀</button>`).join("")}</div><div id="peFixedBanner" class="pe-fixed-banner"><span id="peFixedBannerText"></span><button id="peFixedDone" type="button">고정 지정 끝내기</button></div><div class="pe-surface-control pe-pitch-toolbar-choice" role="group" aria-label="체육 모둠 운동장 선택"><span>운동장</span><div class="pe-surface-buttons"><button type="button" data-pe-surface="grass" aria-pressed="true">🌿 잔디</button><button type="button" data-pe-surface="dirt" aria-pressed="false">🟤 흙</button></div></div><label class="pe-manager-lines"><input type="checkbox" id="peManagerLines" checked> 축구장 라인</label><div class="pe-toolbar-note">하단 학생을 팀으로 드래그하면 고정 · 배치 학생 클릭/우클릭으로 고정 관리</div>`;
   document.querySelector(".workspace-toolbar").after(toolbar);
@@ -177,7 +187,11 @@ function injectModeUI(){
 
 function setMode(next){
   mode=next;document.body.classList.toggle("pe-mode",mode==="pe");
-  $("modeClassroom").classList.toggle("on",mode==="classroom");$("modePE").classList.toggle("on",mode==="pe");
+  // "자리배치" stays selected for either child view; the nested buttons show which view.
+  const seating=$("modeClassroom"),seat=$("tt-seat-subtab"),pe=$("modePE");
+  seating.classList.add("on");seating.setAttribute("aria-pressed","true");
+  seat.classList.toggle("on",mode==="classroom");seat.setAttribute("aria-pressed",String(mode==="classroom"));
+  pe.classList.toggle("on",mode==="pe");pe.setAttribute("aria-pressed",String(mode==="pe"));
   if(mode==="pe"&&["groups","rules","teacher","history"].includes(document.querySelector(".dock-tab.on")?.dataset.tab||""))activateDock("student");
   updateModeChrome();renderStudentInspector();renderPE();
 }
