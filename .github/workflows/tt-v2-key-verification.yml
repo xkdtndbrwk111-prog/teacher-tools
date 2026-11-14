@@ -1,0 +1,69 @@
+name: V2 signing key verification (no publish)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tt-v2-key-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: teacher-tools-signing
+    timeout-minutes: 5
+    steps:
+      - name: Verify owner-approved V2 PFX without publishing
+        shell: pwsh
+        env:
+          TT_PFX: ${{ secrets.TT_SIGNING_PFX_B64 }}
+          TT_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert = $null
+          $signer = $null
+          $verifier = $null
+          $bytes = $null
+          try {
+            if ([string]::IsNullOrWhiteSpace($env:TT_PFX) -or [string]::IsNullOrEmpty($env:TT_PASSWORD)) {
+              throw 'Missing environment secret'
+            }
+            $bytes = [Convert]::FromBase64String($env:TT_PFX)
+            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $bytes, $env:TT_PASSWORD,
+              [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            $fingerprint = $cert.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant()
+            if ($fingerprint -ne '0e0e1b970de3d8e16c721ea170f947f9d0cfcda34eca24e8a324ba29b55497cd') {
+              throw 'Unexpected certificate'
+            }
+            if (-not $cert.HasPrivateKey) { throw 'No private key' }
+            $signer = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+            $verifier = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($cert)
+            if ($null -eq $signer -or $null -eq $verifier -or $signer.KeySize -ne 2048) {
+              throw 'Invalid RSA key'
+            }
+            $params = $verifier.ExportParameters($false)
+            if ([Convert]::ToBase64String($params.Modulus) -cne 'uJWav5jiIgqwKanGoBnw1QWyhpxsyjkWu8l2RdlxipSygIpnJk2eWHUT5B88i+3fOAvo72NYaEtNZYLkmCVue0Ex2tzzPa9VAgbMyer0VxG2Mort6P2qGilNu3hX0wgtgUbJC5ee75MOO0bUTUwoZRiSnDoWif5c8JCvM6ALvYskFbVkHjqP9ydpcMGura726q1wLLD7Iw+DtQgWP9g083VN+fhFFd2+z/lfmHkR8ljwkBrFbMwpHnEYU8oblcS0gkq/Es/9pldZ7idrG8iYxiXim68594CZBzvoMo9G5/axig/9A/pxrG23fP7posJBvN7ZF4vKRQqkEp/E1swZ7Q==' -or [Convert]::ToBase64String($params.Exponent) -cne 'AQAB') {
+              throw 'Public RSA key mismatch'
+            }
+            $data = [Text.Encoding]::UTF8.GetBytes('TEACHERTOOLS-V2-KEY-PROBE-NOT-A-RELEASE')
+            $hash = [System.Security.Cryptography.HashAlgorithmName]::SHA256
+            $pad = [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            $signature = $signer.SignData($data, $hash, $pad)
+            if ($signature.Length -ne 256 -or -not $verifier.VerifyData($data, $signature, $hash, $pad)) {
+              throw 'Signature verification failed'
+            }
+            $data[0] = $data[0] -bxor 1
+            if ($verifier.VerifyData($data, $signature, $hash, $pad)) { throw 'Tamper accepted' }
+            Write-Host 'PASS: V2 certificate fingerprint, RSA public key match, PKCS1 SHA256 sign/verify, tamper rejection.'
+            Write-Host 'NO PUBLISH: no release payload, feed, artifact, or repository write.'
+          } catch {
+            Write-Host '::error::V2 key verification failed. Check secret registration and public certificate match. Sensitive error details suppressed.'
+            exit 1
+          } finally {
+            if ($null -ne $signer) { $signer.Dispose() }
+            if ($null -ne $verifier) { $verifier.Dispose() }
+            if ($null -ne $cert) { $cert.Dispose() }
+            if ($null -ne $bytes) { [Array]::Clear($bytes, 0, $bytes.Length) }
+            Remove-Item Env:TT_PFX, Env:TT_PASSWORD -ErrorAction SilentlyContinue
+          }
