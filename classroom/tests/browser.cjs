@@ -30,9 +30,9 @@ async function openGrades(p){
  return frame;
 }
 async function openGradesAfterClose(p){await p.click('#tt-backup-close');return openGrades(p)}
-const openSeating=p=>p.locator('.prototype-mode-switch button',{hasText:'학급 자리배치'}).click();
+const openSeating=p=>p.locator('.prototype-mode-switch button',{hasText:'자리배치'}).click();
 async function setRoster(p,names){
- await p.locator('.prototype-mode-switch button',{hasText:'학급 자리배치'}).waitFor();
+ await p.locator('.prototype-mode-switch button',{hasText:'자리배치'}).waitFor();
  await p.evaluate(v=>{const t=document.getElementById('studentInput');t.value=v;t.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('applyStudents').click()},names.join('\n'));
 }
 (async()=>{
