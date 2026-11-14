@@ -96,3 +96,26 @@ body.pe-mode .pe-toolbar:has(.pe-pitch-toolbar-choice) .pe-toolbar-note{max-widt
 .pe-simple-name{background:white;border:2px solid #42536b;border-radius:9px;min-width:0;min-height:40px;display:flex;align-items:center;justify-content:center;word-break:keep-all;text-align:center;padding:6px 3px;font-weight:850;font-size:clamp(14px,1.4vw,23px)}
 @media(max-width:1000px){.pe-simple-panel{padding:8px}.pe-simple-paper{padding:16px}.pe-simple-grid{gap:10px}.pe-simple-team{padding:8px}}
 @media(max-width:600px){.pe-simple-grid{grid-template-columns:1fr}.pe-simple-panel{align-items:flex-start}.pe-simple-heading h2{font-size:22px}}
+
+/* Compact two-level navigation: 자리배치 > 학급 자리 / 체육 모둠. */
+#teacherScreen>.tt-seating-submodes{
+ box-sizing:border-box;display:flex;flex:0 0 44px;align-items:center;justify-content:center;gap:8px;
+ min-height:44px;padding:5px 12px;background:#111b2d;border-bottom:1px solid #2a3a53;
+}
+#teacherScreen>.tt-seating-submodes button{
+ box-sizing:border-box;min-height:34px;padding:0 18px;border:1px solid #415675;border-radius:8px;
+ background:#1d304a;color:#c8d6e9;font-size:13px;font-weight:850;cursor:pointer;
+}
+#teacherScreen>.tt-seating-submodes button.on,
+#teacherScreen>.tt-seating-submodes button[aria-pressed="true"]{
+ border-color:#e7ebf3;background:#f8fafc;color:#172033;
+}
+#teacherScreen>.tt-seating-submodes button:focus-visible{
+ outline:2px solid #93c5fd;outline-offset:2px;
+}
+/* Keep the workspace's vertical position stable when switching to grades. */
+body.tt-grade-active #teacherScreen>.tt-seating-submodes{visibility:hidden;pointer-events:none}
+@media(max-width:600px){
+ #teacherScreen>.tt-seating-submodes{gap:6px;padding:5px 8px}
+ #teacherScreen>.tt-seating-submodes button{padding:0 12px;font-size:12px}
+}
