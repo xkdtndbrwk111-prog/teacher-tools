@@ -52,7 +52,7 @@ jobs:
           assert sha(html)==source['afterHtmlSha']=='b667a14a33fb3a1942cd2b914b74e4962e5f73ae1cd7736760d9232a9c547cd9'
           assert sha(rel)==source['afterReleaseSha']=='871828906e6621598f044e2a09a427ed2b2fd623985e827c0be21d4da7528372'
           (root/'base.html').write_bytes(html)
-          assert sha(pathlib.Path('tools/releases/tt-v1644.py').read_bytes())=='68637712363f95654d2cb0180ce52f16bd079a4bd0cf2f1617145cc83727769a'
+          assert sha(pathlib.Path('tools/releases/tt-v1644.py').read_bytes().replace(b'\r\n',b'\n'))=='68637712363f95654d2cb0180ce52f16bd079a4bd0cf2f1617145cc83727769a'
           subprocess.run([sys.executable,'tools/releases/tt-v1644.py',str(root/'base.html'),str(root/'target.html')],check=True)
           new_html=(root/'target.html').read_bytes()
           new_rel=rel.replace(b'1.64.3',b'1.64.4')
