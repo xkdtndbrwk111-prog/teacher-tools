@@ -1,0 +1,24 @@
+name: NSIS compiler acquisition (isolated)
+on:
+  pull_request:
+    paths: ['.github/workflows/hoja-nsis-toolchain.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch Debian distribution packages
+        run: |
+          set -eux
+          mkdir toolchain
+          curl -fL https://deb.debian.org/debian/pool/main/n/nsis/nsis_3.11-1_amd64.deb -o toolchain/nsis.deb
+          echo 'e6eb6ffb70f0df09e95dedb2d2cf55ad3c2679f7c2ae357d0c00cc4c83178690  toolchain/nsis.deb' | sha256sum -c -
+          curl -fL https://deb.debian.org/debian/pool/main/n/nsis/nsis-common_3.11-1_all.deb -o toolchain/nsis-common.deb
+          sha256sum toolchain/*.deb
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nsis-debian-toolchain
+          path: toolchain
+          retention-days: 1
