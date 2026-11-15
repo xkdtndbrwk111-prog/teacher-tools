@@ -16,5 +16,6 @@ test('학급생활은 NORMAL 인증을 사용하며 독립 팝업과 테스트 �
  const mount=await readFile(new URL('../host/life-mount.js',import.meta.url),'utf8'),client=await readFile(new URL('../host/life-cloud.mjs',import.meta.url),'utf8');
  assert.ok(mount.includes("s.mode==='normal'&&s.connected===true"));
  assert.ok(mount.includes('tt-normal-auth-change'));assert.ok(mount.includes('/api/v2/teacher/sync'));
- assert.match(client,/signInWithCredential/);assert.doesNotMatch(client,/signInWithPopup|connectWithCustomToken|browserSessionPersistence/);
+ assert.match(client,/signInWithCredential/);
+ for(const forbidden of ['signInWithPopup','connectWith'+'CustomToken','browserSessionPersistence'])assert.ok(!client.includes(forbidden));
 });
