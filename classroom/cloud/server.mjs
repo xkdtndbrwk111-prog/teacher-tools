@@ -8,8 +8,8 @@ import {FirestoreSurveyStore} from './firestore-store.mjs';
 const projectId=process.env.GOOGLE_CLOUD_PROJECT||process.env.GCLOUD_PROJECT||'teacher-tools-local',emulator=Boolean(process.env.FIRESTORE_EMULATOR_HOST),allowTestAuth=emulator&&process.env.ALLOW_TEST_AUTH==='1';
 initializeApp(emulator?{projectId}:{projectId,credential:applicationDefault()});
 const db=getFirestore();db.settings({ignoreUndefinedProperties:true});
-const store=new FirestoreSurveyStore(db),teacherAuth=createTeacherVerifier({allowTestAuth,allowedDomain:process.env.TEACHER_EMAIL_DOMAIN}),sessions=createStudentSessions(process.env.STUDENT_SESSION_SECRET||'',{ttlMs:Number(process.env.STUDENT_SESSION_TTL_MS||1800000)});
-const port=Number(process.env.PORT||8080),allowedOrigins=new Set(String(process.env.ALLOWED_ORIGINS||'').split(',').map(value=>value.trim()).filter(Boolean)),loginLimit=Number(process.env.LOGIN_LIMIT||6),loginIpLimit=Number(process.env.LOGIN_IP_LIMIT||60),loginWindowMs=Number(process.env.LOGIN_WINDOW_MS||60000);
+const studentSecret=process.env.STUDENT_SESSION_SECRET||'',store=new FirestoreSurveyStore(db,{codePepper:studentSecret}),teacherAuth=createTeacherVerifier({allowTestAuth,allowedDomain:process.env.TEACHER_EMAIL_DOMAIN}),sessions=createStudentSessions(studentSecret,{ttlMs:Number(process.env.STUDENT_SESSION_TTL_MS||1800000)});
+const port=Number(process.env.PORT||8080),allowedOrigins=new Set(String(process.env.ALLOWED_ORIGINS||'').split(',').map(value=>value.trim()).filter(Boolean)),loginLimit=Number(process.env.LOGIN_LIMIT||4),loginIpLimit=Number(process.env.LOGIN_IP_LIMIT||24),loginWindowMs=Number(process.env.LOGIN_WINDOW_MS||900000);
 if(!emulator&&!allowedOrigins.size)throw Error('ALLOWED_ORIGINS is required in production');
 const out=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))};
 const staticFiles=new Map([
@@ -40,7 +40,7 @@ const server=createServer(async(req,res)=>{
   if(allowTestAuth&&path==='/__test/metrics/reset'&&method==='POST'){store.resetMetrics();return out(res,200,{ok:true})}
   if(allowTestAuth&&path==='/__test/document-measure'&&method==='GET')return out(res,200,await store.measureResponse({ownerId:url.searchParams.get('ownerId'),classId:url.searchParams.get('classId'),year:Number(url.searchParams.get('year')),studentId:url.searchParams.get('studentId'),month:Number(url.searchParams.get('month'))}));
   if(path==='/api/v2/login'&&method==='POST'){
-   const data=await body(req),scope={ownerId:data.ownerId,classId:data.classId,year:Number(data.year),studentId:data.id},remote=req.socket.remoteAddress||'unknown',[accountLimitRef,ipLimitRef]=await Promise.all([store.checkRateLimit(`account|${remote}|${data.ownerId}|${data.classId}|${data.year}|${data.id}`,{limit:loginLimit,windowMs:loginWindowMs}),store.checkRateLimit(`ip|${remote}`,{limit:loginIpLimit,windowMs:loginWindowMs})]),student=await store.student(scope);
+   const data=await body(req),baseScope={ownerId:data.ownerId,classId:data.classId,year:Number(data.year)},number=Number(data.number),remote=req.socket.remoteAddress||'unknown',[accountLimitRef,ipLimitRef]=await Promise.all([store.checkRateLimit(`account|${remote}|${data.ownerId}|${data.classId}|${data.year}|${number}`,{limit:loginLimit,windowMs:loginWindowMs}),store.checkRateLimit(`ip|${remote}`,{limit:loginIpLimit,windowMs:loginWindowMs})]),student=await store.studentByNumber(baseScope,number),scope=student?{...baseScope,studentId:student.studentId}:null;
    if(!await store.verifyCode(student,data.code)){await Promise.all([store.failedLogin(accountLimitRef,{windowMs:loginWindowMs}),store.failedLogin(ipLimitRef,{windowMs:loginWindowMs})]);throw Object.assign(Error('인증 실패'),{status:401})}
    const token=sessions.issue({...scope,codeVersion:student.codeVersion});return out(res,200,{token,ownerId:scope.ownerId,year:scope.year,classId:scope.classId,studentId:scope.studentId});
   }
@@ -49,6 +49,7 @@ const server=createServer(async(req,res)=>{
    if(path==='/api/v2/teacher/sync'&&method==='POST'){const data=await body(req),teacher=await teacherAuth(req);return out(res,200,await store.syncRoster({...data,ownerId:teacher.uid}))}
    const input=method==='GET'?Object.fromEntries(url.searchParams):await body(req),{scope}=await teacherScope(req,input);
    if(path==='/api/v2/teacher/reissue'&&method==='POST')return out(res,200,await store.reissue(scope,input.id));
+   if(path==='/api/v2/teacher/reissue-all'&&method==='POST')return out(res,200,await store.reissueAll(scope,input.ids));
    if(path==='/api/v2/teacher/open'&&method==='POST')return out(res,200,await store.openSurvey(scope,Number(input.month),input.open));
    if(path==='/api/v2/teacher/status'&&method==='GET')return out(res,200,await store.status(scope,Number(input.month)));
    if(path==='/api/v2/teacher/analysis'&&method==='GET')return out(res,200,await store.analysis(scope));

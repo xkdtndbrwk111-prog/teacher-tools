@@ -3,7 +3,8 @@ import {applyDraftValues,createDraftCipher,deleteDraft,draftValues,loadDraft,pur
 const $=id=>document.getElementById(id),months=[3,4,5,6,7,9,10,11,12];
 let token=null,surveyObserver=null,monthRequest=0,draftTimer=null,draftCredential=null,activeDraftFlush=null;
 const query=new URLSearchParams(location.search),requestedMonth=months.includes(Number(query.get('month')))?Number(query.get('month')):null;
-for(const [name,key] of [['ownerId','owner'],['year','year'],['classId','class']]){const value=query.get(key),input=$('login').elements[name];if(value&&input){input.value=value;input.readOnly=true;if(name==='ownerId')$('owner-field').hidden=true}}
+const publicScope={ownerId:query.get('owner')||'',year:Number(query.get('year')),classId:query.get('class')||''};
+const validPublicScope=()=>Boolean(publicScope.ownerId&&publicScope.classId&&Number.isInteger(publicScope.year)&&publicScope.year>=2000&&publicScope.year<=2100);
 
 async function api(path,{method='GET',data,credential=token}={}){
  let response;
@@ -24,13 +25,15 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 $('login').addEventListener('submit',async event=>{
  event.preventDefault();const form=event.currentTarget;clear();
- try{const data=new FormData(form),code=String(data.get('code')),result=await api('/api/v2/login',{method:'POST',credential:null,data:{ownerId:data.get('ownerId'),year:Number(data.get('year')),classId:data.get('classId'),id:data.get('id'),code}});token=result.token;draftCredential=code;void purgeExpiredDrafts();form.elements.code.value='';form.hidden=true;$('surveys').hidden=false;$('logout').hidden=false;status(requestedMonth?`${requestedMonth}월 설문을 불러오고 있습니다.`:'로그인했습니다. 월을 선택하세요.');if(requestedMonth)await openMonth(requestedMonth)}
+ try{if(!validPublicScope())throw Error('설문 접속 주소가 올바르지 않습니다. 선생님이 안내한 QR 또는 주소를 다시 확인하세요.');const data=new FormData(form),code=String(data.get('code')),result=await api('/api/v2/login',{method:'POST',credential:null,data:{...publicScope,number:Number(data.get('number')),code}});token=result.token;draftCredential=code;void purgeExpiredDrafts();form.elements.code.value='';form.hidden=true;$('surveys').hidden=false;$('logout').hidden=false;status(requestedMonth?`${requestedMonth}월 설문을 불러오고 있습니다.`:'로그인했습니다. 월을 선택하세요.');if(requestedMonth)await openMonth(requestedMonth)}
  catch(error){status(`로그인 실패: ${error.message}`)}
 });
 
 $('logout').addEventListener('click',async()=>{try{await api('/api/v2/student/logout',{method:'POST'});clear();status('로그아웃했습니다.')}catch(error){clear();status(`기기 화면은 닫았지만 서버 로그아웃 확인에 실패했습니다: ${error.message}`)}});
 
 for(const month of months){const button=document.createElement('button');button.type='button';button.textContent=`${month}월`;button.addEventListener('click',()=>openMonth(month));$('months').append(button)}
+
+if(!validPublicScope()){const submit=$('login').querySelector('button[type=submit]');submit.disabled=true;status('설문 접속 주소가 올바르지 않습니다. 선생님이 안내한 QR 또는 주소를 사용하세요.');}
 
 async function openMonth(month){
  const request=++monthRequest;await flushPending();activeDraftFlush=null;surveyObserver?.disconnect();surveyObserver=null;$('form').replaceChildren();status(`${month}월 설문을 불러오고 있습니다.`);
