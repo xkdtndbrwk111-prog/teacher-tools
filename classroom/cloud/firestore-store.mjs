@@ -29,6 +29,20 @@ export class FirestoreSurveyStore{
  async query(query){const snap=await query.get();this.metrics.queries++;this.countRead(Math.max(1,snap.size));return snap}
  async register({ownerId,classId,year,students}){if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(s=>s?.id)).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});await this.assertClassOwner(ownerId,classId,{claim:true});const batch=this.db.batch(),codes=[];for(const item of students){const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름'),code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex'),ref=this.studentRef({ownerId,classId,year},id);batch.create(ref,{studentId:id,displayName:name,status:'ACTIVE',codeSalt:salt,codeHash:digest(code,salt),codeVersion:1,updatedAt:now()});codes.push({id,name,code})}try{await batch.commit()}catch(error){if(String(error.code||error.message).includes('ALREADY_EXISTS')||String(error.message).includes('already exists'))throw Object.assign(Error('이미 등록된 학생입니다.'),{status:409});throw error}this.countWrite('managementWrites',students.length);return {codes}}
  async reissue(scope,id){const ref=this.studentRef(scope,id),code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');await this.db.runTransaction(async tx=>{const snap=await tx.get(ref);this.countRead();if(!snap.exists)throw Object.assign(Error('학생을 찾을 수 없습니다.'),{status:404});tx.update(ref,{codeSalt:salt,codeHash:digest(code,salt),codeVersion:Number(snap.data().codeVersion||0)+1,updatedAt:now()})});this.countWrite('managementWrites');return {code}}
+ // Rotate the exact active roster in one transaction. Never modify responses or IDs.
+ async reissueAll(scope,ids){
+  if(!Array.isArray(ids)||!ids.length||ids.length>30||new Set(ids).size!==ids.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});
+  ids=ids.map(id=>segment(id,'학생'));const wanted=new Set(ids);
+  if(wanted.size!==ids.length)throw Object.assign(Error('중복된 학생 ID입니다.'),{status:400});
+  const collection=this.root(scope.ownerId,scope.classId,scope.year).collection('students');
+  const codes=ids.map(id=>{const code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');return{id,code,salt,hash:digest(code,salt)}});
+  await this.db.runTransaction(async tx=>{const snap=await tx.get(collection);this.countRead(Math.max(1,snap.size));
+   const active=snap.docs.filter(doc=>doc.data().status==='ACTIVE');
+   if(active.length!==wanted.size||active.some(doc=>!wanted.has(doc.id)))throw Object.assign(Error('현재 온라인 학급 명단과 일치하지 않습니다. 명단을 먼저 연결하세요.'),{status:409});
+   const byId=new Map(active.map(doc=>[doc.id,doc]));
+   for(const item of codes){const doc=byId.get(item.id);tx.update(doc.ref,{codeSalt:item.salt,codeHash:item.hash,codeVersion:Number(doc.data().codeVersion||0)+1,updatedAt:now()})}
+  });this.countWrite('managementWrites',codes.length);return{codes:codes.map(({id,code})=>({id,code}))};
+ }
  async openSurvey(scope,month,open){const ref=this.surveyRef(scope,month);await ref.set({month:validMonth(month),surveyVersion:'V0.2',open:Boolean(open),updatedAt:now()},{merge:true});this.countWrite('managementWrites');return {ok:true}}
  async student(scope){const snap=await this.read(this.studentRef(scope));return snap.exists?{...snap.data(),ref:snap.ref}:null}
  async allStudents(scope){const snap=await this.query(this.root(scope.ownerId,scope.classId,scope.year).collection('students').orderBy('studentId'));return snap.docs.map(doc=>doc.data())}

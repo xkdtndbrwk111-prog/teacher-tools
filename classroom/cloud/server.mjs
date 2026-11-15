@@ -49,6 +49,7 @@ const server=createServer(async(req,res)=>{
    if(path==='/api/v2/teacher/sync'&&method==='POST'){const data=await body(req),teacher=await teacherAuth(req);return out(res,200,await store.syncRoster({...data,ownerId:teacher.uid}))}
    const input=method==='GET'?Object.fromEntries(url.searchParams):await body(req),{scope}=await teacherScope(req,input);
    if(path==='/api/v2/teacher/reissue'&&method==='POST')return out(res,200,await store.reissue(scope,input.id));
+   if(path==='/api/v2/teacher/reissue-all'&&method==='POST')return out(res,200,await store.reissueAll(scope,input.ids));
    if(path==='/api/v2/teacher/open'&&method==='POST')return out(res,200,await store.openSurvey(scope,Number(input.month),input.open));
    if(path==='/api/v2/teacher/status'&&method==='GET')return out(res,200,await store.status(scope,Number(input.month)));
    if(path==='/api/v2/teacher/analysis'&&method==='GET')return out(res,200,await store.analysis(scope));
