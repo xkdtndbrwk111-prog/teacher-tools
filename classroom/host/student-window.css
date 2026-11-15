@@ -2,3 +2,15 @@
 .tt-student-only #teacherScreen{display:none!important}
 .tt-student-only #backToTeacher,.tt-student-only #simpleBackToTeacher,.tt-student-only #pePitchBack{display:none!important}
 .tt-student-only #pePitchReveal.is-open{z-index:100005}
+.tt-student-only .tt-life-qr-public{position:fixed;inset:0;z-index:100004;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:clamp(24px,5vh,64px);overflow:auto;text-align:center;background:radial-gradient(circle at 50% 15%,#263f6f 0,#13223d 48%,#091326 100%);color:#fff;font-family:Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+.tt-life-qr-public .tt-life-qr-eyebrow{margin:0 0 10px;color:#9ed9ff;font-size:clamp(15px,1.6vw,24px);font-weight:800;letter-spacing:.14em}
+.tt-life-qr-public h1{margin:0;font-size:clamp(38px,5vw,76px);line-height:1.08}
+.tt-life-qr-public .tt-life-qr-class{margin:14px 0 24px;color:#dbeafe;font-size:clamp(20px,2.3vw,34px);font-weight:700}
+.tt-life-qr-public .tt-life-qr-code{display:grid;place-items:center;width:min(43vh,420px);height:min(43vh,420px);min-width:260px;min-height:260px;padding:14px;border-radius:28px;background:#fff;box-shadow:0 24px 70px #0008;color:#172033;font-weight:800}
+.tt-life-qr-public .tt-life-qr-code svg{display:block;width:100%;height:100%;image-rendering:pixelated}
+.tt-life-qr-public .tt-life-qr-state{margin-top:22px;padding:8px 18px;border-radius:999px;background:#22c55e;color:#082f1d;font-size:clamp(18px,2vw,30px)}
+.tt-life-qr-public .tt-life-qr-state.is-closed{background:#fbbf24;color:#422006}
+.tt-life-qr-public .tt-life-qr-guide{margin:14px 0 8px;font-size:clamp(18px,2vw,30px);font-weight:700}
+.tt-life-qr-public .tt-life-qr-address{margin:0;color:#bfdbfe;font-size:clamp(13px,1.25vw,20px);overflow-wrap:anywhere}
+.tt-life-qr-public .tt-life-qr-local{margin:10px 0 0;color:#fcd34d;font-size:clamp(13px,1.15vw,18px)}
+.tt-life-qr-public .tt-life-qr-state:not(:first-child){box-shadow:0 0 0 1px #ffffff22}

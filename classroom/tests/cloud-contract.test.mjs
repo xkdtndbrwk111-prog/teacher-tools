@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {estimateAnnualUsage,responseDocument,responsePath} from '../survey/cloud-contract.mjs';
+
+test('Firestore response path isolates teacher, class, year, month and student',()=>{const base={teacherUid:'teacher-a',classId:'class-a',year:2026,month:5,studentId:'student-a'},paths=[responsePath(base),responsePath({...base,teacherUid:'teacher-b'}),responsePath({...base,classId:'class-b'}),responsePath({...base,year:2025}),responsePath({...base,month:6}),responsePath({...base,studentId:'student-b'})];assert.equal(new Set(paths).size,paths.length);assert.throws(()=>responsePath({...base,teacherUid:'teacher/a'}))});
+
+test('one response document contains all answer keys without mutating input',()=>{const answers={1:'선택',3:'가상 서술',4:[{studentId:'student-b',behavior:'협력'}]},before=structuredClone(answers),document=responseDocument({surveyVersion:'V0.2',answers,submissionId:'submit-1',submittedAt:'SERVER_TIMESTAMP'});assert.deepEqual(answers,before);assert.deepEqual(document.answers,answers);assert.equal(document.schemaVersion,1)});
+
+test('10/200 and 100/2000 annual estimates stay far below daily free quotas under stated assumptions',()=>{assert.deepEqual(estimateAnnualUsage({teachers:10,students:200}),{submissions:1800,responseWrites:1800,observationWrites:1000,estimatedReads:9000,cloudRunRequests:10800,averageStudentsPerTeacher:20});assert.deepEqual(estimateAnnualUsage({teachers:100,students:2000}),{submissions:18000,responseWrites:18000,observationWrites:10000,estimatedReads:90000,cloudRunRequests:108000,averageStudentsPerTeacher:20})});

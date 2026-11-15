@@ -126,13 +126,14 @@
     if(!seatingApproved())throw Error('먼저 현재 자리배치를 확정해 주세요.');
     return {kind:'seating',payload:buildPlaybackInput()};
   }
-  function show(){
-    let data;try{data=snapshot()}catch(error){alert(error.message);return}
+  function show(provided){
+    let data;try{data=provided||snapshot()}catch(error){alert(error.message);return false}
+    if(!data||!['seating','pe','life-qr'].includes(data.kind)){alert('학생 공개 화면 자료가 올바르지 않습니다.');return false}
     const session=randomSession();
     // Open synchronously during the button click to avoid popup-blocking.
     const url=new URL(location.href);url.search='?view=student';url.hash='#'+session;
     const popup=window.open(url.href,'_blank','popup=yes,width=1100,height=720,left=60,top=60');
-    if(!popup){alert('학생 화면이 차단됐습니다. 이 사이트에서 팝업을 허용해 주세요.');return}
+    if(!popup){alert('학생 화면이 차단됐습니다. 이 사이트에서 팝업을 허용해 주세요.');return false}
     try{popup.opener=null}catch{}
     const channel=new BroadcastChannel('tt-public-'+session);
     const key={popup,channel};pending.set(session,key);
@@ -149,6 +150,7 @@
       }
     };
     void place(popup);
+    return true;
   }
   // A direct gesture is needed for the first Chrome window-management permission prompt.
   const menu=document.getElementById('tt-hud-more-menu');
@@ -185,6 +187,7 @@
   refreshPresentationButton();
   window.__TT_STUDENT_POPUP={
     chooseTarget,requestPermission:()=>getScreens(true),
+    showPublic(data){return show(data)},
     setAutoTarget(v){autoTarget=Boolean(v);try{localStorage.setItem('tt.student-window.auto-target',autoTarget?'1':'0')}catch{}announce(autoTarget?'학생 창 자동 모니터 배치 켜짐':'학생 창 자동 모니터 배치 꺼짐')},
     getAutoTarget:placementEnabled,getStatus:()=>lastNotice,
     checkDashboard:getDashboard

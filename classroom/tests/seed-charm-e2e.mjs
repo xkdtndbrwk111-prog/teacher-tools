@@ -1,0 +1,10 @@
+// TEST only. One new year/class scope; refuses to overwrite a registered roster.
+const base='http://127.0.0.1:4273',secret=process.env.SURVEY_TEACHER_SECRET;
+const classId=process.argv[2],ids=process.argv.slice(3),year=2025;
+if(!secret||!classId||ids.length!==25||new Set(ids).size!==25)throw Error('TEST secret, class ID, and 25 existing synthetic IDs required');
+async function api(path,{method='GET',token=secret,data}={}){const r=await fetch(base+path,{method,headers:{Authorization:`Bearer ${token}`,...(data?{'Content-Type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});const body=await r.json();if(!r.ok)throw Error(`${path}: ${r.status} ${body.error}`);return body}
+const students=ids.map((id,i)=>({id,name:`가상학생 ${String(i+1).padStart(2,'0')}`}));
+const {codes}=await api('/api/v2/teacher/register',{method:'POST',data:{year,classId,students}});
+for(const month of [3,5])await api('/api/v2/teacher/open',{method:'POST',data:{year,classId,month,open:true}});
+for(let i=1;i<=10;i++){const {token}=await api('/api/v2/login',{method:'POST',token:'',data:{year,classId,id:ids[i],code:codes[i].code}});for(const month of [3,5]){const survey=await api(`/api/v2/student/survey?month=${month}`,{token});const behavior=n=>survey.questions[n-1].body.match(/^- (.+)$/m)[1];const answers={4:[{studentId:ids[0],behavior:behavior(4)}],5:[{studentId:ids[i%2?0:11],behavior:behavior(5)}]};if(month===3)answers[7]={kind:'selected',choices:[{studentId:ids[i%3?0:11]}]};await api('/api/v2/student/submit',{method:'POST',token,data:{month,answers}})}}
+const result=await api(`/api/v2/teacher/analysis?year=${year}&classId=${encodeURIComponent(classId)}`);console.log(JSON.stringify({scope:{year,classId},students:students.length,responses:result.responses.length,byMonth:result.monthly.filter(m=>m.submitted).map(m=>({month:m.month,submitted:m.submitted,cooperation:m.categories.cooperation.validRespondents,care:m.categories.care.validRespondents,popularity:m.categories.popularity?.validRespondents??null}))}));

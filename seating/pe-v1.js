@@ -53,6 +53,14 @@ window.__TT_PE_TRAITS={
     delete peState.traitSettings.rerankPending;
     persistPE();renderStudentInspector();if(mode==="pe")renderPE();
     return changed;
+  },
+  async applyApprovedCharm({classId,scale,changes}){
+    if(classId!==window.__TT_STAGE031_CLASS.activeId||scale!==traitScale()||traitSettings().modes.charm!=='manual'||!Array.isArray(changes)||!changes.length)throw Error('학급·단계 또는 수동 설정이 변경되었습니다.');
+    const ids=new Set(),levels=traitLevels(),before=structuredClone(peState),next=structuredClone(peState),audit=[];
+    for(const item of changes){const student=classState.students.find(s=>String(s.id)===item.id);if(!student||ids.has(item.id)||!levels.includes(item.value))throw Error('학생 또는 단계가 올바르지 않습니다.');ids.add(item.id);const current=peState[item.id]?.traits?.charm??null;if(current!==item.expected)throw Error('기존 값이 변경되었습니다. 다시 계산하세요.');next[item.id]??={traits:{},fixedTeam:0};next[item.id].traits??={};next[item.id].traits.charm=item.value;audit.push({studentId:item.id,before:current,after:item.value})}
+    next.lifeCharmHistory=Array.isArray(next.lifeCharmHistory)?next.lifeCharmHistory:[];next.lifeCharmHistory.push({classId,scale,at:new Date().toISOString(),changes:audit});
+    if(JSON.stringify(peState)!==JSON.stringify(before))throw Error('능력치가 변경되었습니다. 다시 시도하세요.');
+    await window.__TT_STORE.commit({put:new Map([[PE_KEY,JSON.stringify(next)]])});peState=next;renderStudentInspector();if(mode==='pe')renderPE();return {ok:true,changes:audit};
   }
 };
 function loadPEState(){
@@ -162,10 +170,19 @@ function injectStyles(){
 }
 
 function injectModeUI(){
-  const sw=document.createElement("div");sw.className="prototype-mode-switch";sw.innerHTML=`<button id="modeClassroom" class="on" type="button">🏫 학급 자리배치</button><button id="modePE" type="button">⚽ 체육 모둠</button>`;
-  document.querySelector(".studio-topbar").insertBefore(sw,document.querySelector(".top-actions"));
-  // Product title is rendered without the former prototype badge.
-  $("modeClassroom").onclick=()=>setMode("classroom");$("modePE").onclick=()=>setMode("pe");
+  // The two seating views share one top-level tab. Preserve the original mode IDs.
+  const sw=document.createElement("div");sw.className="prototype-mode-switch";
+  sw.setAttribute("role","group");sw.setAttribute("aria-label","교실매니저 메뉴");
+  sw.innerHTML=`<button id="modeClassroom" class="on" type="button" aria-pressed="true">🪑 자리배치</button>`;
+  const header=document.querySelector(".studio-topbar");
+  header.insertBefore(sw,document.querySelector(".top-actions"));
+  const sub=document.createElement("nav");sub.className="tt-seating-submodes";
+  sub.setAttribute("aria-label","자리배치 세부 메뉴");
+  sub.innerHTML=`<button id="tt-seat-subtab" class="on" type="button" aria-pressed="true">🏫 학급 자리</button><button id="modePE" type="button" aria-pressed="false">⚽ 체육 모둠</button>`;
+  header.after(sub);
+  $("modeClassroom").onclick=()=>setMode("classroom");
+  $("tt-seat-subtab").onclick=()=>setMode("classroom");
+  $("modePE").onclick=()=>setMode("pe");
 
   const toolbar=document.createElement("section");toolbar.className="pe-toolbar";toolbar.innerHTML=`<div class="pe-team-count"><strong>팀 수</strong>${[2,3,4,5,6].map(n=>`<button type="button" data-team-count="${n}">${n}팀</button>`).join("")}</div><div id="peFixedBanner" class="pe-fixed-banner"><span id="peFixedBannerText"></span><button id="peFixedDone" type="button">고정 지정 끝내기</button></div><div class="pe-surface-control pe-pitch-toolbar-choice" role="group" aria-label="체육 모둠 운동장 선택"><span>운동장</span><div class="pe-surface-buttons"><button type="button" data-pe-surface="grass" aria-pressed="true">🌿 잔디</button><button type="button" data-pe-surface="dirt" aria-pressed="false">🟤 흙</button></div></div><label class="pe-manager-lines"><input type="checkbox" id="peManagerLines" checked> 축구장 라인</label><div class="pe-toolbar-note">하단 학생을 팀으로 드래그하면 고정 · 배치 학생 클릭/우클릭으로 고정 관리</div>`;
   document.querySelector(".workspace-toolbar").after(toolbar);
@@ -177,7 +194,10 @@ function injectModeUI(){
 
 function setMode(next){
   mode=next;document.body.classList.toggle("pe-mode",mode==="pe");
-  $("modeClassroom").classList.toggle("on",mode==="classroom");$("modePE").classList.toggle("on",mode==="pe");
+  const parent=$("modeClassroom"),seat=$("tt-seat-subtab"),pe=$("modePE");
+  parent.classList.add("on");parent.setAttribute("aria-pressed","true");
+  seat.classList.toggle("on",mode==="classroom");seat.setAttribute("aria-pressed",String(mode==="classroom"));
+  pe.classList.toggle("on",mode==="pe");pe.setAttribute("aria-pressed",String(mode==="pe"));
   if(mode==="pe"&&["groups","rules","teacher","history"].includes(document.querySelector(".dock-tab.on")?.dataset.tab||""))activateDock("student");
   updateModeChrome();renderStudentInspector();renderPE();
 }
