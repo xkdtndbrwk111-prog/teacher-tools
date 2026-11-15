@@ -34,8 +34,8 @@ spec:
                   key: latest
                   name: class-life-student-session-secret
             - name: LOGIN_LIMIT
-              value: "6"
+              value: "4"
             - name: LOGIN_IP_LIMIT
-              value: "60"
+              value: "24"
             - name: LOGIN_WINDOW_MS
-              value: "60000"
+              value: "900000"

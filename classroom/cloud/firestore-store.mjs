@@ -1,4 +1,4 @@
-import {randomBytes,scrypt,scryptSync,createHash,timingSafeEqual} from 'node:crypto';
+import {randomBytes,randomInt,scrypt,scryptSync,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {MONTHS,parseQuestions,validatePeerChoices} from '../survey/core.mjs';
 import {readFileSync} from 'node:fs';
@@ -7,15 +7,19 @@ const questions=parseQuestions(readFileSync(new URL('../survey/v0.2.md',import.m
 const segment=(value,name)=>{if(typeof value!=='string'||!value||value.length>128||value.includes('/'))throw Object.assign(Error(`${name} 범위 오류`),{status:400});return value};
 const validYear=year=>{year=Number(year);if(!Number.isInteger(year)||year<2000||year>2100)throw Object.assign(Error('학년도 범위 오류'),{status:400});return year};
 const validMonth=month=>{month=Number(month);if(!MONTHS.includes(month))throw Object.assign(Error('월 범위 오류'),{status:400});return month};
-const digest=(code,salt)=>scryptSync(code,salt,32,{N:16384,r:8,p:1,maxmem:64*1024*1024}).toString('hex');
+const legacyDigest=(code,salt)=>scryptSync(code,salt,32,{N:16384,r:8,p:1,maxmem:64*1024*1024}).toString('hex');
 const digestAsync=(code,salt)=>new Promise((resolve,reject)=>scrypt(code,salt,32,{N:16384,r:8,p:1,maxmem:64*1024*1024},(error,value)=>error?reject(error):resolve(value)));
+const protectedCode=(code,pepper)=>createHmac('sha256',pepper).update('teacher-tools/class-life/student-code/v2\0').update(code).digest('hex');
+export const generateStudentCode=()=>String(randomInt(0,1_000_000)).padStart(6,'0');
+const validStudentNumber=value=>{const number=Number(value);if(!Number.isInteger(number)||number<1||number>999)throw Object.assign(Error('학생 번호 범위 오류'),{status:400});return number};
 const canonical=value=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
 const answerHash=answers=>createHash('sha256').update(canonical(answers)).digest('hex');
 const now=()=>FieldValue.serverTimestamp();
 const clientValidation=operation=>{try{return operation()}catch(error){error.status=error.status||400;throw error}};
 
 export class FirestoreSurveyStore{
- constructor(db){this.db=db;this.metrics={reads:0,writes:0,deletes:0,queries:0,responseWrites:0,authWrites:0,managementWrites:0}}
+ constructor(db,{codePepper=''}={}){if(typeof codePepper!=='string'||codePepper.length<16)throw Error('STUDENT_SESSION_SECRET is required for student code protection');this.db=db;this.codePepper=codePepper;this.metrics={reads:0,writes:0,deletes:0,queries:0,responseWrites:0,authWrites:0,managementWrites:0}}
+ newCode(){const code=generateStudentCode(),salt=randomBytes(16).toString('hex');return {code,salt,hash:legacyDigest(protectedCode(code,this.codePepper),salt),version:2}}
  resetMetrics(){for(const key of Object.keys(this.metrics))this.metrics[key]=0}
  snapshotMetrics(){return structuredClone(this.metrics)}
  countRead(n=1){this.metrics.reads+=n}
@@ -27,38 +31,39 @@ export class FirestoreSurveyStore{
  responseRef(scope,studentId=scope.studentId,month=scope.month){return this.surveyRef(scope,month).collection('responses').doc(segment(studentId,'학생'))}
  async read(ref){const snap=await ref.get();this.countRead();return snap}
  async query(query){const snap=await query.get();this.metrics.queries++;this.countRead(Math.max(1,snap.size));return snap}
- async register({ownerId,classId,year,students}){if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(s=>s?.id)).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});await this.assertClassOwner(ownerId,classId,{claim:true});const batch=this.db.batch(),codes=[];for(const item of students){const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름'),code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex'),ref=this.studentRef({ownerId,classId,year},id);batch.create(ref,{studentId:id,displayName:name,status:'ACTIVE',codeSalt:salt,codeHash:digest(code,salt),codeVersion:1,updatedAt:now()});codes.push({id,name,code})}try{await batch.commit()}catch(error){if(String(error.code||error.message).includes('ALREADY_EXISTS')||String(error.message).includes('already exists'))throw Object.assign(Error('이미 등록된 학생입니다.'),{status:409});throw error}this.countWrite('managementWrites',students.length);return {codes}}
- async reissue(scope,id){const ref=this.studentRef(scope,id),code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');await this.db.runTransaction(async tx=>{const snap=await tx.get(ref);this.countRead();if(!snap.exists)throw Object.assign(Error('학생을 찾을 수 없습니다.'),{status:404});tx.update(ref,{codeSalt:salt,codeHash:digest(code,salt),codeVersion:Number(snap.data().codeVersion||0)+1,updatedAt:now()})});this.countWrite('managementWrites');return {code}}
+ async register({ownerId,classId,year,students}){if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(s=>s?.id)).size!==students.length||new Set(students.map(s=>Number(s?.number))).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});await this.assertClassOwner(ownerId,classId,{claim:true});const batch=this.db.batch(),codes=[];for(const item of students){const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름'),number=validStudentNumber(item.number),issued=this.newCode(),ref=this.studentRef({ownerId,classId,year},id);batch.create(ref,{studentId:id,studentNumber:number,displayName:name,status:'ACTIVE',codeSalt:issued.salt,codeHash:issued.hash,codeHashVersion:issued.version,codeVersion:1,updatedAt:now()});codes.push({id,name,number,code:issued.code})}try{await batch.commit()}catch(error){if(String(error.code||error.message).includes('ALREADY_EXISTS')||String(error.message).includes('already exists'))throw Object.assign(Error('이미 등록된 학생입니다.'),{status:409});throw error}this.countWrite('managementWrites',students.length);return {codes}}
+ async reissue(scope,id){const ref=this.studentRef(scope,id),issued=this.newCode();await this.db.runTransaction(async tx=>{const snap=await tx.get(ref);this.countRead();if(!snap.exists)throw Object.assign(Error('학생을 찾을 수 없습니다.'),{status:404});tx.update(ref,{codeSalt:issued.salt,codeHash:issued.hash,codeHashVersion:issued.version,codeVersion:Number(snap.data().codeVersion||0)+1,updatedAt:now()})});this.countWrite('managementWrites');return {code:issued.code}}
  // Rotate the exact active roster in one transaction. Never modify responses or IDs.
  async reissueAll(scope,ids){
   if(!Array.isArray(ids)||!ids.length||ids.length>30||new Set(ids).size!==ids.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});
   ids=ids.map(id=>segment(id,'학생'));const wanted=new Set(ids);
   if(wanted.size!==ids.length)throw Object.assign(Error('중복된 학생 ID입니다.'),{status:400});
   const collection=this.root(scope.ownerId,scope.classId,scope.year).collection('students');
-  const codes=ids.map(id=>{const code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');return{id,code,salt,hash:digest(code,salt)}});
+  const codes=ids.map(id=>({id,...this.newCode()}));
   await this.db.runTransaction(async tx=>{const snap=await tx.get(collection);this.countRead(Math.max(1,snap.size));
    const active=snap.docs.filter(doc=>doc.data().status==='ACTIVE');
    if(active.length!==wanted.size||active.some(doc=>!wanted.has(doc.id)))throw Object.assign(Error('현재 온라인 학급 명단과 일치하지 않습니다. 명단을 먼저 연결하세요.'),{status:409});
    const byId=new Map(active.map(doc=>[doc.id,doc]));
-   for(const item of codes){const doc=byId.get(item.id);tx.update(doc.ref,{codeSalt:item.salt,codeHash:item.hash,codeVersion:Number(doc.data().codeVersion||0)+1,updatedAt:now()})}
+   for(const item of codes){const doc=byId.get(item.id);tx.update(doc.ref,{codeSalt:item.salt,codeHash:item.hash,codeHashVersion:item.version,codeVersion:Number(doc.data().codeVersion||0)+1,updatedAt:now()})}
   });this.countWrite('managementWrites',codes.length);return{codes:codes.map(({id,code})=>({id,code}))};
  }
  async openSurvey(scope,month,open){const ref=this.surveyRef(scope,month);await ref.set({month:validMonth(month),surveyVersion:'V0.2',open:Boolean(open),updatedAt:now()},{merge:true});this.countWrite('managementWrites');return {ok:true}}
  async student(scope){const snap=await this.read(this.studentRef(scope));return snap.exists?{...snap.data(),ref:snap.ref}:null}
+ async studentByNumber(scope,number){number=validStudentNumber(number);const rows=await this.query(this.root(scope.ownerId,scope.classId,scope.year).collection('students').where('studentNumber','==',number).limit(2));if(rows.size!==1)return null;return {...rows.docs[0].data(),ref:rows.docs[0].ref}}
  async allStudents(scope){const snap=await this.query(this.root(scope.ownerId,scope.classId,scope.year).collection('students').orderBy('studentId'));return snap.docs.map(doc=>doc.data())}
  async students(scope){return (await this.allStudents(scope)).filter(student=>student.status==='ACTIVE')}
  async syncRoster({ownerId,classId,year,students}){
-  if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(student=>student?.id)).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});
+  if(!Array.isArray(students)||!students.length||students.length>30||new Set(students.map(student=>student?.id)).size!==students.length||new Set(students.map(student=>Number(student?.number))).size!==students.length)throw Object.assign(Error('고유 학생 명단 1~30명이 필요합니다.'),{status:400});
   await this.assertClassOwner(ownerId,classId,{claim:true});
   const scope={ownerId,classId,year},existing=await this.allStudents(scope),byId=new Map(existing.map(student=>[student.studentId,student])),wanted=new Set(),batch=this.db.batch(),codes=[];let writes=0;
   for(const item of students){
-   const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름');wanted.add(id);const current=byId.get(id),ref=this.studentRef(scope,id);
-   if(!current){const code=randomBytes(18).toString('base64url'),salt=randomBytes(16).toString('hex');batch.create(ref,{studentId:id,displayName:name,status:'ACTIVE',codeSalt:salt,codeHash:digest(code,salt),codeVersion:1,updatedAt:now()});codes.push({id,name,code});writes++}
-   else if(current.displayName!==name||current.status!=='ACTIVE'){batch.set(ref,{displayName:name,status:'ACTIVE',updatedAt:now()},{merge:true});writes++}
+   const id=segment(item.id,'학생'),name=segment(item.name,'학생 이름'),number=validStudentNumber(item.number);wanted.add(id);const current=byId.get(id),ref=this.studentRef(scope,id);
+   if(!current){const issued=this.newCode();batch.create(ref,{studentId:id,studentNumber:number,displayName:name,status:'ACTIVE',codeSalt:issued.salt,codeHash:issued.hash,codeHashVersion:issued.version,codeVersion:1,updatedAt:now()});codes.push({id,name,number,code:issued.code});writes++}
+   else if(current.displayName!==name||current.studentNumber!==number||current.status!=='ACTIVE'){batch.set(ref,{displayName:name,studentNumber:number,status:'ACTIVE',updatedAt:now()},{merge:true});writes++}
   }
   for(const current of existing)if(current.status==='ACTIVE'&&!wanted.has(current.studentId)){batch.set(this.studentRef(scope,current.studentId),{status:'SUSPENDED',updatedAt:now()},{merge:true});writes++}
   if(writes){await batch.commit();this.countWrite('managementWrites',writes)}
-  return {codes,students:students.map(student=>({id:String(student.id),name:String(student.name)})),unchanged:writes===0};
+  return {codes,students:students.map(student=>({id:String(student.id),name:String(student.name),number:validStudentNumber(student.number)})),unchanged:writes===0};
  }
  async selectedStudents(scope,ids){const unique=[...new Set(ids)];if(!unique.length)return [];const snapshots=await this.db.getAll(...unique.map(id=>this.studentRef(scope,id)));this.countRead(snapshots.length);return snapshots.filter(snapshot=>snapshot.exists).map(snapshot=>snapshot.data())}
  async survey(scope,month){const snap=await this.read(this.surveyRef(scope,month));return snap.exists?snap.data():null}
@@ -67,7 +72,7 @@ export class FirestoreSurveyStore{
  async status(scope,month){const [students,survey,responses]=await Promise.all([this.students(scope),this.survey(scope,month),this.query(this.surveyRef(scope,month).collection('responses').orderBy('studentId'))]);return {students:students.map(s=>({id:s.studentId,name:s.displayName})),responses:responses.docs.map(doc=>{const value=doc.data();return {student_id:value.studentId,body:value.answers,submitted_at:value.submittedAt?.toDate?.().toISOString?.()||null}}),surveys:survey?[{month:survey.month,version:survey.surveyVersion,open:survey.open}]:[]}}
  async checkRateLimit(key,{limit=6,windowMs=60000}={}){const ref=this.db.collection('_authLimits').doc(createHash('sha256').update(key).digest('hex')),snap=await this.read(ref),data=snap.data();if(data&&Number(data.until)>Date.now()&&Number(data.count)>=limit)throw Object.assign(Error('잠시 후 다시 시도해 주세요.'),{status:429});return ref}
  async failedLogin(ref,{windowMs=60000}={}){await this.db.runTransaction(async tx=>{const snap=await tx.get(ref);this.countRead();const data=snap.data(),time=Date.now(),fresh=!data||Number(data.until)<=time;tx.set(ref,{count:fresh?1:Number(data.count||0)+1,until:fresh?time+windowMs:Number(data.until),updatedAt:now()})});this.countWrite('authWrites')}
- async verifyCode(student,code){const validInput=typeof code==='string'&&code.length>0&&code.length<=256,input=validInput?code:'invalid-code',salt=student?.codeSalt||'00000000000000000000000000000000',expected=student?.codeHash?Buffer.from(student.codeHash,'hex'):Buffer.alloc(32),actual=await digestAsync(input,salt);return Boolean(validInput&&student&&actual.length===expected.length&&timingSafeEqual(actual,expected))}
+ async verifyCode(student,code){const modern=Number(student?.codeHashVersion)===2,validInput=typeof code==='string'&&code.length>0&&code.length<=256&&(!modern||/^\d{6}$/.test(code)),input=validInput?code:'invalid-code',salt=student?.codeSalt||'00000000000000000000000000000000',expected=student?.codeHash?Buffer.from(student.codeHash,'hex'):Buffer.alloc(32),actual=await digestAsync(modern?protectedCode(input,this.codePepper):input,salt);return Boolean(validInput&&student&&actual.length===expected.length&&timingSafeEqual(actual,expected))}
  async validateSession(scope){const student=await this.student(scope);if(!student||student.status!=='ACTIVE'||Number(student.codeVersion)!==Number(scope.codeVersion))throw Object.assign(Error('학생 세션이 무효화되었습니다.'),{status:401});return student}
  async studentSurvey(scope,month){const [student,survey,response,roster]=await Promise.all([this.validateSession(scope),this.survey(scope,month),this.response(scope,scope.studentId,month),this.students(scope)]);return {ownerId:scope.ownerId,year:scope.year,classId:scope.classId,studentId:student.studentId,month:validMonth(month),open:Boolean(survey?.open),version:survey?.surveyVersion??null,roster:roster.filter(row=>row.studentId!==scope.studentId).map(row=>({id:row.studentId,name:row.displayName})),questions:questions[month],submitted:Boolean(response)}}
  async submit(scope,{month,answers,submissionId}){month=validMonth(month);if(!answers||typeof answers!=='object'||Array.isArray(answers)||Object.keys(answers).some(key=>!/^([1-8])$/.test(key)))throw Object.assign(Error('응답 형식 오류'),{status:400});const peerIds=[];for(const number of [4,5,...([3,9].includes(month)?[6,7]:[])]){const value=answers[number],choices=number===4||number===5?value:value?.kind==='selected'?value.choices:[];if(Array.isArray(choices))for(const choice of choices)if(typeof choice?.studentId==='string')peerIds.push(choice.studentId)}const [student,survey,selected]=await Promise.all([this.validateSession(scope),this.survey(scope,month),this.selectedStudents(scope,peerIds)]);if(!survey?.open)throw Object.assign(Error('설문이 열리지 않았습니다.'),{status:409});const rosterRows=selected.map(row=>({id:row.studentId,name:row.displayName}));for(let n=1;n<=8;n++){const value=answers[n],options=[...questions[month][n-1].body.matchAll(/^- (.+)$/gm)].map(match=>match[1]);if(value==null)continue;if(n===4||n===5)clientValidation(()=>validatePeerChoices(value,student.studentId,rosterRows,options));else if([3,9].includes(month)&&[6,7].includes(n)){if(!value||!['selected','unknown','declined'].includes(value.kind))throw Object.assign(Error('친구 응답 오류'),{status:400});if(value.kind==='selected')clientValidation(()=>validatePeerChoices(value.choices,student.studentId,rosterRows))}else if(n===3||n===8){if(typeof value!=='string'||value.length>2000)throw Object.assign(Error('서술형 응답 오류'),{status:400})}else if(typeof value!=='string'||!options.includes(value))throw Object.assign(Error('선택형 응답 오류'),{status:400})}

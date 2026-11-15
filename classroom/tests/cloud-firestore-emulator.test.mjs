@@ -20,7 +20,7 @@ async function request(path,{teacher,student,method='GET',data}={}){
 async function ready(){for(let i=0;i<100;i++){try{const response=await fetch(`${base}/healthz`);if(response.ok)return}catch{}await new Promise(resolve=>setTimeout(resolve,100))}throw Error('cloud test server did not start')}
 const option=(month,n)=>questions[month][n-1].body.match(/^- (.+)$/m)[1];
 const scope=(teacher,index)=>({ownerId:teacher,classId:`${teacher}-class-${String(index).padStart(2,'0')}`,year:2026});
-const studentsFor=(teacher)=>Array.from({length:20},(_,index)=>({id:`${teacher}-student-${String(index+1).padStart(2,'0')}`,name:`${teacher} 가상학생 ${String(index+1).padStart(2,'0')}`}));
+const studentsFor=(teacher)=>Array.from({length:20},(_,index)=>({id:`${teacher}-student-${String(index+1).padStart(2,'0')}`,number:index+1,name:`${teacher} 가상학생 ${String(index+1).padStart(2,'0')}`}));
 const answersFor=(student,next)=>({1:option(5,1),2:option(5,2),3:`${student.id} 가상 자기 성찰`,4:[{studentId:next.id,behavior:option(5,4)}],5:[{studentId:next.id,behavior:option(5,5)}],6:option(5,6),7:option(5,7),8:'가상 후속 기록'});
 
 if(enabled)before(async()=>{
@@ -34,6 +34,7 @@ integration('10 teachers register 200 isolated students and open one survey',asy
  for(let index=1;index<=10;index++){
   const teacher=`teacher-${String(index).padStart(2,'0')}`,classScope=scope(teacher,index),students=studentsFor(teacher);
   const [status,result]=await request('/api/v2/teacher/register',{teacher,method:'POST',data:{...classScope,ownerId:'spoofed-owner',students}});assert.equal(status,201,JSON.stringify(result));
+  assert.ok(result.codes.every(row=>/^\d{6}$/.test(row.code)),'initial code is six digits');
   for(const row of result.codes)codes.set(row.id,row.code);
   assert.equal((await request('/api/v2/teacher/open',{teacher,method:'POST',data:{...classScope,month:5,open:true}}))[0],200);
  }
@@ -48,16 +49,16 @@ integration('teacher identity owns class scope and cannot be spoofed',async()=>{
  assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classA.classId}&month=5`,{teacher:'teacher-02'}))[0],403);
  assert.equal((await request(`/api/v2/teacher/status?year=2026&classId=${classA.classId}&month=5`,{teacher:'teacher-03'}))[0],403);
  const first=studentsFor('teacher-01')[0];
- assert.equal((await request('/api/v2/login',{method:'POST',data:{ownerId:'teacher-02',classId:classA.classId,year:2026,id:first.id,code:codes.get(first.id)}}))[0],401);
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{ownerId:'teacher-02',classId:classA.classId,year:2026,number:first.number,code:codes.get(first.id)}}))[0],401);
 });
 
 integration('roster sync preserves existing codes, updates names and suspends removed students',async()=>{
- const teacher='sync-teacher',classScope=scope(teacher,99),first=[{id:'sync-1',name:'가상 동기화 1'},{id:'sync-2',name:'가상 동기화 2'}];
+ const teacher='sync-teacher',classScope=scope(teacher,99),first=[{id:'sync-1',number:1,name:'가상 동기화 1'},{id:'sync-2',number:2,name:'가상 동기화 2'}];
  const [createdStatus,created]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students:first}});assert.equal(createdStatus,200);assert.equal(created.codes.length,2);
- const code1=created.codes.find(row=>row.id==='sync-1').code,second=[{id:'sync-1',name:'가상 개명 1'},{id:'sync-3',name:'가상 동기화 3'}];
+ const code1=created.codes.find(row=>row.id==='sync-1').code,second=[{id:'sync-1',number:1,name:'가상 개명 1'},{id:'sync-3',number:3,name:'가상 동기화 3'}];
  const [syncStatus,synced]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students:second}});assert.equal(syncStatus,200);assert.deepEqual(synced.codes.map(row=>row.id),['sync-3']);
- assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,id:'sync-1',code:code1}}))[0],200,'기존 학생 코드를 유지');
- assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,id:'sync-2',code:created.codes.find(row=>row.id==='sync-2').code}}))[0],401,'빠진 학생은 비활성');
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,number:1,code:code1}}))[0],200,'기존 학생 코드를 유지');
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,number:2,code:created.codes.find(row=>row.id==='sync-2').code}}))[0],401,'빠진 학생은 비활성');
  const [,status]=await request(`/api/v2/teacher/status?year=${classScope.year}&classId=${classScope.classId}&month=5`,{teacher});assert.deepEqual(status.students.map(row=>[row.id,row.name]),[['sync-1','가상 개명 1'],['sync-3','가상 동기화 3']]);
  assert.equal((await request(`/api/v2/teacher/status?year=${classScope.year}&classId=${classScope.classId}&month=5`,{teacher:'other-sync-teacher'}))[0],403);
 });
@@ -66,7 +67,7 @@ integration('200 students log in and concentrated submissions create exactly 200
  await request('/__test/metrics/reset',{method:'POST'});
  for(let index=1;index<=10;index++){
   const teacher=`teacher-${String(index).padStart(2,'0')}`,classScope=scope(teacher,index),students=studentsFor(teacher);
-  for(const student of students){const [status,result]=await request('/api/v2/login',{method:'POST',data:{...classScope,id:student.id,code:codes.get(student.id)}});assert.equal(status,200,JSON.stringify(result));tokens.set(student.id,result.token)}
+  for(const student of students){const [status,result]=await request('/api/v2/login',{method:'POST',data:{...classScope,number:student.number,code:codes.get(student.id)}});assert.equal(status,200,JSON.stringify(result));tokens.set(student.id,result.token)}
  }
  const jobs=[];
  for(let index=1;index<=10;index++){
@@ -97,15 +98,24 @@ integration('code reissue invalidates the old session but preserves response',as
  const teacher='teacher-01',classScope=scope(teacher,1),student=studentsFor(teacher)[0],oldToken=tokens.get(student.id);
  const [status,result]=await request('/api/v2/teacher/reissue',{teacher,method:'POST',data:{...classScope,id:student.id}});assert.equal(status,200);
  assert.equal((await request('/api/v2/student/survey?month=5',{student:oldToken}))[0],401);
- assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,id:student.id,code:codes.get(student.id)}}))[0],401);
- const [loginStatus,login]=await request('/api/v2/login',{method:'POST',data:{...classScope,id:student.id,code:result.code}});assert.equal(loginStatus,200);tokens.set(student.id,login.token);
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,number:student.number,code:codes.get(student.id)}}))[0],401);
+ const [loginStatus,login]=await request('/api/v2/login',{method:'POST',data:{...classScope,number:student.number,code:result.code}});assert.equal(loginStatus,200);tokens.set(student.id,login.token);
  const [,saved]=await request(`/api/v2/teacher/status?year=2026&classId=${classScope.classId}&month=5`,{teacher});assert.equal(saved.responses.length,20);assert.ok(saved.responses.some(row=>row.student_id===student.id));
+});
+
+integration('whole-class reissue issues six digit codes and invalidates prior student access',async()=>{
+ const teacher='teacher-10',classScope=scope(teacher,10),students=studentsFor(teacher),first=students[0],oldCode=codes.get(first.id),oldToken=tokens.get(first.id);
+ const [status,result]=await request('/api/v2/teacher/reissue-all',{teacher,method:'POST',data:{...classScope,ids:students.map(student=>student.id)}});assert.equal(status,200);assert.equal(result.codes.length,20);assert.ok(result.codes.every(row=>/^\d{6}$/.test(row.code)),'all new codes are six digits');assert.equal(new Set(result.codes.map(row=>row.id)).size,20);
+ assert.equal((await request('/api/v2/student/survey?month=5',{student:oldToken}))[0],401,'old session invalidated');
+ assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,number:first.number,code:oldCode}}))[0],401,'old code blocked');
+ const newCode=result.codes.find(row=>row.id===first.id).code;assert.equal((await request('/api/v2/login',{method:'POST',data:{...classScope,number:first.number,code:newCode}}))[0],200,'new code works with public student number');
+ const [,saved]=await request(`/api/v2/teacher/status?year=${classScope.year}&classId=${classScope.classId}&month=5`,{teacher});assert.equal(saved.responses.length,20,'responses remain after code rotation');
 });
 
 integration('failed login attempts are rate limited without exposing code validity',async()=>{
  const teacher='teacher-03',classScope=scope(teacher,3),student=studentsFor(teacher)[0],statuses=[];
- for(let attempt=0;attempt<7;attempt++)statuses.push((await request('/api/v2/login',{method:'POST',data:{...classScope,id:student.id,code:`wrong-code-${attempt}`}}))[0]);
- assert.deepEqual(statuses,[401,401,401,401,401,401,429]);
+ for(let attempt=0;attempt<5;attempt++)statuses.push((await request('/api/v2/login',{method:'POST',data:{...classScope,number:student.number,code:`${attempt}`.padStart(6,'0')}}))[0]);
+ assert.deepEqual(statuses,[401,401,401,401,429]);
 });
 
 integration('teacher analysis reads only the owned class and retains monthly evidence',async()=>{
