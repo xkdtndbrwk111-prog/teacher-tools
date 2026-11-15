@@ -13,13 +13,13 @@
  const settings=document.createElement('div');settings.className='tt-lock-settings';settings.hidden=true;settings.setAttribute('role','dialog');settings.setAttribute('aria-modal','true');settings.setAttribute('aria-labelledby','tt-cloud-title');
  settings.innerHTML=`<div class="tt-lock-settings-card tt-cloud-card">
   <h2 id="tt-cloud-title">저장 방식</h2>
-  <label class="tt-cloud-mode"><input type="radio" name="tt-cloud-mode" value="easy"><span><strong>EASY</strong> 이 브라우저에만 저장합니다. 로그인이 필요 없습니다.</span></label>
-  <label class="tt-cloud-mode"><input type="radio" name="tt-cloud-mode" value="normal"><span><strong>NORMAL</strong> 브라우저에 저장하고, 내 구글 시트에도 저장합니다. 다른 PC에서 이어 쓸 수 있습니다.</span></label>
+  <label class="tt-cloud-mode"><input type="radio" name="tt-cloud-mode" value="easy"><span><strong>EASY</strong> 이 브라우저에만 저장합니다. 로그인 없이 자리배치·체육 모둠·성적 관리를 이용합니다. 학급생활은 사용할 수 없습니다.</span></label>
+  <label class="tt-cloud-mode"><input type="radio" name="tt-cloud-mode" value="normal"><span><strong>NORMAL</strong> Google 통합 로그인으로 구글 시트 저장과 학급생활(온라인 설문·관찰·분석)을 이용합니다. 다른 PC에서도 기존 저장 자료를 이어 쓸 수 있습니다.</span></label>
   <p id="tt-cloud-note"></p>
   <p>학생 이름, 성적, 체육 능력치가 교사 본인의 구글 드라이브에 암호 없이 저장됩니다. 학교 개인정보 기준을 확인해 주세요. 시트에서 직접 고친 값은 프로그램에 반영되지 않습니다.</p>
   <p id="tt-cloud-state" role="status"></p>
   <p id="tt-cloud-error" class="tt-lock-error" role="alert"></p>
-  <div class="tt-lock-settings-actions"><button type="button" id="tt-cloud-connect">구글 연결</button><button type="button" id="tt-cloud-save">지금 저장</button><span></span><button type="button" id="tt-cloud-close">닫기</button></div>
+  <div class="tt-lock-settings-actions"><button type="button" id="tt-cloud-connect">Google 통합 로그인</button><button type="button" id="tt-cloud-save">지금 저장</button><span></span><button type="button" id="tt-cloud-close">닫기</button></div>
  </div>`;
  const diff=document.createElement('div');diff.className='tt-lock-settings';diff.hidden=true;diff.setAttribute('role','dialog');diff.setAttribute('aria-modal','true');diff.setAttribute('aria-labelledby','tt-diff-title');
  diff.innerHTML=`<div class="tt-lock-settings-card tt-diff-card">
@@ -46,8 +46,18 @@
   const mode=document.querySelector('.tt-backup-mode span');
   if(mode)mode.textContent=next==='easy'?'Google 연결 없음':(meta?.email?`구글 저장 · ${meta.email}`:'구글 저장');
   if(!settings.hidden)renderSettings();
+  publishAuth();
  }
  const needsLogin=()=>!cloud?.available();
+ // Existing NORMAL authentication owns the session. Events never contain credentials.
+ let authInitialized=false,authChanging=false,authGeneration=0,lastAuthState='';
+ const authState=()=>{const normal=authInitialized&&!authChanging&&meta?.mode==='normal';const connected=Boolean(normal&&cloud?.available()&&cloud.user?.sub&&cloud.user?.email);return Object.freeze({mode:!authInitialized?'loading':meta?.mode==='normal'?'normal':'easy',connected,sub:connected?cloud.user.sub:'',email:connected?cloud.user.email:'',generation:authGeneration})};
+ function publishAuth(){const value=authState(),key=JSON.stringify(value);if(key!==lastAuthState){lastAuthState=key;window.dispatchEvent(new CustomEvent('tt-normal-auth-change',{detail:value}))}}
+ window.__TT_NORMAL_AUTH=Object.freeze({
+  state:authState,
+  session(){const value=authState();if(!value.connected)throw Error('NORMAL 모드에서 Google 통합 로그인이 필요합니다.');return Object.freeze({...value,accessToken:cloud.token,expiresAt:cloud.expiry,key:value.generation+'|'+value.sub+'|'+cloud.expiry})},
+  openSettings(){settings.hidden=false;renderSettings()}
+ });
  function friendly(error){
   const code=error?.message||'';
   if(/SESSION_EXPIRED|PERMISSION_401/.test(code))return'구글 로그인이 끝났습니다. 다시 연결해 주세요.';
@@ -124,9 +134,10 @@
  }
  // Whatever is on the other side when saving is decided by this one routine.
  async function syncNow({manual=false}={}){
-  if(meta?.mode!=='normal'||busy)return;
+  if(meta?.mode!=='normal'||busy||authChanging)return;
   if(pendingDiff&&!manual)return;
   const m=await ready();
+  if(meta?.mode!=='normal'||busy||authChanging)return;
   if(needsLogin()){setState('login');return}
   busy=true;
   try{
@@ -221,6 +232,8 @@
  }
  settings.addEventListener('change',async event=>{
   if(event.target.name!=='tt-cloud-mode')return;
+  if(busy||authChanging){detail='저장 또는 로그인 중입니다. 작업 완료 후 모드를 변경하세요.';renderSettings();return}
+  authChanging=true;++authGeneration;publishAuth();
   try{
    await ready();
    if(event.target.value==='normal'){
@@ -233,19 +246,21 @@
     await store.commit({del:[KEY],quiet:true});meta=null;
     setState('easy');
    }
-  }catch(error){detail=friendly(error)}
+  }catch(error){detail=friendly(error)}finally{authChanging=false;publishAuth()}
   renderSettings();
  });
  async function connect(){
-  detail='';
+  if(busy||authChanging||meta?.mode!=='normal')return;
+  detail='';authChanging=true;++authGeneration;publishAuth();
   try{
    await ready();
    await cloud.signIn();
    await saveMeta({...meta,email:cloud.user.email});
+   authChanging=false;publishAuth();
    setState('waiting');
    if(!diff.hidden)diff.hidden=true;
    await syncNow();
-  }catch(error){setState('login',friendly(error))}
+  }catch(error){cloud?.signOut();setState('login',friendly(error))}finally{authChanging=false;publishAuth()}
   if(!settings.hidden)renderSettings();
  }
  $('tt-cloud-connect').addEventListener('click',()=>void connect());
@@ -269,7 +284,8 @@
  try{new BroadcastChannel('tt-classroom-changes').onmessage=event=>{onChange();if(event.data?.important)importantAt=Date.now()+IMPORTANT_MS}}catch{}
  document.getElementById('confirmAssignment')?.addEventListener('click',()=>{if(meta?.mode==='normal')importantAt=Date.now()+IMPORTANT_MS});
  function tick(){
-  if(meta?.mode!=='normal')return;
+  publishAuth();
+  if(meta?.mode!=='normal'||authChanging)return;
   if(needsLogin()){if(state!=='login'&&state!=='diff')setState('login');return}
   if(pendingDiff){if(diff.hidden&&!studentView()&&state!=='diff')setState('diff');return}
   if(Date.now()<retryAt)return;
@@ -278,10 +294,11 @@
   if(due){importantAt=0;void syncNow()}
  }
  window.addEventListener('focus',()=>{
+  publishAuth();
   if(meta?.mode==='normal'&&!needsLogin()&&!busy&&!pendingDiff&&Date.now()-lastHeadCheck>=HEAD_CHECK_MS)void syncNow();
  });
  (async()=>{
-  meta=await store.read(KEY)||null;
+  meta=await store.read(KEY)||null;authInitialized=true;publishAuth();
   await loadModules().catch(error=>console.warn(error));
   if(meta?.mode!=='normal'){setState('easy');return}
   loadGoogleScript();
