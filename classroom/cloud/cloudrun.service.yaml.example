@@ -1,0 +1,41 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: teacher-tools-class-life
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 8
+      timeoutSeconds: 20
+      serviceAccountName: REPLACE_WITH_RUNTIME_SERVICE_ACCOUNT
+      containers:
+        - image: REPLACE_WITH_REGION_DOCKER_IMAGE
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: GOOGLE_CLOUD_PROJECT
+              value: REPLACE_WITH_PROJECT_ID
+            - name: ALLOWED_ORIGINS
+              value: REPLACE_WITH_EXACT_HTTPS_ORIGINS
+            - name: TEACHER_EMAIL_DOMAIN
+              value: REPLACE_WITH_SCHOOL_GOOGLE_DOMAIN
+            - name: STUDENT_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: class-life-student-session-secret
+            - name: LOGIN_LIMIT
+              value: "6"
+            - name: LOGIN_IP_LIMIT
+              value: "60"
+            - name: LOGIN_WINDOW_MS
+              value: "60000"
