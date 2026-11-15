@@ -38,6 +38,7 @@
  let switching=false;
  async function move(id,resume='seating'){
   if(switching)return false;
+  if(window.__TT_BOARD_TRANSACTION_BUSY?.()){alert('호자보드와 연결 중입니다. 작업 응답을 확인한 뒤 학급을 변경해 주세요.');return false;}
   const reg=read();if(!reg.classes.some(c=>c.id===id))throw Error('존재하지 않는 학급 ID입니다.');
   if(id===cfg.activeId){render();return true}
   switching=true;drop.disabled=true;
