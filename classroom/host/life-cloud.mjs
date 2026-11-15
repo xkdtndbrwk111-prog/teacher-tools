@@ -18,38 +18,73 @@ async function firebaseSdk(){
  return sdkPromise;
 }
 
-export function createLifeCloudClient(config=LIFE_CLOUD_CONFIG){
- const checked=validateLifeCloudConfig(config);let auth=null,user=null,disabled=false,listeners=new Set();
- const notify=()=>listeners.forEach(listener=>listener({enabled:!disabled,user:user?{uid:user.uid,email:user.email||''}:null}));
+// Never infer identity from email alone: compare Google's immutable provider UID.
+export function sameGoogleAccount(user,session){
+ return Boolean(user&&session&&user.emailVerified===true&&String(user.email||'').toLowerCase()===String(session.email||'').toLowerCase()&&Array.isArray(user.providerData)&&user.providerData.some(p=>p.providerId==='google.com'&&String(p.uid)===String(session.sub)));
+}
+export function requireNormalSession(getSession){
+ const s=getSession();
+ if(s?.mode!=='normal'||s.connected!==true||!s.sub||!s.email||!s.key||!s.accessToken||!Number.isFinite(s.expiresAt)||Date.now()>=s.expiresAt)throw Error('NORMAL 모드에서 Google 통합 로그인이 필요합니다.');
+ return s;
+}
+export function createLifeCloudClient(config=LIFE_CLOUD_CONFIG,{getSession=()=>globalThis.__TT_NORMAL_AUTH?.session(),loadSdk=firebaseSdk,fetchImpl=(...args)=>fetch(...args)}={}){
+ const checked=validateLifeCloudConfig(config);
+ let auth=null,sdk=null,prepared=null,verifiedKey='',generation=0,queue=Promise.resolve();
+ const controllers=new Set(),session=()=>requireNormalSession(getSession);
+ const run=task=>{const result=queue.then(task);queue=result.catch(()=>{});return result};
+ const assertCurrent=(s,epoch)=>{if(epoch!==generation||session().key!==s.key)throw Error('Google 연결 또는 계정이 변경되었습니다. 다시 시도하세요.')};
+ const match=s=>verifiedKey===s.key&&sameGoogleAccount(auth?.currentUser,s);
  async function prepare(){
-  if(disabled)throw Error('학급생활 온라인 기능이 현재 꺼져 있습니다.');
-  const [appSdk,authSdk]=await firebaseSdk();
-  const name='tt-class-life-cloud';let app;
-  try{app=appSdk.getApp(name)}catch{app=appSdk.initializeApp(checked.firebase,name)}
-  if(!auth){auth=authSdk.getAuth(app);await authSdk.setPersistence(auth,authSdk.browserSessionPersistence);await auth.authStateReady();user=auth.currentUser;authSdk.onAuthStateChanged(auth,value=>{user=value;notify()})}
-  return {auth,authSdk};
+  if(!prepared)prepared=(async()=>{const [appSdk,authSdk]=await loadSdk();const name='tt-class-life-unified';let app;
+   try{app=appSdk.getApp(name)}catch{app=appSdk.initializeApp(checked.firebase,name)}
+   const a=authSdk.getAuth(app);await authSdk.setPersistence(a,authSdk.inMemoryPersistence);await a.authStateReady();
+   await authSdk.signOut(a);auth=a;sdk=authSdk;
+  })().catch(error=>{prepared=null;throw error});
+  await prepared;
  }
- async function token(){const prepared=await prepare();user=prepared.auth.currentUser;if(!user)throw Error('학급생활용 Google 교사 로그인이 필요합니다.');return user.getIdToken(false)}
+ function identity(){try{const s=session();return match(s)?{uid:auth.currentUser.uid,email:auth.currentUser.email||''}:null}catch{return null}}
+ async function connect(){
+  const s=session(),epoch=generation;
+  return run(async()=>{
+   assertCurrent(s,epoch);await prepare();assertCurrent(s,epoch);
+   if(match(s))return identity();
+   verifiedKey='';await sdk.signOut(auth);assertCurrent(s,epoch);
+   try{
+    const credential=sdk.GoogleAuthProvider.credential(null,s.accessToken);
+    const result=await sdk.signInWithCredential(auth,credential);
+    assertCurrent(s,epoch);
+    if(!sameGoogleAccount(result.user,s))throw Error('GOOGLE_IDENTITY_MISMATCH');
+    verifiedKey=s.key;return identity();
+   }catch(error){
+    verifiedKey='';await sdk.signOut(auth).catch(()=>{});
+    const code=String(error?.code||'');
+    throw Error(error?.message==='GOOGLE_IDENTITY_MISMATCH'?'Google 계정 일치 검증에 실패했습니다.':/^auth\/[a-z0-9-]+$/.test(code)?'통합 인증 실패 ('+code+')':'통합 인증에 실패했습니다. 다시 연결하세요.');
+   }
+  });
+ }
+ function invalidate(){
+  ++generation;verifiedKey='';
+  for(const controller of controllers)controller.abort();controllers.clear();
+  return run(async()=>{if(auth&&sdk)await sdk.signOut(auth)});
+ }
  return {
-  get enabled(){return !disabled},
-  get user(){return user?{uid:user.uid,email:user.email||''}:null},
-  apiBase:checked.apiBase,
-  studentUrl:studentSurveyUrl(checked),
-  subscribe(listener){listeners.add(listener);listener({enabled:!disabled,user:user?{uid:user.uid,email:user.email||''}:null});return()=>listeners.delete(listener)},
-  async restore(){await prepare();notify();return this.user},
-  async connect(){const {auth,authSdk}=await prepare();const provider=new authSdk.GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await authSdk.signInWithPopup(auth,provider);user=auth.currentUser;notify();return this.user},
-  async connectWithCustomToken(tokenValue){if(typeof tokenValue!=='string'||tokenValue.length<100)throw Error('시험용 교사 토큰이 올바르지 않습니다.');const {auth,authSdk}=await prepare();await authSdk.signInWithCustomToken(auth,tokenValue);user=auth.currentUser;notify();return this.user},
-  async disconnect(){const {auth,authSdk}=await prepare();await authSdk.signOut(auth);user=null;notify()},
-  disable(){disabled=true;user=null;notify()},
-  async retry(){disabled=false;return this.restore()},
-  url(path){if(typeof path!=='string'||!path.startsWith('/'))throw Error('학급생활 API 경로가 올바르지 않습니다.');return checked.apiBase+path},
+  get user(){return identity()},get enabled(){try{session();return true}catch{return false}},
+  apiBase:checked.apiBase,studentUrl:studentSurveyUrl(checked),connect,invalidate,
   async request(path,{method='GET',data,teacher=true,credential}={}){
-   if(disabled)throw Error('학급생활 온라인 기능이 현재 꺼져 있습니다.');
-   const bearer=teacher?await token():credential;
-   let response;try{response=await fetch(checked.apiBase+path,{method,headers:{...(bearer?{Authorization:`Bearer ${bearer}`}:{}) ,...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data),credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer'})}catch{throw Error('학급생활 클라우드 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')}
-   let result=null;try{if((response.headers.get('content-type')||'').includes('application/json'))result=await response.json()}catch{}
-   if(!response.ok)throw Object.assign(Error(result?.error||`학급생활 서버 오류 (${response.status})`),{status:response.status});
-   if(!result)throw Error('학급생활 서버 응답을 확인할 수 없습니다.');return result;
-  },
+   const s=session(),epoch=generation;
+   if(typeof path!=='string'||!path.startsWith('/api/v2/'))throw Error('학급생활 API 경로가 올바르지 않습니다.');
+   await connect();assertCurrent(s,epoch);
+   if(!match(s))throw Error('Google 계정 일치 검증에 실패했습니다.');
+   const token=teacher?await auth.currentUser.getIdToken(false):credential;
+   assertCurrent(s,epoch);
+   const controller=new AbortController();controllers.add(controller);
+   try{
+    let response;try{response=await fetchImpl(checked.apiBase+path,{method,headers:{...(token?{Authorization:`Bearer ${token}`}:{}),...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data),credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal})}catch{throw Error('학급생활 클라우드 요청을 완료하지 못했습니다.')}
+    let result=null;try{if((response.headers.get('content-type')||'').includes('application/json'))result=await response.json()}catch{}
+    assertCurrent(s,epoch);
+    if(!response.ok)throw Object.assign(Error(result?.error||`학급생활 서버 오류 (${response.status})`),{status:response.status});
+    if(!result)throw Error('학급생활 서버 응답을 확인할 수 없습니다.');return result;
+   }finally{controllers.delete(controller)}
+  }
  };
 }

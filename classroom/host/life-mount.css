@@ -25,3 +25,10 @@ body.tt-life-active #teacherScreen>.studio>.tt-life-panel{display:flex!important
 
 #life-qr svg{display:block;width:160px;height:160px;image-rendering:pixelated}#life-qr.life-qr-large svg{width:min(360px,90%);height:auto}
 .life-cloud-connect{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;padding:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px}.life-cloud-connect>div{display:flex;flex-direction:column;min-width:240px;margin-right:auto}.life-cloud-connect small{font-size:11px;color:#64748b}.life-cloud-connect strong{font-size:13px;color:#172033;margin-top:3px}.tt-life-panel #life-cloud-login{background:#2563eb;border-color:#2563eb;color:#fff}
+
+/* NORMAL-only classroom life. Locked tab remains discoverable. */
+#tt-life-tab.tt-life-locked{opacity:.55;cursor:pointer}
+.tt-life-panel .life-auth-gate{display:none;padding:24px;flex:1;overflow:auto}
+.tt-life-panel:not([data-life-ready="true"]) .life-auth-gate{display:block}
+.tt-life-panel:not([data-life-ready="true"])>.life-toolbar,.tt-life-panel:not([data-life-ready="true"])>.life-workspace{display:none!important}
+.tt-life-panel .life-auth-gate .life-card{max-width:660px;margin:20px auto}
