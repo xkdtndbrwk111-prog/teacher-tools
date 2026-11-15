@@ -1,0 +1,36 @@
+name: Cloud signing isolation probe
+on:
+  push:
+    branches:
+      - codex/cloud-signing-v164-poc
+    paths:
+      - '.github/workflows/cloud-signing-probe.yml'
+      - 'tools/cloud-signing/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cloud-signing-probe.yml'
+      - 'tools/cloud-signing/**'
+permissions:
+  contents: read
+concurrency:
+  group: cloud-signing-isolation-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/cloud-signing-v164-poc')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read pinned public baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/release-signing-queue
+          git show 9d4f3313c07622060c8343ca03ba56fe5297d9a5 > "$RUNNER_TEMP/queue.json"
+          git show 39ed38416cdbd02a31b54fa462294e91a0c313de:stable/content-v3/latest.json > "$RUNNER_TEMP/published.json"
+          python3 tools/cloud-signing/probe.py "$RUNNER_TEMP/queue.json" "$RUNNER_TEMP/published.json"
