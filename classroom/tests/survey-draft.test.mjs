@@ -14,6 +14,8 @@ test('draft owner rejects malformed scope',()=>{
 
 test('draft response values use fresh salt and nonce and only the same student code decrypts them',async()=>{const scope={ownerId:'teacher-a',year:2026,classId:'class-a',studentId:'student-a',month:5,version:'V0.2'},values={'1':'선택','3':'가상 서술'};const cipher=await createDraftCipher(scope,'synthetic-student-code-a'),first=await cipher.seal(values),second=await cipher.seal(values);assert.doesNotMatch(JSON.stringify(first),/가상 서술/);assert.notEqual(first.salt,second.salt);assert.notEqual(first.iv,second.iv);assert.deepEqual(await cipher.open(first),values);assert.deepEqual(await cipher.open(second),values);const other=await createDraftCipher(scope,'synthetic-student-code-b');await assert.rejects(()=>other.open(first))});
 
+test('new six digit code can protect an encrypted draft while malformed short codes are rejected',async()=>{const scope={ownerId:'teacher-a',year:2026,classId:'class-a',studentId:'student-a',month:5,version:'V0.2'},values={'1':'선택'};const cipher=await createDraftCipher(scope,'004281'),sealed=await cipher.seal(values);assert.deepEqual(await cipher.open(sealed),values);await assert.rejects(()=>createDraftCipher(scope,'12345'))});
+
 test('draft values do not restore unknown select options',()=>{
  const select={name:'peer-4-0',tagName:'SELECT',type:'select-one',disabled:false,value:'',options:[{value:''},{value:'student-a'}]},textarea={name:'3',tagName:'TEXTAREA',type:'textarea',disabled:false,value:''},form={elements:[select,textarea]};
  assert.equal(applyDraftValues(form,{'peer-4-0':'student-outside','3':'가상 답변'}),true);assert.equal(select.value,'');assert.equal(textarea.value,'가상 답변');
