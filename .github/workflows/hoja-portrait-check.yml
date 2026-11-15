@@ -1,0 +1,21 @@
+name: Hoja portrait asset verification
+on:
+  pull_request:
+    paths: ['.github/workflows/hoja-portrait-check.yml']
+permissions:
+  contents: read
+jobs:
+  portrait:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Retrieve exact existing grape sticker portrait
+        run: |
+          curl -fL --retry 2 'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/main/src/assets/images/core/portraits/hoja_09_sparkling.webp' -o hoja_09_sparkling.webp
+          test "$(git hash-object hoja_09_sparkling.webp)" = 'e3e980d227db901b244130b46eed5a7c976dd1dd'
+          sha256sum hoja_09_sparkling.webp
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hoja-podo-portrait
+          path: hoja_09_sparkling.webp
+          retention-days: 1
