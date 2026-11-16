@@ -128,6 +128,10 @@
   }
   function show(provided){
     let data;try{data=provided||snapshot()}catch(error){alert(error.message);return false}
+    if(window.__TT_BOARD_PRESENTATION?.sendIfReady(data,announce,()=>showPopup(data)))return true;
+    return showPopup(data);
+  }
+  function showPopup(data){
     if(!data||!['seating','pe','life-qr'].includes(data.kind)){alert('학생 공개 화면 자료가 올바르지 않습니다.');return false}
     const session=randomSession();
     // Open synchronously during the button click to avoid popup-blocking.

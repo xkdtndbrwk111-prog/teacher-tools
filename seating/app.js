@@ -390,6 +390,8 @@ function loadState(){
         return defaultState();
       }
     }
+    // Never import manager legacy storage into a student-only renderer, including the local board.
+    if(['board','student'].includes(new URLSearchParams(location.search).get('view')))return defaultState();
     for(const key of LEGACY_STORAGE_KEYS){
       const legacy=localStorage.getItem(key);
       if(legacy===null)continue;
