@@ -16,6 +16,7 @@ jobs:
         run: |
           node --check classroom/host/life-mount.js
           node --check classroom/host/class-bootstrap.js
+          node classroom/tests/manager-board-only.test.cjs
           node --test classroom/tests/life-cloud*.test.mjs classroom/tests/mount-contract.test.mjs
       - name: Isolated Chromium teacher workflow
         run: |

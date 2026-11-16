@@ -49,7 +49,7 @@ jobs:
           test "$(sha256sum system/dashboard.html | cut -d' ' -f1)" = f44b8f19d77fcbb0f22871c598b95bc574614ae0e588032afa86244a98192ebe
           node apply-no-manager-grant.cjs system
           node --check system/coins.js
-          node test-manager-grant-ui.cjs
+          node ../../classroom/tests/manager-board-only.test.cjs
           node test-manager-grant-ui.cjs ../../r6-staging/classroom/host/dashboard-link.js
           node test-r7.cjs
           node test-handler.cjs

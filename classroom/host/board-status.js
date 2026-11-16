@@ -2,8 +2,8 @@
 // Disabled by default: only the background/wallpaper launcher enables board actions.
 (()=>{
  'use strict';
- const coin=document.getElementById('tt-coin-open'),send=document.getElementById('tt-send-board');
- if(!coin||!send)return;
+ const send=document.getElementById('tt-send-board');
+ if(!send)return;
  const target='http://127.0.0.1:17439/api/board-status';
  const note=document.createElement('p');
  note.id='tt-board-connection-status';
@@ -17,13 +17,11 @@
  const status=()=>connected;
  function show(ok,reason=''){
   connected=Boolean(ok);
-  coin.disabled=!connected;
   send.disabled=!connected;
   const title=connected?connectedTitle:disconnectedTitle;
-  coin.title=title;send.title=title;
-  coin.setAttribute('aria-description',title);
+  send.title=title;
   send.setAttribute('aria-description',title);
-  const message=connected?'🟢 칠판 연결됨 · 코인·전송 사용 가능':
+  const message=connected?'🟢 칠판 연결됨 · 전송 사용 가능':
    reason==='old'?'⚠ 대시보드를 V1.33 이상으로 업데이트해 주세요.':
    reason==='window'?'⚪ 대시보드 실행 중 · 배경화면 모드가 아닙니다.':
    '⚪ 칠판 연결 안 됨 · 배경화면 실행 필요';
