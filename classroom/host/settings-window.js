@@ -73,7 +73,6 @@
  place('#tt-lock-now','#tt-settings-security-actions');
  place('#tt-lock-open-settings','#tt-settings-security-actions');
  place('#tt-board-connection-status','#tt-settings-board-status');
- place('#tt-coin-open','#tt-settings-board-actions');
  place('#tt-send-board','#tt-settings-board-actions');
  place('.tt-student-placement-settings','#tt-settings-placement');
  const tools=query('#tt-settings-tools');
@@ -86,7 +85,6 @@
   place('#tt-board-connection-status','#tt-settings-board-status');
   place('.tt-student-placement-settings','#tt-settings-placement');
   place('.tt-stage04-actions','#tt-settings-backup-actions');
-  place('#tt-coin-open','#tt-settings-board-actions');
   place('#tt-send-board','#tt-settings-board-actions');
  }).observe(oldMenu,{childList:true});
  oldMenu.hidden=true;
@@ -144,7 +142,7 @@
  overlay.addEventListener('click',event=>{
   const button=event.target.closest('button,a');
   if(!button)return;
-  if(['tt-full-backup','tt-lock-now','tt-lock-open-settings','tt-send-board','tt-coin-open'].includes(button.id)||
+  if(['tt-full-backup','tt-lock-now','tt-lock-open-settings','tt-send-board'].includes(button.id)||
     button.classList.contains('hub-home-link')||button.classList.contains('tt-hud-action-proxy')){
    close({focus:false});
   }

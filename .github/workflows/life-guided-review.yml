@@ -2,7 +2,7 @@ name: Classroom life guided workflow review
 on:
   push:
     branches: [main, codex/life-guided-workflow]
-    paths: ['classroom/host/dashboard-link.js','classroom/tests/manager-no-grant.test.cjs','classroom/host/life-mount.js','classroom/host/life-mount.css','classroom/host/class-bootstrap.js','seating/index.html','classroom/tests/browser-life-guided.cjs','.github/workflows/life-guided-review.yml']
+    paths: ['classroom/host/dashboard-link.js','classroom/tests/manager-board-only.test.cjs','classroom/host/board-status.js','classroom/host/hud-shell.js','classroom/host/settings-window.js','classroom/host/life-mount.js','classroom/host/life-mount.css','classroom/host/class-bootstrap.js','seating/index.html','classroom/tests/browser-life-guided.cjs','.github/workflows/life-guided-review.yml']
 permissions:
   contents: read
 jobs:
@@ -17,7 +17,7 @@ jobs:
         run: |
           node --check classroom/host/life-mount.js
           node --check classroom/host/class-bootstrap.js
-          node classroom/tests/manager-no-grant.test.cjs classroom/host/dashboard-link.js
+          node classroom/tests/manager-board-only.test.cjs
           node --test classroom/tests/life-cloud*.test.mjs classroom/tests/mount-contract.test.mjs
       - name: Isolated Chromium teacher workflow
         run: |

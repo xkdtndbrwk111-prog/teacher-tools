@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const root=path.resolve(__dirname,'../host');
+const files=['dashboard-link.js','board-status.js','hud-shell.js','settings-window.js','class-bootstrap.js'];
+const sources=Object.fromEntries(files.map(p=>[p,fs.readFileSync(path.join(root,p),'utf8')]));
+let count=0;function pass(name){console.log('PASS',++count,name)}
+for(const p of files){new vm.Script(sources[p]);assert.doesNotMatch(sources[p],/코인|tt-coin|coin\.pending|coinBalance|\bcoins?\b/i,p)}pass('all five host scripts contain no coin feature or requests');
+const make=()=>({children:[],listeners:{},append(...n){this.children.push(...n)},setAttribute(){},addEventListener(k,f){this.listeners[k]=f}});
+const actions=make(),confirm=make(),menu=make(),popups=[],messages=[],statuses=[];
+const all=()=>[...actions.children,...menu.children];const doc={querySelector:s=>s==='.top-actions'?actions:null,getElementById:id=>id==='confirmAssignment'?confirm:id==='tt-hud-more-menu'?menu:all().find(n=>n.id===id)||null,createElement:make,addEventListener(){},hidden:false};
+const local=new Map(), listeners={};let board={service:'teacher-tools-local',version:33,wallpaper:true};let fetches=0;
+const context={document:doc,TextEncoder,btoa:s=>Buffer.from(s,'binary').toString('base64'),console,AbortController,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},fetch:async()=>{fetches++;return {ok:true,json:async()=>board}},localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},classState:{className:'가상 학급',assignments:[],students:[]},historyView:false,confirmedRevision:1,previewRevision:1,setSaveStatus:(...x)=>statuses.push(x),window:{__TT_STAGE031_CLASS:{activeId:'virtual'},__TT_STORE:{},open(...args){const p={args,close(){},postMessage:(...a)=>messages.push(a)};popups.push(p);return p},addEventListener:(k,f)=>listeners[k]=f,removeEventListener:k=>delete listeners[k]}};
+(async()=>{vm.createContext(context);vm.runInContext(sources['dashboard-link.js'],context);
+assert.deepEqual(actions.children.map(n=>n.id),['tt-send-board']);pass('only seating send button exists');
+assert.equal(typeof confirm.listeners.click,'function');pass('confirmed seating auto-send handler retained');
+vm.runInContext(sources['board-status.js'],context);await new Promise(setImmediate);
+const send=actions.children[0];assert.equal(fetches,1);assert.equal(send.disabled,false);assert.match(menu.children[0].textContent,/칠판 연결됨/);pass('connected board enables seating without requiring removed menu');
+board={...board,wallpaper:false};await context.window.__TT_BOARD_CONNECTION.check();assert.equal(send.disabled,true);send.listeners.click();assert.equal(popups.length,0);pass('non-wallpaper board disables sending');
+board={...board,wallpaper:true};await context.window.__TT_BOARD_CONNECTION.check();send.listeners.click();assert.equal(popups.length,0);assert.match(statuses.at(-1)[0],/확정한 배치/);pass('no confirmed seating does not open popup');
+context.classState.assignments=[{}];send.listeners.click();assert.equal(popups.length,1);assert.match(popups[0].args[0],/\/seating-inbox$/);pass('manual seating opens existing inbox');
+await listeners.message({origin:'http://127.0.0.1:17439',source:popups[0],data:{type:'tt-inbox-saved'}});assert.match(statuses.at(-1)[0],/칠판으로 보냄/);assert.equal(local.get('tt.classroom.board-linked'),'1');pass('seating reply retains linked state');
+confirm.listeners.click();assert.equal(popups.length,2);pass('confirmed seating automatically sends after first link');
+console.log('TOTAL',count,'PASS — synthetic DOM, status and inbox; not physical Windows');
+})().catch(e=>{console.error(e);process.exitCode=1});

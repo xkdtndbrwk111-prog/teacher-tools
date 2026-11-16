@@ -30,7 +30,6 @@
  move('.tt-stage04-actions');
  move('#tt-lock-now');
  move('#tt-lock-open-settings');
- move('#tt-coin-open');
  move('#tt-send-board');
 
  const primaryIds=['generateAssignment','confirmAssignment','openPlayback'];
