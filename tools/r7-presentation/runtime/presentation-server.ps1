@@ -1,9 +1,11 @@
-# Local transient presentation protocol. No student data on disk or in the receipt API.
+ # Local transient presentation protocol. No student data on disk or in the receipt API.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$script:ttPresentAssetPath=Join-Path $PSScriptRoot 'presentation-assets.zip'
 $script:ttPresent=$null
 $script:ttPresentLastBoard=[datetime]::MinValue
 $script:ttPresentReceipt=@{}
 function Get-TTPresentReady {
- return (([datetime]::UtcNow-$script:ttPresentLastBoard).TotalSeconds -lt 5 -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'presentation\seating\index.html') -PathType Leaf))
+ return (([datetime]::UtcNow-$script:ttPresentLastBoard).TotalSeconds -lt 5 -and (Test-Path -LiteralPath $script:ttPresentAssetPath -PathType Leaf))
 }
 function Set-TTPresentReceipt([string]$Id,[string]$State){
  if($Id -notmatch '^[a-f0-9]{32}$'){return}

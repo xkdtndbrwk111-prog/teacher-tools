@@ -1,0 +1,43 @@
+name: R7 student presentation review
+on:
+  push:
+    branches: [main, codex/board-presentation-r7]
+    paths: ['tools/r7-presentation/**','classroom/host/presentation-*.js','classroom/host/presentation-*.mjs','classroom/host/board-present.*','classroom/host/public-presentation.mjs','seating/app.js','.github/workflows/r7-presentation-review.yml']
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node --test tools/r7-presentation/test-protocol.mjs classroom/tests/life-public-url.test.mjs
+          node --check tools/r7-presentation/runtime/presentation-board.js
+          node --check classroom/host/board-present.js
+          node --check classroom/host/presentation-link.js
+          node --check classroom/host/public-presentation.mjs
+          python -m py_compile tools/r7-presentation/apply-presentation.py
+          python tools/r7-presentation/apply-presentation.py /tmp/tt-presentation --bundle-only
+          unzip -t /tmp/tt-presentation/presentation-assets.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r7-presentation-review-bundle
+          path: |
+            /tmp/tt-presentation/
+            tools/r7-presentation/
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          python tools/r7-presentation/apply-presentation.py "$env:RUNNER_TEMP/tt-presentation" --bundle-only
+          if($LASTEXITCODE -ne 0){ throw 'bundle failed' }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/r7-presentation/test-runtime.ps1 "$env:RUNNER_TEMP/tt-presentation"
+          if($LASTEXITCODE -ne 0){throw 'runtime tests failed'}

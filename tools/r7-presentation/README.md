@@ -1,0 +1,4 @@
+# R7 presentation integration — candidate only
+No live presentation capability means the manager uses its original popup. The board receives only public snapshots in RAM, renders the existing offline student engines, applies its theme and shared seasonal particles, protects the QR quiet zone, and removes the old seating tool. Roster and coins are not mutated.
+
+After the complete R7 overlay chain, run `python tools/r7-presentation/apply-presentation.py PATH/system`. This patches the final dashboard, R7 server, installer payload, and packages offline graphics/engines into presentation-assets.zip. Do not apply on R6. Regenerate all checksums after assembling the final runtime. The signed HTML-only update feed cannot deliver this runtime change. Actual Windows launch, install/rollback, physical touch, and paired R7 coin/minigame readiness remain release gates. No stable feed mutation.

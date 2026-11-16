@@ -1,5 +1,5 @@
 """Apply presentation-only overlay to the final R7 review runtime; no signing or release mutation."""
-import argparse, pathlib, re, shutil, json
+import argparse, pathlib, re, shutil, zipfile
 root=pathlib.Path(__file__).resolve().parents[2]
 here=pathlib.Path(__file__).resolve().parent
 def once(s,a,b):
@@ -29,11 +29,18 @@ def patch_server(s):
      $name=$path.TrimStart('/')
      if($name -notmatch '^presentation(?:-board\\.(?:js|css)|/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+\\.(?:html|css|js|mjs|png|svg|txt))$' -or $name.Contains('..')){$status='404 Not Found';$body='{"error":"not found"}'}
      else{
-      $asset=Join-Path $PSScriptRoot $name
-      if(Test-Path -LiteralPath $asset -PathType Leaf){
-       $ctype=switch([IO.Path]::GetExtension($asset)){'.html'{'text/html; charset=utf-8'} '.css'{'text/css; charset=utf-8'} '.js'{'text/javascript; charset=utf-8'} '.mjs'{'text/javascript; charset=utf-8'} '.png'{'image/png'} '.svg'{'image/svg+xml'} default{'text/plain; charset=utf-8'}}
-       $raw=[IO.File]::ReadAllBytes($asset)
-      }else{$status='404 Not Found';$body='{"error":"not found"}'}
+      $ctype=switch([IO.Path]::GetExtension($name)){'.html'{'text/html; charset=utf-8'} '.css'{'text/css; charset=utf-8'} '.js'{'text/javascript; charset=utf-8'} '.mjs'{'text/javascript; charset=utf-8'} '.png'{'image/png'} '.svg'{'image/svg+xml'} default{'text/plain; charset=utf-8'}}
+      if($name -in @('presentation-board.js','presentation-board.css')){
+       $asset=Join-Path $PSScriptRoot $name
+       if(Test-Path -LiteralPath $asset -PathType Leaf){$raw=[IO.File]::ReadAllBytes($asset)}else{$status='404 Not Found';$body='{"error":"not found"}'}
+      }else{
+       $archive=[IO.Compression.ZipFile]::OpenRead($script:ttPresentAssetPath)
+       try{
+        $entry=$archive.GetEntry($name.Substring('presentation/'.Length))
+        if($null -eq $entry -or $entry.Length -gt 2097152){$status='404 Not Found';$body='{"error":"not found"}'}
+        else{$inputStream=$entry.Open();$outputStream=New-Object IO.MemoryStream;try{$inputStream.CopyTo($outputStream);$raw=$outputStream.ToArray()}finally{$inputStream.Dispose();$outputStream.Dispose()}}
+       }finally{$archive.Dispose()}
+      }
      }
     }
    }
@@ -56,16 +63,22 @@ def bundle(target):
     html=re.sub(r'<script src="\.\./classroom/host/class-bootstrap\.js[^"]*"></script>','<script src="../classroom/host/offline-bootstrap.js"></script>',html)
     (dst/'seating/index.html').write_text(html,encoding='utf-8')
     shutil.copyfile(here/'runtime/offline-bootstrap.js',dst/'classroom/host/offline-bootstrap.js')
+    with zipfile.ZipFile(target/'presentation-assets.zip','w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+        for f in sorted(dst.rglob('*')):
+            if f.is_file():z.write(f,f.relative_to(dst).as_posix())
+def patch_install(s):
+    return once(s,"'seating-inbox.html','coins.js'","'seating-inbox.html','presentation-board.js','presentation-board.css','presentation-server.ps1','presentation-assets.zip','coins.js'")
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('system',type=pathlib.Path);ap.add_argument('--bundle-only',action='store_true');a=ap.parse_args()
     target=a.system;target.mkdir(parents=True,exist_ok=True)
     if not a.bundle_only:
         dash=target/'dashboard.html';server=target/'server.ps1'
-        d=patch_dashboard(dash.read_text(encoding='utf-8-sig'));p=patch_server(server.read_text(encoding='utf-8-sig'))
+        d=patch_dashboard(dash.read_text(encoding='utf-8-sig'));p=patch_server(server.read_text(encoding='utf-8-sig'));installer=target/'install.ps1';i=patch_install(installer.read_text(encoding='utf-8-sig'))
     bundle(target)
     for name in ['presentation-board.js','presentation-board.css','presentation-server.ps1']:
         shutil.copyfile(here/'runtime'/name,target/name)
     if not a.bundle_only:
-        dash.write_text(d,encoding='utf-8');server.write_text(p,encoding='utf-8-sig')
+        dash.write_text(d,encoding='utf-8');server.write_text(p,encoding='utf-8-sig');installer.write_text(i,encoding='utf-8-sig')
+        shutil.rmtree(target/'presentation')
     print('R7 presentation staged; regenerate package checksums and sign through normal release gate.')
 if __name__=='__main__':main()

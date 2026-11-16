@@ -35,12 +35,9 @@
    return;
   }
   if(board){
-   const presentation=new URLSearchParams(location.search).get('present')==='1';
-   document.documentElement.classList.add(presentation?'tt-student-only':'tt-board');
-   if(presentation)document.documentElement.classList.add('tt-board-presentation');
+   document.documentElement.classList.add('tt-board');
    await load('app.js?v=20261010-seatdrag2');
-   if(presentation){await load('pe-v1.js?v=20261115-step10-menu');await load('../classroom/host/board-present.js?v=20261116-board-present')}
-   else await load('../classroom/host/board-view.js');
+   await load('../classroom/host/board-view.js');
    return;
   }
   await load('../classroom/host/lock-ui.js');
