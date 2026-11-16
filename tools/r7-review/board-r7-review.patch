@@ -1,0 +1,490 @@
+--- a/system/server.ps1
++++ b/system/server.ps1
+@@ -404,6 +404,12 @@
+ }
+ $seatingFile=Join-Path $TTInstallDir 'seating.json'
+ $coinFile=Join-Path $TTInstallDir 'coins.log'
++function Get-TTCoinRevision([byte[]]$Bytes){
++ $sha=[Security.Cryptography.SHA256]::Create()
++ try{return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
++}
++function Read-TTCoinBytes([string]$File){if([IO.File]::Exists($File)){return ,([IO.File]::ReadAllBytes($File))};return ,([byte[]]@())}
++
+ $noticeFile=Join-Path $TTInstallDir 'notice.log'
+ . (Join-Path $PSScriptRoot 'speaker.ps1')
+ # Public read-only, privacy-free status only. Neither student data nor window IDs are returned.
+@@ -456,7 +462,7 @@
+  try {
+   [TTSocketHandleGuard]::MakeNonInheritable($client.Client.Handle)
+   $stream=$client.GetStream();$reader=New-Object IO.StreamReader($stream,[Text.Encoding]::ASCII,$false,1024,$true)
+-  $request=$reader.ReadLine();if(-not $request){continue};$fetchSite='';$hostName='';$origin='';$resetToken='';$backupToken='';$updateToken='';$contentLength=0
++  $request=$reader.ReadLine();if(-not $request){continue};$fetchSite='';$hostName='';$origin='';$resetToken='';$backupToken='';$updateToken='';$coinRevision='';$seatRevision='';$extraHeaders='';$contentLength=0
+   do {
+    $line=$reader.ReadLine()
+    if($line -match '^Sec-Fetch-Site:\s*(.+)$'){$fetchSite=$Matches[1].Trim()}
+@@ -465,6 +471,8 @@
+    elseif($line -match '^X-TT-Reset-Token:\s*([a-fA-F0-9]{32})\s*$'){$resetToken=$Matches[1].ToLowerInvariant()}
+    elseif($line -match '^X-TT-Backup-Token:\s*([a-fA-F0-9]{32})\s*$'){$backupToken=$Matches[1].ToLowerInvariant()}
+    elseif($line -match '^X-TT-Update-Token:\s*([a-fA-F0-9]{32})\s*$'){$updateToken=$Matches[1].ToLowerInvariant()}
++   elseif($line -match '^X-TT-Coin-Revision:\s*([a-f0-9]{64})\s*$'){$coinRevision=$Matches[1].ToLowerInvariant()}
++   elseif($line -match '^X-TT-Seating-Revision:\s*([a-f0-9]{64})\s*$'){$seatRevision=$Matches[1].ToLowerInvariant()}
+    elseif($line -match '^Content-Length:\s*(\d{1,9})\s*$'){$contentLength=[int]$Matches[1]}
+   } while($null -ne $line -and $line -ne '')
+   $parts=$request.Split(' ');if($parts.Length -lt 2 -or $parts[0] -notin @('GET','POST','OPTIONS')){throw 'Unsupported method.'}
+@@ -478,7 +486,7 @@
+   }
+   $uri=[uri]('http://localhost'+$parts[1]);$path=$uri.AbsolutePath;$status='200 OK';$ctype='application/json; charset=utf-8';$raw=$null;$body=''
+   $localHost=($hostName -eq "127.0.0.1:$Port" -or $hostName -eq "localhost:$Port")
+-  $allowedOrigins=@('https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4192','http://localhost:4192')
++  $allowedOrigins=@('https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4192','http://localhost:4192','http://127.0.0.1:4188','http://localhost:4188')
+   $managerOrigin=($origin -in $allowedOrigins)
+   $statusCors=($path -eq '/api/board-status' -and $localHost -and $managerOrigin)
+   try {
+@@ -491,7 +499,7 @@
+      # 'wallpaper' stays true for both modes so the published classroom manager keeps working; 'mode' says which.
+       $mode=''
+       try{$mode=[string](ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))).mode}catch{}
+-      $result=@{service='teacher-tools-local';version=40;wallpaper=$wallpaper;mode=$(if($wallpaper){$mode}else{''});screen=$null}
++      $result=@{service='teacher-tools-local';version=40;coinProtocol=3;wallpaper=$wallpaper;mode=$(if($wallpaper){$mode}else{''});screen=$null}
+      if($wallpaper){
+       # Read only Windows display bounds; never expose student data or stored files.
+       try{
+@@ -736,17 +744,31 @@
+     else{$status='403 Forbidden';$body='{"error":"forbidden"}'}
+    }
+    elseif($path -eq '/api/coins'){
+-    # Append only: there is no way to change or remove what is already in the history.
++    # Single listener serializes the compare-and-commit step. Reject stale clients, never silently replay.
+     if(-not ($localHost -and ($fetchSite -eq 'same-origin' -or ($parts[0] -eq 'GET' -and -not $fetchSite)))){$status='403 Forbidden';$body='{"error":"forbidden"}'}
+-    elseif($parts[0] -eq 'POST'){
+-     $text=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($bodyText))
+-     $lines=@($text -split "`n" | Where-Object {$_.Trim()})
+-     foreach($item in $lines){[void](ConvertFrom-Json $item)}
+-     [IO.File]::AppendAllText($coinFile,(($lines -join "`n")+"`n"),(New-Object Text.UTF8Encoding($false)))
+-     $body='{"ok":true}'
+-    }
+-    elseif(Test-Path -LiteralPath $coinFile -PathType Leaf){$ctype='text/plain; charset=utf-8';$raw=[IO.File]::ReadAllBytes($coinFile)}
+-    else{$ctype='text/plain; charset=utf-8';$body=''}
++    else{
++     [byte[]]$old=Read-TTCoinBytes $coinFile
++     $rev=Get-TTCoinRevision $old
++     if($parts[0] -eq 'POST'){
++      if(-not $coinRevision){$status='428 Precondition Required';$body='{"error":"revision_required"}'}
++      elseif($coinRevision -ne $rev -or ($seatRevision -and $seatRevision -ne (Get-TTCoinRevision (Read-TTCoinBytes $seatingFile)))){$status='409 Conflict';$body='{"error":"stale_snapshot"}'}
++      else{
++       $text=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($bodyText))
++       $lines=@($text -split "`n" | Where-Object {$_.Trim()})
++       if($lines.Count -eq 0 -or $lines.Count -gt 1000){throw 'Invalid coin batch'}
++       foreach($item in $lines){[void](ConvertFrom-Json $item)}
++       $temp=$coinFile+'.r7-tmp'
++       try{
++        [IO.File]::WriteAllBytes($temp,$old)
++        if($old.Length -gt 0 -and $old[$old.Length-1] -ne 10){[IO.File]::AppendAllText($temp,"`n",(New-Object Text.UTF8Encoding($false)))}
++        [IO.File]::AppendAllText($temp,(($lines -join "`n")+"`n"),(New-Object Text.UTF8Encoding($false)))
++        $newRev=Get-TTCoinRevision (Read-TTCoinBytes $temp)
++        if([IO.File]::Exists($coinFile)){[IO.File]::Replace($temp,$coinFile,[NullString]::Value)}else{[IO.File]::Move($temp,$coinFile)}
++        $extraHeaders="X-TT-Coin-Revision: $newRev`r`n";$body='{"ok":true}'
++       }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
++      }
++     }else{$ctype='text/plain; charset=utf-8';$raw=$old;$extraHeaders="X-TT-Coin-Revision: $rev`r`n"}
++    }
+    }
+    elseif($path -eq '/api/speakers' -or $path -eq '/api/speakers/set' -or $path -eq '/api/open-sound-settings'){
+     if(-not ($localHost -and ($fetchSite -eq 'same-origin' -or ($parts[0] -eq 'GET' -and -not $fetchSite)))){$status='403 Forbidden';$body='{"error":"forbidden"}'}
+@@ -904,8 +926,7 @@
+       $body='{"ok":true}'
+      }
+     }
+-    elseif(Test-Path -LiteralPath $seatingFile -PathType Leaf){$raw=[IO.File]::ReadAllBytes($seatingFile)}
+-    else{$status='404 Not Found';$body='{"error":"none"}'}
++    else{[byte[]]$seatBytes=Read-TTCoinBytes $seatingFile;$seatRev=Get-TTCoinRevision $seatBytes;$extraHeaders="X-TT-Seating-Revision: $seatRev`r`n";if([IO.File]::Exists($seatingFile)){$raw=$seatBytes}else{$status='404 Not Found';$body='{"error":"none"}'}}
+    }
+    else {
+    # V1.59: read-only data routes also check Host / Origin / Sec-Fetch-Site (DNS rebinding and other sites).
+@@ -939,6 +960,6 @@
+   if($null -ne $raw){$bytes=$raw}else{$bytes=[Text.Encoding]::UTF8.GetBytes($body)}
+   $corsHeaders=''
+   if($statusCors){$corsHeaders="Access-Control-Allow-Origin: $origin`r`nAccess-Control-Allow-Methods: GET, OPTIONS`r`nAccess-Control-Allow-Private-Network: true`r`nVary: Origin, Access-Control-Request-Private-Network`r`n"}
+-  $headers="HTTP/1.1 $status`r`nContent-Type: $ctype`r`nContent-Length: $($bytes.Length)`r`nCache-Control: no-store`r`nConnection: close`r`nX-Content-Type-Options: nosniff`r`n$corsHeaders`r`n";$headerBytes=[Text.Encoding]::ASCII.GetBytes($headers);$stream.Write($headerBytes,0,$headerBytes.Length);$stream.Write($bytes,0,$bytes.Length);$stream.Flush()
++  $headers="HTTP/1.1 $status`r`nContent-Type: $ctype`r`nContent-Length: $($bytes.Length)`r`nCache-Control: no-store`r`nConnection: close`r`nX-Content-Type-Options: nosniff`r`n$corsHeaders$extraHeaders`r`n";$headerBytes=[Text.Encoding]::ASCII.GetBytes($headers);$stream.Write($headerBytes,0,$headerBytes.Length);$stream.Write($bytes,0,$bytes.Length);$stream.Flush()
+  } catch {} finally {if($reader){try{$reader.Dispose()}catch{}};if($stream){try{$stream.Dispose()}catch{}};$client.Close()}
+ } } finally {$listener.Stop()}
+--- a/system/coins.js
++++ b/system/coins.js
+@@ -62,12 +62,17 @@
+   const [y,m,d]=week.split('-').map(Number),end=new Date(y,m-1,d+7);
+   if(end>now)return{ok:false,message:'아직 끝나지 않은 주예요.'};
+   if(events.some(e=>e.cls===cls&&e.type==='hofweek'&&e.week===week))return{ok:true,already:true,events:[],given:[]};
+-  const total=new Map(),games=new Map();
+-  for(const a of Array.isArray(awards)?awards.slice(0,40):[]){
++  // 21 ranked modes, including 2/4-player team results. Never silently truncate a settlement.
++  if(!Array.isArray(awards)||awards.length>128)return{ok:false,message:'결산 항목 수가 올바르지 않아요.'};
++  const allowed=new Set(['stairs_solo','stairs_race','jump_solo','jump_duel','shop_solo','shop_vs2','shop_co2','shop_co4','flash_solo','flash_r8','flash_r12','dance_solo','dance_duo','hockey','volley','bubble','othello','gomoku','ttt','germ','rally']);
++  const total=new Map(),games=new Map(),seen=new Set();
++  for(const a of awards){
++   if(!a||!allowed.has(a.game)||![1,2,3].includes(a.place)||typeof a.id!=='string')return{ok:false,message:'결산 항목이 올바르지 않아요.'};
+    const s=students.find(x=>x.id===a.id&&!x.excluded),prize=HOF_PRIZE[a.place];
+-   if(!s||!prize)continue;
++   if(!s)continue;
++   const key=JSON.stringify([s.id,a.game,a.place]);if(seen.has(key))continue;seen.add(key);
+    total.set(s.id,(total.get(s.id)||0)+prize);
+-   games.set(s.id,[...(games.get(s.id)||[]),String(a.game).slice(0,12)+':'+a.place]);
++   games.set(s.id,[...(games.get(s.id)||[]),a.game+':'+a.place]);
+   }
+   const at=now.toISOString(),out=[],given=[];
+   for(const [id,amount] of total){
+@@ -132,7 +137,78 @@
+   for(const s of students){const seat=hof.seats[s.id];if(seat>=1&&seat<=max)names[seat-1]=String(s.name).slice(0,12)}
+   return names;
+  }
+- const api={assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
++ // All writers use a revision from the exact ledger read. Conflicts never overwrite a newer transaction.
++ async function snapshot(withSeat=false){
++  const [log,seat]=await Promise.all([fetch('/api/coins',{cache:'no-store'}),withSeat?fetch('/api/seating',{cache:'no-store'}):null]);
++  if(!log.ok)throw Error('코인 기록을 읽지 못했어요.');
++  const revision=log.headers.get('X-TT-Coin-Revision');
++  if(!/^[a-f0-9]{64}$/.test(revision||''))throw Error('R7 코인 서버가 필요해요.');
++  const seatRevision=seat?.headers.get('X-TT-Seating-Revision');
++  if(withSeat&&(!/^[a-f0-9]{64}$/.test(seatRevision||'')||(!seat.ok&&seat.status!==404)))throw Error('학급 정보를 읽지 못했어요.');
++  return {events:parse(await log.text()),revision,seatRevision,roster:withSeat?rosterOf(seat.ok?await seat.json():null):null};
++ }
++ async function commit(s,list){
++  if(!list.length)return;
++  const bytes=new TextEncoder().encode(list.map(e=>JSON.stringify(e)).join('\n'));let b='';for(let i=0;i<bytes.length;i+=32768)b+=String.fromCharCode(...bytes.subarray(i,i+32768));
++  const headers={'Content-Type':'text/plain','X-TT-Coin-Revision':s.revision};if(s.seatRevision)headers['X-TT-Seating-Revision']=s.seatRevision;
++  const r=await fetch('/api/coins',{method:'POST',headers,body:btoa(b)});
++  if(r.status===409)throw Error('다른 코인 작업 또는 학급 변경이 있었어요. 다시 확인해 주세요.');
++  if(!r.ok)throw Error('코인 기록을 저장하지 못했어요.');
++  const rev=r.headers.get('X-TT-Coin-Revision');if(!/^[a-f0-9]{64}$/.test(rev||''))throw Error('코인 저장 결과를 확인할 수 없어요.');
++  s.revision=rev;s.events.push(...list);
++ }
++ const validCharge=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
++ function managerMutation(s,{type,cls,requestId,students,amount,settings},at){
++  const fail=message=>({ok:false,message});
++  if(!cls||cls!==s.roster?.cls)return fail('호자보드의 학급이 다릅니다. 현재 반을 칠판으로 보내 주세요.');
++  if(!validCharge(requestId))return fail('교실매니저를 최신 버전으로 새로고침해 주세요.');
++  const st=stateOf(s.events,cls);let key,operation;
++  if(type==='tt-coins-grant'){
++   if(!Array.isArray(students)||!students.length||students.length>200||!Number.isFinite(amount)||amount===0||Math.abs(amount)>999||amount%0.5)return fail('지급 요청을 확인해 주세요.');
++   const ids=students.map(x=>x?.id);if(ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)return fail('중복 또는 잘못된 학생 ID입니다.');
++   key=JSON.stringify([type,[...ids].sort(),amount]);
++   const roster=ids.map(id=>s.roster.students.find(x=>x.id===id));
++   if(roster.some(x=>!x))return fail('명단이 변경됐습니다. 현재 반을 칠판으로 다시 보내 주세요.');
++   operation=()=>st.settings.enabled?grant(st,{cls,students:roster,amount,source:'manager',at}):fail('코인이 꺼져 있습니다. 설정에서 켜 주세요.');
++  }else if(type==='tt-coins-setting'){
++   const v=settings;if(!v||typeof v.enabled!=='boolean'||typeof v.weeklyOn!=='boolean'||!Number.isFinite(v.cap)||v.cap<1||v.cap>999||v.cap%0.5||!Number.isFinite(v.weeklyAmount)||v.weeklyAmount<0||v.weeklyAmount>999||v.weeklyAmount%0.5||!Number.isInteger(v.weeklyDay)||v.weeklyDay<0||v.weeklyDay>6)return fail('코인 설정값을 확인해 주세요.');
++   const value={enabled:v.enabled,cap:v.cap,weeklyOn:v.weeklyOn,weeklyAmount:v.weeklyAmount,weeklyDay:v.weeklyDay};key=JSON.stringify([type,value]);
++   operation=()=>({events:[{at,cls,type:'setting',...value,source:'settings'}],results:[]});
++  }else return fail('지원하지 않는 요청입니다.');
++  const old=s.events.find(e=>e.type==='manager-tx'&&e.requestId===requestId);
++  if(old)return old.cls===cls&&old.key===key?{ok:true,duplicate:true,events:[],results:old.results||[]}:fail('다른 코인 요청에 사용된 거래 ID입니다.');
++  const out=operation();if(out.ok===false)return out;
++  return {ok:true,events:[...out.events,{at,cls,type:'manager-tx',requestId,key,results:out.results}],results:out.results};
++ }
++
++ function checkedSpend(events,roster,{cls,ids,game,charge,at}){
++  if(!cls||typeof cls!=='string')return {ok:false,message:'학급 정보가 없어요.'};
++  if(!validCharge(charge)||!Array.isArray(ids)||ids.length<1||ids.length>6||new Set(ids).size!==ids.length||typeof game!=='string'||!game||game.length>80)return {ok:false,message:'잘못된 코인 요청이에요.'};
++  if(events.some(e=>e.type==='coin-cancel'&&e.charge===charge))return {ok:false,message:'이미 취소된 거래예요.'};
++  const old=events.filter(e=>e.type==='spend'&&e.charge===charge);
++  const st=stateOf(events,cls);
++  if(old.length){const reset=events.findLastIndex(e=>e.cls===cls&&e.type==='reset');if(reset>=0&&events.indexOf(old[0])<reset)return {ok:false,message:'이미 초기화된 거래예요.'};if(old.length!==ids.length||old.some(e=>e.cls!==cls||e.game!==game||!ids.includes(e.id))||events.some(e=>e.type==='refund'&&e.charge===charge))return {ok:false,message:'이미 종료되었거나 다른 거래예요.'};return {ok:true,price:-old[0].amount,events:[],duplicate:true};}
++  if(roster.cls!==cls)return {ok:false,message:'학급이 변경됐어요. 게임을 다시 열어 주세요.'};
++  if(!st.settings.enabled)return {ok:false,message:'코인이 꺼져 있어요.'};
++  const players=ids.map(id=>roster.students.find(p=>p.id===id&&!p.excluded));if(players.some(p=>!p))return {ok:false,message:'학생 명단이 변경됐어요.'};
++  const r=spend(st,{cls,players,game,charge,at});return r.ok?r:{...r,message:'코인이 모자라요: '+r.short.map(p=>p.name).join(', ')};
++ }
++ function originalRefund(events,charge,at){
++  if(!validCharge(charge))return {ok:false,events:[]};
++  const old=events.filter(e=>e.type==='spend'&&e.charge===charge);if(!old.length||old.some(e=>e.cls!==old[0].cls))return {ok:false,events:[]};
++  const cls=old[0].cls;const lastReset=events.findLastIndex(e=>e.cls===cls&&e.type==='reset');
++  if(lastReset>=0&&events.indexOf(old[0])<lastReset)return {ok:false,events:[]};
++  return {ok:true,cls,events:refund(events,{cls,charge,at})};
++ }
++ function cancelOrRefund(events,{cls,charge,at}){
++  if(typeof cls!=='string'||!cls||cls.length>160||!validCharge(charge))return {ok:false,events:[]};
++  const old=events.find(e=>e.charge===charge&&['spend','coin-cancel'].includes(e.type));
++  if(old&&old.cls!==cls)return {ok:false,events:[]};
++  if(old?.type==='coin-cancel')return {ok:true,cls,events:[]};
++  if(old)return originalRefund(events,charge,at);
++  return {ok:true,cls,events:[{at,cls,type:'coin-cancel',charge}]};
++ }
++ const api={snapshot,commit,managerMutation,cancelOrRefund,checkedSpend,originalRefund,validCharge,assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
+  if(typeof module!=='undefined'&&module.exports)module.exports=api;
+  root.TTCoins=api;
+ })(typeof window!=='undefined'?window:globalThis);
+--- a/system/coins-ui.js
++++ b/system/coins-ui.js
+@@ -9,30 +9,24 @@
+  const signed=n=>(n>0?'+':'')+coin(n);
+  let events=[],roster={cls:'',className:'',students:[]},selected=new Set(),panel='grant';
+  const state=()=>C.stateOf(events,roster.cls);
+- const encode=text=>{const b=new TextEncoder().encode(text);let o='';for(let i=0;i<b.length;i+=32768)o+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(o)};
+- async function load(){
+-  const [log,seat]=await Promise.all([fetch('/api/coins'),fetch('/api/seating')]);
+-  events=log.ok?C.parse(await log.text()):[];
+-  roster=C.rosterOf(seat.ok?await seat.json():null);
+- }
+- async function append(list){
+-  if(!list.length)return;
+-  const r=await fetch('/api/coins',{method:'POST',headers:{'Content-Type':'text/plain'},body:encode(list.map(e=>JSON.stringify(e)).join('\n'))});
+-  if(!r.ok)throw Error('코인 기록을 저장하지 못했습니다.');
+-  events.push(...list);
+- }
++ let snap=null,queue=Promise.resolve();
++ function serial(fn){const next=queue.then(fn);queue=next.catch(()=>{});return next;}
++ async function load(){snap=await C.snapshot(true);events=snap.events;if(roster.cls!==snap.roster.cls)selected.clear();roster=snap.roster;}
++ async function append(list){await C.commit(snap,list);}
+  // Only one page writes at a time here, and the server handles requests one by one.
+- async function housekeeping(){
++ async function housekeepingNow(){
+   try{
+    await load();
+-   if(!roster.cls)return;
++   if(!roster.cls)return true;
+    const now=new Date();
+    await append(C.yearReset(events,{cls:roster.cls,now}));
+    await append(C.weekly(events,state(),{cls:roster.cls,students:roster.students,now}));
+    if(!dialog.hidden&&dialog.open)render();
+-  }catch(error){console.warn('코인 정리 실패',error)}
++   return true;
++  }catch(error){console.warn('코인 정리 실패',error);return false;}
+  }
+ 
++ const housekeeping=()=>serial(housekeepingNow);
+  const style=document.createElement('style');
+  style.textContent=`#coinApp:modal{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#13233d;color:#edf4fc;overflow:hidden}
+ #coinBody{box-sizing:border-box;display:flex;flex-direction:column;height:100%;padding:18px clamp(14px,2vw,32px);gap:12px}
+@@ -70,7 +64,7 @@
+   if(e.type==='setting'){return[when,'설정',`상한 ${e.cap} · 주급 ${e.weeklyOn?WEEKDAYS[e.weeklyDay]+'요일 '+e.weeklyAmount:'끔'} · 코인 ${e.enabled?'사용':'끔'}`,SOURCE.settings]}
+   if(e.type==='reset')return[when,'전체','잔액 초기화',SOURCE.year];
+   if(e.amount===undefined)return null;
+-  return[when,e.name||'',`${signed(e.amount)}${e.game?' · '+e.game:''}`,SOURCE[e.source]||e.source||''];
++  return[when,e.name||'',`${signed(e.amount)}${e.game?' · '+e.game:Array.isArray(e.games)?' · '+e.games.join(', '):''}`,SOURCE[e.source]||e.source||''];
+  };
+  const mine=()=>events.filter(e=>e.cls===roster.cls);
+  function render(){
+@@ -87,9 +81,9 @@
+   if(panel==='grant'&&!st.settings.enabled){
+    const note=document.createElement('p');note.textContent='코인이 꺼져 있습니다. 아래 버튼을 누르면 이 반의 미니게임에서 코인을 씁니다.';
+    main().replaceChildren(note);
+-   if(roster.cls)actions.append(button('코인 켜기','act',async()=>{
+-    try{await append([{at:new Date().toISOString(),cls:roster.cls,type:'setting',...st.settings,enabled:true,source:'settings'}]);say('코인을 켰습니다.');render()}catch(error){say(error.message)}
+-   }));
++   if(roster.cls)actions.append(button('코인 켜기','act',()=>{const cls=roster.cls;return serial(async()=>{
++    try{await load();if(roster.cls!==cls)throw Error('학급이 변경됐어요.');await append([{at:new Date().toISOString(),cls:roster.cls,type:'setting',...state().settings,enabled:true,source:'settings'}]);say('코인을 켰습니다.');render()}catch(error){say(error.message)}
++   })}));
+    return}
+   if(!roster.students.length){main().textContent='아직 학생 명단이 없습니다. 교실 매니저에서 칠판으로 보내 주세요.';return}
+   if(panel==='grant')renderGrant(st,actions);
+@@ -112,8 +106,10 @@
+   for(const n of [0.5,1,2,5])actions.append(button('+'+n,'act',()=>give(n)));
+   for(const n of [-0.5,-1])actions.append(button(String(n),'act neg',()=>give(n)));
+  }
+- async function give(amount){
+-  const students=roster.students.filter(s=>selected.has(s.id));
++ function give(amount){const cls=roster.cls,ids=new Set(selected);return serial(()=>giveNow(amount,cls,ids));}
++ async function giveNow(amount,cls,ids){
++  try{await load();if(roster.cls!==cls||!state().settings.enabled)throw Error('학급 또는 코인 설정이 변경됐어요.');}catch(error){say(error.message);return}
++  const students=roster.students.filter(s=>ids.has(s.id));
+   if(!students.length){say('학생을 먼저 고르세요.');return}
+   try{
+    const {events:list,results}=C.grant(state(),{cls:roster.cls,students,amount,source:'dashboard',at:new Date().toISOString()});
+@@ -143,14 +139,15 @@
+   const weekly=document.createElement('input');weekly.type='checkbox';weekly.id='coinWeeklyOn';weekly.checked=s.weeklyOn;row('주급 사용',weekly);
+   row('주급',num('coinWeekly',s.weeklyAmount,0,999));
+   const day=document.createElement('select');day.id='coinDay';WEEKDAYS.forEach((d,i)=>day.add(new Option(d+'요일',String(i))));day.value=String(s.weeklyDay);row('주급 요일',day);
+-  form.append(button('저장','act',async()=>{
++  form.append(button('저장','act',()=>{const cls=roster.cls;return serial(async()=>{
+    const cap=Number($('coinCap').value),amount=Number($('coinWeekly').value);
+    if(!(cap>=1)||!(amount>=0)||cap%0.5||amount%0.5){say('상한과 주급은 0.5 단위 숫자로 입력하세요.');return}
+    try{
++    await load();if(roster.cls!==cls)throw Error('학급이 변경됐어요.');
+     await append([{at:new Date().toISOString(),cls:roster.cls,type:'setting',enabled:on.checked,cap,weeklyOn:weekly.checked,weeklyAmount:amount,weeklyDay:Number(day.value),source:'settings'}]);
+     say('설정을 저장했습니다.');render();
+    }catch(error){say(error.message)}
+-  }));
++  })}));
+   main().replaceChildren(form);
+  }
+  async function open(){
+@@ -163,51 +160,49 @@
+ 
+  const MAX_SEATS=40;
+  const cleanHof=h=>h&&typeof h.code==='string'?{code:h.code.slice(0,32),teacher:typeof h.teacher==='string'?h.teacher:null,pin:typeof h.pin==='string'?h.pin:null,seats:h.seats&&typeof h.seats==='object'?h.seats:{},keep:h.keep&&typeof h.keep==='object'?h.keep:{}}:null;
+- async function sendRoster(reply){
++ async function sendRoster(reply,readyReq=null){
+   let st=state();
+   if(st.hof){
+    const {seats,changed}=C.assignSeats(st.hof,roster.students,MAX_SEATS);
+    if(changed){await append([{at:new Date().toISOString(),cls:roster.cls,type:'hof',hof:{...st.hof,seats},source:'settings'}]);st=state()}
+   }
+   const hof=st.hof,person=s=>({id:s.id,name:s.name,number:hof?hof.seats[s.id]||null:s.number});
+-  reply({type:'hoja-roster',version:2,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),
++  reply({type:'hoja-roster',readyReq,version:3,classId:roster.cls,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),
+    hof:hof&&{code:hof.code,teacher:hof.teacher,pin:hof.pin},names:hof?C.seatNames(hof,roster.students,MAX_SEATS):null,
+    everyone:roster.students.map(person),
+    students:roster.students.filter(s=>!s.excluded).map(s=>({...person(s),balance:C.balanceOf(st,s.id)}))});
+  }
+  // Mini games: the page lives on the web, so this window answers for the ledger on this PC.
+- window.addEventListener('message',async event=>{
++ window.addEventListener('message',event=>{
+   const frame=$('miniFrame');
+   if(event.origin!==GAME_ORIGIN||!frame||event.source!==frame.contentWindow||!event.data)return;
+-  const reply=data=>frame.contentWindow.postMessage(data,GAME_ORIGIN);
++  const source=event.source,sessionId=event.data.sessionId;const reply=data=>{if(frame.contentWindow===source)source.postMessage({...data,sessionId},GAME_ORIGIN);};
+   const {type}=event.data;
++  void serial(async()=>{
+   try{
+    if(type==='hoja-ready'){
+-    await housekeeping();
+-    await sendRoster(reply);
++    if(await housekeepingNow())await sendRoster(reply,event.data.readyReq??null);
+    }else if(type==='hoja-setup'){
+     await load();
+-    if(!roster.cls)return;
++    if(!roster.cls||event.data.classId!==roster.cls)return;
+     const at=new Date().toISOString(),list=[];
+     if(typeof event.data.enabled==='boolean')list.push({at,cls:roster.cls,type:'setting',...state().settings,enabled:event.data.enabled,source:'settings'});
+     if('hof' in event.data)list.push({at,cls:roster.cls,type:'hof',hof:cleanHof(event.data.hof),source:'settings'});
+     await append(list);
+-    await housekeeping();
+-    await sendRoster(reply);
++    if(await housekeepingNow())await sendRoster(reply);
+    }else if(type==='hoja-coin-spend'){
+     await load();
+-    const players=event.data.ids.map(id=>roster.students.find(s=>s.id===id)).filter(Boolean);
+-    if(players.length!==event.data.ids.length)return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'명단이 바뀌었습니다. 다시 열어 주세요.'});
+-    const charge=crypto.randomUUID();
+-    const result=C.spend(state(),{cls:roster.cls,players,game:event.data.game,charge,at:new Date().toISOString()});
+-    if(!result.ok)return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:`코인이 모자라요: ${result.short.map(p=>p.name).join(', ')}`});
++    const {ids,game,txId:charge,classId:cls}=event.data;
++    const result=C.checkedSpend(events,roster,{cls,ids,game,charge,at:new Date().toISOString()});
++    if(!result.ok){reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:result.message});await sendRoster(reply);return;}
++    if(result.duplicate&&roster.cls!==cls){const res=C.originalRefund(events,charge,new Date().toISOString());if(res.ok)await append(res.events);return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'학급이 바뀌어 이전 결제를 취소했어요.'});}
+     await append(result.events);
+     const st=state();
+-    reply({type:'hoja-coin-result',req:event.data.req,ok:true,charge,price:result.price,balances:Object.fromEntries(players.map(p=>[p.id,C.balanceOf(st,p.id)]))});
++    reply({type:'hoja-coin-result',req:event.data.req,ok:true,classId:cls,charge,price:result.price,balances:Object.fromEntries(ids.map(id=>[id,C.balanceOf(st,id)]))});
+    }else if(type==='hoja-hof-week'){
+     // Hall of fame weekly settlement from the mini games: amounts are fixed here, and each week is paid once.
+     await load();
+-    if(!roster.cls)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'학급 명단이 없어요.'});
++    if(!roster.cls||event.data.classId!==roster.cls)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'학급 명단이 없어요.'});
+     const st0=state();
+     if(!st0.settings.enabled)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'코인이 꺼져 있어요.'});
+     const res=C.hofWeek(events,st0,{cls:roster.cls,students:roster.students,week:String(event.data.week||''),awards:event.data.awards,now:new Date()});
+@@ -219,12 +214,17 @@
+     await sendRoster(reply);
+    }else if(type==='hoja-coin-refund'){
+     await load();
+-    await append(C.refund(events,{cls:roster.cls,charge:event.data.charge,at:new Date().toISOString()}));
++    const res=C.cancelOrRefund(events,{cls:event.data.classId,charge:event.data.charge,at:new Date().toISOString()});
++    if(res.ok)await append(res.events);
++    const st=C.stateOf(events,res.cls);reply({type:'hoja-refund-result',charge:event.data.charge,ok:res.ok,classId:res.cls,balances:res.ok?st.balances:{}});
+    }
+   }catch(error){
+    console.error(error);
+-   if(type==='hoja-coin-spend')reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'코인을 처리하지 못했어요. 다시 해 주세요.'});
++   if(type==='hoja-coin-spend')reply({type:'hoja-coin-result',req:event.data.req,ok:false,retryable:true,message:'코인 처리 결과를 확인하지 못했어요. 다시 확인해 주세요.'});
++   if(type==='hoja-coin-refund')reply({type:'hoja-refund-result',charge:event.data.charge,ok:false,retryable:true});
++   if(type==='hoja-hof-week')reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'결산 결과를 확인하지 못했어요. 다시 확인해 주세요.'});
+   }
++  });
+  });
+  void housekeeping();
+  setInterval(housekeeping,10*60000);
+--- a/system/seating-inbox.html
++++ b/system/seating-inbox.html
+@@ -6,47 +6,25 @@
+ <script>
+ // Accepts seatings and coin requests only from the classroom manager's own addresses, then closes.
+ const ALLOWED=['https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4188','http://localhost:4188'];
+-const readCoins=async()=>{const log=await fetch('/api/coins');return TTCoins.parse(log.ok?await log.text():'')};
+-// The hall of fame teacher code stays on this PC.
+-const coinView=(events,cls)=>{const {hof,...state}=TTCoins.stateOf(events,cls);return{state,events:events.filter(e=>e.cls===cls&&e.type!=='hof').slice(-300)}};
+-const validSettings=s=>s&&typeof s.enabled==='boolean'&&typeof s.weeklyOn==='boolean'&&Number.isFinite(s.cap)&&s.cap>=1&&s.cap%0.5===0&&Number.isFinite(s.weeklyAmount)&&s.weeklyAmount>=0&&s.weeklyAmount%0.5===0&&Number.isInteger(s.weeklyDay)&&s.weeklyDay>=0&&s.weeklyDay<=6;
+-window.addEventListener('message',async event=>{
+- if(!ALLOWED.includes(event.origin)||event.source!==window.opener)return;
+- if(event.data?.type==='tt-coins-read'||event.data?.type==='tt-coins-setting'){
+-  let reply={type:'tt-inbox-failed'};
++const readCoins=()=>TTCoins.snapshot(true);
++const coinView=(snap,cls)=>{const {hof,...state}=TTCoins.stateOf(snap.events,cls);return{state,events:snap.events.filter(e=>e.cls===cls&&e.type!=='hof'&&e.type!=='manager-tx').slice(-300),protocol:3,boardCls:snap.roster.cls,boardClassName:snap.roster.className||''}};
++let busy=false;window.addEventListener('message',async event=>{
++ if(!ALLOWED.includes(event.origin)||event.source!==window.opener||busy)return;
++ if(!['tt-coins-read','tt-coins-setting','tt-coins-grant','tt-seating-send'].includes(event.data?.type))return;busy=true;
++ if(event.data.type!=='tt-seating-send'){
++  let reply={type:'tt-inbox-failed',protocol:3};
+   try{
+-   const {cls,settings}=event.data;
+-   const events=await readCoins();
+-   let ok=typeof cls==='string'&&cls.length>0;
+-   if(ok&&event.data.type==='tt-coins-setting'){
+-    ok=validSettings(settings);
+-    if(ok){
+-     const entry={at:new Date().toISOString(),cls,type:'setting',enabled:settings.enabled,cap:settings.cap,weeklyOn:settings.weeklyOn,weeklyAmount:settings.weeklyAmount,weeklyDay:settings.weeklyDay,source:'settings'};
+-     const body=btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(entry))));
+-     ok=(await fetch('/api/coins',{method:'POST',headers:{'Content-Type':'text/plain'},body})).ok;
+-     if(ok)events.push(entry);
+-    }
++   const {cls,type,requestId}=event.data;
++   if(typeof cls!=='string'||!cls||cls.length>160)throw Error('학급 정보가 없습니다.');
++   const snap=await readCoins();
++   if(type==='tt-coins-read')reply={type:'tt-inbox-coin-state',...coinView(snap,cls)};
++   else{
++    const res=TTCoins.managerMutation(snap,event.data,new Date().toISOString());
++    if(!res.ok)reply={...reply,message:res.message,requestId,definitive:true,...coinView(snap,cls)};
++    else{await TTCoins.commit(snap,res.events);reply={type:type==='tt-coins-grant'?'tt-inbox-coins':'tt-inbox-coin-state',requestId,results:res.results,...coinView(snap,cls)};}
+    }
+-   if(ok)reply={type:'tt-inbox-coin-state',...coinView(events,cls)};
+-  }catch(error){console.error(error)}
+-  event.source.postMessage(reply,event.origin);
+-  window.close();
+-  return;
+- }
+- if(event.data?.type==='tt-coins-grant'){
+-  let reply={type:'tt-inbox-failed'};
+-  try{
+-   const events=await readCoins();
+-   const {cls,students,amount}=event.data;
+-   if(!TTCoins.stateOf(events,cls).settings.enabled){event.source.postMessage({type:'tt-inbox-failed',message:'코인이 꺼져 있습니다. 설정에서 켠 뒤 지급해 주세요.'},event.origin);window.close();return}
+-   const {events:list,results}=TTCoins.grant(TTCoins.stateOf(events,cls),{cls,students,amount,source:'manager',at:new Date().toISOString()});
+-   const body=btoa(String.fromCharCode(...new TextEncoder().encode(list.map(e=>JSON.stringify(e)).join('\n'))));
+-   const saved=list.length?await fetch('/api/coins',{method:'POST',headers:{'Content-Type':'text/plain'},body}):{ok:true};
+-   if(saved.ok)reply={type:'tt-inbox-coins',results,...coinView([...events,...list],cls)};
+-  }catch(error){console.error(error)}
+-  event.source.postMessage(reply,event.origin);
+-  window.close();
+-  return;
++  }catch(error){console.error(error);reply={...reply,requestId:event.data.requestId,message:error.message||'코인 처리 결과를 확인할 수 없습니다.'};}
++  event.source.postMessage(reply,event.origin);window.close();return;
+  }
+  if(event.data?.type!=='tt-seating-send')return;
+  let type='tt-inbox-failed';
+--- a/system/dashboard.html
++++ b/system/dashboard.html
+@@ -5398,19 +5398,20 @@
+   if(!C$)return;await loadRoster();
+   if(!coinEligible()){note('호자의 상태가 회복되어 코인을 사용할 수 없어요.');refreshUi();return}
+   if(!roster?.cls||!(roster.students||[]).length){note('학급 명단이 있어야 코인을 쓸 수 있어요.');return}
++  const coinClass=roster.cls;
+   const ok=studentGrid('코인 0.5개를 쓸 학생을 골라 주세요',async s=>{
+    if(coinInFlight)return;
+    coinInFlight=true;refreshUi();
+    try{
+     if(!coinEligible()){note('호자의 상태가 회복되어 코인을 사용할 수 없어요.');return}
+-    const log=await fetch('/api/coins'),events=log.ok?C$.parse(await log.text()):[],st=C$.stateOf(events,roster.cls);
++    const snap=await C$.snapshot(true),st=C$.stateOf(snap.events,coinClass);
++    if(snap.roster.cls!==coinClass||!snap.roster.students.some(p=>p.id===s.id&&!p.excluded)){note('학급 또는 학생 명단이 변경됐어요.');return}
+     if(!st.settings?.enabled){note('코인이 꺼져 있어요. 코인 창에서 켜 주세요.');return}
+     if(C$.balanceOf(st,s.id)-.5<C$.FLOOR){note(s.name+' 학생은 코인이 모자라요.');return}
+     // Re-check immediately before spending: no charge when another action restored Hoja.
+     if(!coinEligible()||houseEscape){note('지금은 코인으로 회복할 수 없어요.');return}
+-    const ev={at:new Date().toISOString(),cls:roster.cls,type:'spend',id:s.id,name:s.name,amount:-.5,source:'game',game:'호자의 집',charge:(crypto.randomUUID?.()||String(Date.now()))};
+-    const b=new TextEncoder().encode(JSON.stringify(ev));let o='';for(const x of b)o+=String.fromCharCode(x);
+-    const r=await fetch('/api/coins',{method:'POST',headers:{'Content-Type':'text/plain'},body:btoa(o)});if(!r.ok)throw Error();
++    const ev={at:new Date().toISOString(),cls:coinClass,type:'spend',id:s.id,name:s.name,amount:-.5,source:'game',game:'호자의 집',charge:(crypto.randomUUID?.()||String(Date.now()))};
++    await C$.commit(snap,[ev]);
+     for(const [k] of NEEDS)S.stats[k]=100;if(S.day)S.day.cared=true;save();refreshUi();
+     hop();say('coin');setTimeout(()=>askName('coin'),2200);
+    }catch{note('코인을 처리하지 못했어요. 다시 해 주세요.')}
