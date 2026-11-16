@@ -22,12 +22,23 @@ jobs:
           python -m py_compile tools/r7-presentation/apply-presentation.py
           python tools/r7-presentation/apply-presentation.py /tmp/tt-presentation --bundle-only
           unzip -t /tmp/tt-presentation/presentation-assets.zip
+      - name: Browser rendering and manager-to-board handoff
+        run: |
+          npm install --prefix /tmp/tt-presentation-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-presentation-browser/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-presentation-browser/node_modules node tools/r7-presentation/test-browser.cjs /tmp/tt-presentation
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: e7aa36696a8867c20b5e920f80e03741ea647105
+          path: r7-baseline
+          persist-credentials: false
       - uses: actions/upload-artifact@v4
         with:
           name: r7-presentation-review-bundle
           path: |
             /tmp/tt-presentation/
             tools/r7-presentation/
+            r7-baseline/tools/r7-review/
   windows:
     runs-on: windows-latest
     timeout-minutes: 8
@@ -35,9 +46,20 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: e7aa36696a8867c20b5e920f80e03741ea647105
+          path: r7-baseline
+          persist-credentials: false
       - shell: powershell
         run: |
           python tools/r7-presentation/apply-presentation.py "$env:RUNNER_TEMP/tt-presentation" --bundle-only
           if($LASTEXITCODE -ne 0){ throw 'bundle failed' }
           powershell -NoProfile -ExecutionPolicy Bypass -File tools/r7-presentation/test-runtime.ps1 "$env:RUNNER_TEMP/tt-presentation"
           if($LASTEXITCODE -ne 0){throw 'runtime tests failed'}
+          python -c "import runpy,pathlib; m=runpy.run_path('tools/r7-presentation/apply-presentation.py'); p=pathlib.Path('r7-baseline/tools/r7-review/runtime/server.ps1'); pathlib.Path(r'$env:RUNNER_TEMP/tt-presentation/server.ps1').write_text(m['patch_server'](p.read_text(encoding='utf-8-sig')),encoding='utf-8-sig')"
+          if($LASTEXITCODE -ne 0){throw 'server overlay failed'}
+          $tokens=$null;$errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$env:RUNNER_TEMP/tt-presentation/server.ps1",[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw ($errors|Out-String)}
+          Write-Host 'Full R7 server overlay syntax PASS'
