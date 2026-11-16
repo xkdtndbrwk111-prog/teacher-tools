@@ -1,0 +1,32 @@
+[
+  {
+    "file": "system/server.ps1",
+    "base_sha256": "cacccf6ab42a92800c64d510d294b27bf93ede843276cf84a099298dc961f223",
+    "modified_sha256": "9b327a04eb31a5de2bb8e6f93f0b75e71668cd54a03366c057850a22c6f4abb2",
+    "bytes": 64042
+  },
+  {
+    "file": "system/coins.js",
+    "base_sha256": "f7846c04149341fe13dfc6d012efaf30caefb4183d0637ab0024924642ef7623",
+    "modified_sha256": "6b212efa14435ad7553c3a110606fe6775558e999338dfe2756dc81afefac833",
+    "bytes": 14874
+  },
+  {
+    "file": "system/coins-ui.js",
+    "base_sha256": "5165b419b0a4be21c44a1b43d2b13668ddd3e58497ec00ba85c0d342a53e682b",
+    "modified_sha256": "c638c13bb143e486daed5b4881963f695b5eaee9b35373708a19ae1298b054b9",
+    "bytes": 16474
+  },
+  {
+    "file": "system/seating-inbox.html",
+    "base_sha256": "7286a0710046f1a176a1db1125f951c2acb1a011646e0d3e3da38819f00e3e7e",
+    "modified_sha256": "1010b82d3dae7ed2a6adcd1a10557d61062419d48311f2cb5b6d71f394e028a8",
+    "bytes": 2560
+  },
+  {
+    "file": "system/dashboard.html",
+    "base_sha256": "2483489b7286f7b27b4535e38e11ddd1aa4124464ce86aaa5888c7da66f841f0",
+    "modified_sha256": "f44b8f19d77fcbb0f22871c598b95bc574614ae0e588032afa86244a98192ebe",
+    "bytes": 978385
+  }
+]
