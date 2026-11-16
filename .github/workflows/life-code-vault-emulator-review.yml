@@ -1,0 +1,24 @@
+name: Class life code vault isolated Firestore review
+on:
+  push:
+    branches: [codex/life-reconnect-code-vault]
+    paths: ['.github/workflows/life-code-vault-emulator-review.yml','classroom/cloud/**','classroom/tests/cloud-firestore-emulator.test.mjs']
+permissions:
+  contents: read
+jobs:
+  vault:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install isolated emulator test dependencies
+        run: |
+          cd classroom/cloud
+          npm ci --no-audit --no-fund
+      - name: Verify actual Firestore store and teacher code route with virtual students only
+        run: |
+          if [ -n "${JAVA_HOME_21_X64:-}" ]; then export JAVA_HOME="$JAVA_HOME_21_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
+          java -version
+          classroom/cloud/node_modules/.bin/firebase emulators:exec --only firestore --project teacher-tools-local --config firebase.json "node --test --test-name-pattern='teacher code vault returns' classroom/tests/cloud-firestore-emulator.test.mjs"
