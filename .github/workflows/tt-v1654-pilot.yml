@@ -1,0 +1,166 @@
+name: V1.65.4 Podo sticker stability and minimum title pilot release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/tt-v1654-pilot.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: tt-v1654-pilot
+  cancel-in-progress: false
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: teacher-tools-signing
+    outputs:
+      feed_sha: ${{ steps.sign.outputs.feed_sha }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify old signature and build isolated candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content -LiteralPath 'stable/content-v4/latest.json' -Raw | ConvertFrom-Json
+          $raw = [Convert]::FromBase64String(($source.payloadChunks -join ''))
+          $old = [System.Security.Cryptography.RSA]::Create()
+          try {
+            $p = [System.Security.Cryptography.RSAParameters]::new()
+            $p.Modulus = [Convert]::FromBase64String('uJWav5jiIgqwKanGoBnw1QWyhpxsyjkWu8l2RdlxipSygIpnJk2eWHUT5B88i+3fOAvo72NYaEtNZYLkmCVue0Ex2tzzPa9VAgbMyer0VxG2Mort6P2qGilNu3hX0wgtgUbJC5ee75MOO0bUTUwoZRiSnDoWif5c8JCvM6ALvYskFbVkHjqP9ydpcMGura726q1wLLD7Iw+DtQgWP9g083VN+fhFFd2+z/lfmHkR8ljwkBrFbMwpHnEYU8oblcS0gkq/Es/9pldZ7idrG8iYxiXim68594CZBzvoMo9G5/axig/9A/pxrG23fP7posJBvN7ZF4vKRQqkEp/E1swZ7Q==')
+            $p.Exponent = [Convert]::FromBase64String('AQAB')
+            $old.ImportParameters($p)
+            if (-not $old.VerifyData($raw,[Convert]::FromBase64String($source.signature),[System.Security.Cryptography.HashAlgorithmName]::SHA256,[System.Security.Cryptography.RSASignaturePadding]::Pkcs1)) { throw 'Original V1.65.3 V2 signature invalid' }
+          } finally { $old.Dispose() }
+          $dir = Join-Path $env:RUNNER_TEMP 'tt-v1654-candidate'
+          New-Item -ItemType Directory -Path $dir -ErrorAction Stop | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $dir 'source-payload.json'),$raw)
+          @'
+          import base64,gzip,hashlib,io,json,pathlib,sys,subprocess,re
+          root=pathlib.Path(sys.argv[1])
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          enc=lambda b:base64.b64encode(b).decode('ascii')
+          source=json.loads((root/'source-payload.json').read_bytes())
+          assert source['schema']=='TT-STABLE-CONTENT-SNAPSHOT-3' and source['channel']=='stable' and source['toVersion']=='1.65.3'
+          with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(source['htmlGzip'],validate=True))) as f:
+              html=f.read(1500001)
+          rel=base64.b64decode(source['releaseBytes'],validate=True)
+          assert sha(html)==source['afterHtmlSha']=='0f1ed520f9827d39baf7e58e0217562a9dd4b5b06c818e3c448dfb1adfc53a70'
+          assert sha(rel)==source['afterReleaseSha']=='98d028d3c3461f60a0907b5754901c51a38b4692335ca97ac418337d6c490443'
+          (root/'base.html').write_bytes(html)
+          patch=pathlib.Path('tools/releases/tt-v1654.py').read_bytes().replace(b'\r\n',b'\n')
+          assert hashlib.sha1(b'blob '+str(len(patch)).encode()+b'\0'+patch).hexdigest()=='cad77371fb53e0897f7c7217e6fbfe3d94c46dd6'
+          subprocess.run([sys.executable,'tools/releases/tt-v1654.py',str(root/'base.html'),str(root/'target.html')],check=True)
+          new_html=(root/'target.html').read_bytes()
+          assert rel.count(b'1.65.3')==2
+          new_rel=rel.replace(b'1.65.3',b'1.65.4')
+          assert sha(new_html)=='b4c1dd9e045235ed8419015640f1f697e66eb333cefef4d40eda835fd6d14a42'
+          assert json.loads(new_rel)==dict(json.loads(rel),version='1.65.4',release='2026-11-16-V1.65.4-STABLE-PILOT')
+          print('Release SHA256:',sha(new_rel))
+          scripts=re.findall(r'<script\b[^>]*>([\s\S]*?)</script>',new_html.decode(),re.I)
+          for i,s in enumerate(scripts):
+              if not s.strip():continue
+              path=root/('syntax-'+str(i)+'.js')
+              path.write_text(s,encoding='utf-8')
+              subprocess.run(['node','--check',str(path)],check=True)
+              path.unlink()
+          assert new_html.count(b'id="tt-podo-v1652"')==1 and b'<script src="/podo.js"></script>' not in new_html
+          assert b'rail.append(directionButton)' in new_html and b'podo-flight-layer' in new_html
+          assert b'function syncStampGrid(' in new_html and b'WIDGETS.podo.min=[3,3]' in new_html and b'podo-overview-tiny-title' in new_html
+          assert len(new_html)<=1500000
+          compressed=gzip.compress(new_html,mtime=0)
+          assert len(compressed)<=550000
+          bases=[*source['bases'],{'version':'1.65.3','htmlSha':sha(html),'releaseSha':sha(rel)}]
+          assert len({b['version'] for b in bases})==len(bases)
+          target={'schema':'TT-STABLE-CONTENT-SNAPSHOT-3','channel':'stable','toVersion':'1.65.4','bases':bases,'afterHtmlSha':sha(new_html),'afterReleaseSha':sha(new_rel),'releaseBytes':enc(new_rel),'htmlGzip':enc(compressed)}
+          payload=json.dumps(target,separators=(',',':')).encode()
+          assert len(payload)<=800000
+          (root/'candidate-payload.json').write_bytes(payload)
+          for name in ['source-payload.json','base.html','target.html']:(root/name).unlink()
+          print('PASS: source signature, exact V1.65.4 hashes, script syntax and update limits; nonempty scripts:',sum(bool(s.strip()) for s in scripts))
+          '@ | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'tt-build.py') -Encoding utf8
+          python (Join-Path $env:RUNNER_TEMP 'tt-build.py') $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+      - name: Sign candidate using approved V2 key
+        id: sign
+        shell: pwsh
+        env:
+          TT_PFX: ${{ secrets.TT_SIGNING_PFX_B64 }}
+          TT_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert=$null; $signer=$null; $verifier=$null; $bytes=$null
+          try {
+            if ([string]::IsNullOrWhiteSpace($env:TT_PFX) -or [string]::IsNullOrEmpty($env:TT_PASSWORD)) { throw 'Missing secret' }
+            $bytes=[Convert]::FromBase64String($env:TT_PFX)
+            $cert=[System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes,$env:TT_PASSWORD,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            if ($cert.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant() -ne '0e0e1b970de3d8e16c721ea170f947f9d0cfcda34eca24e8a324ba29b55497cd' -or -not $cert.HasPrivateKey) { throw 'Unexpected signing certificate' }
+            $signer=[System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+            $verifier=[System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($cert)
+            if ($signer.KeySize -ne 2048) { throw 'Unexpected key size' }
+            $dir=Join-Path $env:RUNNER_TEMP 'tt-v1654-candidate'
+            $raw=[IO.File]::ReadAllBytes((Join-Path $dir 'candidate-payload.json'))
+            $hash=[System.Security.Cryptography.HashAlgorithmName]::SHA256
+            $pad=[System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            $sig=$signer.SignData($raw,$hash,$pad)
+            if ($sig.Length -ne 256 -or -not $verifier.VerifyData($raw,$sig,$hash,$pad)) { throw 'Signature invalid' }
+            $bad=[byte[]]$raw.Clone(); $bad[0]=$bad[0] -bxor 1
+            if ($verifier.VerifyData($bad,$sig,$hash,$pad)) { throw 'Tamper accepted' }
+            $b64=[Convert]::ToBase64String($raw)
+            $chunks=@(for($i=0;$i -lt $b64.Length;$i+=6000){$b64.Substring($i,[Math]::Min(6000,$b64.Length-$i))})
+            $json=@{payloadChunks=$chunks;signature=[Convert]::ToBase64String($sig)} | ConvertTo-Json -Compress -Depth 4
+            [IO.File]::WriteAllText((Join-Path $dir 'latest-v2-candidate.json'),$json,[Text.UTF8Encoding]::new($false))
+            $feedHash=(Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $dir 'latest-v2-candidate.json')).Hash.ToLowerInvariant()
+            "feed_sha=$feedHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Remove-Item -LiteralPath (Join-Path $dir 'candidate-payload.json')
+            Write-Host 'PASS: candidate signed by V2 key, signature verified, tamper rejected. No repository or feed write.'
+          } catch {
+            Write-Host '::error::V2 candidate signing failed; sensitive details suppressed.'
+            exit 1
+          } finally {
+            if ($signer) { $signer.Dispose() }; if ($verifier) { $verifier.Dispose() }; if ($cert) { $cert.Dispose() }
+            if ($bytes) { [Array]::Clear($bytes,0,$bytes.Length) }
+            Remove-Item Env:TT_PFX,Env:TT_PASSWORD -ErrorAction SilentlyContinue
+          }
+      - name: Retain public candidate only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tt-v1654-public-pilot-candidate
+          path: ${{ runner.temp }}/tt-v1654-candidate
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.run_id }}
+      EXPECTED_SHA: ${{ needs.candidate.outputs.feed_sha }}
+    steps:
+      - name: Publish signed pilot only after successful validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name=="tt-v1654-public-pilot-candidate" and .expired==false) | .id')
+          test -n "$artifact"
+          gh api "repos/$GH_REPO/actions/artifacts/$artifact/zip" > candidate.zip
+          python3 - <<'PY'
+          import json,base64,hashlib,os,zipfile,pathlib
+          with zipfile.ZipFile('candidate.zip') as z: raw=z.read('latest-v2-candidate.json')
+          assert hashlib.sha256(raw).hexdigest()==os.environ['EXPECTED_SHA']
+          p=json.loads(base64.b64decode(''.join(json.loads(raw)['payloadChunks'])))
+          assert p['toVersion']=='1.65.4' and p['afterHtmlSha']=='b4c1dd9e045235ed8419015640f1f697e66eb333cefef4d40eda835fd6d14a42'
+          pathlib.Path('request.json').write_text(json.dumps({'message':'Release V1.65.4 Podo sticker stability and minimum title to V2 pilot','branch':'main','sha':'7622309942ac07ac78a646d85bf309adae959ef3','content':base64.b64encode(raw).decode()}))
+          PY
+          gh api --method PUT "repos/$GH_REPO/contents/stable/content-v4/latest.json" --input request.json --jq '.commit.sha'
+          echo 'V1.65.4 V2 pilot published. No legacy or public stable feed changed.'
