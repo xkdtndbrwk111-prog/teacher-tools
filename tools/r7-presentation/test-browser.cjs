@@ -47,7 +47,7 @@ const qr={kind:'life-qr',payload:{url:'https://teacher-tools-class-life-39733542
   async function close(){await bp.locator('#ttPresentationClose').click();await bp.waitForFunction(()=>!document.querySelector('#ttPresentation').open);await mp.evaluate(()=>logs=[]);await new Promise(r=>setTimeout(r,700));assert.equal(state.item,null)}
   let f=await offer(seating);
   assert(await f.evaluate(()=>playbackData.historyTransition&&playbackData.previousAssignments.length===3&&new Set(playbackStudents.map(s=>s.glasses)).size===4));
-  assert(await f.evaluate(()=>document.querySelectorAll('.history-start-student').length===3));
+  assert(await f.evaluate(()=>document.querySelectorAll('.history-start-student').length===2&&playbackStudents.find(s=>s.id==='s2').seat.querySelector('.student').classList.contains('visible')));
   assert.equal(await f.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--tt-present-accent')),'#398272');
   await f.locator('#run5').click();await f.getByText('즉시 완료',{exact:false}).first().click();assert(await f.evaluate(()=>playbackCompleted));
   assert(await bp.locator('#ttPresentationParticles').evaluate(c=>c.getContext('2d').getImageData(5,5,1,1).data[3]>0));
