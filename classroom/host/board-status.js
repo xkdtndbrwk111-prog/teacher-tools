@@ -11,7 +11,7 @@
  note.style.cssText='margin:8px 0 0;padding:8px;border:1px solid #405775;border-radius:8px;color:#b9d3ef;font-size:11px;line-height:1.4';
  const menu=document.getElementById('tt-hud-more-menu');
  if(menu)menu.append(note);
- let connected=false,pending=false,lastResult='';
+ let connected=false,pending=false,lastResult='',latest=null,verifiedAt=0;
  const connectedTitle='Windows 대시보드 배경화면과 연결됨';
  const disconnectedTitle='Windows 대시보드 V1.33 이상을 배경화면 모드로 실행해야 사용할 수 있습니다.';
  const status=()=>connected;
@@ -40,10 +40,10 @@
    const data=await response.json();
    if(data?.service!=='teacher-tools-local')throw Error('unrecognized');
    if(!Number.isInteger(data.version)||data.version<33){show(false,'old');return false}
-   show(data.wallpaper===true,data.wallpaper===true?'':'window');
+   latest=data;verifiedAt=Date.now();show(data.wallpaper===true,data.wallpaper===true?'':'window');
    return connected;
   }catch{
-   show(false,'offline');return false;
+   latest=null;verifiedAt=0;show(false,'offline');return false;
   }finally{clearTimeout(timer);pending=false}
  }
  show(false);
@@ -52,5 +52,5 @@
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void check()});
  window.addEventListener('focus',()=>void check());
  window.addEventListener('pagehide',()=>clearInterval(interval),{once:true});
- window.__TT_BOARD_CONNECTION={check,isConnected:status};
+ window.__TT_BOARD_CONNECTION={check,isConnected:status,presentationReady:()=>Boolean(latest?.presentationProtocol===1&&latest?.presentationReady===true&&Date.now()-verifiedAt<20000)};
 })();
