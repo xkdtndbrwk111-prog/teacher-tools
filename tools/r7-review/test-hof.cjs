@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict');const C=require('./system/coins.js');
+const modes=['stairs_solo','stairs_race','jump_solo','jump_duel','shop_solo','shop_vs2','shop_co2','shop_co4','flash_solo','flash_r8','flash_r12','dance_solo','dance_duo','hockey','volley','bubble','othello','gomoku','ttt','germ','rally'];
+const students=Array.from({length:12},(_,i)=>({id:'s'+i,name:'가상'+i,number:i+1}));const week='2026-11-02',now=new Date('2026-11-15T12:00:00'),seed=[{cls:'A',type:'setting',enabled:true,cap:100,at:now.toISOString()}];const st=C.stateOf(seed,'A');let awards=[];for(const game of modes){const n=game==='shop_co4'?4:['shop_co2','dance_duo'].includes(game)?2:1;for(let place=1;place<=3;place++)for(let i=0;i<n;i++)awards.push({id:students[(place-1)*n+i].id,game,place})};
+const settle=(a=awards,e=seed,cls='A')=>C.hofWeek(e,C.stateOf(e,cls),{cls,students,week,awards:a,now});let n=0;const pass=x=>console.log('PASS',++n,x);
+let r=settle();assert(r.ok);assert.equal(awards.length,78);assert.equal(r.given.reduce((sum,x)=>sum+x.given,0),52);pass('21개 종목 78개 보상 항목 전부 지급');
+assert(r.events.some(e=>e.games?.includes('dance_duo:3')));assert(r.events.some(e=>e.games?.includes('flash_r12:3')));pass('신규 종목 ID 유지');
+const four=awards.filter(a=>a.game==='shop_co4');r=settle(four);assert.equal(r.given.length,12);assert.equal(r.given.reduce((a,b)=>a+b.given,0),8);pass('4인 협동 1~3위 전원 지급');
+const two=awards.filter(a=>a.game==='dance_duo');r=settle(two);assert.equal(r.given.length,6);assert.equal(r.given.reduce((a,b)=>a+b.given,0),4);pass('2인 협동 전원 지급');
+r=settle([...awards,awards[0]]);assert.equal(r.given.reduce((a,b)=>a+b.given,0),52);pass('동일 학생/종목/순위 중복 무효');
+assert(!settle([...awards,{id:'s0',game:'unknown',place:1}]).ok);pass('알 수 없는 종목 거절');
+assert(!settle(Array(129).fill(awards[0])).ok);pass('과다 요청 거절, 잘라서 저장하지 않음');
+r=settle();let paid=[...seed,...r.events];assert(settle(awards,paid).already);assert.equal(settle(awards,paid).events.length,0);pass('이미 정산한 주 재지급 없음');
+assert(settle(awards,paid,'B').ok&&!settle(awards,paid,'B').already);pass('학급별 정산 분리');
+assert(settle([],seed).events.length===1);pass('수상자 없는 주 완료 기록');
+assert(!C.hofWeek(seed,st,{cls:'A',students,week:'2026-11-16',awards,now}).ok);pass('미래 주 차단');
+const limited=[...seed,{cls:'A',type:'setting',cap:1,enabled:true}];r=settle(awards,limited);assert(r.given.every(x=>x.balance<=1));pass('코인 상한 보존');
+console.log(n,'HOF scenarios PASS');
