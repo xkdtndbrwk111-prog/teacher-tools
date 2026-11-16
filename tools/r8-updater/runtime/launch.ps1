@@ -1,4 +1,4 @@
-# Fixed bootstrap. This and r8-kernel.ps1 / update-public.xml are NOT remotely mutable.
+﻿# Fixed bootstrap. This and r8-kernel.ps1 / update-public.xml are NOT remotely mutable.
 param([switch]$Windowed,[switch]$ManualUpdate,[switch]$RecoveryRetry)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'r8-kernel.ps1')
@@ -11,23 +11,28 @@ function Get-R8Browsers {
  $profiles=@((Join-Path $root 'ChromeProfile'),(Join-Path $root 'EdgeProfile'))
  @(Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop|Where-Object {$line=$_.CommandLine;$line -and @($profiles|Where-Object {$line.IndexOf($_,[StringComparison]::OrdinalIgnoreCase) -ge 0}).Count -gt 0})
 }
+function Get-R8ListenerIds {
+ $lines=@(& "$env:SystemRoot\System32\netstat.exe" -ano -p TCP)
+ if($LASTEXITCODE -ne 0){throw 'Listener inspection failed.'}
+ $ids=@(foreach($line in $lines){if($line -match '^\s*TCP\s+127\.0\.0\.1:17439\s+\S+\s+LISTENING\s+(\d+)\s*$'){[int]$Matches[1]}})
+ return @($ids|Select-Object -Unique)
+}
 function Stop-R8Server {
- $listeners=@(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 17439 -State Listen -ErrorAction SilentlyContinue)
- if(-not $listeners.Count){return}
- $ids=@($listeners.OwningProcess|Select-Object -Unique)
+ $ids=@(Get-R8ListenerIds)
+ if(-not $ids.Count){return}
  if($ids.Count -ne 1){throw 'Unrecognized listener.'}
  $idValue=[int]$ids[0];$proc=Get-Process -Id $idValue -ErrorAction Stop
  try{
   $null=$proc.Handle
-  $info=Get-CimInstance Win32_Process -Filter "ProcessId=$idValue" -ErrorAction Stop
+  $info=Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$idValue" -ErrorAction Stop
   $path=Join-Path $root 'server.ps1'
   $identity=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   $owner=Invoke-CimMethod -InputObject $info -MethodName GetOwnerSid
   if($owner.ReturnValue -ne 0 -or $owner.Sid -ne $identity -or $info.Name -notin @('powershell.exe','pwsh.exe') -or $info.CommandLine -notmatch ('(?i)(?:^|\s)-File\s+(?:"'+[regex]::Escape($path)+'"|'+[regex]::Escape($path)+')(?:\s|$)')){throw 'Unverified service on local port; not stopped.'}
-  $now=@(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 17439 -State Listen -ErrorAction SilentlyContinue|Select-Object -ExpandProperty OwningProcess -Unique)
+  $now=@(Get-R8ListenerIds)
   if($proc.HasExited -or $now.Count -ne 1 -or $now[0] -ne $idValue){throw 'Local service changed.'}
   $proc.Kill();if(-not $proc.WaitForExit(15000)){throw 'Server stop timed out.'}
-  for($i=0;$i -lt 40;$i++){if(-not @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 17439 -State Listen -ErrorAction SilentlyContinue).Count){return};Start-Sleep -Milliseconds 250}
+  for($i=0;$i -lt 40;$i++){if(-not @(Get-R8ListenerIds).Count){return};Start-Sleep -Milliseconds 250}
   throw 'Local port did not clear.'
  }finally{$proc.Dispose()}
 }
@@ -116,6 +121,10 @@ try{
     Remove-R8Staging $root
     Write-R8State $root 'installed' '프로그램 업데이트 및 재실행 확인 완료.' $version
    }
+  }catch{
+   # A timed-out launcher must not start another window while rollback is in progress.
+   if($applied -and -not $child.HasExited){$child.Kill();if(-not $child.WaitForExit(10000)){throw 'Launcher did not stop; recovery deferred.'}}
+   throw
   }finally{$child.Dispose()}
  }
 }catch{

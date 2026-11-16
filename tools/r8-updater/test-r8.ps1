@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'runtime\r8-kernel.ps1')
 $root=Join-Path ([IO.Path]::GetTempPath()) ('tt-r8-test-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root|Out-Null

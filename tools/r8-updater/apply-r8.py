@@ -31,7 +31,7 @@ def stage(root,version,release):
     installer=once(installer,"'launch.ps1','start-teacher-tools.ps1'","'launch.ps1','board-launch.ps1','r8-kernel.ps1','start-teacher-tools.ps1'")
     # Manual-install and update mutual exclusion on an already installed R8.
     anchor="$retiredImageFiles=@("
-    installer=once(installer,anchor,"$r8Lock=[IO.File]::Open((Join-Path $TTInstallDir 'r8-update.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)\nif(Test-Path -LiteralPath (Join-Path $TTInstallDir 'r8-transaction\\pending.json')){throw '먼저 호자보드를 정상 종료하고 복구를 완료하세요.'}\n"+anchor)
+    installer=once(installer,anchor,"$r8Lock=[IO.File]::Open((Join-Path $TTInstallDir 'r8-update.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)\nif((Test-Path -LiteralPath (Join-Path $TTInstallDir 'stable-pilot-rollback\\pending.json')) -or (Test-Path -LiteralPath (Join-Path $TTInstallDir 'r8-transaction\\pending.json'))){throw '먼저 호자보드를 정상 종료하고 복구를 완료하세요.'}\n"+anchor)
     installer=once(installer,"Start-TTHidden -ScriptPath (Join-Path $TTInstallDir 'launch.ps1')","$r8Lock.Dispose()\nStart-TTHidden -ScriptPath (Join-Path $TTInstallDir 'launch.ps1')")
     uninstall=(root/'uninstall.ps1').read_text(encoding='utf-8-sig')
     uninstall=once(uninstall,"'launch.ps1','start-teacher-tools.ps1'","'launch.ps1','board-launch.ps1','r8-kernel.ps1','start-teacher-tools.ps1'")

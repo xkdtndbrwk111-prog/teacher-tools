@@ -1,4 +1,4 @@
-# Trusted, manually provisioned kernel. Windows PowerShell 5.1. No downloaded script is run before verification.
+﻿# Trusted, manually provisioned kernel. Windows PowerShell 5.1. No downloaded script is run before verification.
 $R8Utf8=[Text.UTF8Encoding]::new($false,$true)
 $R8Feed='https://xkdtndbrwk111-prog.github.io/teacher-tools/stable/runtime-v1/'
 $R8MaxFile=16777216
@@ -54,10 +54,10 @@ function Get-R8Remote([string]$Relative,[int]$Limit){
  $response=$req.GetResponse();$out=[IO.MemoryStream]::new()
  try{
   if([int]$response.StatusCode -ne 200 -or $response.ContentLength -gt $Limit){throw 'Download response rejected.'}
-  $inputStream=$response.GetResponseStream()
+  $watch=[Diagnostics.Stopwatch]::StartNew();$inputStream=$response.GetResponseStream()
   try{
    $buffer=New-Object byte[] 32768
-   while(($n=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){if($out.Length+$n -gt $Limit){throw 'Download size limit.'};$out.Write($buffer,0,$n)}
+   while(($n=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){if($watch.Elapsed.TotalSeconds -gt 20 -or $out.Length+$n -gt $Limit){throw 'Download size limit.'};$out.Write($buffer,0,$n)}
    return ,$out.ToArray()
   }finally{$inputStream.Dispose()}
  }finally{$out.Dispose();$response.Dispose()}
