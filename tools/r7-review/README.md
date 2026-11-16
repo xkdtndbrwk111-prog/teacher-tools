@@ -7,7 +7,7 @@ This is a source patch for a paired R7 board runtime and `hoja-minigames` candid
 1. Extract the untouched `HOJA_Board_V1.64.2_R6_CMD_설치시험.zip` package into a temporary directory.
 2. Replace `system/dashboard.html` with the **verified** V1.65.1 signed dashboard HTML (SHA256 `2483489b7286f7b27b4535e38e11ddd1aa4124464ce86aaa5888c7da66f841f0`).
 3. Verify source SHA256 values against `manifest-review.json` and apply `board-r7-review.patch` with `patch -p1` from the extracted package root. Check the resulting SHA256 values.
-4. Run Node tests against the patched `system/` files: `node test-r7.cjs`, `node test-handler.cjs`, `node test-hof.cjs`, `node test-integration.cjs`. These tests use virtual teachers and students, fake ledger and transports. **Do not point tests at real data.**
+4. Apply the post-review no-manager-grant overlay: `node tools/r7-review/apply-no-manager-grant.cjs PATH/system` (see NO-MANAGER-GRANT.md). Then run Node tests against the patched `system/` files: `node test-r7.cjs`, `node test-handler.cjs`, `node test-hof.cjs`, `node test-integration.cjs`. These tests use virtual teachers and students, fake ledger and transports. **Do not point tests at real data.**
 5. The complete R7 release needs fresh runtime checksums, Windows PowerShell 5.1 validation, install and rollback testing, and a paired minigame build. Do not install this patch on a classroom PC.
 
 ## Scope

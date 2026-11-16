@@ -1,4 +1,4 @@
-// Sends a confirmed seating and coin grants to the classroom dashboard on this PC, through a small window on the dashboard's own address.
+// Sends confirmed seating to the classroom dashboard; coin balances/history/settings only. Direct coin adjustments are made on the board.
 // A web page cannot call the local server directly, so that window does the saving and closes itself.
 // Sent: what the student screen shows, plus names, attendance numbers and gender. No grades, PE traits or other seating rules.
 (()=>{
@@ -78,8 +78,8 @@
 .tt-coin-nav{display:flex;gap:6px;margin:8px 0}
 .tt-coin-nav button{min-height:40px;padding:6px 12px;border-radius:8px}
 .tt-coin-nav button.on{font-weight:800;outline:2px solid currentColor}
-.tt-coin-card .tt-coin-all,.tt-coin-card .tt-coin-list label{display:flex;align-items:center;gap:8px;margin:0;min-height:36px}
-.tt-coin-card .tt-coin-all input,.tt-coin-card .tt-coin-list input,.tt-coin-card #tt-coin-settings-panel input[type=checkbox]{flex:none;width:22px;height:22px;margin:0;padding:0}
+.tt-coin-card .tt-coin-balance-row{display:flex;align-items:center;gap:8px;margin:0;min-height:36px}
+.tt-coin-card #tt-coin-settings-panel input[type=checkbox]{flex:none;width:22px;height:22px;margin:0;padding:0}
 .tt-coin-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px;margin:8px 0}
 .tt-coin-list b{margin-left:auto}
 .tt-coin-list b.minus{color:#b91c1c}
@@ -95,11 +95,10 @@
  dialog.innerHTML=`<div class="tt-lock-settings-card tt-coin-card">
   <h2 id="tt-coin-title">🪙 코인</h2>
   <p id="tt-coin-board-context" role="status">호자보드 학급을 확인해 주세요.</p>
-  <div class="tt-coin-nav"><button type="button" data-coin-panel="grant">잔액·지급</button><button type="button" data-coin-panel="history">히스토리</button><button type="button" data-coin-panel="settings">설정</button><button type="button" id="tt-coin-refresh">불러오기</button><button type="button" id="tt-coin-retry" hidden>이전 작업 확인</button></div>
-  <div id="tt-coin-grant-panel">
-   <label class="tt-coin-all"><input type="checkbox" id="tt-coin-all"> 전체 선택</label>
+  <div class="tt-coin-nav"><button type="button" data-coin-panel="balance">잔액</button><button type="button" data-coin-panel="history">히스토리</button><button type="button" data-coin-panel="settings">설정</button><button type="button" id="tt-coin-refresh">불러오기</button><button type="button" id="tt-coin-retry" hidden>이전 작업 확인</button></div>
+  <div id="tt-coin-balance-panel">
+   <p>코인 지급·차감은 호자보드에서만 할 수 있습니다.</p>
    <div id="tt-coin-list" class="tt-coin-list"></div>
-   <label>코인 (빼려면 음수, 0.5 단위)<input type="number" id="tt-coin-amount" step="0.5" value="1"></label>
   </div>
   <div id="tt-coin-history-panel" hidden>
    <select id="tt-coin-filter" aria-label="경로"></select>
@@ -114,20 +113,18 @@
    <button type="button" id="tt-coin-save">설정 저장</button>
   </div>
   <p id="tt-coin-result" role="status"></p>
-  <div class="tt-lock-settings-actions"><span></span><button type="button" id="tt-coin-close">닫기</button><button type="button" id="tt-coin-send">지급</button></div>
+  <div class="tt-lock-settings-actions"><span></span><button type="button" id="tt-coin-close">닫기</button></div>
  </div>`;
  document.body.append(dialog);
  const $=id=>document.getElementById(id);
- const boxes=()=>[...dialog.querySelectorAll('[data-coin-student]')];
  const say=text=>{$('tt-coin-result').textContent=text};
- let ledger=null,panel='grant';
+ let ledger=null,panel='balance';
  const pendingKey='tt.board.coin.pending.'+cfg.activeId;
- let pending=null;try{const p=JSON.parse(sessionStorage.getItem(pendingKey)||'null');if(p?.cls===cfg.activeId&&['tt-coins-grant','tt-coins-setting'].includes(p.type)&&typeof p.requestId==='string')pending=p;}catch{}
+ let pending=null;try{const p=JSON.parse(sessionStorage.getItem(pendingKey)||'null');if(p?.cls===cfg.activeId&&p.type==='tt-coins-setting'&&typeof p.requestId==='string')pending=p;else if(p?.cls===cfg.activeId&&p.type==='tt-coins-grant')sessionStorage.removeItem(pendingKey);}catch{}
  const persistPending=p=>{pending=p;try{if(p)sessionStorage.setItem(pendingKey,JSON.stringify(p));else sessionStorage.removeItem(pendingKey);}catch{}};
  const matched=()=>ledger?.protocol>=3&&ledger.boardCls===cfg.activeId;
  function syncActions(){
   const can=matched()&&!sending&&!pending;
-  $('tt-coin-send').disabled=!can||!ledger?.state?.settings?.enabled;
   $('tt-coin-save').disabled=!can;
   $('tt-coin-retry').hidden=!pending;$('tt-coin-retry').disabled=sending||!matched();
   $('tt-coin-board-context').textContent=!ledger?'호자보드 학급을 확인해 주세요.':ledger.protocol<3?'R7 호자보드가 필요합니다. 잔액 조회만 가능합니다.':matched()?('연결됨 · '+(ledger.boardClassName||classState.className)):('호자보드: '+(ledger.boardClassName||'미연결')+' / 교실매니저: '+classState.className+' · 현재 반을 칠판으로 보내 주세요.');
@@ -144,10 +141,8 @@
   return[when,e.name||'',`${signed(e.amount)}${e.game?' · '+e.game:Array.isArray(e.games)?' · '+e.games.join(', '):''}`,SOURCE[e.source]||e.source||''];
  };
  function renderList(){
-  const checked=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.coinStudent));
   $('tt-coin-list').replaceChildren(...classState.students.map(s=>{
-   const label=document.createElement('label'),box=document.createElement('input');box.type='checkbox';box.dataset.coinStudent=s.id;box.checked=checked.has(s.id);
-   label.append(box,document.createTextNode(' '+s.name));
+   const label=document.createElement('div');label.className='tt-coin-balance-row';label.append(document.createTextNode(s.name));
    if(ledger){const value=ledger.state.balances[s.id]||0,b=document.createElement('b');b.dataset.coinBalance=s.id;b.textContent=coin(value);b.classList.toggle('minus',value<0);label.append(b)}
    return label;
   }));
@@ -167,19 +162,19 @@
  }
  function showPanel(next){
   panel=next;
-  for(const id of ['grant','history','settings'])$(`tt-coin-${id}-panel`).hidden=id!==panel;
+  for(const id of ['balance','history','settings'])$(`tt-coin-${id}-panel`).hidden=id!==panel;
   dialog.querySelectorAll('[data-coin-panel]').forEach(b=>b.classList.toggle('on',b.dataset.coinPanel===panel));
-  $('tt-coin-send').hidden=panel!=='grant';
  }
  const applyLedger=reply=>{if(reply.state){ledger={state:reply.state,events:reply.events||[],protocol:Number(reply.protocol)||0,boardCls:reply.boardCls,boardClassName:reply.boardClassName};markLinked();renderList();renderHistory();renderSettings()}};
  // One small window at a time, so the buttons wait for it.
  function exchange(message,onReply){
   if(sending){say('대시보드와 연결 중입니다. 잠시 후 다시 눌러 주세요.');return}
+  if(!['tt-coins-read','tt-coins-setting'].includes(message.type)){say('지원하지 않는 코인 요청입니다.');return;}
   const write=message.type!=='tt-coins-read';
   if(write&&(!matched()||message.cls!==cfg.activeId)){say('현재 반을 칠판으로 보내고 다시 불러와 주세요.');return;}
   if(write&&pending&&message.requestId!==pending.requestId){say('이전 작업 확인을 먼저 눌러 주세요.');return;}
   if(write)persistPending(message);
-  const busy=['tt-coin-refresh','tt-coin-send','tt-coin-save','tt-coin-retry'].map($);
+  const busy=['tt-coin-refresh','tt-coin-save','tt-coin-retry'].map($);
   busy.forEach(b=>{b.disabled=true});
   const finish=()=>{$('tt-coin-refresh').disabled=false;renderSettings();syncActions()};
   viaInbox(()=>message,reply=>{
@@ -192,10 +187,10 @@
   });
  }
  const writeRequest=(type,details,onReply)=>exchange({type,cls:cfg.activeId,requestId:crypto.randomUUID(),...details},onReply);
- const refresh=()=>exchange({type:'tt-coins-read',cls:cfg.activeId},()=>{say(pending?'이전 작업 확인을 눌러 처리 결과를 확인하세요.':matched()&&!ledger.state.settings.enabled?'코인이 꺼져 있습니다. 설정 탭에서 켜면 지급할 수 있습니다.':'')});
+ const refresh=()=>exchange({type:'tt-coins-read',cls:cfg.activeId},()=>{say(pending?'이전 작업 확인을 눌러 처리 결과를 확인하세요.':matched()&&!ledger.state.settings.enabled?'코인이 꺼져 있습니다. 지급·차감은 호자보드에서 관리합니다.':'')});
  coins.addEventListener('click',()=>{
-  say('');$('tt-coin-all').checked=false;ledger=null;
-  $('tt-coin-list').replaceChildren();renderList();renderHistory();renderSettings();showPanel('grant');
+  say('');ledger=null;
+  $('tt-coin-list').replaceChildren();renderList();renderHistory();renderSettings();showPanel('balance');
   dialog.hidden=false;
   let linked=false;try{linked=localStorage.getItem(LINKED)==='1'}catch{}
   if(linked)refresh();else say('잔액을 보려면 불러오기를 누르세요. 대시보드가 켜져 있어야 합니다.');
@@ -204,18 +199,7 @@
  filter.addEventListener('change',renderHistory);
  $('tt-coin-refresh').addEventListener('click',refresh);
  $('tt-coin-retry').addEventListener('click',()=>{if(pending)exchange(pending,()=>say('이전 코인 작업을 확인했습니다.'));});
- $('tt-coin-all').addEventListener('change',event=>{boxes().forEach(b=>{b.checked=event.target.checked})});
  $('tt-coin-close').addEventListener('click',()=>{dialog.hidden=true});
- $('tt-coin-send').addEventListener('click',()=>{
-  const amount=Number($('tt-coin-amount').value);
-  const ids=boxes().filter(b=>b.checked).map(b=>b.dataset.coinStudent);
-  if(!ids.length){say('학생을 고르세요.');return}
-  if(!amount||amount%0.5){say('코인은 0.5 단위로 입력하세요.');return}
-  const students=classState.students.filter(s=>ids.includes(s.id)).map(s=>({id:s.id,name:s.name}));
-  writeRequest('tt-coins-grant',{students,amount},reply=>{
-   say(reply.results.map(r=>`${r.name} ${r.given>0?'+':''}${r.given} → ${r.balance}${r.capped?' (상한)':''}`).join(' · '));
-  });
- });
  $('tt-coin-save').addEventListener('click',()=>{
   const cap=Number($('tt-coin-cap').value),weeklyAmount=Number($('tt-coin-weekly').value);
   if(!(cap>=1)||!(weeklyAmount>=0)||cap%0.5||weeklyAmount%0.5){say('상한과 주급은 0.5 단위 숫자로 입력하세요.');return}

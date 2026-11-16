@@ -1,0 +1,28 @@
+name: R7 no-manager-grant review
+on:
+  push:
+    branches: [codex/r7-integration-review]
+    paths: ['tools/r7-review/apply-no-manager-grant.cjs','tools/r7-review/test-integration.cjs','classroom/host/dashboard-link.js','.github/workflows/r7-no-manager-grant-review.yml']
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify source and isolated regression tests
+        run: |
+          node --check classroom/host/dashboard-link.js
+          cd tools/r7-review
+          mkdir -p system
+          cp runtime/* system/
+          node apply-no-manager-grant.cjs system
+          node --check system/coins.js
+          node test-manager-grant-ui.cjs
+          node test-r7.cjs
+          node test-handler.cjs
+          node test-hof.cjs
+          node test-integration.cjs
