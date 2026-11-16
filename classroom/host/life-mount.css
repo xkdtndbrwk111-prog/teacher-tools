@@ -60,3 +60,30 @@ body.tt-life-active #teacherScreen>.studio>.tt-life-panel{display:flex!important
 .tt-life-panel #life-roster-status:not(.life-empty){display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .tt-life-panel #life-roster-status button{white-space:normal}
 @media(max-width:860px){.life-setup-grid{grid-template-columns:1fr}.tt-life-panel .life-body{padding:12px}.life-share-grid{grid-template-columns:1fr}}
+
+/* Guided workflow and explicit code management. */
+.tt-life-panel .life-prepare{margin-bottom:14px;padding:16px 20px}
+#life-preparation-state,#life-month-state{font-size:13px;font-weight:800;color:#315b79}
+.life-preparation-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.life-preparation-steps>div{display:flex;align-items:center;gap:10px;padding:10px;background:#f1f5f9;border-radius:8px;font-weight:800}
+.life-preparation-steps b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#dce8f4;flex:none}
+.life-preparation-steps small{display:block;font-size:12px;font-weight:500;color:#52657b;margin-top:4px}
+.tt-life-panel .life-prepare .life-actions{margin:10px 0;gap:8px}
+.tt-life-panel .life-month-main>button{width:100%;min-height:48px;font-size:16px;font-weight:850;margin:10px 0 4px}
+.tt-life-panel .life-share-section{border-top:1px solid #d9e2ef;padding-top:16px;margin-top:16px}
+.life-submission-count{display:block;font-size:30px;margin:10px 0;font-variant-numeric:tabular-nums}
+#life-submission-progress{width:100%;height:12px;accent-color:#28675a;margin-bottom:6px}
+#life-code-dialog{position:fixed;inset:0;margin:auto;max-width:min(820px,calc(100vw - 24px));width:100%;max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #aebdce;border-radius:14px;padding:20px;background:#fff;color:#172033;box-shadow:0 16px 60px #111b2d55}
+#life-code-dialog::backdrop{background:#101c31a0}
+#life-code-dialog h3{margin:0}#life-code-search{width:100%;margin:4px 0}
+.life-code-table-wrap{max-height:32vh;overflow:auto;border:1px solid #dbe3ed;border-radius:8px}
+.life-code-table{width:100%;border-collapse:collapse;font-size:14px}
+.life-code-table th,.life-code-table td{padding:7px 10px;border-bottom:1px solid #e2e8f0;text-align:left}
+.life-code-table th{position:sticky;top:0;background:#edf2f7}
+.life-code-selected{background:#edf6ff}.life-selected-code{padding:10px 0}
+.life-code-danger{padding-top:10px;border-top:1px solid #dbe3ed}
+.tt-life-panel #life-reissue-all{border-color:#bc7272;color:#9a3636}
+#life-code-message{margin-top:8px!important;font-weight:700;color:#7c4a03!important}
+@media(max-width:700px){.life-preparation-steps{grid-template-columns:1fr}.life-code-table td,.life-code-table th{padding:5px}.tt-life-panel .life-prepare{padding:12px}}
+
+.life-row-actions{display:flex;flex-wrap:wrap;gap:4px}.tt-life-panel .life-row-actions button{min-height:34px;margin:0;padding:4px 8px;font-size:12px}.tt-life-panel .life-row-actions button[data-action=reissue]{color:#8b3434}.life-code-table td:nth-child(3){white-space:nowrap;font-variant-numeric:tabular-nums}
