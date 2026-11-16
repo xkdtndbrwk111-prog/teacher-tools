@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const code=fs.readFileSync(path.join(__dirname,'../../classroom/host/dashboard-link.js'),'utf8');
+const code=fs.readFileSync(process.argv[2]||path.join(__dirname,'../../classroom/host/dashboard-link.js'),'utf8');
 new vm.Script(code);
 const check=(name,x)=>{assert(x,name);console.log('PASS',name)};
 check('balance-only panel',code.includes('data-coin-panel="balance">잔액')&&code.includes('tt-coin-balance-row'));

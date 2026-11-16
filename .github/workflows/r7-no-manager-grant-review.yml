@@ -13,15 +13,44 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 3cc5353c47c66c958939cf1caecdca72b42b63ef
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 1fc4e1923344e1593c89792ec78b2e28c8f4cd8b
+          path: r6-staging
+          persist-credentials: false
       - name: Verify source and isolated regression tests
         run: |
           node --check classroom/host/dashboard-link.js
           cd tools/r7-review
           mkdir -p system
           cp runtime/* system/
+          python3 - <<'PY'
+          import json,base64,gzip,hashlib,pathlib
+          feed=json.loads(pathlib.Path('../../baseline/stable/content-v4/latest.json').read_text())
+          source=json.loads(base64.b64decode(''.join(feed['payloadChunks'])))
+          html=gzip.decompress(base64.b64decode(source['htmlGzip']))
+          assert hashlib.sha256(html).hexdigest()=='2483489b7286f7b27b4535e38e11ddd1aa4124464ce86aaa5888c7da66f841f0'
+          pathlib.Path('system/dashboard.html').write_bytes(html)
+          PY
+          python3 - <<'PY'
+          import pathlib,re,subprocess
+          patch=pathlib.Path('board-r7-review.patch').read_text()
+          start=patch.index('--- a/system/dashboard.html')
+          nxt=re.search(r'(?m)^(?:diff --git |--- a/system/)',patch[start+4:])
+          end=start+4+nxt.start() if nxt else len(patch)
+          section=patch[start:end]
+          subprocess.run(['patch','-p1','--batch','--forward'],input=section.encode(),check=True)
+          PY
+          test "$(sha256sum system/dashboard.html | cut -d' ' -f1)" = f44b8f19d77fcbb0f22871c598b95bc574614ae0e588032afa86244a98192ebe
           node apply-no-manager-grant.cjs system
           node --check system/coins.js
           node test-manager-grant-ui.cjs
+          node test-manager-grant-ui.cjs ../../r6-staging/classroom/host/dashboard-link.js
           node test-r7.cjs
           node test-handler.cjs
           node test-hof.cjs
