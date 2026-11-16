@@ -171,10 +171,10 @@
    surveyError='';const entry=result.surveys.find(x=>Number(x.month)===month),responses=rosterRegistered?result.responses.filter(r=>ids.has(String(r.student_id))):[],submitted=new Set(responses.map(x=>String(x.student_id))).size;
    surveySnapshot={month,open:rosterRegistered&&Boolean(entry?.open),submitted,exists:Boolean(entry)};
    const list=$('life-roster-status');list.replaceChildren();list.classList.toggle('life-empty',!rosterRegistered);
-   if(!rosterRegistered){selectedResponse='';$('life-responses').replaceChildren();list.textContent='우리 반을 등록하거나 변경된 명단을 다시 연결하세요.'}
+   if(!rosterRegistered){codesReadSerial++;issuedCodes.clear();closeCodePrint();resetCodeConfirmations();codesState='checking';selectedResponse='';$('life-responses').replaceChildren();list.textContent='우리 반을 등록하거나 변경된 명단을 다시 연결하세요.'}
    else{refreshStudentSelect(local);for(const student of local){const row=responses.find(r=>String(r.student_id)===student.id),button=document.createElement('button');button.type='button';button.textContent=student.number+'번 '+student.name+' · '+(row?'제출':'미제출');button.onclick=async()=>{selectedResponse=student.id;try{const definitions=await surveyQuestions();if(!sameScope(current)||Number($('life-month').value)!==month||selectedResponse!==student.id)return;renderResponse($('life-responses'),student,row,month,local,definitions)}catch(error){if(sameScope(current))status('문항 조회 실패: '+error.message)}};list.append(button)}}
    $('life-overview-year').textContent=current.year+'학년도';$('life-overview-month').textContent=month+'월';$('life-overview-open').textContent=entry?.open?'설문 진행 중':entry?'설문 종료':'설문 시작 전';$('life-overview-submitted').textContent=rosterRegistered?submitted+' / '+local.length+'명':'—';$('life-overview-pending').textContent=rosterRegistered?(local.length-submitted)+'명':'—';
-   if(!quiet)status(rosterRegistered?'':'현재 학급의 명단을 등록하거나 다시 연결하세요.');
+   if(!quiet)status(rosterRegistered?'':rosterState==='changed'?'학생 명단이 변경되었습니다.':'최초 학급 등록이 필요합니다.');
   }catch(error){if(!valid())return;surveySnapshot=null;rosterRegistered=false;selectedResponse='';$('life-responses').replaceChildren();$('life-roster-status').textContent='제출 현황을 조회하지 못했습니다.';$('life-roster-status').classList.add('life-empty');rosterState=error.status===404?'new':'error';surveyError=error.status===404?'등록 전':'조회 실패';if(!quiet)status(error.status===404?'우리 반을 먼저 등록하세요.':'조회 실패: '+error.message)}
   finally{if(request===statusRequest){statusBusy=false;renderWorkflow()}}
  }
@@ -200,9 +200,9 @@
    const code=tr.insertCell();code.textContent=r.code?(revealedCodeId===r.id?r.code:'••••••'):'원문 없음';const cell=tr.insertCell();cell.className='life-row-actions';
    const choose=()=>{const select=$('life-reissue-student');if(select.value!==r.id){select.value=r.id;select.dispatchEvent(new Event('change'))}};
    const action=(label,kind,disabled,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=kind;b.setAttribute('aria-label',r.number+'번 '+label);b.disabled=disabled;b.onclick=fn;cell.append(b)};
-   action(revealedCodeId===r.id?'숨기기':'확인','show',!r.code||!rosterRegistered||codeOperation,()=>{const reveal=revealedCodeId!==r.id;choose();resetCodeConfirmations();revealedCodeId=reveal?r.id:'';renderCodeRows()});
-   action('복사','copy',!r.code||!rosterRegistered||codeOperation,()=>{choose();$('life-code-copy').click()});
-   action($('life-reissue').dataset.confirmed===r.id?'재발급 확인':'재발급','reissue',!rosterRegistered||codeOperation,()=>{choose();revealedCodeId='';$('life-reissue-all').dataset.confirmed='';$('life-reissue-all').textContent='전체 코드 재발급';$('life-reissue').click();renderCodeRows()});
+   action(revealedCodeId===r.id?'숨기기':'확인','show',!r.code||!rosterRegistered||codeOperation||statusBusy,()=>{const reveal=revealedCodeId!==r.id;choose();resetCodeConfirmations();revealedCodeId=reveal?r.id:'';renderCodeRows()});
+   action('복사','copy',!r.code||!rosterRegistered||codeOperation||statusBusy,()=>{choose();$('life-code-copy').click()});
+   action($('life-reissue').dataset.confirmed===r.id?'재발급 확인':'재발급','reissue',!rosterRegistered||codeOperation||statusBusy,()=>{choose();revealedCodeId='';$('life-reissue-all').dataset.confirmed='';$('life-reissue-all').textContent='전체 코드 재발급';$('life-reissue').click();renderCodeRows()});
    if(selected===r.id)tr.classList.add('life-code-selected')
   }
  }
@@ -214,8 +214,8 @@
   $('life-preparation-steps').hidden=ready&&(!all||Boolean(surveySnapshot?.exists));$('life-next-guide').textContent=ready?'등록된 명단입니다. 다시 연결할 필요 없이 이번 달 설문을 운영하세요.':rosterState==='new'?'최초 한 번 등록하면 새 학생 코드가 자동 발급됩니다.':rosterState==='changed'?'학생 명단이 변경되었습니다. 변경된 명단만 연결하세요.':rosterState==='error'?'조회에 실패했습니다. 명단을 재등록하지 말고 새로고침하세요.':'Google 계정과 등록된 학급을 확인하는 중입니다.';
   $('life-print-hint').textContent='현재 인쇄 가능 '+count+'/'+total+'명 · '+(all?'전체 인쇄 가능':codesState==='checking'?'저장된 코드 조회 중':codesState==='legacy'?'서버 코드 보관 기능 업데이트 필요':codesState==='error'?'코드 조회 실패 · 새로고침':'이전 발급 방식의 코드 원문은 복원할 수 없음');$('life-code-count').textContent=(ready?total+'명 등록':'등록 상태 미확인')+' · 현재 확인 가능한 코드 '+count+'/'+total+'명';
   $('life-register').textContent=rosterState==='changed'?'변경된 명단 연결':'우리 반 등록';$('life-register').hidden=ready||!['new','changed'].includes(rosterState);$('life-register').disabled=!connected||statusBusy||codeOperation||!total||!['new','changed'].includes(rosterState);$('life-register').classList.toggle('life-primary',!ready);
-  $('life-code-manage').disabled=!ready||!total||statusBusy;$('life-print-all').disabled=$('life-code-print').disabled=!ready||!all||codeOperation;$('life-print-all').classList.toggle('life-primary',ready&&all);$('life-reissue-all').disabled=$('life-reissue').disabled=!ready||codeOperation;$('life-code-show').disabled=$('life-code-copy').disabled=!ready||!issuedCodes.has($('life-reissue-student').value)||codeOperation;
-  $('life-refresh').disabled=!connected||statusBusy||surveyChanging;
+  $('life-code-manage').disabled=!ready||!total||statusBusy;$('life-print-all').disabled=$('life-code-print').disabled=!ready||!all||codeOperation||statusBusy;$('life-print-all').classList.toggle('life-primary',ready&&all);$('life-reissue-all').disabled=$('life-reissue').disabled=!ready||codeOperation||statusBusy;$('life-code-show').disabled=$('life-code-copy').disabled=!ready||!issuedCodes.has($('life-reissue-student').value)||codeOperation;
+  $('life-refresh').disabled=!connected||statusBusy||surveyChanging||codeOperation;
   const month=Number($('life-month').value),known=ready&&surveySnapshot?.month===month,open=known&&surveySnapshot.open,ended=known&&surveySnapshot.exists&&!open;
   $('life-open').hidden=!!open||!!ended;$('life-open').textContent=month+'월 설문 시작하기';$('life-open').disabled=!known||surveyChanging||codeOperation;
   $('life-qr-present').hidden=!open;$('life-qr-present').disabled=!open||!studentUrl||surveyChanging;$('life-share').hidden=!open;
@@ -236,7 +236,7 @@
   }catch(error){status(`인쇄 준비 실패: ${error.message}`)}
  });
  $('life-reissue-all').addEventListener('click',async()=>{
-  if(codeOperation||!rosterRegistered)return;const button=$('life-reissue-all');try{const current=scope(),rows=printRows();if(!rows.length)throw Error('학생 명단을 먼저 연결하세요.');const signature=rows.map(row=>row.id).join(',');revealedCodeId='';$('life-reissue').dataset.confirmed='';$('life-reissue').textContent='선택 학생 코드 재발급';renderCodeRows();
+  if(codeOperation||statusBusy||!rosterRegistered)return;const button=$('life-reissue-all');try{const current=scope(),rows=printRows();if(!rows.length)throw Error('학생 명단을 먼저 연결하세요.');const signature=rows.map(row=>row.id).join(',');revealedCodeId='';$('life-reissue').dataset.confirmed='';$('life-reissue').textContent='선택 학생 코드 재발급';renderCodeRows();
    if(button.dataset.confirmed!==signature){button.dataset.confirmed=signature;button.textContent='기존 코드·학생 세션 무효화 후 전체 재발급 확인';status('기존 개인 코드와 학생 세션이 무효화됩니다. 한 번 더 눌러 전체 재발급을 확인하세요.');return}
    button.dataset.confirmed='';codeOperation=true;button.disabled=true;closeCodePrint();issuedCodes.clear();$('life-codes').replaceChildren();updatePrintHint();
    const result=await api('/api/v2/teacher/reissue-all',{method:'POST',credential:teacherCredential(),data:{...current,ids:rows.map(r=>r.id)}});
@@ -246,7 +246,7 @@
   }catch(error){status(`전체 재발급 실패: ${error.message}`)}finally{if(codeOperation){codeOperation=false;button.disabled=!canEnter()||!lifeCloud?.user;button.dataset.confirmed='';button.textContent='전체 코드 재발급';renderWorkflow()}}
  });
  $('life-reissue-student').addEventListener('change',()=>{resetCodeConfirmations();renderWorkflow()});
- $('life-reissue').addEventListener('click',async()=>{if(codeOperation||!rosterRegistered)return;const button=$('life-reissue'),select=$('life-reissue-student'),id=select.value,current=scope();if(!id){status('먼저 제출 현황을 조회하고 학생을 선택하세요.');return}if(button.dataset.confirmed!==id){button.dataset.confirmed=id;button.textContent=`${select.selectedOptions[0].textContent} 기존 접속 무효화 후 재발급 확인`;status('기존 학생 세션이 종료됩니다. 다시 눌러 확인하세요.');return}button.disabled=true;codeOperation=true;closeCodePrint();issuedCodes.delete(id);updatePrintHint();try{const result=await api('/api/v2/teacher/reissue',{method:'POST',credential:teacherCredential(),data:{...current,id}});if(!sameScope(current))throw Error('학급 또는 인증이 변경되어 코드를 표시하지 않습니다.');if(!/^\d{6}$/.test(result.code))throw Error('6자리 코드 발급 결과를 확인하세요.');issuedCodes.set(id,result.code);updatePrintHint();$('life-codes').replaceChildren();status('재발급했습니다. 학생을 선택해 새 코드를 확인하세요. 이전 코드는 사용할 수 없습니다.');codeVersions.clear();codesState='checking';await refreshSurvey(true)}catch(error){status(`재발급 실패: ${error.message}`)}finally{codeOperation=false;button.disabled=!canEnter()||!lifeCloud?.user;button.dataset.confirmed='';button.textContent='선택 학생 코드 재발급';renderWorkflow()}});
+ $('life-reissue').addEventListener('click',async()=>{if(codeOperation||statusBusy||!rosterRegistered)return;const button=$('life-reissue'),select=$('life-reissue-student'),id=select.value,current=scope();if(!id){status('먼저 제출 현황을 조회하고 학생을 선택하세요.');return}if(button.dataset.confirmed!==id){button.dataset.confirmed=id;button.textContent=`${select.selectedOptions[0].textContent} 기존 접속 무효화 후 재발급 확인`;status('기존 학생 세션이 종료됩니다. 다시 눌러 확인하세요.');return}button.disabled=true;codeOperation=true;closeCodePrint();issuedCodes.delete(id);updatePrintHint();try{const result=await api('/api/v2/teacher/reissue',{method:'POST',credential:teacherCredential(),data:{...current,id}});if(!sameScope(current))throw Error('학급 또는 인증이 변경되어 코드를 표시하지 않습니다.');if(!/^\d{6}$/.test(result.code))throw Error('6자리 코드 발급 결과를 확인하세요.');issuedCodes.set(id,result.code);updatePrintHint();$('life-codes').replaceChildren();status('재발급했습니다. 학생을 선택해 새 코드를 확인하세요. 이전 코드는 사용할 수 없습니다.');codeVersions.clear();codesState='checking';await refreshSurvey(true)}catch(error){status(`재발급 실패: ${error.message}`)}finally{codeOperation=false;button.disabled=!canEnter()||!lifeCloud?.user;button.dataset.confirmed='';button.textContent='선택 학생 코드 재발급';renderWorkflow()}});
  function onNormalChange(){
   const state=normalState(),key=JSON.stringify([state.mode,state.connected,state.sub,state.generation]);if(key===lastNormalKey)return;
   lastNormalKey=key;++authUiEpoch;connecting=null;cloudFailure='';clearScopeViews();roster=[];questions=null;setStudentUrl('');
@@ -255,6 +255,6 @@
   if(active()){if(!canEnter())document.getElementById('modeClassroom').click();else void syncAuth().then(()=>refreshSurvey()).catch(()=>{})}
  }
  window.addEventListener('tt-normal-auth-change',onNormalChange);
- window.addEventListener('focus',()=>{onNormalChange();if(active()&&canEnter()){showClass();renderWorkflow();if(!rosterRegistered||codesState==='error')void refreshSurvey()}});
+ window.addEventListener('focus',()=>{onNormalChange();if(active()&&canEnter()){showClass();renderWorkflow();if(!codeOperation&&(!rosterRegistered||codesState==='error'))void refreshSurvey()}});
  renderWorkflow();
 })();

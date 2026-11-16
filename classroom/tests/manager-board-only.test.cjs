@@ -4,7 +4,7 @@ const files=['dashboard-link.js','board-status.js','hud-shell.js','settings-wind
 const sources=Object.fromEntries(files.map(p=>[p,fs.readFileSync(path.join(root,p),'utf8')]));
 let count=0;function pass(name){console.log('PASS',++count,name)}
 for(const p of files){new vm.Script(sources[p]);assert.doesNotMatch(sources[p],/코인|tt-coin|coin\.pending|coinBalance|\bcoins?\b/i,p)}pass('all five host scripts contain no coin feature or requests');
-const make=()=>({children:[],listeners:{},append(...n){this.children.push(...n)},setAttribute(){},addEventListener(k,f){this.listeners[k]=f}});
+const make=()=>({children:[],listeners:{},style:{},append(...n){this.children.push(...n)},setAttribute(){},addEventListener(k,f){this.listeners[k]=f}});
 const actions=make(),confirm=make(),menu=make(),popups=[],messages=[],statuses=[];
 const all=()=>[...actions.children,...menu.children];const doc={querySelector:s=>s==='.top-actions'?actions:null,getElementById:id=>id==='confirmAssignment'?confirm:id==='tt-hud-more-menu'?menu:all().find(n=>n.id===id)||null,createElement:make,addEventListener(){},hidden:false};
 const local=new Map(), listeners={};let board={service:'teacher-tools-local',version:33,wallpaper:true};let fetches=0;

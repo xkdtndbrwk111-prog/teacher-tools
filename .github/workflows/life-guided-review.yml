@@ -1,8 +1,8 @@
 name: Classroom life guided workflow review
 on:
   push:
-    branches: [main, codex/life-guided-workflow]
-    paths: ['classroom/host/dashboard-link.js','classroom/tests/manager-board-only.test.cjs','classroom/host/board-status.js','classroom/host/hud-shell.js','classroom/host/settings-window.js','classroom/host/life-mount.js','classroom/host/life-mount.css','classroom/host/class-bootstrap.js','seating/index.html','classroom/tests/browser-life-guided.cjs','.github/workflows/life-guided-review.yml']
+    branches: [main, codex/life-guided-workflow, codex/life-reconnect-code-vault]
+    paths: ['classroom/cloud/**','classroom/tests/code-vault.test.mjs','classroom/host/dashboard-link.js','classroom/tests/manager-board-only.test.cjs','classroom/host/board-status.js','classroom/host/hud-shell.js','classroom/host/settings-window.js','classroom/host/life-mount.js','classroom/host/life-mount.css','classroom/host/class-bootstrap.js','seating/index.html','classroom/tests/browser-life-guided.cjs','.github/workflows/life-guided-review.yml']
 permissions:
   contents: read
 jobs:
@@ -15,6 +15,9 @@ jobs:
           persist-credentials: false
       - name: JS syntax and auth regressions
         run: |
+          node --check classroom/cloud/server.mjs
+          node --check classroom/cloud/firestore-store.mjs
+          node --test classroom/tests/code-vault.test.mjs
           node --check classroom/host/life-mount.js
           node --check classroom/host/class-bootstrap.js
           node classroom/tests/manager-board-only.test.cjs
