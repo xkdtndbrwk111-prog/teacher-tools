@@ -14,6 +14,9 @@ jobs:
           persist-credentials: false
       - name: JS syntax and auth regressions
         run: |
+          node --check classroom/cloud/server.mjs
+          node --check classroom/cloud/firestore-store.mjs
+          node --test classroom/tests/code-vault.test.mjs
           node --check classroom/host/life-mount.js
           node --check classroom/host/class-bootstrap.js
           node classroom/tests/manager-board-only.test.cjs

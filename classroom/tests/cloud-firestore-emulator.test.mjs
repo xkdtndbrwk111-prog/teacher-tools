@@ -121,3 +121,14 @@ integration('failed login attempts are rate limited without exposing code validi
 integration('teacher analysis reads only the owned class and retains monthly evidence',async()=>{
  const teacher='teacher-01',classScope=scope(teacher,1),[status,result]=await request(`/api/v2/teacher/analysis?year=2026&classId=${classScope.classId}`,{teacher});assert.equal(status,200);assert.equal(result.roster.length,20);assert.equal(result.responses.length,20);assert.equal(result.monthly.find(row=>row.month===5).categories.cooperation.votes.length,20);
 });
+
+integration('teacher code vault returns same existing codes, owner-scoped and no writes on repeated reads',async()=>{
+ const teacher='vault-teacher',classScope={classId:'vault-class',year:2026},students=[{id:'one',name:'가상 1',number:1},{id:'two',name:'가상 2',number:2}];
+ const [created,result]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students}});assert.equal(created,200);assert.equal(result.codes.length,2);
+ const url='/api/v2/teacher/codes?year=2026&classId=vault-class';
+ const [read,a]=await request(url,{teacher});assert.equal(read,200);assert.deepEqual(a.codes.map(({id,code})=>({id,code})),result.codes.map(({id,code})=>({id,code})));assert.deepEqual(a.missing,[]);
+ const [,b]=await request(url,{teacher});assert.deepEqual(a,b);assert.equal((await request(url,{teacher:'other-teacher'}))[0],403);assert.notEqual((await request(url))[0],200);
+ const [,same]=await request('/api/v2/teacher/sync',{teacher,method:'POST',data:{...classScope,students}});assert.equal(same.codes.length,0);assert.equal(same.unchanged,true);
+ const [rotated,r]=await request('/api/v2/teacher/reissue',{teacher,method:'POST',data:{...classScope,id:'one'}});assert.equal(rotated,200);
+ const [,c]=await request(url,{teacher});assert.equal(c.codes.find(x=>x.id==='one').code,r.code);assert.equal(c.codes.find(x=>x.id==='two').code,a.codes.find(x=>x.id==='two').code);assert.equal(c.codes.find(x=>x.id==='one').version,2);
+});
