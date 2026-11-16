@@ -1,0 +1,27 @@
+name: R8 signed runtime updater review
+on:
+  push:
+    branches: [codex/r8-signed-runtime-updater, main]
+    paths: ['tools/r8-updater/**','.github/workflows/r8-updater-review.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem tools/r8-updater -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($errors|Out-String)}
+          }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/r8-updater/test-r8.ps1
+          if($LASTEXITCODE -ne 0){throw 'fixture failed'}
+          python -m py_compile tools/r8-updater/apply-r8.py tools/r8-updater/prepare-feed.py
+          if($LASTEXITCODE -ne 0){throw 'Python syntax failed'}

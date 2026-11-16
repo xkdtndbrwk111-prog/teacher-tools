@@ -1,0 +1,37 @@
+"""Generate a content-addressed candidate feed from an exact R8 baseline and target. Offline signing is separate."""
+import argparse, base64, hashlib, json, pathlib, re, shutil
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+def make(base,target,out):
+    kernel=(pathlib.Path(__file__).parent/'runtime/r8-kernel.ps1').read_text()
+    names=set(re.findall(r"'([^']+)'",kernel.split('$R8Names=@(',1)[1].split(')\n',1)[0]))
+    def allowed(n):return n in names or bool(re.fullmatch(r'asset-[a-z0-9][a-z0-9_-]{0,60}\.(png|webp|jpg|ogg|mp3|wav|woff2|zip)',n))
+    for n in ('launch.ps1','r8-kernel.ps1','update-public.xml'):
+        if sha(base/n)!=sha(target/n):raise ValueError('immutable bootstrap changed: '+n)
+    old=json.loads((base/'release.json').read_text(encoding='utf-8-sig'));new=json.loads((target/'release.json').read_text(encoding='utf-8-sig'))
+    if old.get('runtimeProtocol')!=1 or new.get('runtimeProtocol')!=1 or old['channel']!='stable' or new['channel']!='stable' or tuple(map(int,new['version'].split('.')))<=tuple(map(int,old['version'].split('.'))):raise ValueError('invalid base/target')
+    if out.exists():raise ValueError('output must be new')
+    files=[]
+    for p in sorted(target.iterdir()):
+        if p.is_file() and allowed(p.name):
+            if p.is_symlink() or not 0<p.stat().st_size<=16777216:raise ValueError('invalid program asset')
+            files.append(dict(name=p.name,sha256=sha(p),bytes=p.stat().st_size))
+    present={f['name'] for f in files}
+    if not {'dashboard.html','release.json','board-launch.ps1','server.ps1','runtime.ps1','update-ui.js'}<=present or len(files)>128 or sum(f['bytes'] for f in files)>67108864:raise ValueError('incomplete or too large snapshot')
+    for p in base.iterdir():
+        if p.is_file() and allowed(p.name) and p.name not in present:raise ValueError('removals require manual migration: '+p.name)
+    (out/'blobs').mkdir(parents=True)
+    for f in files:shutil.copyfile(target/f['name'],out/'blobs'/(f['sha256']+'.bin'))
+    m=dict(schema='TT-RUNTIME-SNAPSHOT-1',channel='stable',kernel=1,version=new['version'],bases=[sha(base/'release.json')],files=files)
+    (out/'payload.json').write_bytes(json.dumps(m,ensure_ascii=False,separators=(',',':')).encode())
+    print('Unsigned candidate only. Sign payload.json exact bytes using existing RSA-2048 PKCS#1 SHA256 offline.')
+def envelope(out,sig):
+    p=(out/'payload.json').read_bytes();s=sig.read_bytes()
+    if len(s)!=256:raise ValueError('signature length')
+    (out/'latest.json').write_text(json.dumps({'payload':base64.b64encode(p).decode(),'signature':base64.b64encode(s).decode()},separators=(',',':')))
+if __name__=='__main__':
+    p=argparse.ArgumentParser();sp=p.add_subparsers(dest='cmd',required=True)
+    m=sp.add_parser('prepare');m.add_argument('base',type=pathlib.Path);m.add_argument('target',type=pathlib.Path);m.add_argument('out',type=pathlib.Path)
+    e=sp.add_parser('envelope');e.add_argument('out',type=pathlib.Path);e.add_argument('signature',type=pathlib.Path)
+    a=p.parse_args()
+    if a.cmd=='prepare':make(a.base,a.target,a.out)
+    else:envelope(a.out,a.signature)
