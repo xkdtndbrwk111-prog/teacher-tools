@@ -32,7 +32,7 @@ const qr={kind:'life-qr',payload:{url:'https://teacher-tools-class-life-39733542
  const s1=service(true),s2=service(false);await new Promise(r=>s1.listen(17439,'127.0.0.1',r));await new Promise(r=>s2.listen(4188,'127.0.0.1',r));
  let browser;try{
   browser=await chromium.launch({headless:true});const ctx=await browser.newContext({viewport:{width:1600,height:1000}});
-  await ctx.route('**/*',route=>[board,manager].some(x=>route.request().url.startsWith(x+'/'))?route.continue():route.abort());
+  await ctx.route('**/*',route=>[board,manager].some(x=>route.request().url().startsWith(x+'/'))?route.continue():route.abort());
   const bp=await ctx.newPage(),mp=await ctx.newPage();for(const p of [bp,mp])p.on('pageerror',e=>errors.push(e.message));
   await bp.goto(board);await mp.goto(manager);
   assert.equal(await mp.evaluate(d=>window.send(d),seating),false);assert.equal(state.item,null);console.log('unlinked manager uses original popup path');
