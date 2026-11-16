@@ -85,3 +85,5 @@ body.tt-life-active #teacherScreen>.studio>.tt-life-panel{display:flex!important
 .tt-life-panel #life-reissue-all{border-color:#bc7272;color:#9a3636}
 #life-code-message{margin-top:8px!important;font-weight:700;color:#7c4a03!important}
 @media(max-width:700px){.life-preparation-steps{grid-template-columns:1fr}.life-code-table td,.life-code-table th{padding:5px}.tt-life-panel .life-prepare{padding:12px}}
+
+.life-row-actions{display:flex;flex-wrap:wrap;gap:4px}.tt-life-panel .life-row-actions button{min-height:34px;margin:0;padding:4px 8px;font-size:12px}.tt-life-panel .life-row-actions button[data-action=reissue]{color:#8b3434}.life-code-table td:nth-child(3){white-space:nowrap;font-variant-numeric:tabular-nums}
