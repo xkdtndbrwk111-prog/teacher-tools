@@ -2,7 +2,8 @@
 (()=>{
  'use strict';
  if(window.parent===window||new URLSearchParams(location.search).get('present')!=='1')return;
- const origin=location.origin,send=(type,detail={})=>window.parent.postMessage({type,...detail},origin);
+ const origin=location.origin,session=location.hash.slice(1);if(!/^[a-f0-9]{32}$/.test(session))return;
+ const send=(type,detail={})=>window.parent.postMessage({type,id:session,...detail},origin);
  const root=document.documentElement;root.classList.add('tt-board-presentation','tt-student-only');
  const style=document.createElement('link');style.rel='stylesheet';style.href='../classroom/host/board-present.css';document.head.append(style);
  let used=false;
@@ -16,7 +17,7 @@
   if(event.origin!==origin||event.source!==window.parent||!event.data)return;
   const d=event.data;
   if(d.type==='tt-present-theme'){theme(d.theme);return}
-  if(used||d.type!=='tt-present-data'||!/^[0-9a-f]{32}$/.test(d.id||''))return;used=true;theme(d.theme);
+  if(used||d.type!=='tt-present-data'||d.id!==session)return;used=true;theme(d.theme);
   try{
    const [{normalizePresentation},{renderPublicPresentation}]=await Promise.all([import('./presentation-protocol.mjs'),import('./public-presentation.mjs')]);
    const clean=normalizePresentation(d.data,location.href);

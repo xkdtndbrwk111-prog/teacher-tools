@@ -24,6 +24,7 @@
    active={id:requestId,kind:data.kind,url:data.payload?.url,seq};
    const result=await request('/send',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodePresentation({id:requestId,...clean})});accepted=result?.id===requestId;
    if(!accepted)throw Error('접수 확인 실패');
+   if(seq!==serial){void request('/close',{method:'POST',headers:{'Content-Type':'text/plain'},body:requestId}).catch(()=>{});return}
    for(let n=0;n<25&&seq===serial;n++){
     await wait(600);
     const receipt=await request('/receipt?id='+requestId);

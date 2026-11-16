@@ -17,7 +17,7 @@ function sprite(v,base){
 const id=v=>str(v,128);
 const avatar=v=>{
  if(!obj(v)||!['male','female'].includes(v.gender))fail();
- const out={gender:v.gender};for(const k of ['skin','eyes','hair','hairColor','glasses','beard','outfit'])out[k]=integer(v[k],0,100);
+ const out={gender:v.gender};for(const [k,max] of Object.entries({skin:3,eyes:2,hair:5,hairColor:2,glasses:10,beard:8,outfit:6}))out[k]=integer(v[k],0,max);
  // Known avatar configuration bounds: a malformed payload must not crash rendering.
  return out;
 };
@@ -33,12 +33,12 @@ export function normalizePresentation(data,base){
   unique(clean.flat().map(s=>s.id));return {kind:'pe',payload:{teams:clean,surface:p.surface==='dirt'?'dirt':'grass',showLines:p.showLines===true}};
  }
  if(data.kind!=='seating'||!obj(p.layout))fail();
- const rows=integer(p.layout.rows,1,16),cols=integer(p.layout.cols,1,24),cells=array(p.layout.cells,384).map(cell=>({
-  id:id(cell.id),row:integer(cell.row,0,rows-1),col:integer(cell.col,0,cols-1),type:str(cell.type,32)
+ const rows=integer(p.layout.rows,2,12),cols=integer(p.layout.cols,2,12),cells=array(p.layout.cells,144).map(cell=>({
+  id:id(cell.id),row:integer(cell.row,0,rows-1),col:integer(cell.col,0,cols-1),type:['seat','male','female','aisle','unused'].includes(cell.type)?cell.type:fail()
  }));
  unique(cells.map(x=>x.id));unique(cells.map(x=>x.row+':'+x.col));if(cells.length!==rows*cols)fail();
  const seats=new Set(cells.filter(x=>['seat','male','female'].includes(x.type)).map(x=>x.id));
- const students=array(p.students,80).map(s=>({id:id(s.id),name:str(s.name,100),visual:sprite(s.visual,base),glasses:typeof s.glasses==='string'&&/^[a-z0-9_-]{1,24}$/i.test(s.glasses)?s.glasses:'none'}));
+ const students=array(p.students,80).map(s=>({id:id(s.id),name:str(s.name,100),visual:sprite(s.visual,base),glasses:['none','red','black','brown','navy','pink','gray'].includes(s.glasses)?s.glasses:'none'}));
  const ids=new Set(students.map(s=>s.id));if(ids.size!==students.length||!students.length)fail();
  const assignments=array(p.assignments,80).map(x=>({studentId:id(x.studentId),seatId:id(x.seatId)}));
  if(assignments.length!==students.length||assignments.some(x=>!ids.has(x.studentId)||!seats.has(x.seatId)))fail();
