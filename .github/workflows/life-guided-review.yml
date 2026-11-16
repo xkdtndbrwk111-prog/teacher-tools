@@ -1,0 +1,23 @@
+name: Classroom life guided workflow review
+on:
+  push:
+    branches: [codex/life-guided-workflow, codex/r7-integration-review]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: JS syntax and auth regressions
+        run: |
+          node --check classroom/host/life-mount.js
+          node --check classroom/host/class-bootstrap.js
+          node --test classroom/tests/life-cloud*.test.mjs classroom/tests/mount-contract.test.mjs
+      - name: Isolated Chromium teacher workflow
+        run: |
+          npm install --prefix /tmp/tt-life-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          NODE_PATH=/tmp/tt-life-browser/node_modules node classroom/tests/browser-life-guided.cjs
