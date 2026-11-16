@@ -14,7 +14,7 @@
  document.body.append(status);
  const channel=new BroadcastChannel('tt-public-'+key);
  let received=false;
- const onData=event=>{
+ const onData=async event=>{
   if(received||event.data?.type!=='student-data')return;
   received=true;
   try{
@@ -29,20 +29,21 @@
      document.getElementById('pePitchBack')?.remove();
    }else if(data?.kind==='life-qr'){
      const payload=data.payload;
-     if(!payload||typeof payload.url!=='string'||!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(payload.url))throw Error('QR 공개 주소가 올바르지 않습니다.');
-     if(!Number.isInteger(payload.year)||payload.year<2000||payload.year>2100||![3,4,5,6,7,9,10,11,12].includes(payload.month))throw Error('설문 범위가 올바르지 않습니다.');
+     const {validatePublicSurveyUrl}=await import('./life-public-url.mjs?v=20261116-qr-cloud');
+     const validated=validatePublicSurveyUrl(payload);
      const view=document.createElement('main');view.className='tt-life-qr-public';
      const eyebrow=document.createElement('p');eyebrow.className='tt-life-qr-eyebrow';eyebrow.textContent='TEACHER TOOLS · 학급생활';
      const title=document.createElement('h1');title.textContent=`${payload.month}월 학급생활 설문`;
      const classInfo=document.createElement('p');classInfo.className='tt-life-qr-class';classInfo.textContent=`${payload.className||'우리 반'} · ${payload.year}학년도`;
      const qr=document.createElement('div');qr.className='tt-life-qr-code';qr.setAttribute('aria-label','학생 설문 접속 QR 코드');
      const state=document.createElement('strong');state.className='tt-life-qr-state'+(payload.open?'':' is-closed');state.textContent=payload.open?'설문 진행 중':'설문이 아직 열리지 않았습니다';
-     const guide=document.createElement('p');guide.className='tt-life-qr-guide';guide.textContent=payload.open?'개인 기기에서 카메라로 QR을 읽고, 선생님이 알려 준 개인 코드로 들어오세요.':'선생님이 설문을 개설하면 참여할 수 있습니다.';
-     const address=document.createElement('p');address.className='tt-life-qr-address';address.textContent=payload.url;
-     const local=document.createElement('p');local.className='tt-life-qr-local';local.textContent='로컬 TEST 화면 · 이 주소를 실행 중인 컴퓨터 밖에서는 접속할 수 없습니다.';
-     view.append(eyebrow,title,classInfo,qr,state,guide,address,local);document.body.append(view);
+     const guide=document.createElement('p');guide.className='tt-life-qr-guide';guide.textContent=payload.open?'개인 기기에서 QR을 읽고 학생 번호와 개인 코드 6자리를 입력하세요.':'선생님이 설문을 개설하면 참여할 수 있습니다.';
+     const address=document.createElement('p');address.className='tt-life-qr-address';address.textContent=validated.url;
+     view.append(eyebrow,title,classInfo,qr,state,guide,address);
+     if(validated.local){const local=document.createElement('p');local.className='tt-life-qr-local';local.textContent='로컬 시험용 주소 · 다른 기기에서는 접속할 수 없습니다.';view.append(local)}
+     document.body.append(view);
      import('./qr-vendor/index.mjs').then(({default:QRCode})=>{
-       const code=new QRCode(0,1);code.addData(payload.url);code.make();const n=code.getModuleCount(),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox',`0 0 ${n+8} ${n+8}`);svg.setAttribute('role','img');svg.setAttribute('aria-label','학생 설문 접속 QR');const bg=document.createElementNS(svg.namespaceURI,'rect');bg.setAttribute('width',n+8);bg.setAttribute('height',n+8);bg.setAttribute('fill','white');svg.append(bg);for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(code.isDark(y,x)){const cell=document.createElementNS(svg.namespaceURI,'rect');cell.setAttribute('x',x+4);cell.setAttribute('y',y+4);cell.setAttribute('width',1);cell.setAttribute('height',1);svg.append(cell)}qr.replaceChildren(svg);
+       const code=new QRCode(0,1);code.addData(validated.url);code.make();const n=code.getModuleCount(),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox',`0 0 ${n+8} ${n+8}`);svg.setAttribute('role','img');svg.setAttribute('aria-label','학생 설문 접속 QR');const bg=document.createElementNS(svg.namespaceURI,'rect');bg.setAttribute('width',n+8);bg.setAttribute('height',n+8);bg.setAttribute('fill','white');svg.append(bg);for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(code.isDark(y,x)){const cell=document.createElementNS(svg.namespaceURI,'rect');cell.setAttribute('x',x+4);cell.setAttribute('y',y+4);cell.setAttribute('width',1);cell.setAttribute('height',1);svg.append(cell)}qr.replaceChildren(svg);
      }).catch(()=>{qr.textContent='QR을 표시하지 못했습니다. 아래 주소를 이용하세요.'});
    }else throw Error('잘못된 학생 화면 자료입니다.');
    status.remove();
