@@ -1,0 +1,43 @@
+const assert=require('node:assert/strict'), crypto=require('node:crypto'), vm=require('node:vm'),fs=require('node:fs');
+const C=require('./system/coins.js');
+const now='2026-11-15T10:00:00Z',roster={cls:'A',className:'가상 A',students:[{id:'a',name:'가상 1',number:1},{id:'b',name:'가상 2',number:2,excluded:true}]};
+let events=[{type:'setting',cls:'A',at:now,enabled:true,weeklyOn:false,cap:10},{type:'grant',cls:'A',id:'a',at:now,amount:2},{type:'grant',cls:'B',id:'a',at:now,amount:8}], count=0;
+const ok=(label,condition)=>{assert(condition,label);console.log('PASS',++count,label)};
+const req=(extra={})=>({type:'tt-coins-grant',cls:'A',students:[{id:'a',name:'가짜 학생명'}],amount:1,requestId:crypto.randomUUID(),...extra});
+const current=()=>({events,roster});
+let q=req(),r=C.managerMutation(current(),q,now);
+ok('manager uses board roster name',r.ok&&r.events[0].name==='가상 1');events.push(...r.events);
+r=C.managerMutation(current(),q,now);ok('repeated manager request is idempotent',r.ok&&r.duplicate&&r.events.length===0&&C.balanceOf(C.stateOf(events,'A'),'a')===3);
+ok('reused ID with altered amount rejected',!C.managerMutation(current(),{...q,amount:2},now).ok);
+ok('wrong class write rejected',!C.managerMutation(current(),req({cls:'B'}),now).ok&&C.balanceOf(C.stateOf(events,'B'),'a')===8);
+ok('unknown roster member rejected',!C.managerMutation(current(),req({students:[{id:'unknown'}]}),now).ok);
+ok('duplicate member rejected',!C.managerMutation(current(),req({students:[{id:'a'},{id:'a'}]}),now).ok);
+ok('old manager without transaction key cannot write',!C.managerMutation(current(),req({requestId:null}),now).ok);
+ok('invalid amount rejected',!C.managerMutation(current(),req({amount:Infinity}),now).ok);
+const setting={type:'tt-coins-setting',cls:'A',requestId:crypto.randomUUID(),settings:{enabled:false,cap:10,weeklyOn:false,weeklyAmount:5,weeklyDay:1}};
+r=C.managerMutation(current(),setting,now);ok('settings recorded with transaction',r.ok&&r.events.length===2);events.push(...r.events);
+ok('settings replay idempotent',C.managerMutation(current(),setting,now).duplicate);
+ok('disabled manager grants rejected',!C.managerMutation(current(),req(),now).ok);
+ok('out-of-range cap rejected',!C.managerMutation(current(),{...setting,requestId:crypto.randomUUID(),settings:{...setting.settings,cap:1000}},now).ok);
+const charge=crypto.randomUUID();r=C.cancelOrRefund(events,{cls:'A',charge,at:now});events.push(...r.events);
+ok('cancel-before-charge creates tombstone',r.ok&&r.events[0].type==='coin-cancel');
+ok('repeated cancel idempotent',C.cancelOrRefund(events,{cls:'A',charge,at:now}).events.length===0);
+ok('late spend of cancelled charge rejected',!C.checkedSpend(events,roster,{cls:'A',ids:['a'],game:'test',charge,at:now}).ok);
+ok('cancel from other class rejected',!C.cancelOrRefund(events,{cls:'B',charge,at:now}).ok);
+// Exercise real popup script with fake local storage, opener and window close. No school data.
+const code=fs.readFileSync(__dirname+'/system/seating-inbox.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+const opener={postMessage(m){posts.push(m)}};let posts=[],closed=0;
+const mock={...C,snapshot:async withSeat=>{assert.equal(withSeat,true);return current()},commit:async(s,list)=>{events.push(...list)}};
+async function popup(data){let handler;const win={opener,addEventListener(type,fn){handler=fn},close(){closed++}};vm.runInNewContext(code,{TTCoins:mock,window:win,console});await handler({origin:'https://xkdtndbrwk111-prog.github.io',source:opener,data});return posts.at(-1)}
+(async()=>{
+ let response=await popup({type:'tt-coins-read',cls:'B'});
+ ok('manager read shows active board class and selected balance',response.protocol===3&&response.boardCls==='A'&&response.state.balances.a===8&&!('hof' in response.state));
+ response=await popup(req({cls:'B'}));ok('wrong class is definitively rejected by inbox',response.type==='tt-inbox-failed'&&response.definitive);
+ response=await popup({...setting,requestId:crypto.randomUUID(),settings:{...setting.settings,enabled:true}});
+ ok('settings success echoes transaction',response.type==='tt-inbox-coin-state'&&response.state.settings.enabled===true);
+ q=req();response=await popup(q);const balance=response.state.balances.a;
+ ok('inbox grant succeeds once',response.type==='tt-inbox-coins'&&response.requestId===q.requestId&&response.results[0].given===1);
+ response=await popup(q);ok('inbox replays with no double grant',response.state.balances.a===balance);
+ ok('internal transaction marker never leaves the inbox',response.events.every(e=>e.type!=='manager-tx'));
+ console.log('TOTAL',count,'PASS — mock transport, not actual Windows');
+})().catch(e=>{console.error(e);process.exitCode=1});
