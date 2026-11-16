@@ -2,8 +2,8 @@
 . (Join-Path $PSScriptRoot 'runtime\r8-kernel.ps1')
 $root=Join-Path ([IO.Path]::GetTempPath()) ('tt-r8-test-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root|Out-Null
-$script:n=0
-function Check($condition,[string]$message){if(-not $condition){throw $message};$script:n++}
+$script:assertionCount=0
+function Check($condition,[string]$message){if(-not $condition){throw $message};$script:assertionCount++}
 function Reject([scriptblock]$run,[string]$message){$ok=$false;try{& $run|Out-Null}catch{$ok=$true};Check $ok $message}
 function Bytes([string]$s){return ,$R8Utf8.GetBytes($s)}
 try {
@@ -49,5 +49,5 @@ try {
  Restore-R8Transaction $root;Remove-R8Staging $root
  Check ((Get-R8FileSha (Join-Path $root 'server.ps1')) -eq (Get-R8Sha (Bytes 'old-server.ps1'))) 'runtime rollback'
  Check ([IO.File]::ReadAllText($sentinel) -eq 'virtual ledger') 'sentinel after rollback'
- Write-Host "R8 signed runtime fixture: $script:n assertions PASS"
+ Write-Host "R8 signed runtime fixture: $script:assertionCount assertions PASS"
 }finally{if($rsa){$rsa.Dispose()};Remove-Item -LiteralPath $root -Recurse -Force}
