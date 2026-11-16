@@ -4,7 +4,7 @@ $R8Feed='https://xkdtndbrwk111-prog.github.io/teacher-tools/stable/runtime-v1/'
 $R8MaxFile=16777216
 $R8MaxTotal=67108864
 $R8Names=@('dashboard.html','release.json','board-launch.ps1','server.ps1','runtime.ps1','privacy-reset.ps1','start-teacher-tools.ps1','stop-teacher-tools.ps1','change-monitor.ps1','disable-autostart.ps1','speaker.ps1','share-input.ps1','board-heartbeat.ps1','open-web.ps1','seating-inbox.html','coins.js','coins-ui.js','school.js','podo.js','update-ui.js','classkit_QR_LICENSE.txt','handmade-paper.png','hoja.ico','presentation-board.js','presentation-board.css','presentation-server.ps1','presentation-assets.zip','museum-sky.webp','museum-cloud-far.webp','museum-cloud-near.webp','museum-sway-spring-base.webp','museum-sway-spring-sheet.png','museum-sway-summer-base.webp','museum-sway-summer-sheet.png','museum-sway-autumn-base.webp','museum-sway-autumn-sheet.png','museum-sway-winter-base.webp','museum-sway-winter-left.png','museum-sway-winter-right.png')
-$R8Required=@('dashboard.html','release.json','board-launch.ps1','server.ps1','runtime.ps1','update-ui.js')
+$R8Required=@($R8Names)
 function Test-R8Name([string]$Name){
  return (($Name -cin $R8Names) -or ($Name -cmatch '^asset-[a-z0-9][a-z0-9_-]{0,60}\.(png|webp|jpg|ogg|mp3|wav|woff2|zip)$'))
 }
@@ -91,6 +91,8 @@ function New-R8Plan([string]$Root,$Manifest){
  if($current.channel -cne 'stable' -or $current.runtimeProtocol -ne 1){throw 'Manual R8 bootstrap installation required.'}
  if([version]$Manifest.version -le [version]$current.version){return @()}
  if((Get-R8FileSha (Get-R8Path $Root 'release.json')) -cnotin @($Manifest.bases)){throw 'Installed release is not an approved base.'}
+ $signedNames=@($Manifest.files|ForEach-Object {$_.name})
+ foreach($item in @(Get-ChildItem -LiteralPath $Root -File -Force)){if((Test-R8Name $item.Name) -and $item.Name -cnotin $signedNames){throw 'Program file removal requires manual migration.'}}
  $plan=@()
  foreach($f in $Manifest.files){
   $before=Get-R8FileSha (Get-R8Path $Root $f.name)

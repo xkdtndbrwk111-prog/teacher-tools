@@ -26,21 +26,24 @@ try {
  foreach($n in @('../coins.log','coins.log','update-public.xml','launch.ps1','r8-kernel.ps1','ChromeProfile','asset-a.png:stream','SERVER.PS1')){Check (-not(Test-R8Name $n)) ('private or unsafe accepted: '+$n)}
  $badManifest=@{}+$manifest;$badManifest.files=@($files)+@($files[0]);Reject {Read-R8Manifest (Sign $badManifest) $key} 'duplicate accepted'
  $badManifest=@{}+$manifest;$badManifest.bases=@(('f'*64));$wrong=Read-R8Manifest (Sign $badManifest) $key;Reject {New-R8Plan $root $wrong} 'unapproved base accepted'
+ $badManifest=@{}+$manifest;$badManifest.files=@($files|Where-Object {$_.name -cne 'presentation-assets.zip'});Reject {Read-R8Manifest (Sign $badManifest) $key} 'missing presentation asset accepted'
+ $extra=Join-Path $root 'asset-existing.png';Write-R8Atomic $extra (Bytes 'previous asset');Reject {New-R8Plan $root $m} 'silent removal accepted';[IO.File]::Delete($extra)
  $plan=@(New-R8Plan $root $m);Check ($plan.Count -eq 4) 'only changed files selected'
  $lookup=@{};foreach($f in $files){$lookup[$f.sha256]=$content[$f.name]}
  Reject {Initialize-R8Transaction $root $m $plan {param($sha,$length) Bytes 'corrupted'}} 'corruption accepted'
  Check ((Get-R8FileSha (Join-Path $root 'release.json')) -eq (Get-R8Sha $oldRelease)) 'staging altered installed release'
  Remove-R8Staging $root
- $tx=Initialize-R8Transaction $root $m $plan {param($sha,$length) return ,$lookup[$sha]}
- $token='a'*32;Save-R8Journal $root $tx $plan $token '1.70.1'
- # Simulate interrupted sequence after the first file.
- Install-R8Plan $root $tx @($plan[0])
- Check ($null -ne (Read-R8Journal $root)) 'journal missing'
- Restore-R8Transaction $root
- Check ((Get-R8FileSha (Join-Path $root 'release.json')) -eq (Get-R8Sha $oldRelease)) 'rollback release'
- Check (-not(Test-Path (Join-Path $root 'asset-test.png'))) 'rollback added file'
- Check ([IO.File]::ReadAllText($sentinel) -eq 'virtual ledger') 'ledger changed'
- Remove-R8Staging $root
+ $token='a'*32
+ for($cut=0;$cut -le $plan.Count;$cut++){
+  $tx=Initialize-R8Transaction $root $m $plan {param($sha,$length) return ,$lookup[$sha]}
+  Save-R8Journal $root $tx $plan $token '1.70.1'
+  if($cut){Install-R8Plan $root $tx @($plan[0..($cut-1)])}
+  Check ($null -ne (Read-R8Journal $root)) 'journal missing'
+  Restore-R8Transaction $root
+  foreach($f in $plan){Check ((Get-R8FileSha (Get-R8Path $root $f.name)) -ceq $f.before) ('rollback mismatch: '+$f.name)}
+  Check ([IO.File]::ReadAllText($sentinel) -eq 'virtual ledger') 'ledger changed'
+  Remove-R8Staging $root
+ }
  $tx=Initialize-R8Transaction $root $m $plan {param($sha,$length) return ,$lookup[$sha]}
  Save-R8Journal $root $tx $plan $token '1.70.1';Install-R8Plan $root $tx $plan
  Check ((Get-R8FileSha (Join-Path $root 'server.ps1')) -eq (Get-R8Sha $content['server.ps1'])) 'runtime install'

@@ -25,3 +25,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'fixture failed'}
           python -m py_compile tools/r8-updater/apply-r8.py tools/r8-updater/prepare-feed.py
           if($LASTEXITCODE -ne 0){throw 'Python syntax failed'}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r8-updater-reviewed-source
+          path: tools/r8-updater/

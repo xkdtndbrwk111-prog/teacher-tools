@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
 $expected=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
 if([IO.Path]::GetFullPath($root) -ine [IO.Path]::GetFullPath($expected)){throw 'Use the installed bootstrap.'}
-$lock=$null;$startBoard=$false;$applied=$false;$token='';$version='';$tx=Join-Path $root 'r8-transaction'
+$lock=$null;$legacyLock=$null;$startBoard=$false;$applied=$false;$token='';$version='';$tx=Join-Path $root 'r8-transaction'
 # Recovery is independent of the possibly half-replaced runtime.ps1.
 function Get-R8Browsers {
  $profiles=@((Join-Path $root 'ChromeProfile'),(Join-Path $root 'EdgeProfile'))
@@ -45,7 +45,7 @@ function Close-R8Board {
 function Start-R8Board([string]$ReadyToken=''){
  $pi=New-Object Diagnostics.ProcessStartInfo
  $pi.FileName=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
- $pi.Arguments='-NoProfile -File "'+(Join-Path $root 'board-launch.ps1')+'"'+$(if($Windowed){' -Windowed'}else{''})+$(if($ReadyToken){' -R8ReadyToken '+$ReadyToken}else{''})
+ $pi.Arguments='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $root 'board-launch.ps1')+'"'+$(if($Windowed){' -Windowed'}else{''})+$(if($ReadyToken){' -R8ReadyToken '+$ReadyToken}else{''})
  $pi.WorkingDirectory=$root;$pi.UseShellExecute=$false;$pi.CreateNoWindow=$true
  return [Diagnostics.Process]::Start($pi)
 }
@@ -53,6 +53,9 @@ try{
  Assert-R8Plain $root
  $lockPath=Join-Path $root 'r8-update.lock';Assert-R8Plain $lockPath
  try{$lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{return}
+ # Do not overlap a pre-R8 content transaction or manual migration.
+ try{$legacyLock=[IO.File]::Open((Join-Path $root 'stable-pilot.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{Write-R8State $root 'error' '기존 업데이트 작업 중입니다. 작업이 끝난 뒤 다시 실행하세요.';return}
+ if(Test-Path -LiteralPath (Join-Path $root 'stable-pilot-rollback\pending.json')){Write-R8State $root 'error' '이전 업데이트 복구가 필요합니다. 수동 설치 점검이 필요합니다.';return}
  $running=@(Get-R8Browsers).Count -gt 0
  $j=Read-R8Journal $root
  if($j){
@@ -136,4 +139,4 @@ try{
   }
  }catch{$problem+=' / 복구 대기: '+$_.Exception.Message}
  Write-R8State $root 'error' ('업데이트 중단: '+$problem) $version
-}finally{if($lock){$lock.Dispose()}}
+}finally{if($legacyLock){$legacyLock.Dispose()};if($lock){$lock.Dispose()}}
