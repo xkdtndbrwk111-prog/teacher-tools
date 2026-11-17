@@ -1,0 +1,35 @@
+body{--text-primary:var(--tt-ink-body-primary,var(--text));--text-secondary:var(--tt-ink-body-secondary,var(--sub));--text-accent:var(--tt-ink-body-accent,var(--text));--text-alert:var(--tt-ink-body-alert,var(--text));color:var(--text-primary)}
+.card,header,#layoutBar,#settingsFab{--text-primary:var(--tt-ink-panel-primary,var(--text));--text-secondary:var(--tt-ink-panel-secondary,var(--sub));--text-accent:var(--tt-ink-panel-accent,var(--text));--text-alert:var(--tt-ink-panel-alert,var(--text));color:var(--text-primary)}
+dialog,.house-modal{--text-primary:var(--tt-ink-modal-primary,var(--text));--text-secondary:var(--tt-ink-modal-secondary,var(--sub));--text-accent:var(--tt-ink-modal-accent,var(--text));--text-alert:var(--tt-ink-modal-alert,var(--text));color:var(--text-primary)}
+.item,.event-item,.placeholder,.meal-card,.photo-empty{--text-primary:var(--tt-ink-surface-primary,var(--text));--text-secondary:var(--tt-ink-surface-secondary,var(--sub));--text-accent:var(--tt-ink-surface-accent,var(--text));--text-alert:var(--tt-ink-surface-alert,var(--text));color:var(--text-primary)}
+input:not([type=color]):not([type=range]),textarea,select{--text-primary:var(--tt-ink-input-primary,var(--text));--text-secondary:var(--tt-ink-input-secondary,var(--sub));--text-accent:var(--tt-ink-input-accent,var(--text));--text-alert:var(--tt-ink-input-alert,var(--text));color:var(--text-primary)}
+.schedule th.today,.schedule td.today,.cal-today{--text-primary:var(--tt-ink-today-primary,var(--text));--text-secondary:var(--tt-ink-today-secondary,var(--sub));--text-accent:var(--tt-ink-today-accent,var(--text));--text-alert:var(--tt-ink-today-alert,var(--text));color:var(--text-primary)}
+
+body{--text-on-fill:var(--tt-ink-control-fill,var(--control-text))}
+input::placeholder,textarea::placeholder{color:var(--text-secondary);opacity:1}
+a:not(.game-bottom-bar a):not(.tt-week-links a){color:var(--text-accent);text-decoration:underline;text-underline-offset:.12em}
+button,.tag,.game-bottom-bar a,.tt-week-links a,.spk-vol,.event-item .dday{--text-on-fill:var(--tt-ink-control-fill,var(--control-text));color:var(--text-on-fill)}
+button.accent,.timer-tabs .active,.settings-nav button.on,.event-item .dday.now,#ttClasskit .ck-tabs button.on,#ckStudentControls .ck-list-tabs button.selected,#ttStudentOnly .ck-list-tabs button.selected,#ttPhotoFrameQuickDialog button,#coinApp button.act{--text-on-fill:var(--tt-ink-accent-fill,var(--control-text));color:var(--text-on-fill)}
+.schedule td.current,.schedule .lunch-row td.current .lunch-pill{--text-on-fill:var(--tt-ink-current-fill,var(--control-text));color:var(--text-on-fill)}
+.schedule td.current .now-badge,.schedule td.current .tt-subject,.schedule td.current small{color:inherit}
+.schedule .lunch-row td.current{color:var(--text-primary)}
+.cal-day.cal-has-event,.cal-day.cal-has-event.cal-today,.dust-good,.dust-fine,.dust-bad,.tt-dash-widget .tt-dash-light,.tt-dash-widget .tt-dash-student-grid button.done,.tt-dash-widget .tt-dash-light[data-level=yellow],.house-mini,.podo-actions button:last-child{--text-on-fill:#000000;color:var(--text-on-fill)}
+.dust-worst,.tt-dash-widget .tt-dash-light[data-level=red],#ckStudentControls .ck-student-grid button.done,#ckTargetGrid button[aria-pressed=true],#ttStudentOnly .ck-student-grid button.done,body.layout-editing .w-edit .tt-edit-controls .w-x,#ttEditRails .tt-rail button.tt-rail-close,#ttPrivacySection .tt-reset-danger,#ttToolVisibilityLayer .tt-tool-toggle,#ttUnusedTools .tt-unused-plus,#coinApp button.act.neg{--text-on-fill:#ffffff;color:var(--text-on-fill)}
+#seatNotice,#miniNotice,#black,#ttQuickBanner,.house-modal,.draw-off,.hud-edit,.touch-banner,.house-gauge span,.badge,.board{--text-primary:#f5f5f5;--text-secondary:#d5dbe3;--text-accent:#d5e5ff;--text-alert:#ffb4ab;--text-on-fill:#ffffff;color:var(--text-primary)}
+body.tt-scene-glass .board,body.tt-scene-glass .house-modal{--text-primary:var(--tt-ink-panel-primary,var(--text));--text-secondary:var(--tt-ink-panel-secondary,var(--sub));--text-accent:var(--tt-ink-panel-accent,var(--text));--text-alert:var(--tt-ink-panel-alert,var(--text))}
+#miniNotice button{--text-on-fill:#ffffff}#miniNotice #miniRetry{--text-on-fill:#000000;color:var(--text-on-fill)}
+#noticeBoard,#noticeSlate,#noticeBar{--text-primary:#fbfbf0;--text-secondary:#e5e7cf;--text-accent:#fff8d8;--text-alert:#fff3c4;--text-on-fill:#ffffff}
+#noticeBoard #noticeText::placeholder{color:var(--text-secondary)!important;opacity:1}
+#ttQuickBanner.tt-period-banner #ttQuickText{--text-accent:#fff365;color:var(--text-accent)}
+.hoja-bubble,.house-bubble,#settings .tt-settings-speech,.house-feed-wait,.house-care-notice,.photo-card[data-photo-frame="pola"] .photo-frame::after{--text-primary:#453326;--text-secondary:#665246;--text-accent:#59402a;--text-alert:#94231b;--text-on-fill:#000000;color:var(--text-primary)}
+.grid>.card.podo-card,#podoDetail,.podo-sheet,.podo-overview,.podo-preview,.podo-unconfigured{--text-primary:#334155;--text-secondary:#475569;--text-accent:#36566a;--text-alert:#a32121;--text-on-fill:#000000;color:var(--text-primary)}
+#podoDetail .podo-actions button.accent{--text-on-fill:var(--tt-ink-accent-fill,var(--control-text))}
+#podoDetail .podo-actions button:last-child{--text-on-fill:#000000}
+.podo-pin [role=alert],#coinGrid .coin-student.minus b{color:var(--text-alert)!important}
+.grid>.card:is([data-widget="checklist"],[data-widget^="checklist-"]) :is(.tt-check-title,.tt-check-count){color:var(--text-primary)!important;text-shadow:none}
+#picker:modal{--text-primary:var(--tt-ink-panel-primary,var(--text));--text-secondary:var(--tt-ink-panel-secondary,var(--sub))}
+#picker button{color:var(--text-on-fill)!important}
+#picker button.accent{--text-on-fill:var(--tt-ink-accent-fill,var(--control-text));color:var(--text-on-fill)!important}
+#timer #ttTimerDone,.notice,.error,.web-tool-warn,#paintNotice,.touch-state[data-status="mismatch"],[data-stale="1"],.ct-warn{color:var(--text-alert)}
+body.tt-scene-glass #podoDetail{background:#f8fafb!important;color:var(--text-primary)!important}
+body.tt-scene-glass .podo-card{color:var(--text-primary)!important}

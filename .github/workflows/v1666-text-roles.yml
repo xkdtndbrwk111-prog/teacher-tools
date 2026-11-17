@@ -1,0 +1,36 @@
+name: V1.66.6 audited text role migration
+on:
+  push:
+    branches: [codex/v1666-text-roles]
+    paths: ['tools/text-roles/**','.github/workflows/v1666-text-roles.yml']
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Apply audited semantic roles
+        run: |
+          set -euo pipefail
+          echo '9d9c173353258ae47cea22321900be35a92f79d0e4e6ae4d1778f6a472544746  runtime-src/system/dashboard.html' | sha256sum -c
+          python tools/text-roles/apply.py runtime-src/system
+          python - <<'PY'
+          import pathlib,re,subprocess,tempfile
+          p=pathlib.Path('runtime-src/system')
+          with tempfile.TemporaryDirectory() as tmp:
+              for n,script in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script\s*>',(p/'dashboard.html').read_text(),re.S|re.I)):
+                  if script.strip():
+                      f=pathlib.Path(tmp)/f'{n}.js';f.write_text(script);subprocess.run(['node','--check',str(f)],check=True)
+              for f in p.glob('*.js'):subprocess.run(['node','--check',str(f)],check=True)
+          PY
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+      - name: Commit changed program source only
+        run: |
+          git add runtime-src/system
+          git diff --cached --stat
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "V1.66.6: semantic text roles"
+          git push origin HEAD:codex/v1666-text-roles
