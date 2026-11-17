@@ -1,0 +1,32 @@
+name: V1.66.7 native UI migration
+on:
+  push:
+    branches: [codex/v1667-unified-ui]
+    paths: ['tools/ui1667/apply.py','tools/ui1667/ui.css','tools/ui1667/shadow.js','.github/workflows/v1667-migrate.yml']
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          set -euo pipefail
+          python tools/ui1667/apply.py
+          python - <<'PY'
+          import pathlib,re,subprocess,tempfile
+          root=pathlib.Path('runtime-src/system')
+          with tempfile.TemporaryDirectory() as d:
+              for i,s in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script\s*>',(root/'dashboard.html').read_text(),re.I|re.S)):
+                  if s.strip():
+                      f=pathlib.Path(d)/f'{i}.js';f.write_text(s);subprocess.run(['node','--check',str(f)],check=True)
+              for f in root.glob('*.js'):subprocess.run(['node','--check',str(f)],check=True)
+          PY
+          node tools/weather-particles/test.cjs
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system
+          git commit -m "V1.66.7 unified widgets, font inheritance, natural shadows and precipitation icons"
+          git push origin HEAD:codex/v1667-unified-ui

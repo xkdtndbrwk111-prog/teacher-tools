@@ -1,0 +1,11 @@
+/* Shared dashboard surfaces; the expanded grape paper remains a separate illustration. */
+body,button,input,textarea,select{font-family:var(--tt-font,system-ui,sans-serif)}
+.grid>.card.podo-card{background:var(--panel);border-color:var(--border)}
+body.tt-scene-glass .grid>.card.podo-card{background:rgba(var(--tt-glass-rgb),var(--tt-ink-glass-alpha,var(--tt-glass-alpha,.78)))!important;border-color:rgba(var(--tt-glass-border-rgb),.43)!important}
+.grid>.card.podo-card :is(.podo-overview,.podo-preview){color:var(--text-primary)}
+.grid>.card.podo-card .podo-preview-ball:not(.filled){background:transparent;border-color:var(--border)}
+.grid>.card.podo-card .podo-overview-track{background:var(--surface);border-color:var(--border)}
+.grid>.card:is([data-widget="checklist"],[data-widget^="checklist-"]) .tt-check-track>i{opacity:var(--tt-progress-opacity,.18)}
+/* A low-opacity progress tint preserves the inherited text contrast; leave completion glow and edit outlines intact. */
+body:not(.layout-editing) .grid>.card:not(.tt-check-complete){box-shadow:var(--tt-natural-shadow,0 4px 12px rgba(0,0,0,.16))}
+body:not(.layout-editing).tt-scene-glass .grid>.card:not(.tt-check-complete){box-shadow:var(--tt-natural-shadow,0 8px 22px rgba(2,9,21,.18))}
