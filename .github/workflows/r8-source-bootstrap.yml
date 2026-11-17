@@ -1,0 +1,45 @@
+name: R8 one-time source bootstrap
+on:
+  push:
+    branches: [codex/r8-native-source-pipeline]
+    paths: ['.github/workflows/r8-source-bootstrap.yml']
+permissions:
+  contents: write
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+      - name: Retrieve immutable existing seed
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin 211351456b7b8895e660537cdf9782a124b3a847
+          git show FETCH_HEAD:R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip > "$RUNNER_TEMP/seed.zip"
+      - name: Restore repository-native source and prove reproducibility
+        run: |
+          set -euo pipefail
+          python tools/r8-publisher/test-publisher.py -v
+          python tools/r8-publisher/source-build.py bootstrap "$RUNNER_TEMP/seed.zip" runtime-src/system
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/baseline"
+          python - <<'PY'
+          import json,zipfile,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with zipfile.ZipFile(root/'seed.zip') as z:
+              old=json.loads(z.read('payload.json'))
+          new=json.loads((root/'baseline/payload.json').read_bytes())
+          assert {k:old[k] for k in old if k not in ('files','bases')}=={k:new[k] for k in new if k not in ('files','bases')}
+          assert sorted(old['bases'])==new['bases']
+          assert sorted(old['files'],key=lambda x:x['name'])==new['files']
+          print('PASS: 39/39 original source files exactly reconstructed')
+          PY
+      - name: Commit source only to dedicated bootstrap branch
+        run: |
+          set -euo pipefail
+          git add runtime-src/system
+          git diff --cached --name-only | python -c 'import sys; p=sys.stdin.read().splitlines(); assert len(p)==39 and all(x.startswith("runtime-src/system/") for x in p)'
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Recover exact 39-file R8 source baseline from existing reviewed seed"
+          git push origin HEAD:codex/r8-native-source-pipeline

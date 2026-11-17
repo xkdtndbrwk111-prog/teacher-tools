@@ -1,0 +1,4 @@
+# Canonical R8 program source
+This tree holds only the allowlisted runtime program files. Seeded once from the immutable, already uploaded reviewed V1.66.3 snapshot. No school data, user settings, signing keys or installer bootstrap.
+For future changes edit individual files in system/, update release.json and the dashboard release label together, open a PR, and merge after reviews. GitHub Actions generates the unsigned full snapshot directly from this tree and the current signed ancestry. Clients download only changed files. Do not manually upload full ZIPs for normal releases.
+The first snapshot can be built while the live feed is unreleased. Existing approved ancestry is enforced. The production signing workflow is still explicitly gated on actual Windows field validation; no unsigned candidate or test key should be published.
