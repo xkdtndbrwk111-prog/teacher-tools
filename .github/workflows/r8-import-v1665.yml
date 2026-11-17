@@ -1,0 +1,36 @@
+name: Import reviewed V1.66.5 source directly (no binary upload)
+on:
+  push:
+    branches: [codex/v1665-source-import]
+    paths: ['.github/workflows/r8-import-v1665.yml','tools/r8-publisher/import-v1665/**']
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: xkdtndbrwk111-prog/hoja-minigames
+          ref: 497e8a1ad8ed5ce86bcf51b6cbc744282e9a0aa2
+          path: artwork
+          persist-credentials: false
+          sparse-checkout: src/assets/images/core/portraits
+      - name: Reconstruct exactly reviewed V1.66.5 from native source
+        run: |
+          set -euo pipefail
+          python -m pip install --only-binary=:all: Pillow==12.3.0
+          python tools/r8-publisher/import-v1665/apply.py runtime-src/system artwork/src/assets/images/core/portraits
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          test "$(sha256sum "$RUNNER_TEMP/candidate/payload.json" | cut -d ' ' -f1)" = f12beae585771bda8103f6e1c151795ace0286b20f278039b7b2c0bd89f5889e
+      - name: Write exactly five changed program source files
+        run: |
+          set -euo pipefail
+          git add runtime-src/system/{dashboard.html,server.ps1,privacy-reset.ps1,podo.js,release.json}
+          git diff --cached --name-only | python -c 'import sys; assert set(sys.stdin.read().splitlines())=={"runtime-src/system/"+n for n in ["dashboard.html","server.ps1","privacy-reset.ps1","podo.js","release.json"]}'
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Apply exact reviewed V1.66.5 source files without ZIP transfer"
+          git push origin HEAD:codex/v1665-source-import
