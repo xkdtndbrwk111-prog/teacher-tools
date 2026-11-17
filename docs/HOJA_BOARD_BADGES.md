@@ -1,0 +1,3 @@
+# V1.66.9 common informational badges
+
+Six badge families: event source, event due date, air grade, Hoja condition, feeding cooldown, care warning. Use .tt-badge and semantic palette classes; neutral uses theme control surface + computed contrast ink, fixed blue/green/yellow/orange/red pairs remain meaning-stable across themes. Radius .35em, padding .2em .55em, font 600 and .85em (readability floors retained for weather and care warning), no border or shadow. Large air detail shares palette/radius; hourly indicator chart and actual buttons retain their own semantics. No behavior or data changes. Legacy unused .badge/.tag declarations removed from dashboard only. Candidate only; existing signed publication and field gates remain unchanged.
