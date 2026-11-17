@@ -11,3 +11,6 @@ The owner explicitly authorized the exact V1.66.5 candidate for initial operatio
 
 ## V1.66.6 foreground and weather regression
 New UI foregrounds use the five semantic text roles. Rain/thunder override the seasonal particle layer, not the selected seasonal background. Missing/stale weather returns to normal seasonal particles; preserve existing reduced-motion and disabled-background controls. The weather engine's deterministic regression is `node tools/weather-particles/test.cjs`. The live candidate will be validated against the exact currently signed runtime rather than only the legacy first seed.
+
+## V1.66.6 owner-field-test rollout
+The owner requested publication of the reviewed V1.66.6 before physical visual verification. The exact V1.66.5 signed prior feed and five successful main CI runs are required. This is a one-time owner-pilot authorization, not a field-pass attestation; future ordinary releases retain the normal field gate. Existing signature, archive, ancestry and atomic publication checks are unchanged.
