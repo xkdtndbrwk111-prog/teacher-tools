@@ -11,15 +11,15 @@ css.id='podo-style';
 css.textContent=`
 .podo-card{padding:0!important;min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:0;background:#f8f9fa!important}
 .podo-card[hidden]{display:none!important}
-.podo-sheet{position:relative;flex:1 1 0;min-height:0;overflow:auto;text-align:center;color:#4b5662;background:linear-gradient(145deg,#fff,#f6f8f9);border-radius:inherit;padding:clamp(12px,1.3vw,24px) clamp(10px,1vw,20px) 12px;box-shadow:inset 0 0 0 1px rgba(110,126,136,.2)}
+.podo-sheet{position:relative;flex:1 1 0;min-height:0;overflow:auto;text-align:center;color:var(--text-primary);background:linear-gradient(145deg,#fff,#f6f8f9);border-radius:inherit;padding:clamp(12px,1.3vw,24px) clamp(10px,1vw,20px) 12px;box-shadow:inset 0 0 0 1px rgba(110,126,136,.2)}
 .podo-sheet:before{display:none!important} /* Handmade-paper texture is clipped only to the grape/leaf silhouette. */
 .podo-sheet>*{position:relative;z-index:1}
-.podo-head h2{font-size:clamp(18px,2vw,35px);font-weight:900;line-height:1.3;margin:0 0 8px;color:#475461!important}
+.podo-head h2{font-size:clamp(18px,2vw,35px);font-weight:900;line-height:1.3;margin:0 0 8px;color:var(--text-primary)!important}
 .podo-head>div{font-size:clamp(12px,1.2vw,18px);font-weight:850;margin:4px 0}
-.podo-leaves{font-size:clamp(22px,2.4vw,42px);line-height:1.1;margin:6px 0;color:#679458}
+.podo-leaves{font-size:clamp(22px,2.4vw,42px);line-height:1.1;margin:6px 0;color:var(--text-accent)}
 .podo-grid{display:flex;flex-direction:column;align-items:center;gap:clamp(2px,.4vw,9px);max-width:100%;width:max-content;margin:6px auto 18px}
 .podo-row{display:flex;gap:clamp(2px,.4vw,9px);justify-content:center}
-.podo-ball{display:grid;place-items:center;width:clamp(25px,3.4vw,57px);aspect-ratio:1;flex:none;border-radius:50%;border:1.5px dashed rgba(115,128,140,.45);background:#ffffff94;color:#798692;font:900 clamp(11px,1.05vw,18px)/1 system-ui,sans-serif;position:relative;box-shadow:inset 0 1px 3px #66718a16}
+.podo-ball{display:grid;place-items:center;width:clamp(25px,3.4vw,57px);aspect-ratio:1;flex:none;border-radius:50%;border:1.5px dashed rgba(115,128,140,.45);background:#ffffff94;color:var(--text-secondary);font:900 clamp(11px,1.05vw,18px)/1 system-ui,sans-serif;position:relative;box-shadow:inset 0 1px 3px #66718a16}
 .podo-ball.filled{border:2px solid #fffefa;box-shadow:0 3px 3px #27344340,0 4px 8px #2c304020,inset 0 2px 3px #fff8}
 #podoDetail[data-grape='purple'] .podo-ball.filled{background:radial-gradient(circle at 27% 20%,#ecbdf5,#b17ac5 48%,#75438c)}
 #podoDetail[data-grape='green'] .podo-ball.filled{background:radial-gradient(circle at 27% 20%,#f5ffd6,#bce179 48%,#83ad3c)}
@@ -28,23 +28,23 @@ css.textContent=`
 .podo-ball img:not([src])+.podo-icon-fallback,.podo-ball img.err+.podo-icon-fallback{display:block}
 .podo-actions{flex:none;display:flex;gap:6px;padding:8px;background:#f4f7fa;box-shadow:0 -1px 5px #26324120}
 .podo-actions button{flex:1;min-height:clamp(39px,5vh,58px);font:850 clamp(13px,1.2vw,20px)/1.2 system-ui,sans-serif;border-radius:8px;cursor:pointer}
-.podo-actions button:last-child{background:#737f8d;color:white}
-.podo-due{font-weight:800;font-size:clamp(12px,1vw,16px);color:#6c7d87;padding-bottom:6px}
-.podo-unconfigured{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#fafcfcec;padding:16px;text-align:center;color:#435467}
+.podo-actions button:last-child{background:#737f8d;color:var(--text-on-fill)}
+.podo-due{font-weight:800;font-size:clamp(12px,1vw,16px);color:var(--text-secondary);padding-bottom:6px}
+.podo-unconfigured{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#fafcfcec;padding:16px;text-align:center;color:var(--text-primary)}
 .podo-unconfigured[hidden]{display:none!important}
 .podo-unconfigured button{font-size:clamp(13px,1vw,18px);min-height:50px}
 .podo-fly{position:fixed;z-index:2147482800;pointer-events:none;width:60px;height:60px;display:grid;place-items:center;border:3px solid #fff9e7;border-radius:50%;box-shadow:0 7px 10px #0005;background:#b37bc9;overflow:hidden}
 .podo-fly img{width:92%;height:92%;object-fit:contain;clip-path:none}
 #ttClasskit .podo-form{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:760px}
 #ttClasskit .podo-form label{font-weight:850;font-size:16px;display:grid;gap:7px}
-#ttClasskit .podo-form input,#ttClasskit .podo-form select{min-width:0;width:100%;min-height:46px;padding:8px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:17px}
+#ttClasskit .podo-form input,#ttClasskit .podo-form select{min-width:0;width:100%;min-height:46px;padding:8px;color:var(--text-primary);background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:17px}
 #ttClasskit .podo-form .podo-wide{grid-column:span 2}
 #ttClasskit .podo-management{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
 #ttClasskit .podo-management button{min-height:48px}
 #ttClasskit #podoHistory{overflow:auto;max-height:300px;padding:10px;border-radius:10px;background:var(--surface);font-size:14px;line-height:1.6}
 #ttClasskit .podo-event{display:flex;gap:10px;padding:5px 3px;border-bottom:1px solid var(--border)}
 #ttClasskit .podo-event time{min-width:112px;opacity:.75}
-#podoWin{position:fixed;inset:0;z-index:2147482950;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#122e3fef;color:#fff;overflow:hidden;text-align:center}
+#podoWin{position:fixed;inset:0;z-index:2147482950;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#122e3fef;color:var(--text-on-fill);overflow:hidden;text-align:center}
 #podoWin[hidden]{display:none!important}
 #podoWin>*:not(canvas){position:relative;z-index:2}
 #podoWin h2{font-size:clamp(32px,5vw,72px)}
@@ -55,16 +55,16 @@ css.textContent=`
 /* V1.62.2: dashboard is display-only, click opens teacher-controlled full-size board. */
 .grid>.card.podo-card{padding:0!important;min-height:0!important;min-width:0!important;cursor:pointer;user-select:none;overflow:hidden!important;background:#f6f9fa!important;box-shadow:inset 0 0 0 1px rgba(133,150,159,.34),0 3px 8px rgba(0,0,0,.1)}
 .grid>.card.podo-card:focus-visible{outline:3px solid #6094c2;outline-offset:2px}
-.podo-card .podo-overview{width:100%;height:100%;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(2px,.4vh,7px);padding:clamp(4px,.7vw,13px);color:#405567;text-align:center;overflow:hidden}
+.podo-card .podo-overview{width:100%;height:100%;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(2px,.4vh,7px);padding:clamp(4px,.7vw,13px);color:var(--text-primary);text-align:center;overflow:hidden}
 .podo-card .podo-overview-full{width:100%;min-width:0;display:flex;flex-direction:column;align-items:center;gap:clamp(1px,.35vh,6px)}
 .podo-card .podo-overview-label{font-size:clamp(11px,1.1vw,18px);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.podo-card .podo-overview-count{font:900 clamp(18px,2.25vw,37px)/1.05 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;color:#385761}
-.podo-card .podo-overview-count small{font-size:.6em;font-weight:800;color:#738994}
+.podo-card .podo-overview-count{font:900 clamp(18px,2.25vw,37px)/1.05 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text-primary)}
+.podo-card .podo-overview-count small{font-size:.6em;font-weight:800;color:var(--text-secondary)}
 .podo-card .podo-overview-track{height:clamp(5px,.6vh,10px);width:min(85%,250px);border-radius:16px;background:#dce5e9;overflow:hidden;border:1px solid #cbd5da}
 .podo-card .podo-overview-track i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ab79c1,#82519f);border-radius:inherit;transition:width .25s}
 .podo-card[data-grape='green'] .podo-overview-track i{background:linear-gradient(90deg,#b9df6d,#6f9f37)}
-.podo-card .podo-overview-caption{max-width:100%;font-size:clamp(9px,.8vw,13px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#71858d;font-weight:750}
-.podo-card .podo-overview-tiny{display:none;font:900 clamp(15px,1.65vw,27px)/1 system-ui,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums;color:#405868}
+.podo-card .podo-overview-caption{max-width:100%;font-size:clamp(9px,.8vw,13px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);font-weight:750}
+.podo-card .podo-overview-tiny{display:none;font:900 clamp(15px,1.65vw,27px)/1 system-ui,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text-primary)}
 .podo-card.podo-compact .podo-overview-caption{display:none}
 .podo-card.podo-compact .podo-overview-label{font-size:12px}
 .podo-card.podo-compact .podo-overview-count{font-size:clamp(17px,2vw,26px)}
@@ -73,7 +73,7 @@ css.textContent=`
 .podo-card.podo-micro .podo-overview-tiny{display:block;max-width:100%;overflow:hidden;text-overflow:clip;font-size:clamp(11px,1.2vw,24px)}
 body.layout-editing .podo-card{cursor:move}
 /* The original sticker sheet and controls are mounted only in the enlarged dialog. */
-#podoDetail{width:min(760px,96vw);height:min(930px,95dvh);max-width:none;max-height:none;min-width:0;padding:0;border:1px solid #bdc9d0;border-radius:18px;background:#f8fafb;color:#415263;box-shadow:0 18px 60px #0008;overflow:hidden}
+#podoDetail{width:min(760px,96vw);height:min(930px,95dvh);max-width:none;max-height:none;min-width:0;padding:0;border:1px solid #bdc9d0;border-radius:18px;background:#f8fafb;color:var(--text-primary);box-shadow:0 18px 60px #0008;overflow:hidden}
 #podoDetail[open]{display:flex;flex-direction:column}
 #podoDetail::backdrop{background:rgba(5,19,28,.65)}
 #podoDetail .podo-detail-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:0 0 auto;padding:12px 18px;background:#f7fafb;border-bottom:1px solid #d7e0e4}
@@ -101,16 +101,16 @@ css.textContent+=`
 #podoDetail,dialog.podo-pin,#ttClasskit:has([data-ck-page="podo"]:not([hidden])){position:fixed!important;inset:0!important;margin:auto!important;transform:none!important}
 #podoDetail .podo-cut-area .podo-ball.filled{background:radial-gradient(circle at 27% 20%,#ecbdf5,#b17ac5 48%,#75438c)}
 #podoDetail[data-grape="green"] .podo-cut-area .podo-ball.filled{background:radial-gradient(circle at 27% 20%,#f5ffd6,#bce179 48%,#83ad3c)}
-.podo-card .podo-preview{display:none;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px;height:100%;width:100%;overflow:hidden;color:#405567;text-align:center}
+.podo-card .podo-preview{display:none;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px;height:100%;width:100%;overflow:hidden;color:var(--text-primary);text-align:center}
 .podo-card.podo-expanded .podo-overview{display:none}.podo-card.podo-expanded .podo-preview{display:flex}
 .podo-preview strong,.podo-preview span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:850;font-size:clamp(12px,1.1vw,20px)}
 .podo-preview-grid{display:flex;flex-direction:column;align-items:center;gap:3px}.podo-preview-row{display:flex;gap:3px}
-.podo-preview-ball{position:relative;display:grid;place-items:center;width:var(--podo-size);height:var(--podo-size);flex:none;border:1px dashed #a1adb5;border-radius:50%;background:#fff9;font-size:12px;color:#8796a1}
+.podo-preview-ball{position:relative;display:grid;place-items:center;width:var(--podo-size);height:var(--podo-size);flex:none;border:1px dashed #a1adb5;border-radius:50%;background:#fff9;font-size:12px;color:var(--text-secondary)}
 .podo-preview-ball.filled{border:2px solid #fffefa;background:radial-gradient(circle at 27% 20%,#ecbdf5,#b17ac5 48%,#75438c);box-shadow:0 2px 3px #37424a52}
 .podo-card[data-grape="green"] .podo-preview-ball.filled{background:radial-gradient(circle at 27% 20%,#f5ffd6,#bce179 48%,#83ad3c)}
 .podo-preview-ball img{position:absolute;width:84%;height:84%;inset:8%;object-fit:contain;pointer-events:none}
-dialog.podo-pin{box-sizing:border-box;width:min(425px,calc(100vw - 32px));height:max-content;max-height:calc(100dvh - 40px);padding:24px;border:1px solid var(--border);border-radius:18px;background:var(--panel);color:var(--text);overflow:auto}
-dialog.podo-pin::backdrop{background:#07182099}.podo-pin form{display:grid;gap:12px}.podo-pin input{width:100%;font-size:26px;text-align:center;letter-spacing:.3em;padding:10px}.podo-pin form div{display:flex;gap:8px}.podo-pin form button{flex:1;min-height:44px}.podo-pin [role="alert"]{color:#c43e43;min-height:1em}
+dialog.podo-pin{box-sizing:border-box;width:min(425px,calc(100vw - 32px));height:max-content;max-height:calc(100dvh - 40px);padding:24px;border:1px solid var(--border);border-radius:18px;background:var(--panel);color:var(--text-primary);overflow:auto}
+dialog.podo-pin::backdrop{background:#07182099}.podo-pin form{display:grid;gap:12px}.podo-pin input{width:100%;font-size:26px;text-align:center;letter-spacing:.3em;padding:10px}.podo-pin form div{display:flex;gap:8px}.podo-pin form button{flex:1;min-height:44px}.podo-pin [role="alert"]{color:var(--text-alert);min-height:1em}
 #podoDetail .podo-ball.podo-landing{z-index:4}
 #podoDetail .podo-fly{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;transform-origin:center;pointer-events:none;overflow:hidden;z-index:4}
 `;
