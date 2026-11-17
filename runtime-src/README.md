@@ -23,3 +23,6 @@ Exact source/manifest and prior signed V1.66.6 inventory required, five successf
 
 ## V1.66.8 education activities
 Imported NEIS and weekly schedule sources have distinct labels. The date editor shows existing imported rows and local editable text. Hide/restore modifies only scoped local calendar presentation; identity includes school, grade/class, source, weekly sheet, date and exact trimmed name. Full backup includes the local hidden list; settings-only does not. Signed feed remains unchanged until candidate testing and release approval.
+
+## V1.66.8 owner operational pilot
+Owner requested release of education activity display and local visibility management. Requires exact signed V1.66.7 prior feed and six successful main checks, including dedicated education activity browser regression. Physical school-PC check pending; field gate remains false. Independent signing, ancestry and atomic publishing unchanged. No manually uploaded ZIP.

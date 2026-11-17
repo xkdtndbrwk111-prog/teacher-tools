@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "version": "1.66.8",
+  "previous_version": "1.66.7",
+  "previous_payload_sha": "b65f12a4fc5f97c8df0e09835596890136cdef66ea095a220aacec9311fb56be",
+  "source_sha": "d4239f1b8de44ac7980705d4e318ab539b20dcaf",
+  "artifact_id": 14309515704,
+  "archive_sha": "9933e29c1e20f4381090ca30ad86061b8662991791f5cdff8b38e8240c35cd95",
+  "payload_sha": "70fec73cd236fd31e5570e32ef7de4dab45ed9b1ec543356632f6efa9d8eb96b",
+  "build_run_id": 44040761241,
+  "windows_run_id": 44040761362,
+  "integration_run_id": 44040761306,
+  "visual_run_id": 44040761443,
+  "contrast_run_id": 44040761298,
+  "education_run_id": 44040762881,
+  "authorization": "Owner requested V1.66.8 education activity changes and deployment in the 2026-11-17 conversation; physical classroom field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v1668_owner_field_test_only"
+}
