@@ -16,23 +16,4 @@ jobs:
       - run: python tools/r8-publisher/test-approval.py -v
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if python -c "import json; assert json.load(open('stable/runtime-v1/latest.json')) == {'status':'unreleased'}"; then
-            python tools/r8-publisher/check-first-pilot.py
-          else
-            python - <<'PY'
-            import importlib.util,json,pathlib,sys
-            sys.path.insert(0,'tools/r8-publisher')
-            import validate as v
-            feed=pathlib.Path('stable/runtime-v1/latest.json').read_bytes()
-            v.decode_feed(feed)
-            spec=importlib.util.spec_from_file_location('first_pilot','tools/r8-publisher/check-first-pilot.py')
-            m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-            record=json.loads(pathlib.Path('runtime-src/first-pilot-approval.json').read_bytes())
-            try:m.verify_record(record,json.loads(feed))
-            except ValueError as e:
-                assert str(e)=='Pilot is valid only for the first unpublished feed'
-                print('PASS: published signed feed rejects reuse of the first pilot')
-            else:raise AssertionError('First pilot replay accepted')
-            PY
-          fi
+        run: python tools/r8-publisher/test-first-pilot-state.py
