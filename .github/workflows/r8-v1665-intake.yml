@@ -1,0 +1,69 @@
+name: R8 V1.66.5 verified candidate intake
+on:
+  push:
+    branches: [release/r8-v1.66.5]
+    paths: ['R8_V1.66.5_UNSIGNED_RELEASE_CANDIDATE.zip']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 734e494fad3c81033a786b4b7a5acc5c3ebcd424
+          path: reviewed-kernel
+          persist-credentials: false
+          sparse-checkout: tools/r8-updater/runtime
+      - name: Restore exact reviewed bootstrap bytes
+        shell: pwsh
+        run: |
+          python -c "import pathlib,subprocess; root=pathlib.Path('reviewed-kernel'); paths=['tools/r8-updater/runtime/r8-kernel.ps1','tools/r8-updater/runtime/launch.ps1']; [(root/p).write_bytes(subprocess.check_output(['git','-C',str(root),'show','734e494fad3c81033a786b4b7a5acc5c3ebcd424:'+p])) for p in paths]"
+          if ($LASTEXITCODE -ne 0) {throw 'Kernel checkout failed'}
+      - name: Validate exact first-release candidate and seed
+        shell: pwsh
+        run: |
+          python tools/r8-publisher/test-publisher.py -v
+          if ($LASTEXITCODE -ne 0) {throw 'Publisher tests failed'}
+          python tools/r8-publisher/validate.py extract R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip "$env:RUNNER_TEMP/seed" 818c82c9e8a3ea7ed3cf9c8afef69c8b48ac5fcfe67848d5421ee36bb347235c
+          if ($LASTEXITCODE -ne 0) {throw 'Seed verification failed'}
+          python tools/r8-publisher/validate.py extract R8_V1.66.5_UNSIGNED_RELEASE_CANDIDATE.zip "$env:RUNNER_TEMP/candidate" d0947a44ad63b6c6326ad5e0732ff081970c7a42cbd27811528596e9b9d0c531
+          if ($LASTEXITCODE -ne 0) {throw 'Archive rejected'}
+          python tools/r8-publisher/validate.py check "$env:RUNNER_TEMP/candidate" stable/runtime-v1/latest.json f12beae585771bda8103f6e1c151795ace0286b20f278039b7b2c0bd89f5889e
+          if ($LASTEXITCODE -ne 0) {throw 'Candidate rejected'}
+      - name: PowerShell weather mock tests
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-v1665-weather.ps1 -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Weather tests failed'}
+      - name: Exact-file Windows transaction and rollback
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-v1665-windows.ps1 -Kernel "$pwd/reviewed-kernel/tools/r8-updater/runtime/r8-kernel.ps1" -Seed "$env:RUNNER_TEMP/seed" -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Transaction tests failed'}
+      - name: Actual Windows launcher and restart
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-v1665-launch.ps1 -KernelDir "$pwd/reviewed-kernel/tools/r8-updater/runtime" -Seed "$env:RUNNER_TEMP/seed" -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Launcher test failed'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: candidate
+        with:
+          name: r8-runtime-release-candidate
+          path: ${{ runner.temp }}/candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Report exact publication inputs
+        env:
+          ID: ${{ steps.candidate.outputs.artifact-id }}
+          DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
+        shell: pwsh
+        run: |
+          Write-Host "artifact_id=$env:ID"
+          Write-Host "archive_sha=$env:DIGEST"
+          Write-Host "payload_sha=f12beae585771bda8103f6e1c151795ace0286b20f278039b7b2c0bd89f5889e"
+          Write-Host 'Unsigned candidate; existing production release field gate still applies.'
