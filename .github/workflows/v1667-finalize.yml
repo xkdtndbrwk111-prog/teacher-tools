@@ -1,0 +1,22 @@
+name: V1.66.7 final UI source consistency
+on:
+  push:
+    branches: [codex/v1667-ui-light-weather]
+    paths: ['tools/v1667/finalize.py']
+permissions:
+  contents: write
+jobs:
+  final:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          set -euo pipefail
+          test "$(git hash-object runtime-src/system/dashboard.html)" = 6250e7b3fcd0bc29ba40979cb2a1c854dadcb11c
+          python tools/v1667/finalize.py
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system/dashboard.html
+          git commit -m "Finalize whole rain streaks, themed grape preview and cloud-filtered natural light"
+          git push origin HEAD:codex/v1667-ui-light-weather
