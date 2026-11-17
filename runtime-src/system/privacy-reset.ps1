@@ -19,7 +19,7 @@ try {
  for($n=0;$n -lt 30 -and $null -ne (Get-TTListenerPid);$n++){Start-Sleep -Milliseconds 200}
  if($null -ne (Get-TTListenerPid)){throw 'Teacher Tools server is still running. Data was not removed.'}
  $dirNames=@('ChromeProfile','EdgeProfile')
- $files=@('school.json','weather-place.json','seating.json','coins.log','notice.log','photos.txt',
+ $files=@('school.json','weather-place.json','weather-cache.json','weather-cache.json.tmp','seating.json','coins.log','notice.log','photos.txt',
           'browser.txt','display.txt','board-mode.json','board-window.json','share-input.json',
           'share-input-status.json','share-input.log','share-input-error.log','open-web.log',
           'launch-error.log','privacy-reset-error.log')

@@ -2,8 +2,8 @@
 (()=>{
 'use strict';
 const KEY='class-podo-board';
-const SRC={hoja:'/hoja_face_original.webp',nahan:'/nahan_face_original.webp'};
-const FALLBACK={hoja:'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/main/src/assets/images/core/portraits/hoja_09_sparkling.webp',nahan:'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/main/src/assets/images/core/portraits/nahansang_09_sparkling.webp'};
+const SRC=window.ttCharacterPortraits||{hoja:'/hoja_face_original.webp',nahan:'/nahan_face_original.webp'};
+const FALLBACK=window.ttCharacterPortraits||{hoja:'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/main/src/assets/images/core/portraits/hoja_09_sparkling.webp',nahan:'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/main/src/assets/images/core/portraits/nahansang_09_sparkling.webp'};
 const $=id=>document.getElementById(id),card=document.querySelector('.card[data-widget="podo"]'),grid=$('podoGrid');
 if(!card||!grid)return;
 const css=document.createElement('style');
