@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>대시보드 연결 중</title>
+<style>body{margin:0;display:grid;place-items:center;height:100vh;background:#13233d;color:#fff;font:700 16px system-ui,sans-serif}</style></head>
+<body>대시보드와 연결 중입니다.
+<script src="/coins.js"></script>
+<script>
+// Accepts seatings and coin requests only from the classroom manager's own addresses, then closes.
+const ALLOWED=['https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4188','http://localhost:4188'];
+const readCoins=()=>TTCoins.snapshot(true);
+const coinView=(snap,cls)=>{const {hof,...state}=TTCoins.stateOf(snap.events,cls);return{state,events:snap.events.filter(e=>e.cls===cls&&e.type!=='hof'&&e.type!=='manager-tx').slice(-300),protocol:3,boardCls:snap.roster.cls,boardClassName:snap.roster.className||''}};
+let busy=false;window.addEventListener('message',async event=>{
+ if(!ALLOWED.includes(event.origin)||event.source!==window.opener||busy)return;
+ if(!['tt-coins-read','tt-coins-setting','tt-coins-grant','tt-seating-send'].includes(event.data?.type))return;busy=true;
+ if(event.data.type!=='tt-seating-send'){
+  let reply={type:'tt-inbox-failed',protocol:3};
+  try{
+   const {cls,type,requestId}=event.data;
+   if(typeof cls!=='string'||!cls||cls.length>160)throw Error('학급 정보가 없습니다.');
+   const snap=await readCoins();
+   if(type==='tt-coins-read')reply={type:'tt-inbox-coin-state',...coinView(snap,cls)};
+   else{
+    const res=TTCoins.managerMutation(snap,event.data,new Date().toISOString());
+    if(!res.ok)reply={...reply,message:res.message,requestId,definitive:true,...coinView(snap,cls)};
+    else{await TTCoins.commit(snap,res.events);reply={type:type==='tt-coins-grant'?'tt-inbox-coins':'tt-inbox-coin-state',requestId,results:res.results,...coinView(snap,cls)};}
+   }
+  }catch(error){console.error(error);reply={...reply,requestId:event.data.requestId,message:error.message||'코인 처리 결과를 확인할 수 없습니다.'};}
+  event.source.postMessage(reply,event.origin);window.close();return;
+ }
+ if(event.data?.type!=='tt-seating-send')return;
+ let type='tt-inbox-failed';
+ try{
+  const response=await fetch('/api/seating',{method:'POST',headers:{'Content-Type':'text/plain'},body:event.data.body});
+  if(response.ok)type='tt-inbox-saved';
+ }catch(error){console.error(error)}
+ event.source.postMessage({type},event.origin);
+ window.close();
+});
+if(window.opener)for(const origin of ALLOWED)window.opener.postMessage({type:'tt-inbox-ready'},origin);
+</script></body></html>
