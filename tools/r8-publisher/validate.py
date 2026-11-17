@@ -5,6 +5,7 @@ KEY=ROOT/'public-key.xml'
 BASE='3b5110f2553ddf7835296e21167304c4e63eaed1c0bd317135d9f81797c14bdb'
 BASES={BASE,'da3c6487f0460487df872a2d3d6209ae0d996e837a36cb6dfa8bf84eb64525bf','c2e450eed106aafeb66ed52aa9ec26b172b7bc0a1b6af426f7aafd8f6595cc44'}
 BASE_VERSION=(1,66,2)
+REVIEWED_1663='5e0ca2e428901c5681481d8b15629f5bd0e81116aa0667884ff97b1472ead08b'
 MAX_FILE=16777216
 MAX_TOTAL=67108864
 REQUIRED=set('dashboard.html release.json board-launch.ps1 server.ps1 runtime.ps1 privacy-reset.ps1 start-teacher-tools.ps1 stop-teacher-tools.ps1 change-monitor.ps1 disable-autostart.ps1 speaker.ps1 share-input.ps1 board-heartbeat.ps1 open-web.ps1 seating-inbox.html coins.js coins-ui.js school.js podo.js update-ui.js classkit_QR_LICENSE.txt handmade-paper.png hoja.ico presentation-board.js presentation-board.css presentation-server.ps1 presentation-assets.zip museum-sky.webp museum-cloud-far.webp museum-cloud-near.webp museum-sway-spring-base.webp museum-sway-spring-sheet.png museum-sway-summer-base.webp museum-sway-summer-sheet.png museum-sway-autumn-base.webp museum-sway-autumn-sheet.png museum-sway-winter-base.webp museum-sway-winter-left.png museum-sway-winter-right.png'.split())
@@ -69,6 +70,10 @@ def validate_candidate(directory,old,approved):
     require(sha(raw)==approved,'payload not approved')
     m,sizes=validate_manifest(raw)
     v,bases,names=current_contract(old)
+    # An already installed, exact reviewed 1.66.3 package must be eligible for the first 1.66.4+ feed.
+    # Keep the original 1.66.3 candidate contract intact, and never trust a caller-selected base.
+    if parse(old.read_bytes())=={'status':'unreleased'} and version(m['version']) >= (1,66,4):
+        v=(1,66,3);bases.add(REVIEWED_1663)
     require(version(m['version'])>v,'non-increasing version')
     require(set(m['bases'])==bases,'base inventory must match exact approved ancestry')
     require(names<={f['name'] for f in m['files']},'program removal forbidden')

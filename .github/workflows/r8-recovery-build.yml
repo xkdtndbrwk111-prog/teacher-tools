@@ -1,0 +1,48 @@
+name: R8 recovery candidate build
+on:
+  pull_request:
+    paths: ['tools/r8-publisher/**','.github/workflows/r8-recovery-build.yml']
+  push:
+    branches: [codex/r8-auto-recovery, release/r8-v1.66.4-recovery]
+    paths: ['tools/r8-publisher/**','.github/workflows/r8-recovery-build.yml','R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          python tools/r8-publisher/test-publisher.py -v
+          python -m py_compile tools/r8-publisher/build-recovery.py
+  candidate:
+    needs: tests
+    if: github.ref == 'refs/heads/release/r8-v1.66.4-recovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build exact unsigned recovery candidate
+        run: |
+          python tools/r8-publisher/build-recovery.py R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: candidate
+        with:
+          name: r8-runtime-release-candidate
+          path: ${{ runner.temp }}/candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Report immutable release inputs
+        env:
+          ID: ${{ steps.candidate.outputs.artifact-id }}
+          DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
+        run: |
+          echo "artifact_id=$ID"
+          echo "archive_sha=$DIGEST"
+          echo "payload_sha=$(sha256sum "$RUNNER_TEMP/candidate/payload.json" | cut -d ' ' -f1)"
+          echo "No signing or live publication; actual Windows field gate required."
