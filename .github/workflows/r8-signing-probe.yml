@@ -1,0 +1,40 @@
+name: R8 production-key signing probe (no install)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/r8-signing-probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: teacher-tools-signing
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Sign a non-installable, domain-separated probe
+        shell: pwsh
+        env:
+          TT_PFX: ${{ secrets.TT_SIGNING_PFX_B64 }}
+          TT_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'r8-signing-probe'
+          New-Item -ItemType Directory $dir | Out-Null
+          $raw=@{schema='TT-R8-SIGNING-PROBE-1';purpose='key and publisher readiness only';run=$env:GITHUB_RUN_ID;commit=$env:GITHUB_SHA;installable=$false} | ConvertTo-Json -Compress
+          [IO.File]::WriteAllText((Join-Path $dir 'payload.json'),$raw,[Text.UTF8Encoding]::new($false))
+          & tools/r8-publisher/sign.ps1 (Join-Path $dir 'payload.json') (Join-Path $dir 'signature.bin')
+          if($LASTEXITCODE -ne 0){throw 'Probe signing failed'}
+          python tools/r8-publisher/validate.py probe (Join-Path $dir 'payload.json') (Join-Path $dir 'signature.bin') (Join-Path $dir 'signing-probe.json')
+          if($LASTEXITCODE -ne 0){throw 'Independent verification failed'}
+          Write-Host ('PUBLIC_R8_SIGNING_PROBE='+[IO.File]::ReadAllText((Join-Path $dir 'signing-probe.json')).Trim())
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r8-public-signing-probe
+          path: ${{ runner.temp }}/r8-signing-probe/signing-probe.json
+          retention-days: 7
+          if-no-files-found: error
