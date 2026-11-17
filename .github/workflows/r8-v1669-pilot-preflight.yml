@@ -17,4 +17,4 @@ jobs:
       - run: python tools/r8-publisher/test-approval.py -v
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: python tools/r8-publisher/check-v1669-pilot.py
+        run: python tools/r8-publisher/test-v1669-pilot-state.py
