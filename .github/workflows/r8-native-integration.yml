@@ -1,0 +1,53 @@
+name: R8 native R7 integration checks
+on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/r8-publisher/test-native-mini.cjs','.github/workflows/r8-native-integration.yml']
+  push:
+    branches: [main]
+    paths: ['runtime-src/system/**','tools/r8-publisher/test-native-mini.cjs','.github/workflows/r8-native-integration.yml']
+permissions:
+  contents: read
+jobs:
+  board:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Actual shipped bridge and live public game protocol
+        run: |
+          node tools/r8-publisher/test-native-mini.cjs
+          curl --fail --silent --show-error --max-time 30 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=3&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
+          python - <<'PY'
+          import pathlib
+          b=pathlib.Path('/tmp/current-minigames.html').read_bytes()
+          for marker in [b'const COIN_SESSION=EMBED?crypto.randomUUID()',b'classId:p.classId',b'txId:p.txId',b"coinPost({type:'hoja-ready'})"]:
+              assert marker in b, marker
+          print('PASS: live V3 game handshake markers; no live student data or coin transactions')
+          PY
+      - name: Exact installed presentation assets and renderer
+        run: |
+          python - <<'PY'
+          import pathlib,zipfile,shutil
+          src=pathlib.Path('runtime-src/system');dst=pathlib.Path('/tmp/tt-native-presentation');dst.mkdir()
+          for n in ['presentation-board.js','presentation-board.css']:
+              shutil.copyfile(src/n,dst/n)
+          with zipfile.ZipFile(src/'presentation-assets.zip') as z:
+              assert z.testzip() is None
+              z.extractall(dst/'presentation')
+          PY
+          npm install --prefix /tmp/tt-native-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-native-browser/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-native-browser/node_modules node tools/r7-presentation/test-browser.cjs /tmp/tt-native-presentation
+  server:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          & tools/r7-presentation/test-runtime.ps1 "$pwd/runtime-src/system"
+          if(-not $?) {throw 'Presentation runtime test failed'}

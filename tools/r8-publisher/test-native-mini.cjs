@@ -1,0 +1,22 @@
+// Test the actual shipped dashboard's minigame bridge, not a separate reference implementation.
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const html=fs.readFileSync('runtime-src/system/dashboard.html','utf8');
+const start=html.indexOf("const miniOrigin="), close=html.indexOf("}else if(type==='hoja-close')miniClose()",start), end=html.indexOf('});',close)+3;
+assert(start>=0 && close>start && end>close);
+const code=html.slice(start,end);
+const el={},listeners={},loads=[];
+const box=id=>el[id]??={hidden:false,textContent:'',open:false,dataset:{},contentWindow:{},focus(){this.focused=true},showModal(){this.open=true},close(){this.open=false},removeAttribute(){this.src=''},addEventListener(){}};
+const window={addEventListener:(n,f)=>listeners[n]=f};
+const ctx={$:id=>box(id.slice(1)),window,document:{fullscreenElement:true},navigator:{},Image:class{set src(v){this.value=v;loads.push(v)}get src(){return this.value}},setTimeout:()=>1,clearTimeout(){},Date,Math,console};
+vm.runInNewContext(code,ctx);
+assert.equal(loads.length,2);assert(loads.every(v=>v.startsWith('data:image/webp;base64,')));
+box('openMiniGames').onclick();const f=box('miniFrame'),first=f.src,portrait=box('miniPortrait').src;
+assert.equal(box('miniNotice').dataset.state,'loading');assert.equal(box('miniNoticeText').textContent,'미니게임 로딩 중');assert(portrait.startsWith('data:image/webp;base64,'));
+const send=(type,sessionId,origin='https://xkdtndbrwk111-prog.github.io',source=f.contentWindow)=>listeners.message({origin,source,data:{type,sessionId}});
+send('hoja-ready',undefined,'https://evil.example');assert.equal(f.src,first);
+send('hoja-ready');const second=f.src;assert.notEqual(second,first);assert.equal(box('miniNotice').hidden,false);
+send('hoja-ready');assert.equal(f.src,second);assert.equal(box('miniRetry').hidden,false);
+send('hoja-ready','aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');assert.equal(box('miniNotice').hidden,true);
+send('hoja-close');assert.equal(box('miniGames').open,false);
+box('openMiniGames').onclick();assert.notEqual(f.src,second);assert.notEqual(box('miniPortrait').src,portrait);assert.match(f.src,/coin=3&fresh=/);
+console.log('PASS actual shipped bridge: offline portraits, loading, stale handshake retry, invalid origin, valid V3 readiness, close/reopen, fresh URL');
