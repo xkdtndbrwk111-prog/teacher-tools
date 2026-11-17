@@ -3179,7 +3179,7 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
    Object.assign(o,{ready:true,whole:c,top:part(0,band),fall:band<32?part(band,32):null,band,
     heavy:name==='heavy_snow',kind:/thunder/.test(name)?'thunder':band<32?(/snow|hail/.test(name)?'snow':'rain'):'static'});
     if(name==='drizzle'){
-     const q=o.fall.getContext('2d');q.clearRect(0,band,10,32-band);q.clearRect(20,band,12,32-band);o.speed=.5;
+     const q=o.fall.getContext('2d');q.clearRect(19,band,13,32-band);o.speed=.5;
     }
     if(name==='heavy_rain'){
      const top=o.top.getContext('2d'),fall=o.fall.getContext('2d'),tp=top.getImageData(0,0,32,32),fp=fall.getImageData(0,0,32,32);
@@ -3312,7 +3312,7 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
  function hud(s){
   if(!hudEl)return;const [ic,word]=sky(s.cur.code,s.cur.night);
   hudEl.innerHTML=ICON[ic]?`<canvas class="wx-anim" data-ic="${ic}" data-want="hud" width="34" height="34" aria-hidden="true"></canvas>`:'';hudEl.hidden=!ICON[ic];
-  const hc=hudEl.firstChild;if(hc){wxSize(hc);wxDraw(hc,wxFrame)}
+  const hc=hudEl.firstChild;if(hc){wxSize(hc);wxDraw(hc,wxCalm.matches?0:wxFrame)}
   hudEl.title=word+' '+round(s.cur.temp)+'°';hudEl.setAttribute('aria-label','지금 날씨: '+word+' '+round(s.cur.temp)+'도');
  }
  function draw(){
@@ -8840,7 +8840,7 @@ window.ttSkyLook={ready:true,
   if(frameToken)fgAnimFrames.set(frameToken,output);return output;
  },
  // for diagnostics / tests
- light:()=>{const now=seoulNow(),p=pal(season),b=p.body;return {sun:b.sun,moon:b.moon,illum:b.illum,weather:window.ttWeather?.stale||window.ttWeather?.cur?.code==null?'unknown':weatherKind(),minute:now.date+'-'+now.minute}},
+ light:()=>{const now=seoulNow(),p=pal(season),b=p.body;return {sun:b.sun,moon:b.moon,illum:b.illum,weather:window.ttWeather?.stale||window.ttWeather?.cur?.code==null?'unknown':Number(window.ttWeather.cur.code)===2?'partly':weatherKind(),minute:now.date+'-'+now.minute}},
  state:()=>{const p=pal(season);return {weather:p.wk,lat:p.G.lat,lon:p.G.lon,sky:p.sky,night:+p.night.toFixed(2),sunAlt:+p.body.sun.alt.toFixed(1),moonAlt:+p.body.moon.alt.toFixed(1),moonPhase:+p.body.phase.toFixed(3),...sunTimes(seoulNow().date,p.G)}}
 };
 // A new weather reading (or school location) should show without waiting for the next minute.
@@ -10349,7 +10349,7 @@ body.tt-scene-glass .board,body.tt-scene-glass .house-modal{--text-primary:var(-
 #noticeBoard #noticeText::placeholder{color:var(--text-secondary)!important;opacity:1}
 #ttQuickBanner.tt-period-banner #ttQuickText{--text-accent:#fff365;color:var(--text-accent)}
 .hoja-bubble,.house-bubble,#settings .tt-settings-speech,.house-feed-wait,.house-care-notice,.photo-card[data-photo-frame="pola"] .photo-frame::after{--text-primary:#453326;--text-secondary:#665246;--text-accent:#59402a;--text-alert:#94231b;--text-on-fill:#000000;color:var(--text-primary)}
-#podoDetail,.podo-sheet,.podo-preview{--text-primary:#334155;--text-secondary:#475569;--text-accent:#36566a;--text-alert:#a32121;--text-on-fill:#000000;color:var(--text-primary)}
+#podoDetail,.podo-sheet,#podoDetail .podo-preview{--text-primary:#334155;--text-secondary:#475569;--text-accent:#36566a;--text-alert:#a32121;--text-on-fill:#000000;color:var(--text-primary)}
 #podoDetail .podo-actions button.accent{--text-on-fill:var(--tt-ink-accent-fill,var(--control-text))}
 #podoDetail .podo-actions button:last-child{--text-on-fill:#000000}
 .podo-pin [role=alert],#coinGrid .coin-student.minus b{color:var(--text-alert)!important}
@@ -10414,15 +10414,15 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),rad=Math.PI/180;
 function shadow(s){
  const w=s?.weather||'unknown',sun=s?.sun,moon=s?.moon;
  if(w==='thunder')return {x:0,y:2,blur:17,alpha:.08};
- if(w!=='clear')return {x:0,y:4,blur:16,alpha:w==='rain'?.11:.14};
+ if(w!=='clear'&&w!=='partly')return {x:0,y:4,blur:16,alpha:w==='rain'?.11:.14};
  const day=sun&&sun.alt>0,light=day?sun:moon;
  if(!light||light.alt<=0||(!day&&s.illum<.12))return {x:0,y:3,blur:14,alpha:.12};
- const strength=day?1:clamp(s.illum,.12,1)*.55,alt=clamp(light.alt,0,90);
+ const strength=(day?1:clamp(s.illum,.12,1)*.55)*(w==='partly'?.6:1),alt=clamp(light.alt,0,90);
  const length=clamp(4+12*(1-Math.sin(alt*rad)),4,16)*strength;
  // Match existing museum sky projection: azimuth east=left, west=right.
  // A light on screen-left casts a rightward shadow and vice versa.
  const x=clamp(-((light.az-180)/120)*length,-16,16),y=clamp(length*.65,2,11);
- return {x,y,blur:day?Math.round(8+4*(1-Math.sin(alt*rad))):15,alpha:day?.22:.10+.07*strength};
+ return {x,y,blur:day?Math.round(8+4*(1-Math.sin(alt*rad))):15,alpha:day?(w==='partly'?.15:.22):.10+.07*strength};
 }
 window.ttWidgetShadow=shadow;let last='';
 function update(){
