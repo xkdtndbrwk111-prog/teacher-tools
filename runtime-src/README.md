@@ -17,3 +17,6 @@ The owner requested publication of the reviewed V1.66.6 before physical visual v
 
 ## V1.66.7 widget visual contract
 Dashboard widgets inherit the common panel and text roles, including checklist and grape overview. Checklist progress is represented by its colored bottom progress strip and existing completion ring; the grape enlarged paper sheet retains its artwork. UI font shorthands use --tt-font with system fallback. Standalone seating receiver status has no board font preference and remains independent. Natural shadows reuse the cached sky calculation and are updated on a low-frequency timer; editor and completion effects remain separate. Precipitation animation uses existing source sprites; the heavy rain lower cloud edge is reconstructed only where previously overlapped by rain. New browser regression checks the themes, typography, direction and pixel frames. No student data in test fixtures.
+
+## V1.66.7 owner operational pilot
+Exact source/manifest and prior signed V1.66.6 inventory required, five successful main CI checks (source builder includes publisher tests), actual physical classroom visual checks pending. Owner requested release. Ordinary field gate unchanged. No manual ZIP.
