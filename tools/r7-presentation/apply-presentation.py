@@ -17,6 +17,8 @@ def patch_dashboard(s):
     s=once(s,'</head>','<link rel="stylesheet" href="/presentation-board.css"></head>')
     s=once(s,'</body>','<script src="/presentation-board.js"></script></body>')
     if 'id="openSeating"' in s or 'const seatOrigin=' in s: raise ValueError('old tool still present')
+    import runpy
+    s=runpy.run_path(str(root/'tools/minigame-bridge/patch.py'))['patch_dashboard'](s)
     return s
 def patch_server(s):
     s=once(s,". (Join-Path $PSScriptRoot 'runtime.ps1')",". (Join-Path $PSScriptRoot 'runtime.ps1')\n. (Join-Path $PSScriptRoot 'presentation-server.ps1')")
@@ -86,6 +88,10 @@ def main():
         shutil.copyfile(here/'runtime'/name,target/name)
     if not a.bundle_only:
         dash.write_text(d,encoding='utf-8');server.write_text(p,encoding='utf-8-sig');installer.write_text(i,encoding='utf-8-sig')
+        import runpy
+        patch=runpy.run_path(str(root/'tools/minigame-bridge/patch.py'))
+        coin=target/'coins-ui.js'
+        coin.write_text(patch['patch_coins_ui'](coin.read_text(encoding='utf-8-sig')),encoding='utf-8')
         shutil.rmtree(target/'presentation')
     print('R7 presentation staged; regenerate package checksums and sign through normal release gate.')
 if __name__=='__main__':main()
