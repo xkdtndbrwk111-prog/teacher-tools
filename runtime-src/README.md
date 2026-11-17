@@ -14,3 +14,6 @@ New UI foregrounds use the five semantic text roles. Rain/thunder override the s
 
 ## V1.66.6 owner-field-test rollout
 The owner requested publication of the reviewed V1.66.6 before physical visual verification. The exact V1.66.5 signed prior feed and five successful main CI runs are required. This is a one-time owner-pilot authorization, not a field-pass attestation; future ordinary releases retain the normal field gate. Existing signature, archive, ancestry and atomic publication checks are unchanged.
+
+## V1.66.7 widget visual contract
+Dashboard widgets inherit the common panel and text roles, including checklist and grape overview. Checklist progress is represented by its colored bottom progress strip and existing completion ring; the grape enlarged paper sheet retains its artwork. UI font shorthands use --tt-font with system fallback. Standalone seating receiver status has no board font preference and remains independent. Natural shadows reuse the cached sky calculation and are updated on a low-frequency timer; editor and completion effects remain separate. Precipitation animation uses existing source sprites; the heavy rain lower cloud edge is reconstructed only where previously overlapped by rain. New browser regression checks the themes, typography, direction and pixel frames. No student data in test fixtures.

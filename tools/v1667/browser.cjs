@@ -28,11 +28,14 @@ assert(shadow(lit(180,80)).y<shadow(lit(180,10)).y,'high sun shorter');
 const cloudy=shadow({...lit(90,20),weather:'cloudy'}),rain=shadow({...lit(90,20),weather:'rain'}),storm=shadow({...lit(90,20),weather:'thunder'});
 assert(!cloudy.x&&!rain.x&&!storm.x&&storm.alpha<rain.alpha&&rain.alpha<cloudy.alpha,'diffuse storm');
 assert(shadow({sun:{alt:-10},moon:{alt:40,az:270},illum:.8,weather:'clear'}).x<0,'moon direction');assert(shadow({weather:'unknown'}).x===0,'unknown diffuse');
+assert(Math.abs(shadow({...lit(90,20),weather:'partly'}).x)<Math.abs(shadow(lit(90,20)).x),'partial cloud softens direction');
 results.push('natural shadow');
 const cv=document.createElement('canvas');cv.width=cv.height=34;const ctx=cv.getContext('2d');
 for(const name of ['drizzle','light_rain','heavy_rain','light_snow','heavy_snow','sleet','thunderstorm','thunder_rain','clear_day']){
  const o=api.prep(name);for(let j=0;j<100&&!o.ready;j++)await new Promise(r=>setTimeout(r,20));assert(o.ready,'image ready '+name);
  const frames=new Set(),tops=new Set();
+ if(name==='heavy_rain')assert(o.band===20&&o.speed===2,'heavy rain explicit motion band');
+ if(name==='drizzle')assert(o.band===24&&o.speed===.5,'drizzle slow whole streaks');
  for(let f=0;f<24;f++){cv.dataset.ic=name;api.draw(cv,f);const arr=ctx.getImageData(0,0,34,34).data;frames.add(Array.from(arr).join(','));tops.add(Array.from(arr.slice(0,34*4*18)).join(','))}
  if(name==='clear_day')assert(frames.size===1,'static sun');
  else{assert(frames.size>2,'motion '+name+' '+frames.size);if(!name.startsWith('thunder'))assert(tops.size===1,'stationary cloud '+name)}
