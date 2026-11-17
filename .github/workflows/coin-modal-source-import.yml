@@ -1,0 +1,33 @@
+name: Import exact reviewed coin modal source
+on:
+  push:
+    branches: [codex/coin-modal-shared-pin]
+    paths: ['tools/coin-modal/source.json.zlib.b64','.github/workflows/coin-modal-source-import.yml']
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify exact reviewed source and unpack
+        run: |
+          python - <<'PY'
+          import base64,zlib,json,hashlib,pathlib,py_compile
+          root=pathlib.Path('tools/coin-modal')
+          raw=zlib.decompress(base64.b64decode((root/'source.json.zlib.b64').read_text(),validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='704777379c8b01c5254994b13a7e4d9398c7f88a45f7cc89db3135c9829ad119'
+          data=json.loads(raw)
+          assert set(data)=={'patch_coin.py','share_pin.py','change_pin.py'}
+          for name,source in data.items():
+              p=root/name
+              p.write_text(source,encoding='utf-8')
+              py_compile.compile(str(p),doraise=True)
+          print('Verified exact three reviewed source files.')
+          PY
+          git add tools/coin-modal/*.py
+          git config user.name "teacher-tools-source"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Materialize exact reviewed V1.66.3 coin modal source"
+          git push origin HEAD:refs/heads/codex/coin-modal-shared-pin
