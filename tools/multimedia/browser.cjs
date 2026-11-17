@@ -74,4 +74,27 @@ const timetable=await page.evaluate(()=>{
 assert.deepEqual(timetable,[['1','2','3','4','점심'],['1','2','3','4','점심','5'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심'],['1','2','3','4','점심','5','6','7']]);
 console.log('PASS one-day timetable trailing periods, lunch, internal gaps, compact and weekly restoration');
 
+// Date-specific lunch edit: preserve subject overrides, hide selected day, restore lunch only.
+const lunchDate=await page.evaluate(()=>{
+ const c=seoulClock(),ref=new Date(c.date+'T00:00:00Z'),dow=ref.getUTCDay();ref.setUTCDate(ref.getUTCDate()+(dow===0?1:dow===6?2:0));const idx=ref.getUTCDay()-1;
+ const dates=Array.from({length:5},(_,i)=>{const d=new Date(ref);d.setUTCDate(d.getUTCDate()+i-idx);return (d.getUTCMonth()+1)+'/'+d.getUTCDate()});
+ layout.weekView='today';layout.items.week.h=10;layout.items.week.w=24;
+ renderWeek({title:'점심 시험',referenceDate:ref.toISOString().slice(0,10),dates,rows:Array.from({length:7},(_,i)=>({label:(i+1)+'교시',cells:Array(5).fill(i<4?'수학':'')})),events:[]});applyWeekView();return ref.toISOString().slice(0,10)
+});
+assert.equal(await page.evaluate(date=>ttClasskit.editLunch(date),lunchDate),true);
+await page.locator('#ckLunchStart').fill('12:15');await page.locator('#ckLunchEnd').fill('12:55');
+await page.locator('#ckScheduleRows [data-period="0"]').fill('국어');await page.locator('#ckScheduleSave').click();
+await page.waitForFunction(()=>document.querySelector('#ckScheduleStatus').textContent.includes('저장했습니다'));
+assert.equal(await page.evaluate(date=>JSON.parse(localStorage.getItem('class-today-schedule')).byDate[date].lunch.start,lunchDate),'12:15');
+assert.equal(await page.locator('#week .lunch-row td:not([hidden]) .lunch-pill').textContent(),'12:15~12:55');
+await page.locator('#ckLunchHide').check();await page.locator('#ckScheduleSave').click();
+assert.equal(await page.locator('#week .lunch-row').evaluate(r=>r.hidden),true);
+assert.equal(await page.evaluate(date=>JSON.parse(localStorage.getItem('class-today-schedule')).byDate[date].subjects['1교시'],lunchDate),'국어');
+await page.locator('#ckLunchDefault').click();await page.locator('#ckScheduleSave').click();
+assert.equal(await page.locator('#week .lunch-row').evaluate(r=>r.hidden),false);
+assert.equal(await page.evaluate(date=>!!JSON.parse(localStorage.getItem('class-today-schedule')).byDate[date].lunch,lunchDate),false);
+assert.equal(await page.evaluate(date=>JSON.parse(localStorage.getItem('class-today-schedule')).byDate[date].subjects['1교시'],lunchDate),'국어');
+await page.locator('#ckScheduleReset').click();await page.locator('#ckClose').click();
+console.log('PASS temporary lunch time edit, hide, subject coexistence and independent restore');
+
 }finally{await browser.close();server.close()}})().catch(e=>{console.error(e);process.exit(1)});

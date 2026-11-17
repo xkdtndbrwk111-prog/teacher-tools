@@ -11,3 +11,5 @@ V1.66.11 bug report: actual Windows screenshot showed black YouTube frame and 20
 V1.66.12: compact multimedia launcher, medium personalization panel, large playback only; registered tool cards flip in place and settings return to the selected card. Existing meeting storage and IDs retained. YouTube captions off at startup on a best-effort basis (cc_load_policy=0 plus undocumented per-player caption commands with at most one startup retry). Mock tests verify commands, not actual YouTube captions. No other tools added.
 
 V1.66.12 follow-up: preserve lunch for four-period days and compact one-day view, hide trailing empty periods only, retain internal gaps and weekly view, use existing fitting logic and unchanged widget grid dimensions. Explicit intrinsic launcher sizing prevents the dialog inset from stretching the picker to full height.
+
+Date-specific lunch overrides reuse existing timetable localStorage records, retain lunch even on short days, support start/end, display-only hide and independent default restore in date editor, and direct long-press/double-click on visible lunch. Lesson times remain unchanged.

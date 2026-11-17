@@ -701,7 +701,10 @@ body.layout-editing .tt-check-ring{display:none}
 @media(prefers-reduced-motion:reduce){.tt-check-track>i{transition:none}.tt-check-ring rect{animation:none;stroke-dasharray:none}}
 
 #week .tt-subject[data-tt-period]{cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline-offset:-2px}
-#week .tt-subject[data-tt-period]:focus-visible{outline:2px solid var(--accent);border-radius:5px}
+#week .tt-subject[data-tt-period]:focus-visible,#week [data-tt-lunch]:focus-visible{outline:2px solid var(--accent);border-radius:5px}
+#week [data-tt-lunch]{cursor:pointer;touch-action:manipulation;user-select:none;-webkit-touch-callout:none}
+#week .lunch-row .lunch-pill{white-space:normal;overflow-wrap:normal}
+#week .lunch-row td[data-lunch-hidden="1"]{background:var(--surface)}
 #ttVersionHud{font-size:14px;display:inline-block;margin-left:8px;color:var(--text-secondary);font-weight:800;vertical-align:middle;white-space:nowrap}
 #ttSubjectEdit{width:min(540px,92vw);max-width:92vw;padding:20px}
 #ttSubjectEdit input{width:100%;font-size:clamp(20px,2vw,30px);padding:12px;margin:8px 0;min-height:52px}
@@ -950,13 +953,15 @@ function ttWeekDate(d,i){
  return d.dates?.[i]===`${dt.getUTCMonth()+1}/${dt.getUTCDate()}`?dt.toISOString().slice(0,10):'';
 }
 function ttWeekEditable(d,i){const date=ttWeekDate(d,i);return !!date&&date>=seoulClock().date&&(Array.isArray(d.ttEditableDates)?d.ttEditableDates.includes(date):d.rows.some(r=>String(r.cells?.[i]||'').trim()))}
+function ttCleanLunch(v){const time=/^([01]\d|2[0-3]):[0-5]\d$/;return v&&typeof v.start==='string'&&typeof v.end==='string'&&time.test(v.start)&&time.test(v.end)&&v.start<v.end?{start:v.start,end:v.end,hidden:v.hidden===true}:null}
+function ttLunchForDate(date,week=lastWeek){return ttCleanLunch(week?.ttLunchByDate?.[date])||{start:lunchSettings.start,end:lunchSettings.end,hidden:false}}
 function renderWeek(d){
  lastWeek=d;window.drawNowClass&&window.drawNowClass();const clock=seoulClock(),day=clock.day,hm=clock.minute,matches=ttWeekDate(d,day-1)===clock.date;
  const toMin=v=>{const a=String(v).split(':').map(Number);return a[0]*60+a[1]};
  let t='<table class="schedule"><thead><tr><th>교시</th>'+['월','화','수','목','금'].map((x,i)=>'<th class="'+(day===i+1&&matches?'today':'')+'">'+x+'<br><small>'+esc(d.dates[i]||'')+'</small></th>').join('')+'</tr></thead><tbody>';
  for(const [ri,r] of d.rows.entries()){const n=Number(String(r.label).match(/\d+/)?.[0]),times=periods[n-1]||['',''],current=matches&&hm>=toMin(times[0])&&hm<toMin(times[1]);
   t+='<tr><td>'+esc(r.label)+'<span class="period-time"><span class="period-start">'+esc(times[0])+'</span><span class="period-end">~'+esc(times[1])+'</span></span></td>'+r.cells.map((x,i)=>{const on=current&&day===i+1&&!!x;return '<td class="'+(day===i+1&&matches?'today ':'')+(on?'current':'')+'">'+'<span class="tt-subject"'+(ttWeekEditable(d,i)?' data-tt-period="'+ri+'" data-tt-date="'+ttWeekDate(d,i)+'"':'')+'>'+esc(String(x||'—').split('\n')[0])+'</span>'+(on?'<span class="now-badge">수업 중</span>':'')+'</td>'}).join('')+'</tr>';
-  if(n===lunchSettings.afterPeriod){const {start,end}=lunchSettings,on=matches&&hm>=toMin(start)&&hm<toMin(end);t+='<tr class="lunch-row"><td></td><td colspan="5" class="'+(on?'current':'')+'"><span class="lunch-pill">점심시간 '+esc(start)+'~'+esc(end)+'</span></td></tr>'}
+  if(n===lunchSettings.afterPeriod){t+='<tr class="lunch-row"><td>점심시간</td>'+Array.from({length:5},(_,i)=>{const date=ttWeekDate(d,i),v=ttLunchForDate(date,d),on=matches&&day===i+1&&hm>=toMin(v.start)&&hm<toMin(v.end);return '<td data-lunch-hidden="'+(v.hidden?'1':'0')+'" class="'+(on&&!v.hidden?'current':'')+'"><span class="lunch-pill"'+(ttWeekEditable(d,i)&&!v.hidden?' data-tt-lunch="'+date+'" role="button" tabindex="0" title="길게 누르거나 더블클릭하여 점심시간 수정"':'')+'>'+(v.hidden?'':esc(v.start)+'~'+esc(v.end))+'</span></td>'}).join('')+'</tr>'}
  }
  t+='</tbody></table>';const weekEl=$('#week');const rebuilt=weekRenderedMarkup!==t||!weekEl.querySelector('.schedule');if(rebuilt){weekEl.className='contentbox';weekEl.innerHTML=t;weekRenderedMarkup=t}weekEl.dataset.loaded='1';const weekName=!matches&&clock.day>=1&&clock.day<=5?d.title+' · 오늘 날짜 확인':d.title+(d.selection==='next-week'?' · 다음 주':'');const nameEl=$('#weekName');if(nameEl.textContent!==weekName)nameEl.textContent=weekName;window.weekEvents=d.events||[];window.weekDates=d.dates||[];
  if(rebuilt||weekEl.classList.contains('tt-week-compact'))window.applyWeekView?.();
@@ -1049,7 +1054,7 @@ document.fonts?.ready?.then(()=>{mealFitMemo=null;mealFit()});
 document.fonts?.addEventListener('loadingdone',()=>{mealFitMemo=null;mealFit()});
 // After lunch the next meal is what people want to see.
 let mealLastHome=null;
-function mealLunchOver(){const [h,m]=String(lunchSettings.end).split(':').map(Number);return seoulClock().minute>=h*60+m}
+function mealLunchOver(){const [h,m]=String(ttLunchForDate(seoulClock().date).end).split(':').map(Number);return seoulClock().minute>=h*60+m}
 setInterval(()=>{if(!mealRows.length)return;const home=mealHome();if(mealLastHome!==null&&home!==mealLastHome){mealSelectedDate=home;drawMeal()}mealLastHome=home},30000);
 // The status line below can change the room left for the menu.
 new ResizeObserver(()=>window.mealResized()).observe($('#meal'));
@@ -1574,7 +1579,7 @@ function weekViewApply(){
  let col=heads.findIndex(th=>th.classList.contains('today'));if(col<1){const i=Array.from({length:5},(_,i)=>i).find(i=>ttWeekEditable(lastWeek,i));col=i===undefined?1:i+1;}setTitle(one?(heads[col]?.classList.contains('today')?'📚 오늘의 시간표':'📚 다가오는 시간표'):'📚 이번 주 주간학습');
  table.querySelectorAll('tr').forEach(tr=>{
   const cells=[...tr.children];
-  if(tr.classList.contains('lunch-row')){if(cells[1])cells[1].colSpan=one?1:5;return}
+  if(tr.classList.contains('lunch-row')){cells.forEach((cell,i)=>{cell.hidden=one&&i!==0&&i!==col});return}
   cells.forEach((cell,i)=>{cell.hidden=one&&i!==0&&i!==col});
  });
  table.querySelectorAll('.tt-subject[data-tt-period]').forEach(el=>{el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label',el.dataset.ttDate+' '+el.textContent+' 과목 수정');el.title=el.textContent+' · 길게 누르거나 더블클릭하여 수정'});
@@ -1590,7 +1595,7 @@ function ttWeekCompactRows(table,compact,col,one){
   const last=one?Math.max(0,...items.filter(x=>x.value&&x.value!=='—'&&Number.isInteger(x.n)&&periods[x.n-1]).map(x=>x.n)):0;
   for(const x of items)x.r.hidden=one&&last>0&&Number.isInteger(x.n)&&x.n>last;
   // Lunch is independent of whether afternoon lessons exist, including compact day view.
-  table.querySelectorAll('.lunch-row').forEach(r=>{r.hidden=false});
+  table.querySelectorAll('.lunch-row').forEach(r=>{r.hidden=one?r.cells[col]?.dataset.lunchHidden==='1':[...r.cells].slice(1).every(c=>c.dataset.lunchHidden==='1')});
   table.tHead.hidden=compact;
  }
  let ttWeekFitFrame=0,ttWeekFitMemo=null;
@@ -1958,7 +1963,7 @@ layoutApply();
    if(times.some(([a,b])=>c.minute>=a&&c.minute<b))return 'lesson';
    const first=Math.min(...times.map(p=>p[0])),end=Math.max(...times.map(p=>p[1]));
    if(c.minute<first||c.minute>=end)return 'off';
-   const ls=toMin(lunchSettings.start),le=toMin(lunchSettings.end);
+   const lunch=ttLunchForDate(c.date),ls=toMin(lunch.start),le=toMin(lunch.end);
    return c.minute>=ls&&c.minute<le?'lunch':'break';
   }catch{return 'unknown'}
  }
@@ -2288,7 +2293,7 @@ layoutApply();
   const rows=d.rows.map(r=>{const n=Number(String(r.label).match(/\d+/)?.[0]),t=periods[n-1]||['',''];return {n,subject:String(r.cells[c.day-1]||'').split('\n')[0],start:toMin(t[0]),end:toMin(t[1])}}).filter(r=>r.subject&&!isNaN(r.start));
   if(!rows.length)return null;
   const hm=c.minute,cur=rows.find(r=>hm>=r.start&&hm<r.end),after=rows.find(r=>r.start>hm);
-  const ls=toMin(lunchSettings.start),le=toMin(lunchSettings.end);
+  const lunch=ttLunchForDate(c.date),ls=toMin(lunch.start),le=toMin(lunch.end);
   const nextText=after?`다음 ${after.n}교시 ${after.subject}`:'오늘 마지막 수업';
   if(cur)return {main:`${cur.n}교시 ${cur.subject} · ${cur.end-hm}분 남음`,next:nextText,on:true};
   if(hm>=ls&&hm<le)return {main:`점심시간 · ${le-hm}분 남음`,next:nextText,on:false};
@@ -2450,7 +2455,7 @@ layoutApply();
  grid.addEventListener('click',e=>{
   if(document.body.classList.contains('layout-editing'))return;
   const moved=downAt&&Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>12;downAt=null;if(moved)return;
-  if(e.target.closest('button,a,input,select,label,#week .tt-subject[data-tt-period]'))return;
+  if(e.target.closest('button,a,input,select,label,#week .tt-subject[data-tt-period],#week [data-tt-lunch]'))return;
   const card=e.target.closest('.card[data-widget]');if(!card)return;
   if(card.dataset.widget==='photos'){
    const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
@@ -2466,16 +2471,16 @@ layoutApply();
   holdStop();
   if(e.button!==0||!e.isPrimary||document.body.classList.contains('layout-editing')||document.querySelector('dialog[open]'))return;
   if(!e.target.closest('main.grid,body>header'))return;
-  const subject=e.target.closest('#week .tt-subject[data-tt-period]');
+  const subject=e.target.closest('#week .tt-subject[data-tt-period],#week [data-tt-lunch]');
   const period=subject?Number(subject.dataset.ttPeriod):null;
   holdAt={x:e.clientX,y:e.clientY};document.body.classList.add('holding');
-  hold=setTimeout(()=>{holdStop();if(subject){swallow=true;window.ttClasskit?.editSubject?.(period,subject.dataset.ttDate);return}if(innerWidth<=900)return;swallow=true;layoutEnter()},HOLD);
+  hold=setTimeout(()=>{holdStop();if(subject){swallow=true;if(subject.dataset.ttLunch)window.ttClasskit?.editLunch?.(subject.dataset.ttLunch);else window.ttClasskit?.editSubject?.(period,subject.dataset.ttDate);return}if(innerWidth<=900)return;swallow=true;layoutEnter()},HOLD);
  },true);
  document.addEventListener('pointermove',e=>{if(holdAt&&Math.hypot(e.clientX-holdAt.x,e.clientY-holdAt.y)>12)holdStop()},true);
  ['pointerup','pointercancel'].forEach(n=>document.addEventListener(n,()=>{if(hold)holdStop();if(swallow)setTimeout(()=>{swallow=false},250)},true));
  document.addEventListener('click',e=>{if(swallow){swallow=false;e.preventDefault();e.stopPropagation()}},true);
- document.addEventListener('contextmenu',e=>{if(e.target.closest('#week .tt-subject[data-tt-period]')||e.target.closest('main.grid,body>header')&&(holdAt||document.body.classList.contains('layout-editing')))e.preventDefault()});
- const editSubjectEvent=e=>{const el=e.target.closest('#week .tt-subject[data-tt-period]');if(!el||document.body.classList.contains('layout-editing')||document.querySelector('dialog[open]'))return;e.preventDefault();e.stopPropagation();holdStop();window.ttClasskit?.editSubject?.(Number(el.dataset.ttPeriod),el.dataset.ttDate)};
+ document.addEventListener('contextmenu',e=>{if(e.target.closest('#week .tt-subject[data-tt-period],#week [data-tt-lunch]')||e.target.closest('main.grid,body>header')&&(holdAt||document.body.classList.contains('layout-editing')))e.preventDefault()});
+ const editSubjectEvent=e=>{const el=e.target.closest('#week .tt-subject[data-tt-period],#week [data-tt-lunch]');if(!el||document.body.classList.contains('layout-editing')||document.querySelector('dialog[open]'))return;e.preventDefault();e.stopPropagation();holdStop();if(el.dataset.ttLunch)window.ttClasskit?.editLunch?.(el.dataset.ttLunch);else window.ttClasskit?.editSubject?.(Number(el.dataset.ttPeriod),el.dataset.ttDate)};
  grid.addEventListener('dblclick',editSubjectEvent,true);
  grid.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')editSubjectEvent(e)},true);
  window.openWidgetZoom=id=>{const card=widgetCard(id);if(card&&(!card.hidden||id==='memo'))open(card)};
@@ -3798,7 +3803,7 @@ window.HOJA_LINES={
   const {d,c,ctx,menu,today}=context(),hm=c.minute,pools=[];const add=(w,pool,extra)=>{if(pool&&pool.length)pools.push({w,pool,extra})};
   if(Math.random()<.35){const notice=announcementReaction();if(notice)return notice}
   if(Math.random()<.78){const nearby=localWidgetLine(ctx,d);if(nearby)return nearby}
-  const lunchS=toMin(lunchSettings.start),lunchE=toMin(lunchSettings.end);
+  const lunch=ttLunchForDate(c.date),lunchS=toMin(lunch.start),lunchE=toMin(lunch.end);
   if(d.next&&!d.now){const s=d.next.subject,k=subjectKey(s);const ex={next:s,subject:s};if(cfg.names&&roster.length)ex.name=callName(pickOne(roster).name);add(3,L.next,ex);if(k)add(3,L.subject[k],ex);if(d.lessons[0]&&d.next.n===d.lessons[0].n)add(2,L.dayStart,ex);if(d.last&&d.next.n===d.last.n)add(2,L.lastLesson,ex)}
   if(d.last&&hm>=d.last.end&&hm<d.last.end+120)add(2,L.dayEnd);
   if(hm>=18*60)add(1,L.time.late);
@@ -7769,7 +7774,7 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
   <textarea id="ckNoticeInput" maxlength="180" placeholder="예: 4교시에는 운동장으로 이동합니다"></textarea>
   <div class="ck-line"><label><input id="ckNoticeToday" type="checkbox" style="width:22px;height:22px"> 오늘만 표시 (날짜가 바뀌면 자동 숨김)</label>
   <button id="ckNoticeSave" class="accent" type="button">공지 올리기</button><button id="ckNoticeRemove" type="button">공지 내리기</button></div><p id="ckNoticeStatus" class="ck-status"></p></section>
- <section class="ck-page" data-ck-page="schedule" hidden><h3>📚 시간표 일시 변경</h3><p class="ck-sub">학교 원본 주간학습은 변경하지 않습니다. 선택한 날짜에만 과목과 교시 공지를 적용합니다.</p>
+ <section class="ck-page" data-ck-page="schedule" hidden><h3>📚 시간표 일시 변경</h3><p class="ck-sub">학교 원본 주간학습은 변경하지 않습니다. 선택한 날짜에만 과목, 교시 공지와 점심시간을 적용합니다.</p>
   <div class="ck-line"><label for="ckScheduleDate">변경할 날짜</label><select id="ckScheduleDate"></select></div><p id="ckTodayDate" class="ck-status"></p><div id="ckScheduleRows"></div>
   <div class="ck-line"><button id="ckScheduleSave" type="button" class="accent">선택 날짜 저장</button><button id="ckScheduleReset" type="button">원본으로 되돌리기</button></div><p id="ckScheduleStatus" class="ck-status"></p></section>
  <section class="ck-page" data-ck-page="checks" hidden><h3>✅ 학급 공통 체크리스트</h3><p class="ck-sub">준비물·활동 순서 등을 교실 전체에서 함께 확인합니다. 학생 개인별 기록은 교실매니저에서 관리합니다. 날짜가 바뀌면 체크만 초기화됩니다.</p>
@@ -7798,7 +7803,7 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
  }
  function openKit(tab='notice'){activate(tab);if(!dlg.open)dlg.showModal();if(tab==='podo')window.ttPodo?.syncForm?.()}
  // Export immediately: later app-visibility/widget scripts must not block management access.
- window.ttClasskit={open:openKit,editSubject,invalidateWeek:()=>{originalWeek=null;}};
+ window.ttClasskit={open:openKit,editSubject,editLunch,invalidateWeek:()=>{originalWeek=null;}};
  $all('#ttClasskit [data-ck-tab]').forEach(b=>b.onclick=()=>{activate(b.dataset.ckTab)});
  $('#ckClose').onclick=()=>dlg.close();
  // External button; also respect the existing app-visibility setting.
@@ -7835,14 +7840,14 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
  }
  function editsFor(date){return scheduleState().byDate[date]||{subjects:{},notes:{}}}
  function currentSubjectCells(date){const idx=dateIndex(date),base=originalWeek.rows.map(r=>String(r.cells?.[idx]||'')),over=editsFor(date);return {base,cells:base.map((v,i)=>typeof over.subjects?.[originalWeek.rows[i].label]==='string'?over.subjects[originalWeek.rows[i].label]:v)}}
- function saveDate(date,subjects,notes){if(!canEditDate(date))return false;const st=scheduleState();if(Object.keys(subjects).length||Object.keys(notes).length)st.byDate[date]={subjects,notes};else delete st.byDate[date];return store(KEYS.schedule,st)}
+ function saveDate(date,subjects,notes,lunch=undefined){if(!canEditDate(date))return false;const st=scheduleState();const v=ttCleanLunch(lunch===undefined?st.byDate[date]?.lunch:lunch);if(Object.keys(subjects).length||Object.keys(notes).length||v){st.byDate[date]={subjects,notes};if(v)st.byDate[date].lunch=v}else delete st.byDate[date];return store(KEYS.schedule,st)}
  renderWeek=function(data){
   if(!data||!Array.isArray(data.rows)){return renderBaseWeek(data)}
   if(data!==lastWeek)originalWeek=JSON.parse(JSON.stringify(data));
-  const copy=JSON.parse(JSON.stringify(originalWeek||data)),st=scheduleState();copy.ttEditableDates=editableDates();let changed=false;
+  const copy=JSON.parse(JSON.stringify(originalWeek||data)),st=scheduleState();copy.ttEditableDates=editableDates();copy.ttLunchByDate={};let changed=false;
   for(let idx=0;idx<5;idx++){
    const date=ttWeekDate(copy,idx),over=st.byDate[date];if(!over||!ttWeekEditable(originalWeek,idx))continue;
-   copy.rows.forEach(r=>{const v=over.subjects?.[r.label];if(typeof v==='string'&&r.cells){r.cells[idx]=v;changed=true}if(over.notes?.[r.label])changed=true});
+   copy.rows.forEach(r=>{const v=over.subjects?.[r.label];if(typeof v==='string'&&r.cells){r.cells[idx]=v;changed=true}if(over.notes?.[r.label])changed=true});const lunch=ttCleanLunch(over.lunch);if(lunch){copy.ttLunchByDate[date]=lunch;changed=true}
   }
   renderBaseWeek(copy);bannerDraw();if(changed)$('#weekName').textContent+=' · 임시 변경';
  };
@@ -7865,7 +7870,17 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
   renderWeek(originalWeek);quickSubject.close();
  }
  $('#ttSubjectForm').onsubmit=e=>{e.preventDefault();saveSubject()};$('#ttSubjectOriginal').onclick=()=>saveSubject(true);$('#ttSubjectClose').onclick=$('#ttSubjectCancel').onclick=()=>quickSubject.close();quickSubject.addEventListener('close',()=>{subjectEdit=null});
- function scheduleForm(){
+ function lunchControls(prefix,date){
+ const v=ttLunchForDate(date),el=document.createElement('fieldset');el.className='ck-period';el.innerHTML='<legend>점심시간 (선택 날짜만)</legend><label for="'+prefix+'Start">시작</label><input type="time" id="'+prefix+'Start" required><label for="'+prefix+'End">종료</label><input type="time" id="'+prefix+'End" required><label><input type="checkbox" id="'+prefix+'Hide"> 시간표에서 숨기기</label><button type="button" id="'+prefix+'Default">점심시간만 기본값으로</button><p class="ck-sub">수업 교시 시각과 기본 점심시간은 변경하지 않습니다. 숨기면 표시만 사라집니다.</p>';
+ const start=el.querySelector('#'+prefix+'Start'),end=el.querySelector('#'+prefix+'End'),hide=el.querySelector('#'+prefix+'Hide');start.value=v.start;end.value=v.end;hide.checked=v.hidden;el.querySelector('#'+prefix+'Default').onclick=()=>{start.value=lunchSettings.start;end.value=lunchSettings.end;hide.checked=false};return el;
+}
+function readLunch(prefix){return ttCleanLunch({start:$('#'+prefix+'Start').value,end:$('#'+prefix+'End').value,hidden:$('#'+prefix+'Hide').checked})}
+function normalizeLunch(v){return v&&!v.hidden&&v.start===lunchSettings.start&&v.end===lunchSettings.end?null:v}
+function editLunch(date){
+ if(!canEditDate(date)||document.body.classList.contains('layout-editing'))return false;
+ scheduleDate=date;openKit('schedule');scheduleForm();$('#ckLunchStart')?.focus();return true;
+}
+function scheduleForm(){
   const host=$('#ckScheduleRows'),select=$('#ckScheduleDate'),dates=lastWeek?editableDates():[];host.replaceChildren();select.replaceChildren();
   if(!dates.includes(scheduleDate))scheduleDate=dates[0]||'';
   for(const date of dates){const opt=document.createElement('option');opt.value=date;opt.textContent=date+(date===day()?' · 오늘':' · '+['일','월','화','수','목','금','토'][new Date(date+'T00:00:00Z').getUTCDay()]+'요일');select.append(opt)}select.value=scheduleDate;
@@ -7879,7 +7894,8 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
    const noteLabel=document.createElement('label');noteLabel.textContent='교시 공지';const noteInput=document.createElement('textarea');noteInput.maxLength=180;noteInput.dataset.periodNotice=String(i);noteInput.placeholder='시트 공지 또는 직접 입력';noteInput.value=periodNoticeValue(i,scheduleDate);
    div.append(label,input,noteLabel,noteInput);host.append(div);
   });
-  if(scheduleState().byDate[scheduleDate])$('#ckScheduleStatus').textContent='이 날짜의 임시 변경이 저장되어 있습니다.';
+  host.append(lunchControls('ckLunch',scheduleDate));
+   if(scheduleState().byDate[scheduleDate])$('#ckScheduleStatus').textContent='이 날짜의 임시 변경이 저장되어 있습니다.';
  }
  $('#ckScheduleDate').onchange=()=>{scheduleDate=$('#ckScheduleDate').value;scheduleForm()};
  $('#ckScheduleSave').onclick=()=>{
@@ -7888,10 +7904,11 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
   if(inputs.length!==base.length||inputs.some((x,i)=>x.dataset.label!==String(originalWeek.rows[i].label))){$('#ckScheduleStatus').textContent='원본 시간표가 바뀌었습니다. 다시 열어 주세요.';return}
   inputs.forEach((x,i)=>{const v=x.value.trim().slice(0,50);if(v!==base[i])subjects[originalWeek.rows[i].label]=v});
   $all('#ckScheduleRows [data-period-notice]').forEach(x=>{const i=Number(x.dataset.periodNotice),v=x.value.trim().slice(0,180);if(v&&v!==sheetPeriodNotice(i,scheduleDate))notes[originalWeek.rows[i].label]=v});
-  if(!saveDate(scheduleDate,subjects,notes)){$('#ckScheduleStatus').textContent='저장하지 못했습니다.';return}
-  renderWeek(originalWeek);scheduleForm();$('#ckScheduleStatus').textContent='선택 날짜의 과목과 공지를 저장했습니다. 학교 시트는 변경되지 않았습니다.';
+  const lunch=readLunch('ckLunch');if(!lunch){$('#ckScheduleStatus').textContent='점심시간 시작·종료 시각을 확인해 주세요.';return}
+   if(!saveDate(scheduleDate,subjects,notes,normalizeLunch(lunch))){$('#ckScheduleStatus').textContent='저장하지 못했습니다.';return}
+  renderWeek(originalWeek);scheduleForm();$('#ckScheduleStatus').textContent='선택 날짜의 과목, 공지 및 점심시간을 저장했습니다. 학교 시트는 변경되지 않았습니다.';
  };
- $('#ckScheduleReset').onclick=()=>{if(!saveDate(scheduleDate,{},{}))return;renderWeek(originalWeek);scheduleForm();$('#ckScheduleStatus').textContent='선택 날짜만 시트 원본으로 되돌렸습니다.'};
+ $('#ckScheduleReset').onclick=()=>{if(!saveDate(scheduleDate,{},{},null))return;renderWeek(originalWeek);scheduleForm();$('#ckScheduleStatus').textContent='선택 날짜만 시트 원본으로 되돌렸습니다.'};
  // ---------- Shared daily checklist ----------
  function checksRender(){
   if(typeof window.ttStudentChecklistRender==='function')return window.ttStudentChecklistRender();
@@ -7992,7 +8009,7 @@ body.layout-editing .w-edit .w-front{left:8px}body.layout-editing .w-edit .w-bac
  const build=$('#dashboardBuild');if(build)build.textContent='호자보드 빌드: 2026-11-10 V1.49.1 · 수업 시각 진단 · 수업 알림 재생 확인 · 기존 V1.49 위젯 편집 기능 유지';
  // Midnight refresh; no midnight leakage of temporary timetable or banner.
  setInterval(()=>{const d=day();if(d!==seenDay){seenDay=d;bannerDraw();todayChecks();if(originalWeek)renderWeek(originalWeek);if(dlg.open&&activeTab==='checks')checksRender();if(dlg.open&&activeTab==='ddays')ddayRender()}},60000);
- window.ttClasskit={open:openKit,editSubject,invalidateWeek:()=>{originalWeek=null;}};
+ window.ttClasskit={open:openKit,editSubject,editLunch,invalidateWeek:()=>{originalWeek=null;}};
  if(lastWeek&&!originalWeek){originalWeek=JSON.parse(JSON.stringify(lastWeek));renderWeek(lastWeek); }
 })();
 </script>
