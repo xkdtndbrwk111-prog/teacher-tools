@@ -1,5 +1,19 @@
 name: R8 verified runtime release
 on:
+  workflow_call:
+    inputs:
+      artifact_id:
+        required: true
+        type: string
+      archive_sha:
+        required: true
+        type: string
+      payload_sha:
+        required: true
+        type: string
+      field_gate:
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       artifact_id:

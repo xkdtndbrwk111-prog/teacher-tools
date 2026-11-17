@@ -1,0 +1,16 @@
+name: R8 release approval self-test
+on:
+  pull_request:
+    paths: ['tools/r8-publisher/check-approval.py','tools/r8-publisher/test-approval.py','.github/workflows/r8-native-publish.yml','.github/workflows/r8-runtime-release.yml','.github/workflows/r8-approval-test.yml']
+  push:
+    branches: ['codex/r8-native-approved-publish']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python tools/r8-publisher/test-approval.py -v

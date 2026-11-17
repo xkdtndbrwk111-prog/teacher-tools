@@ -1,0 +1,38 @@
+name: R8 publish approved native build
+on:
+  push:
+    branches: [main]
+    paths: ['runtime-src/release-approval.json']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-approval:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      artifact_id: ${{ steps.verify.outputs.artifact_id }}
+      archive_sha: ${{ steps.verify.outputs.archive_sha }}
+      payload_sha: ${{ steps.verify.outputs.payload_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind approval to exact successful source and Windows tests
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/r8-publisher/check-approval.py
+  publish:
+    needs: verify-approval
+    permissions:
+      contents: write
+      actions: read
+      pages: write
+    uses: ./.github/workflows/r8-runtime-release.yml
+    with:
+      artifact_id: ${{ needs.verify-approval.outputs.artifact_id }}
+      archive_sha: ${{ needs.verify-approval.outputs.archive_sha }}
+      payload_sha: ${{ needs.verify-approval.outputs.payload_sha }}
+      field_gate: true
