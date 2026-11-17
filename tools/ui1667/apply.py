@@ -25,8 +25,8 @@ change("if(c>=51&&c<=57)return['light_rain','이슬비'];","if(c>=51&&c<=57)retu
 change("if(c===61||c===80)return['light_rain','약한 비'];","if(c===61||c===80)return['drizzle_rain','약한 비'];")
 change("if(c===73||c===77)return['light_snow','눈'];","if(c===73||c===77)return['normal_snow','눈'];")
 change("const A=window.TT_ASSETS||{},ICON=A.weatherIcons||{};","const A=window.TT_ASSETS||{},ICON={...(A.weatherIcons||{})};ICON.drizzle_rain=ICON.light_rain;ICON.normal_snow=ICON.light_snow;")
-change("""    let band=32;const wet=/rain|shower|sleet|snow|hail|thunder/.test(name);
-    if(wet){const widest=count.indexOf(Math.max(...count));for(let y=widest+1;y<32;y++)if(count[y]&&count[y]<count[y-1]*.6){band=y;break}}""","""    // Pixel-audited boundaries of the original 32x32 artwork. Dense rain cannot use row-width heuristics.
+change("""   let band=32;const wet=/rain|shower|sleet|snow|hail|thunder/.test(name);
+   if(wet){const widest=count.indexOf(Math.max(...count));for(let y=widest+1;y<32;y++)if(count[y]&&count[y]<count[y-1]*.6){band=y;break}}""","""    // Pixel-audited boundaries of the original 32x32 artwork. Dense rain cannot use row-width heuristics.
     const bands={drizzle_rain:24,light_rain:24,heavy_rain:22,light_snow:23,normal_snow:23,heavy_snow:21,sleet:23};
     const band=bands[name]??32;""")
 change("kind:/thunder/.test(name)?'thunder':band<32?(/snow|hail/.test(name)?'snow':'rain'):'static'});","kind:/thunder/.test(name)?'thunder':band<32?(/snow|hail/.test(name)?'snow':'rain'):'static',name});\n    if(name==='drizzle_rain'){const q=o.fall.getContext('2d');q.clearRect(12,band,7,32-band)}")
