@@ -1,0 +1,21 @@
+name: V1.66.8 education activities browser regression
+on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/v1668/**','.github/workflows/v1668-browser.yml']
+  push:
+    branches: [main, codex/v1668-education-activities]
+    paths: ['runtime-src/system/**','tools/v1668/**','.github/workflows/v1668-browser.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-v1668 --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-v1668/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-v1668/node_modules node tools/v1668/browser.cjs
