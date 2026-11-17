@@ -1,4 +1,4 @@
-import pathlib,re,zipfile,io,hashlib
+import pathlib,re,zipfile,io,hashlib,copy
 root=pathlib.Path('runtime-src/system')
 p=root/'dashboard.html';s=p.read_bytes().decode('utf-8')
 scope=r'''
@@ -10,7 +10,7 @@ i=s.index('<style id="tt-text-roles-v1666">');end=s.index('</style>',i)
 s=s[:end]+scope+s[end:]
 old='window.ttTextRoles?.ink(t.text,[t.panel])||t.text'
 assert s.count(old)==1
-s=s.replace(old,"window.ttTextRoles?.ink(t.text,[t.panel])||(contrast(t.text,t.panel)>=4.5?t.text:contrast('#000000',t.panel)>=contrast('#ffffff',t.panel)?'#000000':'#ffffff')")
+s=s.replace(old,"window.ttTextRoles?.ink(t.text,[t.panel])||t.text")
 p.write_bytes(s.encode())
 p=root/'presentation-assets.zip'
 src=zipfile.ZipFile(io.BytesIO(p.read_bytes()));buf=io.BytesIO();changes=[]
@@ -39,7 +39,7 @@ html.tt-board-presentation :is(.pe-simple-panel,.pe-simple-team){--text-primary:
 html.tt-board-presentation :is(.pe-simple-paper,.pe-simple-name){--text-primary:var(--tt-present-text,#edf4fc)}
 '''
    data=s.encode();changes.append(entry.filename)
-  dst.writestr(entry,data)
+  dst.writestr(copy.copy(entry),data)
 assert set(changes)=={'classroom/host/board-present.css','classroom/host/board-present.js'}
 with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as check:
  assert check.testzip() is None
@@ -47,4 +47,4 @@ with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as check:
  for name in src.namelist():
   if name not in changes:assert src.read(name)==check.read(name),name
 p.write_bytes(buf.getvalue())
-print('PASS: all 201 non-UI presentation entries preserved byte-for-byte; only board theme CSS and JS updated')
+print('PASS:',len(src.namelist())-len(changes),'non-UI presentation entries preserved byte-for-byte; only board theme CSS and JS updated')

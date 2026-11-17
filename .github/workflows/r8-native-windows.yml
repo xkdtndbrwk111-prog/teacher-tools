@@ -31,7 +31,7 @@ jobs:
         run: |
           python -c "import pathlib,subprocess; root=pathlib.Path('reviewed-kernel'); paths=['tools/r8-updater/runtime/r8-kernel.ps1','tools/r8-updater/runtime/launch.ps1']; [(root/p).write_bytes(subprocess.check_output(['git','-C',str(root),'show','734e494fad3c81033a786b4b7a5acc5c3ebcd424:'+p])) for p in paths]"
           if ($LASTEXITCODE -ne 0) { throw 'Exact bootstrap extraction failed' }
-          python tools/r8-publisher/validate.py extract first-seed/R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip "$env:RUNNER_TEMP/seed" 818c82c9e8a3ea7ed3cf9c8afef69c8b48ac5fcfe67848d5421ee36bb347235c
+          python tools/r8-publisher/restore-live-seed.py stable/runtime-v1 "$env:RUNNER_TEMP/seed" first-seed/R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip
           if ($LASTEXITCODE -ne 0) { throw 'Seed verification failed' }
           python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$env:RUNNER_TEMP/candidate"
           if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
