@@ -621,6 +621,7 @@ function showPEBrief(){
     const title=document.createElement('div');title.className='pe-simple-team-name';
     title.textContent=`${index+1}팀 · ${members.length}명`;
     title.style.backgroundColor=TEAM_COLORS[index]||'#176539';
+    if(document.documentElement.classList.contains('tt-board-presentation'))title.style.setProperty('--tt-team-source',TEAM_COLORS[index]||'#176539');
     title.style.color='#fff';
     card.append(title);
     const list=document.createElement('div');list.className='pe-simple-team-members';

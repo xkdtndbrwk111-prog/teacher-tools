@@ -11,3 +11,25 @@ html.tt-board-presentation .tt-life-qr-public h1{font-size:clamp(26px,4vw,56px)}
 html.tt-board-presentation .tt-life-qr-public .tt-life-qr-class{margin:0}
 html.tt-board-presentation .tt-life-qr-code{width:min(45vh,400px);height:min(45vh,400px);min-width:150px;min-height:150px;border-radius:16px;box-shadow:none}
 html.tt-board-presentation .tt-life-qr-state,html.tt-board-presentation .tt-life-qr-guide{margin:0}
+
+/* Board only: unify panel, chart, controls; leave the classroom manager unchanged. */
+html.tt-board-presentation{--tt-chart-panel:var(--tt-present-panel,#fbfffd);--tt-chart-text:var(--tt-present-text,#1b4546);--tt-chart-surface:var(--tt-present-surface,#eff8f5);--tt-chart-border:var(--tt-present-border,#b4d8d2)}
+html.tt-board-presentation :is(#gameView,#simpleView,#pePitchReveal){background:var(--tt-chart-panel)!important;color:var(--tt-chart-text)!important;padding:12px!important;gap:12px!important;box-sizing:border-box}
+html.tt-board-presentation :is(.playback-wrap,.simple-view){grid-template-columns:clamp(144px,14vw,230px) minmax(0,1fr)!important}
+html.tt-board-presentation .simple-head{color:var(--tt-chart-text)!important;gap:8px!important}
+html.tt-board-presentation .simple-head h1{color:var(--tt-chart-text)!important}
+html.tt-board-presentation .simple-head span{display:none!important}
+html.tt-board-presentation .simple-canvas-wrap{background:var(--tt-chart-surface)!important;border-color:var(--tt-chart-border)!important;padding:8px!important}
+html.tt-board-presentation .simple-canvas-wrap canvas{background:var(--tt-chart-surface)!important;box-shadow:none!important}
+html.tt-board-presentation .pe-reveal-sidebar{width:clamp(144px,14vw,230px);min-width:clamp(144px,14vw,230px);padding:0!important;gap:8px!important;border:0!important}
+html.tt-board-presentation #pePitchReveal :is(.pe-pitch-header,.pe-pitch-entrance){padding:0!important;min-height:0!important;gap:0!important;background:transparent!important;border:0!important}
+html.tt-board-presentation #pePitchReveal :is(.pe-pitch-identity,#pePitchTeamCount,.pe-pitch-entrance-meta,#pePitchSpriteStatus,.pe-simple-heading p){display:none!important}
+html.tt-board-presentation :is(.pe-pitch-actions,.pe-pitch-run-actions,.playback-head-actions,.playback-controls,.simple-actions){gap:8px!important}
+html.tt-board-presentation :is(.pe-pitch-actions button,.pe-pitch-run-actions button,.play-btn,.playback-head-actions button,.simple-actions button){font-family:inherit!important;font-size:clamp(14px,1.2vw,19px)!important;border-width:1px!important;min-height:48px!important}
+html.tt-board-presentation #pePitchReveal .pe-pitch-main{border:1px solid var(--tt-chart-border);border-radius:14px;background:var(--tt-chart-surface)!important}
+html.tt-board-presentation :is(.pe-simple-panel,.pe-simple-paper,.pe-simple-team,.pe-simple-name){background:var(--tt-chart-surface)!important;color:var(--tt-chart-text)!important;border-color:var(--tt-chart-border)!important;box-shadow:none!important}
+html.tt-board-presentation :is(.pe-simple-paper,.pe-simple-name){background:var(--tt-chart-panel)!important}
+html.tt-board-presentation .pe-simple-heading h2{color:var(--tt-chart-text)!important}
+html.tt-board-presentation .pe-simple-team-name{background:color-mix(in srgb,var(--tt-team-source,#287e8b) 42%,var(--tt-chart-surface))!important;color:var(--tt-chart-text)!important}
+html.tt-board-presentation :is(.play-btn.one,.pe-pitch-run-actions button[data-rate="1"]){background:var(--tt-present-control,#34445c)!important;color:var(--tt-present-controlText,#fff)!important}
+html.tt-board-presentation :is(.play-btn.is-rate-active,.play-btn[aria-pressed="true"],.pe-pitch-run-actions button[aria-pressed="true"]){background:var(--tt-present-accent,#3d81ea)!important;color:var(--tt-chart-panel)!important;outline:none!important}

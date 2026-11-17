@@ -46,7 +46,7 @@
   window.__TT_LOCK.mount();
   await load('../classroom/host/hud-shell.js?v=20261116-board-only');
   await load('../classroom/host/board-status.js?v=20261116-board-present');
-  await load('../classroom/host/presentation-link.js?v=20261116-board-present');
+  await load('../classroom/host/presentation-link.js?v=20261117-board-polish');
   await load('../classroom/host/student-popup.js?v=20261116-board-present');
   await load('../classroom/host/settings-window.js?v=20261116-board-only');
  }).catch(error=>domReady().then(()=>stop(error)));

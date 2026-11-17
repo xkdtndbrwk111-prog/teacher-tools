@@ -36,7 +36,12 @@ def patch_server(s):
       }else{
        $archive=[IO.Compression.ZipFile]::OpenRead($script:ttPresentAssetPath)
        try{
-        $entry=$archive.GetEntry($name.Substring('presentation/'.Length))
+        $key=$name.Substring('presentation/'.Length)
+        $entry=$archive.GetEntry($key)
+        if($null -eq $entry -and $key -cmatch '^shared/assets/(?:playback|students|teacher)/[A-Za-z0-9_-]+\\.png$'){
+         $entry=$archive.GetEntry($key.Substring(0,$key.Length-4)+'.webp')
+         if($null -ne $entry){$ctype='image/webp'}
+        }
         if($null -eq $entry -or $entry.Length -gt 2097152){$status='404 Not Found';$body='{"error":"not found"}'}
         else{$inputStream=$entry.Open();$outputStream=New-Object IO.MemoryStream;try{$inputStream.CopyTo($outputStream);$raw=$outputStream.ToArray()}finally{$inputStream.Dispose();$outputStream.Dispose()}}
        }finally{$archive.Dispose()}
@@ -55,6 +60,8 @@ def bundle(target):
         out=dst/rel;out.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(root/rel,out)
     for rel in ['shared/assets','classroom/host/qr-vendor']:
         shutil.copytree(root/rel,dst/rel)
+    from optimize_assets import optimize
+    optimize(dst/'shared/assets')
     # No manager login, statistics, grade or cloud-sync scripts in local offline view.
     html=(dst/'seating/index.html').read_text(encoding='utf-8')
     html=re.sub(r'\s*<script src="\.\./usage-stats\.js[^>]*></script>','',html)
