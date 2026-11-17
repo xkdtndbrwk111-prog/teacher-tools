@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "version": "1.66.9",
+  "previous_version": "1.66.8",
+  "previous_payload_sha": "70fec73cd236fd31e5570e32ef7de4dab45ed9b1ec543356632f6efa9d8eb96b",
+  "source_sha": "8a309bc0293e02338c4957bcc73c3f8c3640dbaf",
+  "artifact_id": 14312839293,
+  "archive_sha": "1da27aafdf9b02fcbf2794773a0b943583ce2c57b6a67b1d7134a3ffa16738a8",
+  "payload_sha": "20047d60796719d183f95e9728f21af8621a5a7ebd027fea30febc885b9b2300",
+  "build_run_id": 44050842431,
+  "windows_run_id": 44050842234,
+  "integration_run_id": 44050842263,
+  "visual_run_id": 44050842557,
+  "contrast_run_id": 44050842348,
+  "education_run_id": 44050842131,
+  "badge_run_id": 44050842200,
+  "authorization": "Owner requested V1.66.9 common badge design and deployment in the 2026-11-17 conversation; physical classroom field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v1669_owner_field_test_only"
+}
