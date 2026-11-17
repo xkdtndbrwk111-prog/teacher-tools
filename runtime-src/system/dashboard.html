@@ -3047,7 +3047,7 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
  const seasonNow=()=>{if(fx.seasonPick!=='auto')return fx.seasonPick;try{const sc=JSON.parse(localStorage.getItem('class-dashboard-scene')||'null');if(sc&&['spring','summer','autumn','winter'].includes(sc.season))return sc.season}catch{}let m=new Date().getMonth()+1;try{m=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',month:'numeric'}).format(new Date()))}catch{}return m>=3&&m<=5?'spring':m<=8&&m>=6?'summer':m>=9&&m<=11?'autumn':'winter'};
  const rnd=(a,b)=>a+Math.random()*(b-a);
  let shower=null,fuse=null,embers=[],flashAt=0,running=false;
- function startShower(kind=seasonNow()){const c=SEASONS[kind];if(!c)return;const parts=[];const n=Math.round(45*Math.min(1.6,W*H/(640*360)));for(let i=0;i<n;i++)parts.push(spawn(c,true));shower={c,parts,t0:performance.now(),dur:10};loop()}
+ function startShower(kind=seasonNow()){const effective=window.ttWeatherParticleKind?.()?'summer':kind,c=SEASONS[effective];if(!c)return;const parts=[];const n=Math.round(45*Math.min(1.6,W*H/(640*360)));for(let i=0;i<n;i++)parts.push(spawn(c,true));shower={kind,effective,c,parts,t0:performance.now(),dur:10};loop()}
  function spawn(c,first){return{k:c.kinds[Math.floor(Math.random()*c.kinds.length)],x:rnd(-20,W+20),y:first?rnd(-H*.3,H*.85):rnd(-30,-10),vy:rnd(...c.fall),vx:rnd(...c.drift),ph:rnd(0,6.28),sp:rnd(1.2,2.6)}}
  // The fuse runs clockwise from the top-left corner and burns out exactly when the lesson starts.
  const IN=3,TH=3;
@@ -3087,6 +3087,8 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
  function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;ctx.clearRect(0,0,W,H);
   if(shower){
+   const effective=window.ttWeatherParticleKind?.()?'summer':shower.kind;
+   if(effective!==shower.effective){shower.effective=effective;shower.c=SEASONS[effective];shower.parts=shower.parts.map(()=>spawn(shower.c,true))}
    const t=(now-shower.t0)/1000,c=shower.c,fade=t<1?t:t>shower.dur-1.5?Math.max(0,(shower.dur-t)/1.5):1;
    ctx.globalAlpha=(c.splash?.7:1)*fade;
    for(const p of shower.parts){if(p.dead)continue;p.y+=p.vy*dt;p.x+=p.vx*dt+Math.sin(t*p.sp+p.ph)*c.sway*dt;
@@ -3268,6 +3270,15 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
  let wxFrame=0;
  setInterval(()=>{if(document.hidden)return;wxFrame++;for(const cv of document.querySelectorAll('canvas.wx-anim'))if(cv.offsetParent!==null||cv.closest('.hud-weather')){wxSize(cv);wxDraw(cv,wxFrame)}},110);
  window.ttWeatherIcons={prep:wxPrep,draw:wxDraw};
+ // A stale/unknown forecast must not keep a simulated storm running.
+ window.ttWeatherParticleKind=()=>{
+  const w=window.ttWeather,raw=w?.cur?.code;
+  if(!w||w.stale||raw==null||raw===''||!Number.isFinite(Number(raw)))return null;
+  const c=Number(raw);
+  if([95,96,99].includes(c))return 'thunder';
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c))return 'rain';
+  return null;
+ };
 
  let data=null,place='',err='',errCode='';
  function shape(d){
@@ -6034,7 +6045,7 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
  }
  setInterval(()=>cloudTick(performance.now()),80);
  const calm=matchMedia('(prefers-reduced-motion: reduce)');
- let current='',loaded='',failed='',dots=[],last=0,stamp=0;
+ let current='',loaded='',failed='',dots=[],last=0,stamp=0,dotMode='',stormAt=0,stormBolt=null,particlePainted=false;
  let customUrl='',customName='',customBytes=0,dbError='';
  const customKey='background';
  function openDb(){return new Promise((resolve,reject)=>{
@@ -6077,16 +6088,38 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
   const m=getMonth();return (m>=3&&m<=5)?'spring':(m>=6&&m<=8)?'summer':(m>=9&&m<=11)?'autumn':'winter';
  };
  const rand=(a,b)=>a+Math.random()*(b-a);
+ const particleMode=()=>window.ttWeatherParticleKind?.()||activeSeason();
  function makeDot(s,startAnywhere=true){
   let x=rand(-8,W+8),y=startAnywhere?rand(-4,H+4):rand(-16,-1),spd=rand(.16,.48);
+  if(s==='rain'||s==='thunder'){
+   const storm=s==='thunder';
+   return {x:rand(-8,W+32),y:startAnywhere?rand(-12,H+12):rand(-22,-5),
+    vx:rand(storm?-.98:-.52,storm?-.58:-.25),vy:rand(storm?4.2:3.1,storm?6.2:4.8),
+    size:Math.round(rand(storm?7:4,storm?12:8)),alpha:rand(.62,.86)};
+  }
   if(s==='spring')return {x,y,vx:rand(.1,.35),vy:spd,phase:rand(0,6.3),size:rand(1.5,3),color:Math.random()<.5?'#ffc7d9':'#ffeced'};
   if(s==='summer')return {x,y,vx:rand(-.13,.13),vy:rand(-.13,.13),phase:rand(0,6.3),size:rand(1,2),color:Math.random()<.6?'#edffae':'#bafde2'};
   if(s==='autumn')return {x,y,vx:rand(.22,.55),vy:spd+.16,phase:rand(0,6.3),size:rand(2,3.5),color:['#eebe53','#dc7843','#cf4d31'][Math.floor(rand(0,3))]};
   return {x,y,vx:rand(-.15,.12),vy:rand(.3,.8),phase:rand(0,6.3),size:rand(1,2.4),color:'#f8fbff'};
  }
- function newDots(){
-  const s=activeSeason();const counts={spring:32,summer:15,autumn:30,winter:55};const f=1;
-  dots=Array.from({length:Math.round(counts[s]*f)},()=>makeDot(s));
+ function newDots(s=particleMode()){
+  const counts={spring:32,summer:15,autumn:30,winter:55,rain:84,thunder:126};
+  dotMode=s;dots=Array.from({length:counts[s]},()=>makeDot(s));
+  stormBolt=null;stormAt=s==='thunder'?performance.now()+rand(3500,7500):0;
+ }
+ // A local, slowly fading pixel lightning bolt in the upper sky, not a full-screen flash.
+ // One stroke per 18–32 seconds; the reduced-motion guard above applies to it as well.
+ function paintStorm(ts){
+  if(ts>=stormAt){
+   const x=Math.round(rand(W*.18,W*.82)),points=[[x,3]];let px=x,py=3;
+   for(let i=0;i<5;i++){px+=Math.round(rand(i%2?-15:-7,i%2?-4:19));py+=Math.round(rand(9,19));points.push([px,py])}
+   stormBolt={points,at:ts};stormAt=ts+rand(18000,32000);
+  }
+  if(!stormBolt)return;
+  const age=ts-stormBolt.at;if(age>=540){stormBolt=null;return}
+  const opacity=Math.min(1,age/90)*Math.max(0,1-age/540);
+  ctx.save();ctx.globalAlpha=.66*opacity;ctx.strokeStyle='#e9efff';ctx.lineWidth=1.5;
+  ctx.beginPath();stormBolt.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.restore();
  }
  function applyGlass(){
   document.body.style.setProperty('--tt-glass-alpha',(S.glassOpacity/100).toFixed(2));
@@ -6117,13 +6150,29 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
  }
  function paint(ts){
   requestAnimationFrame(paint);
-  if(document.hidden||!S.enabled||!S.particles||calm.matches||failed){photoCanvas.hidden=true;if(failed)canvas.hidden=true;return;}
+  if(document.hidden||!S.enabled||!S.particles||calm.matches||failed){
+   photoCanvas.hidden=true;canvas.hidden=true;
+   if(particlePainted){ctx.clearRect(0,0,W,H);blackCtx?.clearRect(0,0,W,H);particlePainted=false;}
+   dotMode='';stormBolt=null;return;
+  }
   if(canvas.hidden)canvas.hidden=false;
   if(ts-last<1000/18)return;
   const dt=Math.min(65,ts-last||50);last=ts;
-  ctx.clearRect(0,0,W,H);const s=activeSeason();
-  const step=dt/16.7;
+  ctx.clearRect(0,0,W,H);const s=particleMode();
+  if(s!==dotMode)newDots(s);
+  canvas.dataset.particleKind=s;blackCanvas.dataset.particleKind=s;photoCanvas.dataset.particleKind=s;
+  const step=dt/16.7;const wet=s==='rain'||s==='thunder';
   dots.forEach((p,i)=>{
+   if(wet){
+    p.x+=p.vx*step;p.y+=p.vy*step;
+    if(p.y>H+12||p.x<-16)dots[i]=p=makeDot(s,false);
+    const x=Math.round(p.x),y=Math.round(p.y),len=p.size;
+    ctx.globalAlpha=p.alpha*.60;ctx.fillStyle='#34516e';
+    for(let k=0;k<len;k++)ctx.fillRect(x-Math.floor(k/4),y+k,1,1);
+    ctx.globalAlpha=p.alpha;ctx.fillStyle='#c9e7fa';
+    for(let k=0;k<len-1;k++)ctx.fillRect(x+1-Math.floor(k/4),y+k,1,1);
+    return;
+   }
    p.phase+=.015*step;p.x+=(p.vx+Math.sin(p.phase)*.14)*step;p.y+=p.vy*step;
    if(s==='summer'){
     if(p.y<-8)p.y=H+4;if(p.y>H+6)p.y=-4;if(p.x<-7)p.x=W+5;if(p.x>W+7)p.x=-5;
@@ -6137,6 +6186,8 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
    if(s==='autumn'&&size>=3)ctx.fillRect(Math.round(p.x)+1,Math.round(p.y)+2,1,1);
   });
   ctx.globalAlpha=1;
+  if(s==='thunder')paintStorm(ts);
+  particlePainted=true;
   paintPhotoParticles();
   if(black&&!black.hidden&&blackCtx){blackCtx.clearRect(0,0,W,H);blackCtx.drawImage(canvas,0,0);}
  }
@@ -6158,8 +6209,8 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
    <div class="scene-field"><label for="sceneGlassBlur">배경 블러</label><input type="range" id="sceneGlassBlur" min="0" max="28" step="1"><output id="sceneGlassBlurValue" for="sceneGlassBlur"></output><button type="button" id="sceneGlassReset">기본값 복원</button></div></div>
    <figure class="tt-glass-demo" aria-label="글라스 효과 미리보기"><figcaption>위젯 실시간 미리보기 · 예시 배경</figcaption><div class="tt-glass-demo-bg"><div class="tt-glass-demo-card"><b>오늘의 시간표</b><small>11/16 · 월요일</small><div>1교시 · 국어</div><div>2교시 · 수학</div></div></div></figure></div>
    <p class="scene-tip">100%는 불투명, 45%는 배경이 많이 비칩니다. 칠판형 알림장·학생 뽑기 등 가독성 보호 화면은 기존 스타일을 유지합니다.</p>
-   <div class="scene-field"><label for="sceneParticleScope">계절 파티클 표시 범위</label><select id="sceneParticleScope"><option value="photo">사진첩 위에만 (기본)</option><option value="all">전체 위젯 위로</option></select></div>
-   <p class="scene-tip">배경의 계절 효과는 유지합니다. 전체 위젯 위로 선택하면 같은 파티클이 화면 앞쪽을 지나갑니다.</p>
+   <div class="scene-field"><label for="sceneParticleScope">계절·날씨 파티클 표시 범위</label><select id="sceneParticleScope"><option value="photo">사진첩 위에만 (기본)</option><option value="all">전체 위젯 위로</option></select></div>
+   <p class="scene-tip">평소에는 계절 효과를 표시하고, 현재 날씨가 비 또는 뇌우이면 빗방울·번개 효과가 대신 표시됩니다. 전체 위젯 위로 선택하면 같은 파티클이 화면 앞쪽을 지나갑니다.</p>
     <div class="sub">계절 설정</div>
    <div class="scene-seasons"><button type="button" data-scene-season="auto">자동</button>
     <button type="button" data-scene-season="spring">봄</button>
