@@ -16,3 +16,16 @@ jobs:
           npm install --prefix /tmp/tt-mm --no-audit --no-fund --no-package-lock playwright@1.55.0
           /tmp/tt-mm/node_modules/.bin/playwright install chromium
           NODE_PATH=/tmp/tt-mm/node_modules node tools/multimedia/browser.cjs
+  windows-browser:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/tt-mm" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          & "$env:RUNNER_TEMP/tt-mm/node_modules/.bin/playwright.cmd" install chromium
+          $env:NODE_PATH="$env:RUNNER_TEMP/tt-mm/node_modules"
+          node tools/multimedia/browser.cjs
