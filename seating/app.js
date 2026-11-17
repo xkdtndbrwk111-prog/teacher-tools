@@ -3004,17 +3004,18 @@ function renderSimpleCanvas(){
   if(!playbackData)return;
   const canvas=$("simpleCanvas"),ctx=canvas.getContext("2d"),{rows,cols,cells}=playbackData.layout,cellW=220,cellH=128,margin=90,header=160;
   canvas.width=margin*2+cols*cellW;canvas.height=margin+header+rows*cellH+36;
-  ctx.fillStyle="#f8fafc";ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle="#172033";ctx.textAlign="center";ctx.font='900 54px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText(playbackData.className?`${playbackData.className} 자리표`:"오늘의 자리표",canvas.width/2,62);
-  ctx.fillStyle="#166534";roundedRectPath(ctx,margin,88,cols*cellW,54,12);ctx.fill();ctx.fillStyle="#fff";ctx.font='900 28px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText("칠판 · 교실 앞",canvas.width/2,124);
+  const theme=window.__TT_BOARD_CHART_THEME,p=theme?.palette||{paper:"#f8fafc",text:"#172033",bar:"#166534",barText:"#fff",card:"#fff",border:"#334155",muted:"#94a3b8"};
+  ctx.fillStyle=p.paper;ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle=p.text;ctx.textAlign="center";ctx.font='900 54px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText(playbackData.className?`${playbackData.className} 자리표`:"오늘의 자리표",canvas.width/2,62);
+  ctx.fillStyle=p.bar;roundedRectPath(ctx,margin,88,cols*cellW,54,12);ctx.fill();ctx.fillStyle=p.barText;ctx.font='900 28px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText("칠판 · 교실 앞",canvas.width/2,124);
   const studentById=new Map(playbackData.students.map(s=>[s.id,s])),assignmentBySeat=new Map(playbackData.assignments.map(a=>[a.seatId,a.studentId]));
   const groupBySeat=new Map();playbackData.groups.forEach((g,index)=>g.seatIds.forEach(id=>groupBySeat.set(id,{...g,index})));
   cells.forEach(cell=>{
     if(!isUsable(cell))return;
     const x=margin+cell.col*cellW+8,y=margin+header+cell.row*cellH+8,w=cellW-16,h=cellH-16,group=groupBySeat.get(cell.id),student=studentById.get(assignmentBySeat.get(cell.id)),name=student?.name||"빈 자리";
-    ctx.fillStyle="#fff";ctx.strokeStyle="#334155";ctx.lineWidth=4;roundedRectPath(ctx,x,y,w,h,16);ctx.fill();ctx.stroke();
-    if(group){ctx.fillStyle=groupColor(group.index,group);roundedRectPath(ctx,x+8,y+8,w-16,20,8);ctx.fill();ctx.fillStyle="#fff";ctx.textAlign="left";ctx.font='900 15px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText(group.name,x+16,y+23)}
-    ctx.textAlign="center";ctx.fillStyle=student?"#172033":"#94a3b8";const size=fitCanvasText(ctx,name,w-22,42,22);ctx.font=`900 ${size}px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif`;ctx.fillText(name,x+w/2,y+h/2+size*.32);
+    ctx.fillStyle=p.card;ctx.strokeStyle=p.border;ctx.lineWidth=theme?2.5:4;roundedRectPath(ctx,x,y,w,h,16);ctx.fill();ctx.stroke();
+    if(group){const original=groupColor(group.index,group),tone=theme?.group(original)||{fill:original,text:"#fff"};ctx.fillStyle=tone.fill;roundedRectPath(ctx,x+8,y+8,w-16,20,8);ctx.fill();ctx.fillStyle=tone.text;ctx.textAlign="left";ctx.font='900 15px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif';ctx.fillText(group.name,x+16,y+23)}
+    ctx.textAlign="center";ctx.fillStyle=student?p.text:p.muted;const size=fitCanvasText(ctx,name,w-22,42,22);ctx.font=`900 ${size}px Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif`;ctx.fillText(name,x+w/2,y+h/2+size*.32);
   });
 }
 function openSimpleView(){if(!playbackCompleted)return;renderSimpleCanvas();$("gameView").classList.add("hidden");$("simpleView").classList.remove("hidden")}

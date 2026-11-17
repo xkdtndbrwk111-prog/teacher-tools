@@ -1,14 +1,16 @@
 /* The board owns the actual modal, theme, and seasonal overlay. Only public data is rendered. */
 (()=>{
  'use strict';
- const dlg=document.getElementById('ttPresentation'),frame=document.getElementById('ttPresentationFrame'),title=document.getElementById('ttPresentationTitle'),close=document.getElementById('ttPresentationClose'),veil=document.getElementById('ttPresentationLoading'),canvas=document.getElementById('ttPresentationParticles');
+ let frame=document.getElementById('ttPresentationFrame');
+ const dlg=document.getElementById('ttPresentation'),title=document.getElementById('ttPresentationTitle'),close=document.getElementById('ttPresentationClose'),veil=document.getElementById('ttPresentationLoading'),canvas=document.getElementById('ttPresentationParticles');
  if(!dlg||!frame||!close||!canvas)return;
  const ctx=canvas.getContext('2d'),origin=location.origin,names={seating:'교실 자리 발표',pe:'체육 모둠 발표','life-qr':'학급생활 설문'};
  let active=null,loadTimer=0,frameReady=false,pollBusy=false,themeKey='',lastFailed=0,suppressedId='';
  const api=async(path,method='GET',body)=>{const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),2400);try{const r=await fetch('/api/presentation/'+path,{method,cache:'no-store',credentials:'omit',signal:ctrl.signal,...(body?{headers:{'Content-Type':'text/plain'},body}:{})});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(timer)}};
  const ack=(id,state)=>api('ack','POST',id+':'+state).catch(()=>{});
  const theme=()=>{const s=getComputedStyle(document.body),read=k=>s.getPropertyValue(k).trim();return {panel:read('--tt-modal-panel')||read('--panel'),text:read('--text'),border:read('--border'),control:read('--control'),controlText:read('--control-text'),accent:read('--accent'),sub:read('--sub'),surface:read('--surface')}};
- function teardown(){clearTimeout(loadTimer);active=null;frameReady=false;themeKey='';frame.removeAttribute('src');ctx.clearRect(0,0,canvas.width,canvas.height);if(dlg.open)dlg.close();document.body.classList.remove('tt-presentation-open')}
+ function replaceFrame(){const fresh=frame.cloneNode(false);fresh.removeAttribute('src');frame.replaceWith(fresh);frame=fresh;}
+ function teardown(){clearTimeout(loadTimer);active=null;frameReady=false;themeKey='';replaceFrame();ctx.clearRect(0,0,canvas.width,canvas.height);if(dlg.open)dlg.close();document.body.classList.remove('tt-presentation-open')}
  function dismiss(state='closed'){const id=active?.id;if(id)suppressedId=id;teardown();if(id)void ack(id,state)}
  close.onclick=()=>dismiss();dlg.addEventListener('cancel',e=>{e.preventDefault();dismiss()});dlg.addEventListener('close',()=>{if(active&&!dlg.open)dismiss()});
  function show(item){
@@ -16,7 +18,8 @@
   if([...document.querySelectorAll('dialog[open]')].some(d=>d!==dlg)||document.body.classList.contains('layout-editing')||window.ttHouse?.isOpen?.()){suppressedId=item.id;void ack(item.id,'failed');return}
   clearTimeout(loadTimer);active=item;frameReady=false;themeKey='';dlg.dataset.kind=item.data.kind;title.textContent=names[item.data.kind];veil.hidden=false;
   window.ttHoja?.cancelSpeech?.();document.body.classList.add('tt-presentation-open');
-  if(!dlg.open)dlg.showModal();frame.src='/presentation/seating/index.html?view=board&present=1#'+item.id;
+  // A hash-only navigation retained the one-shot renderer. Destroy the old browsing context.
+  replaceFrame();if(!dlg.open)dlg.showModal();frame.src='/presentation/seating/index.html?view=board&present=1&session='+item.id+'#'+item.id;
   loadTimer=setTimeout(()=>{if(active?.id===item.id)dismiss('failed')},26000);
  }
  addEventListener('message',event=>{
