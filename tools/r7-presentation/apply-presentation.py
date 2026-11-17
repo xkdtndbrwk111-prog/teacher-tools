@@ -36,7 +36,60 @@ def patch_server(s):
       }else{
        $archive=[IO.Compression.ZipFile]::OpenRead($script:ttPresentAssetPath)
        try{
-        $entry=$archive.GetEntry($name.Substring('presentation/'.Length))
+        $key=$name.Substring('presentation/'.Length)
+        $entry=$archive.GetEntry($key)
+        if($null -eq $entry -and $key -cmatch '^shared/assets/(?:playback|students|teacher)/[A-Za-z0-9_-]+\\.png
+        if($null -eq $entry -or $entry.Length -gt 2097152){$status='404 Not Found';$body='{"error":"not found"}'}
+        else{$inputStream=$entry.Open();$outputStream=New-Object IO.MemoryStream;try{$inputStream.CopyTo($outputStream);$raw=$outputStream.ToArray()}finally{$inputStream.Dispose();$outputStream.Dispose()}}
+       }finally{$archive.Dispose()}
+      }
+     }
+    }
+   }
+   else {
+   # V1.59:""")
+    s=once(s,"  $headers=\"HTTP/1.1 $status","  if($presentCors){$corsHeaders=\"Access-Control-Allow-Origin: $origin`r`nAccess-Control-Allow-Methods: GET, POST, OPTIONS`r`nAccess-Control-Allow-Headers: Content-Type`r`nAccess-Control-Allow-Private-Network: true`r`nVary: Origin, Access-Control-Request-Private-Network`r`n\"}\n  $headers=\"HTTP/1.1 $status")
+    return s
+def bundle(target):
+    dst=target/'presentation'
+    if dst.exists(): raise ValueError('already staged')
+    for rel in ['seating/index.html','seating/styles.css','seating/pe-v1.css','seating/app.js','seating/pe-v1.js','classroom/host/class-store.js','classroom/host/student-window.css','classroom/host/board-present.js','classroom/host/board-present.css','classroom/host/public-presentation.mjs','classroom/host/presentation-protocol.mjs','classroom/host/life-public-url.mjs','classroom/host/life-cloud-config.mjs','shared/student-roster.css']:
+        out=dst/rel;out.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(root/rel,out)
+    for rel in ['shared/assets','classroom/host/qr-vendor']:
+        shutil.copytree(root/rel,dst/rel)
+    from optimize_assets import optimize
+    optimize(dst/'shared/assets')
+    # No manager login, statistics, grade or cloud-sync scripts in local offline view.
+    html=(dst/'seating/index.html').read_text(encoding='utf-8')
+    html=re.sub(r'\s*<script src="\.\./usage-stats\.js[^>]*></script>','',html)
+    html=re.sub(r'\s*<link rel="stylesheet" href="\.\./classroom/host/(?:grade-mount|life-mount|class-ui|hud-shell|settings-window)\.css[^"]*">','',html)
+    html=re.sub(r'\s*<link rel="icon"[^>]*>','',html)
+    html=re.sub(r'<script src="\.\./classroom/host/class-bootstrap\.js[^"]*"></script>','<script src="../classroom/host/offline-bootstrap.js"></script>',html)
+    (dst/'seating/index.html').write_text(html,encoding='utf-8')
+    shutil.copyfile(here/'runtime/offline-bootstrap.js',dst/'classroom/host/offline-bootstrap.js')
+    with zipfile.ZipFile(target/'presentation-assets.zip','w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+        for f in sorted(dst.rglob('*')):
+            if f.is_file():z.write(f,f.relative_to(dst).as_posix())
+def patch_install(s):
+    return once(s,"'seating-inbox.html','coins.js'","'seating-inbox.html','presentation-board.js','presentation-board.css','presentation-server.ps1','presentation-assets.zip','coins.js'")
+def main():
+    ap=argparse.ArgumentParser();ap.add_argument('system',type=pathlib.Path);ap.add_argument('--bundle-only',action='store_true');a=ap.parse_args()
+    target=a.system;target.mkdir(parents=True,exist_ok=True)
+    if not a.bundle_only:
+        dash=target/'dashboard.html';server=target/'server.ps1'
+        d=patch_dashboard(dash.read_text(encoding='utf-8-sig'));p=patch_server(server.read_text(encoding='utf-8-sig'));installer=target/'install.ps1';i=patch_install(installer.read_text(encoding='utf-8-sig'))
+    bundle(target)
+    for name in ['presentation-board.js','presentation-board.css','presentation-server.ps1']:
+        shutil.copyfile(here/'runtime'/name,target/name)
+    if not a.bundle_only:
+        dash.write_text(d,encoding='utf-8');server.write_text(p,encoding='utf-8-sig');installer.write_text(i,encoding='utf-8-sig')
+        shutil.rmtree(target/'presentation')
+    print('R7 presentation staged; regenerate package checksums and sign through normal release gate.')
+if __name__=='__main__':main()
+){
+         $entry=$archive.GetEntry($key.Substring(0,$key.Length-4)+'.webp')
+         if($null -ne $entry){$ctype='image/webp'}
+        }
         if($null -eq $entry -or $entry.Length -gt 2097152){$status='404 Not Found';$body='{"error":"not found"}'}
         else{$inputStream=$entry.Open();$outputStream=New-Object IO.MemoryStream;try{$inputStream.CopyTo($outputStream);$raw=$outputStream.ToArray()}finally{$inputStream.Dispose();$outputStream.Dispose()}}
        }finally{$archive.Dispose()}

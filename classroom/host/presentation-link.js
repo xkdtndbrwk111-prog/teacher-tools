@@ -28,6 +28,7 @@
    for(let n=0;n<25&&seq===serial;n++){
     await wait(600);
     const receipt=await request('/receipt?id='+requestId);
+    if(seq!==serial)return;
     if(receipt.state==='displayed'){report(data,announce,'호자보드 학생 발표 화면 표시 완료');return}
     if(['failed','expired','superseded','closed'].includes(receipt.state))throw Error('표시가 취소되었거나 실패했습니다.');
    }
@@ -38,7 +39,7 @@
    // An uncertain delivery is never silently duplicated into another window.
    report(data,announce,'호자보드 표시 확인 실패 · 필요하면 별도 학생 화면을 열어 주세요.');
    if(active?.id===requestId){try{await request('/close',{method:'POST',headers:{'Content-Type':'text/plain'},body:requestId})}catch{}if(active?.id===requestId)active=null}
-   offerFallback(fallback);
+   if(seq===serial)offerFallback(fallback);
   }
  }
  window.__TT_BOARD_PRESENTATION={

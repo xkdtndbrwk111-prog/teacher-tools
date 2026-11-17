@@ -1,7 +1,7 @@
 name: R7 student presentation review
 on:
   push:
-    branches: [main, codex/board-presentation-r7]
+    branches: [main, codex/board-presentation-r7, codex/board-presentation-polish]
     paths: ['tools/r7-presentation/**','classroom/host/presentation-*.js','classroom/host/presentation-*.mjs','classroom/host/board-present.*','classroom/host/public-presentation.mjs','seating/app.js','.github/workflows/r7-presentation-review.yml']
 permissions:
   contents: read
@@ -20,6 +20,7 @@ jobs:
           node --check classroom/host/presentation-link.js
           node --check classroom/host/public-presentation.mjs
           python -m py_compile tools/r7-presentation/apply-presentation.py
+          python -m pip install Pillow==11.3.0
           python tools/r7-presentation/apply-presentation.py /tmp/tt-presentation --bundle-only
           unzip -t /tmp/tt-presentation/presentation-assets.zip
       - name: Browser rendering and manager-to-board handoff
@@ -53,6 +54,8 @@ jobs:
           persist-credentials: false
       - shell: powershell
         run: |
+          python -m pip install Pillow==11.3.0
+          if($LASTEXITCODE -ne 0){throw 'Pillow install failed'}
           python tools/r7-presentation/apply-presentation.py "$env:RUNNER_TEMP/tt-presentation" --bundle-only
           if($LASTEXITCODE -ne 0){ throw 'bundle failed' }
           powershell -NoProfile -ExecutionPolicy Bypass -File tools/r7-presentation/test-runtime.ps1 "$env:RUNNER_TEMP/tt-presentation"
