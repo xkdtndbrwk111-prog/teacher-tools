@@ -1,0 +1,29 @@
+name: V1.66.6 scope finalization
+on:
+  push:
+    branches: [codex/v1666-text-roles]
+    paths: ['.github/workflows/v1666-scope-fix.yml']
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          python - <<'PY'
+          import pathlib
+          p=pathlib.Path('runtime-src/system/dashboard.html');s=p.read_text();i=s.index('<style id="tt-text-roles-v1666">');j=s.index('</style>',i)
+          s=s[:j]+pathlib.Path('tools/text-role-tests/scope.css').read_text()+s[j:];p.write_bytes(s.encode())
+          p=pathlib.Path('runtime-src/system/presentation-board.css');s=p.read_text()
+          s=s.replace('var(--text-primary)','var(--text-primary,var(--text))').replace('var(--text-on-fill)','var(--text-on-fill,var(--control-text))');p.write_bytes(s.encode())
+          PY
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system/dashboard.html runtime-src/system/presentation-board.css
+          git commit -m "Scope text roles inside chalkboard and preserve standalone presentation host compatibility"
+          git push origin HEAD:codex/v1666-text-roles
+      - run: |
+          npm install --prefix /tmp/tt-text-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-text-browser/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-text-browser/node_modules node tools/text-role-tests/browser.cjs

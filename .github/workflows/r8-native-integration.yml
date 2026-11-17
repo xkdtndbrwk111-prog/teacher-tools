@@ -18,7 +18,7 @@ jobs:
       - name: Actual shipped bridge and live public game protocol
         run: |
           node tools/r8-publisher/test-native-mini.cjs
-          curl --fail --silent --show-error --max-time 30 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=3&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors --retry-max-time 100 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=3&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
           python - <<'PY'
           import pathlib
           b=pathlib.Path('/tmp/current-minigames.html').read_bytes()

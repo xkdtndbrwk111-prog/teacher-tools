@@ -1,0 +1,31 @@
+name: V1.66.6 live weather particle priority
+on:
+  push:
+    branches: [codex/v1666-text-roles]
+    paths: ['.github/workflows/v1666-weather-particles.yml','tools/weather-particles/**']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          set -euo pipefail
+          python tools/weather-particles/apply.py runtime-src/system/dashboard.html
+          node tools/weather-particles/test.cjs
+          python - <<'PY'
+          import pathlib,re,subprocess,tempfile
+          s=pathlib.Path('runtime-src/system/dashboard.html').read_text()
+          with tempfile.TemporaryDirectory() as td:
+              for i,t in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script\s*>',s,re.S|re.I)):
+                  if t.strip():
+                      f=pathlib.Path(td)/f'{i}.js';f.write_text(t);subprocess.run(['node','--check',str(f)],check=True)
+          PY
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system/dashboard.html
+          git commit -m "Prefer current rain and thunder particles to seasonal particles"
+          git push origin HEAD:codex/v1666-text-roles

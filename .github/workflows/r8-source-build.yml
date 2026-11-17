@@ -17,6 +17,8 @@ jobs:
           persist-credentials: false
       - name: Validate publisher and approval ancestry
         run: python tools/r8-publisher/test-publisher.py -v
+      - name: Weather particle priority regression
+        run: node tools/weather-particles/test.cjs
       - name: Build full snapshot from committed program sources
         run: |
           set -euo pipefail

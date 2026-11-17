@@ -1,0 +1,8 @@
+
+/* Scoped exceptions for designed surfaces and legacy standalone preview hosts. */
+#noticeBoard #noticeText{--text-primary:#fbfbf0;--text-secondary:#e5e7cf;--text-accent:#fff8d8;--text-alert:#fff3c4}
+#noticeBoard #noticeHistory button,#noticeBoard #noticeBar button{--text-on-fill:#ffffff}
+.settings-nav button:not(.on){color:var(--text-primary)}
+#miniNotice #miniNoticeText{color:var(--text-primary)}
+#podoDetail .podo-sheet :is(.podo-head,.podo-due,.podo-ball){--text-primary:#334155;--text-secondary:#475569;--text-accent:#36566a;--text-alert:#a32121}
+body.tt-scene-glass .house-modal{--text-primary:var(--tt-ink-modal-primary,var(--text));--text-secondary:var(--tt-ink-modal-secondary,var(--sub));--text-accent:var(--tt-ink-modal-accent,var(--text));--text-alert:var(--tt-ink-modal-alert,var(--text))}
