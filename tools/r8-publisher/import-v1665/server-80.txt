@@ -1,0 +1,33 @@
+   if($r.status -eq 200 -and (Test-TTForecast $r.data)){$c.weather=[pscustomobject]@{data=$r.data;at=$now};$c.primaryNext=0}
+   elseif($c.weather){$c.weather|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}
+  }catch{if($c.weather){$c.weather|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}}
+ }
+ $w=$null;$at=0;$source='';$stale=$false
+ if($c.weather -and $now-[long]$c.weather.at -lt 1800000 -and -not $c.weather.attemptFailed){$w=$c.weather.data;$at=$c.weather.at;$source='Open-Meteo'}
+ if(-not $w -and $allowMet){
+  if($now -ge [long]$c.metNext -and ($store.Count -le 12 -or $c.met)){
+   # Persist the retry floor BEFORE the request, including on failure/restart.
+   $c.metNext=$now+10800000;$saved=Save-TTWeatherStore;$dirty=$true
+   try{if(-not $saved){throw 'Cannot persist MET request interval'};$r=Get-TTWeatherRemote "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$lat&lon=$lon" ([string]$c.met.modified)
+    $c.metNext=[math]::Max([long]$c.metNext,[math]::Max([long]$r.expires,[long]$r.retry))
+    if($r.status -eq 304 -and $c.met){$c.met.at=$now}
+    elseif($r.status -in 200,203){$null=Convert-TTMetForecast $r.data $now;$c.met=[pscustomobject]@{data=$r.data;at=$now;modified=$r.modified;deprecated=($r.status -eq 203)}}
+   }catch{}
+  }
+  if($c.met -and $now-[long]$c.met.at -lt 86400000){try{$w=Convert-TTMetForecast $c.met.data $now;$at=$c.met.at;$source='MET Norway';$stale=($now-[long]$at -ge 21600000)}catch{}}
+ }
+ if(-not $w -and $c.weather -and $now-[long]$c.weather.at -lt 86400000){$w=$c.weather.data;$at=$c.weather.at;$source='Open-Meteo';$stale=$true}
+ # Independent air-quality lookup, even if both weather providers fail.
+ if($now -ge [long]$c.airNext -and ($fresh -or -not $c.air -or $now-[long]$c.air.at -ge 1800000)){
+  $c.airNext=$now+300000;$dirty=$true
+  try{$r=Get-TTWeatherRemote "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5"
+   $c.airNext=[math]::Max([long]$c.airNext,[long]$r.retry)
+   if($r.status -eq 200 -and (Test-TTAir $r.data)){$c.air=[pscustomobject]@{data=$r.data;at=$now};$c.airNext=0}
+   elseif($c.air){$c.air|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}
+  }catch{if($c.air){$c.air|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}}
+ }
+ if($dirty){$null=Save-TTWeatherStore}
+ $a=$null;$airAt=0;$airStale=$false
+ if($c.air -and $now-[long]$c.air.at -lt 86400000){$a=$c.air.data;$airAt=$c.air.at;$airStale=($now-[long]$airAt -ge 1800000 -or $c.air.attemptFailed)}
+ if(-not $w -and -not $a){throw 'TT_WEATHER_FORECAST_UNAVAILABLE'}
+ return (ConvertTo-Json -Depth 16 -Compress @{place=@{name=[string]$p.name;lat=[double]$p.lat;lon=[double]$p.lon};weather=$w;air=$a;at=$at;source=$source;stale=$stale;airAt=$airAt;airStale=$airStale;metDeprecated=($source -eq 'MET Norway' -and $c.met.deprecated)})

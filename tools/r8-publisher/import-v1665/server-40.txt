@@ -1,0 +1,40 @@
+ $local=[DateTimeOffset]::FromUnixTimeMilliseconds($now).ToOffset([timespan]::FromHours(9));$today=$local.ToString('yyyy-MM-dd');$points=@()
+ foreach($point in $series){
+  $t=([DateTimeOffset]::Parse([string]$point.time)).ToOffset([timespan]::FromHours(9));$instant=$point.data.instant.details
+  if($null -eq $instant.air_temperature){continue}
+  $one=$point.data.next_1_hours;$six=$point.data.next_6_hours;$twelve=$point.data.next_12_hours
+  $part=if($one){$one}elseif($six){$six}else{$twelve}
+  $prob=$null;if($one -and $null -ne $one.details.probability_of_precipitation){$prob=$one.details.probability_of_precipitation}
+  $code=Convert-TTMetCode $part.summary.symbol_code
+  $wind=$null;if($null -ne $instant.wind_speed){$wind=[math]::Round([double]$instant.wind_speed*3.6,1)}
+  $points+= [pscustomobject]@{time=$t.ToString('yyyy-MM-ddTHH:mm');stamp=$t.ToUnixTimeMilliseconds();temp=[double]$instant.air_temperature;code=$code;wind=$wind;rain=$prob;precip=$one.details.precipitation_amount;min=$six.details.air_temperature_min;max=$six.details.air_temperature_max;sixRain=$six.details.probability_of_precipitation}
+ }
+ $current=@($points|Where-Object {$_.stamp -le $now}|Select-Object -Last 1)[0];if(-not $current){$current=$points[0]}
+ if(-not $current -or [math]::Abs($current.stamp-$now) -gt 21600000){throw 'MET forecast is out of date'}
+ $hourly=@($points|Where-Object {$_.stamp -ge ($now-3600000) -and $_.stamp -lt ($now+43200000)})
+ $daily=@(foreach($i in 0..4){$day=$local.AddDays($i).ToString('yyyy-MM-dd');$items=@($points|Where-Object {$_.time.StartsWith($day)});if(-not $items.Count){continue}
+  $temps=@($items|ForEach-Object {$_.temp});$codes=@($items|Where-Object {$null -ne $_.code});$rains=@($items|ForEach-Object {$_.rain;$_.sixRain}|Where-Object {$null -ne $_})
+  # Daily extrema and probability are derived from available samples, not official daily values.
+  $mx=($temps|Measure-Object -Maximum).Maximum;$mn=($temps|Measure-Object -Minimum).Minimum
+  $dc=$null;if($codes.Count){$dc=($codes|Sort-Object code -Descending|Select-Object -First 1).code}
+  $rp=$null;if($rains.Count){$rp=[math]::Round(($rains|Measure-Object -Maximum).Maximum)}
+  [pscustomobject]@{time=$day;max=$mx;min=$mn;code=$dc;rain=$rp}
+ })
+ if(-not $daily.Count){throw 'MET daily forecast missing'}
+ return [pscustomobject]@{current=@{time=$current.time;temperature_2m=$current.temp;weather_code=$current.code;wind_speed_10m=$current.wind;precipitation=$current.precip};hourly=@{time=@($hourly|ForEach-Object {$_.time});temperature_2m=@($hourly|ForEach-Object {$_.temp});weather_code=@($hourly|ForEach-Object {$_.code});precipitation_probability=@($hourly|ForEach-Object {$_.rain})};daily=@{time=@($daily|ForEach-Object {$_.time});temperature_2m_max=@($daily|ForEach-Object {$_.max});temperature_2m_min=@($daily|ForEach-Object {$_.min});weather_code=@($daily|ForEach-Object {$_.code});precipitation_probability_max=@($daily|ForEach-Object {$_.rain})}}
+}
+function Test-TTForecast($w){return ($null -ne $w.current.temperature_2m -and $null -ne $w.current.weather_code -and $null -ne $w.daily.time -and $w.daily.time.Count -gt 0 -and $w.daily.temperature_2m_max.Count -eq $w.daily.time.Count -and $w.daily.temperature_2m_min.Count -eq $w.daily.time.Count -and $w.daily.weather_code.Count -eq $w.daily.time.Count -and $w.hourly.time.Count -gt 0 -and $w.hourly.temperature_2m.Count -eq $w.hourly.time.Count -and $w.hourly.weather_code.Count -eq $w.hourly.time.Count)}
+function Test-TTAir($a){return ($null -ne $a.current -and ($null -ne $a.current.pm10 -or $null -ne $a.current.pm2_5) -and $a.hourly.time.Count -gt 0 -and $a.hourly.pm10.Count -eq $a.hourly.time.Count -and $a.hourly.pm2_5.Count -eq $a.hourly.time.Count)}
+function Get-TTWeather([bool]$fresh,[bool]$allowMet=$false){
+ try{$p=Get-TTWeatherPlace}catch{throw ('TT_WEATHER_LOCATION:'+ $_.Exception.Message)}
+ $inv=[Globalization.CultureInfo]::InvariantCulture
+ $lat=([math]::Truncate([double]$p.lat*10000)/10000).ToString('0.0000',$inv);$lon=([math]::Truncate([double]$p.lon*10000)/10000).ToString('0.0000',$inv)
+ $id="$lat,$lon";$now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$store=Get-TTWeatherStore
+ if(-not $store.ContainsKey($id)){$store[$id]=[pscustomobject]@{weather=$null;air=$null;met=$null;primaryNext=[long]0;airNext=[long]0;metNext=[long]0}}
+ $c=$store[$id];$dirty=$false
+ foreach($key in @($store.Keys)){if($key -eq $id){continue};$old=$store[$key];$last=[math]::Max([long]$old.metNext,[math]::Max([long]$old.weather.at,[long]$old.air.at));if($now-$last -gt 86400000){$store.Remove($key);$dirty=$true}}
+ # A user refresh may bypass the half-hour TTL but never a failed-request backoff or MET interval.
+ if($now -ge [long]$c.primaryNext -and ($fresh -or -not $c.weather -or $now-[long]$c.weather.at -ge 1800000)){
+  $c.primaryNext=$now+300000;$dirty=$true
+  try{$r=Get-TTWeatherRemote "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5"
+   $c.primaryNext=[math]::Max([long]$c.primaryNext,[long]$r.retry)
