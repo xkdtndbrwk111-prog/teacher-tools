@@ -1,0 +1,32 @@
+name: V1.66.6 finalize local presentation scopes
+on:
+  push:
+    branches: [codex/v1666-text-roles]
+    paths: ['.github/workflows/v1666-presentation-scopes.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          python tools/text-role-tests/finalize.py
+          node --check runtime-src/system/presentation-board.js
+          python - <<'PY'
+          import pathlib,re,subprocess,tempfile,zipfile
+          p=pathlib.Path('runtime-src/system')
+          with tempfile.TemporaryDirectory() as td:
+              for n,s in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script\s*>',(p/'dashboard.html').read_text(),re.S|re.I)):
+                  if s.strip():
+                      f=pathlib.Path(td)/f'{n}.js';f.write_text(s);subprocess.run(['node','--check',str(f)],check=True)
+              with zipfile.ZipFile(p/'presentation-assets.zip') as z:
+                  f=pathlib.Path(td)/'board-present.js';f.write_bytes(z.read('classroom/host/board-present.js'));subprocess.run(['node','--check',str(f)],check=True)
+          PY
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system/dashboard.html runtime-src/system/presentation-assets.zip
+          git commit -m "Extend five foreground roles to fixed celebration and offline presentation surfaces"
+          git push origin HEAD:codex/v1666-text-roles
