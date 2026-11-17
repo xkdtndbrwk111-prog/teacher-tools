@@ -3,3 +3,5 @@ Unreleased prototype against V1.66.9. Existing tool visibility/order and native 
 Candidate version 1.66.10 is for review only. During actual playing, show the Korean automatic progression notice, hide redundant transport buttons (except preview), retain volume and close. Restore recovery actions on pause/error/autoplay blocked. First prototype browser regression passed; source/native candidate rejected non-increasing version, corrected here without authorizing publication.
 
 Use the existing release contract suffix STABLE-PILOT for the unsigned candidate manifest only; no production approval or publication. Expanded mocked browser coverage for configured route and system-volume state; Windows Chromium job also runs this test.
+
+98% x 98% native modal during playback; title, transport, system volume, full-screen and close share the bottom rail. Full-screen expands the modal and requests document fullscreen when needed, preserving prior board fullscreen. Guard asynchronously delivered dialog close so reopening does not wipe the next screen. No seasonal particle changes. User has now explicitly approved personal pilot publication after gates pass.
