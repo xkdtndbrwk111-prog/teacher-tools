@@ -1,0 +1,32 @@
+name: V1.66.7 UI consistency and weather animation
+on:
+  push:
+    branches: [codex/v1667-ui-light-weather]
+    paths: ['tools/v1667/**','.github/workflows/v1667-apply.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          set -euo pipefail
+          test "$(git hash-object runtime-src/system/dashboard.html)" = cc7a7eeae7bd312fb5512f6fff86a1500557aca3
+          python tools/v1667/apply.py runtime-src/system
+          python - <<'PY'
+          import pathlib,re,subprocess,tempfile
+          p=pathlib.Path('runtime-src/system')
+          with tempfile.TemporaryDirectory() as td:
+              for i,s in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script\s*>',(p/'dashboard.html').read_text(),re.S|re.I)):
+                  if s.strip():
+                      f=pathlib.Path(td)/f'{i}.js';f.write_text(s);subprocess.run(['node','--check',str(f)],check=True)
+              for f in p.glob('*.js'):subprocess.run(['node','--check',str(f)],check=True)
+          PY
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$RUNNER_TEMP/candidate"
+          git config user.name teacher-tools-source-builder
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime-src/system
+          git commit -m "V1.66.7 unify widget theme and typography, natural light shadows and precipitation motion"
+          git push origin HEAD:codex/v1667-ui-light-weather
