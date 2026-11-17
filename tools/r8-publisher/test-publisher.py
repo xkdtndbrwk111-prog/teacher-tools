@@ -13,9 +13,9 @@ class PublisherTest(unittest.TestCase):
         self.key.write_text('<RSAKeyValue><Modulus>'+base64.b64encode(bytes.fromhex(modulus)).decode()+'</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>')
         self.files=[]
         for n in sorted(v.REQUIRED):
-            raw=(json.dumps({'version':'1.66.1','channel':'stable','runtimeProtocol':1,'updateMode':'auto-pilot','release':'2026-11-17-V1.66.1-STABLE-PILOT'}).encode() if n=='release.json' else ('test fixture: '+n).encode())
+            raw=(json.dumps({'version':'1.66.3','channel':'stable','runtimeProtocol':1,'updateMode':'auto-pilot','release':'2026-11-17-V1.66.3-STABLE-PILOT'}).encode() if n=='release.json' else ('test fixture: '+n).encode())
             h=v.sha(raw);(self.candidate/'blobs'/(h+'.bin')).write_bytes(raw);self.files.append({'name':n,'sha256':h,'bytes':len(raw)})
-        self.manifest={'schema':'TT-RUNTIME-SNAPSHOT-1','channel':'stable','kernel':1,'version':'1.66.1','bases':[v.BASE],'files':self.files}
+        self.manifest={'schema':'TT-RUNTIME-SNAPSHOT-1','channel':'stable','kernel':1,'version':'1.66.3','bases':sorted(v.BASES),'files':self.files}
         self.payload=self.candidate/'payload.json';self.write()
         self.real_verify=v.verify
     def tearDown(self):self.tmp.cleanup()
@@ -35,7 +35,7 @@ class PublisherTest(unittest.TestCase):
             raw=v.decode_feed((self.dest/'latest.json').read_bytes())
             self.assertEqual(raw,self.payload.read_bytes())
             ver,bases,names=v.current_contract(self.dest/'latest.json')
-            self.assertEqual(ver,(1,66,1));self.assertIn(v.BASE,bases);self.assertEqual(names,v.REQUIRED)
+            self.assertEqual(ver,(1,66,3));self.assertTrue(v.BASES<=bases);self.assertEqual(names,v.REQUIRED)
             with self.assertRaises(ValueError):v.stage(self.candidate,sig,self.dest/'latest.json',self.digest,self.dest)
         self.assertEqual(self.old.read_text(),'{"status":"unreleased"}')
     def test_bad_signature(self):

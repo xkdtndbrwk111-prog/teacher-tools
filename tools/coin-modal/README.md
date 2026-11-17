@@ -1,0 +1,3 @@
+# V1.66.3 coin modal and shared teacher PIN
+
+Exact reviewed overlay for V1.66.2 R8 full installer. Apply patch_coin.py, share_pin.py, change_pin.py sequentially to an isolated system directory. Existing ledger unchanged. Shared existing Podo PIN hash, first setup and change from either feature, view-only by default. UI-level classroom protection, not server access control. Source import verifies SHA256 of exact original files. Original browser fixture tests passed locally; real Windows update and rollback remain release gates. Candidate SHA256 8a765f348f2b61c8f653d86c1a4591798a3054cc3435bbaaa6ce24e2f30d624f. No runtime feed activation by this source import.
