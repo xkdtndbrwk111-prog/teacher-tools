@@ -1,0 +1,36 @@
+name: V1.66.3 exact R8 candidate intake
+on:
+  push:
+    branches: [release/r8-v1.66.3-candidate]
+    paths: ['R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/release/r8-v1.66.3-candidate'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify the exact archive and full unsigned inventory
+        run: |
+          python tools/r8-publisher/validate.py extract R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip "$RUNNER_TEMP/candidate" 818c82c9e8a3ea7ed3cf9c8afef69c8b48ac5fcfe67848d5421ee36bb347235c
+          python tools/r8-publisher/validate.py check "$RUNNER_TEMP/candidate" stable/runtime-v1/latest.json b6056da425b026ff50043cd933ca12d267b4b4b39514948567eeedd1488ec8a4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: candidate
+        with:
+          name: r8-runtime-release-candidate
+          path: ${{ runner.temp }}/candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Report release workflow inputs
+        env:
+          ID: ${{ steps.candidate.outputs.artifact-id }}
+          DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
+        run: |
+          echo "artifact_id=$ID"
+          echo "archive_sha=$DIGEST"
+          echo "payload_sha=b6056da425b026ff50043cd933ca12d267b4b4b39514948567eeedd1488ec8a4"
+          echo "Unsigned candidate only; existing release workflow still requires actual Windows field gate."

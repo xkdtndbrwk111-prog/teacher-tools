@@ -3,7 +3,8 @@ import argparse, base64, hashlib, hmac, json, pathlib, re, stat, zipfile, xml.et
 ROOT=pathlib.Path(__file__).resolve().parent
 KEY=ROOT/'public-key.xml'
 BASE='3b5110f2553ddf7835296e21167304c4e63eaed1c0bd317135d9f81797c14bdb'
-BASE_VERSION=(1,66,0)
+BASES={BASE,'da3c6487f0460487df872a2d3d6209ae0d996e837a36cb6dfa8bf84eb64525bf','c2e450eed106aafeb66ed52aa9ec26b172b7bc0a1b6af426f7aafd8f6595cc44'}
+BASE_VERSION=(1,66,2)
 MAX_FILE=16777216
 MAX_TOTAL=67108864
 REQUIRED=set('dashboard.html release.json board-launch.ps1 server.ps1 runtime.ps1 privacy-reset.ps1 start-teacher-tools.ps1 stop-teacher-tools.ps1 change-monitor.ps1 disable-autostart.ps1 speaker.ps1 share-input.ps1 board-heartbeat.ps1 open-web.ps1 seating-inbox.html coins.js coins-ui.js school.js podo.js update-ui.js classkit_QR_LICENSE.txt handmade-paper.png hoja.ico presentation-board.js presentation-board.css presentation-server.ps1 presentation-assets.zip museum-sky.webp museum-cloud-far.webp museum-cloud-near.webp museum-sway-spring-base.webp museum-sway-spring-sheet.png museum-sway-summer-base.webp museum-sway-summer-sheet.png museum-sway-autumn-base.webp museum-sway-autumn-sheet.png museum-sway-winter-base.webp museum-sway-winter-left.png museum-sway-winter-right.png'.split())
@@ -58,7 +59,7 @@ def decode_feed(raw):
     return p
 def current_contract(path):
     b=path.read_bytes()
-    if parse(b)=={'status':'unreleased'}:return BASE_VERSION,{BASE},set()
+    if parse(b)=={'status':'unreleased'}:return BASE_VERSION,set(BASES),set()
     m,_=validate_manifest(decode_feed(b))
     release=next(f['sha256'] for f in m['files'] if f['name']=='release.json')
     return version(m['version']),set(m['bases'])|{release},{f['name'] for f in m['files']}
