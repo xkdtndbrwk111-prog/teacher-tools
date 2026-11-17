@@ -1,0 +1,47 @@
+name: Verify V1.66.8 public update feed
+on:
+  push:
+    branches: [codex/r8-v1668-live-check]
+    paths: ['.github/workflows/r8-v1668-live-check.yml']
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Independently verify live public manifest and all program blobs
+        run: |
+          python - <<'PY'
+          import concurrent.futures,hashlib,sys,time,urllib.request,pathlib
+          sys.path.insert(0,'tools/r8-publisher')
+          import validate
+          base='https://xkdtndbrwk111-prog.github.io/teacher-tools/stable/runtime-v1/'
+          def fetch(path):
+              req=urllib.request.Request(base+path,headers={'Cache-Control':'no-cache','User-Agent':'TeacherTools-release-check/1'})
+              with urllib.request.urlopen(req,timeout=15) as r:
+                  return r.read()
+          expected='70fec73cd236fd31e5570e32ef7de4dab45ed9b1ec543356632f6efa9d8eb96b'
+          for i in range(12):
+              try:
+                  live=fetch('latest.json?verify=1668-'+str(i))
+                  payload=validate.decode_feed(live)
+                  assert hashlib.sha256(payload).hexdigest()==expected
+                  assert live==pathlib.Path('stable/runtime-v1/latest.json').read_bytes()
+                  break
+              except Exception as e:
+                  print('Public feed not yet verified:',type(e).__name__,flush=True)
+                  if i==11: raise
+                  time.sleep(5)
+          manifest,_=validate.validate_manifest(payload)
+          assert manifest['version']=='1.66.8'
+          def check(f):
+              b=fetch('blobs/'+f['sha256']+'.bin')
+              assert len(b)==f['bytes'] and hashlib.sha256(b).hexdigest()==f['sha256'],f['name']
+          with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+              list(pool.map(check,manifest['files']))
+          print('LIVE PASS: V1.66.8, pinned production signature, exact manifest and all',len(manifest['files']),'public program blobs.')
+          PY
