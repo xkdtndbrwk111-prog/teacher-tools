@@ -8,3 +8,6 @@ After successful main source build and native Windows verification, create a rev
 
 ## First operational pilot (one-time)
 The owner explicitly authorized the exact V1.66.5 candidate for initial operational publication with physical school-PC field checks pending. The separate first-pilot-approval.json is not a field-pass attestation. The authorization is bound to the exact source commit, artifact, manifest, all four successful main CI runs and the previously unpublished feed. Ordinary releases still require the normal field gate. Production signing, independent signature verification, ancestry, allowlist, exact hash validation and atomic publication remain unchanged. The first pilot is not a successful physical school installation or a real student-data test.
+
+## V1.66.6 foreground and weather regression
+New UI foregrounds use the five semantic text roles. Rain/thunder override the seasonal particle layer, not the selected seasonal background. Missing/stale weather returns to normal seasonal particles; preserve existing reduced-motion and disabled-background controls. The weather engine's deterministic regression is `node tools/weather-particles/test.cjs`. The live candidate will be validated against the exact currently signed runtime rather than only the legacy first seed.
