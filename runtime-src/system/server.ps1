@@ -266,23 +266,140 @@ function Get-TTWeatherPlace {
  [IO.File]::WriteAllText($weatherPlaceFile,(ConvertTo-Json -Compress $p),(New-Object Text.UTF8Encoding($false)))
  return $p
 }
-function Get-TTWeather([bool]$fresh){
- if(-not $fresh -and $script:weatherCache -and ((Get-Date)-$script:weatherCache.at).TotalMinutes -lt 30){return $script:weatherCache.body}
- try{
-  try{$p=Get-TTWeatherPlace}catch{throw ('TT_WEATHER_LOCATION:'+ $_.Exception.Message)}
-  $inv=[Globalization.CultureInfo]::InvariantCulture
-  $lat=([double]$p.lat).ToString('0.####',$inv);$lon=([double]$p.lon).ToString('0.####',$inv)
+# Weather cache is disposable, not a student record or a backup payload.
+$weatherCacheFile=Join-Path $TTInstallDir 'weather-cache.json'
+$script:weatherStore=$null
+function Get-TTWeatherStore {
+ if($null -eq $script:weatherStore){
+  $script:weatherStore=@{}
   try{
-   $w=RemoteText "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5"
-   $parsed=ConvertFrom-Json $w
-   if($parsed.error -or -not $parsed.current -or -not $parsed.daily){throw 'Invalid response'}
-  }catch{throw 'TT_WEATHER_FORECAST_UNAVAILABLE'}
-  $a='null';try{$a=RemoteText "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5"}catch{}
-  $place=ConvertTo-Json -Compress @{name=[string]$p.name;lat=[double]$p.lat;lon=[double]$p.lon}
-  $body='{"place":'+$place+',"weather":'+$w+',"air":'+$a+',"at":'+[DateTimeOffset]::Now.ToUnixTimeMilliseconds()+'}'
-  $script:weatherCache=@{at=Get-Date;body=$body}
-  return $body
- }catch{if($script:weatherCache){return $script:weatherCache.body.Substring(0,$script:weatherCache.body.Length-1)+',"stale":true}'};throw}
+   if((Get-Item -LiteralPath $weatherCacheFile -ErrorAction Stop).Length -le 4194304){
+    $saved=Get-Content -Raw -Encoding UTF8 -LiteralPath $weatherCacheFile | ConvertFrom-Json
+    foreach($prop in $saved.PSObject.Properties){if($prop.Name -match '^\d{2}\.\d{4},\d{3}\.\d{4}$'){$script:weatherStore[$prop.Name]=$prop.Value}}
+   }
+  }catch{}
+ }
+ return $script:weatherStore
+}
+function Save-TTWeatherStore {
+ try{
+  $json=ConvertTo-Json -InputObject $script:weatherStore -Depth 16 -Compress
+  if([Text.Encoding]::UTF8.GetByteCount($json) -gt 4194304){return $false}
+  $temp=$weatherCacheFile+'.tmp'
+  [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
+  # Windows PowerShell 5.1 coerces a null string backup path; use a concrete disposable backup.
+  $backup=$weatherCacheFile+'.bak'
+  if([IO.File]::Exists($weatherCacheFile)){
+   if([IO.File]::Exists($backup)){[IO.File]::Delete($backup)}
+   [IO.File]::Replace($temp,$weatherCacheFile,$backup)
+  }else{[IO.File]::Move($temp,$weatherCacheFile)}
+  return $true
+ }catch{return $false}finally{
+  if($temp -and (Test-Path -LiteralPath $temp)){Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue}
+  if($backup -and (Test-Path -LiteralPath $weatherCacheFile) -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue}
+ }
+}
+function Get-TTWeatherRemote([string]$url,[string]$modified=''){
+ # Fixed provider URLs only; bounded reads and no credentials or classroom data.
+ $req=[Net.HttpWebRequest]::Create($url);$req.Method='GET';$req.Timeout=4000;$req.ReadWriteTimeout=4000
+ $req.UserAgent='HOJA-Board/1.66.5 (contact: xkdtndbrwk111@gmail.com)'
+ $req.AutomaticDecompression=[Net.DecompressionMethods]::GZip -bor [Net.DecompressionMethods]::Deflate
+ if($modified){try{$req.IfModifiedSince=[datetime]::Parse($modified,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::AdjustToUniversal)}catch{}}
+ $res=$null
+ try{try{$res=$req.GetResponse()}catch [Net.WebException]{if($_.Exception.Response){$res=$_.Exception.Response}else{throw}}
+  $status=[int]$res.StatusCode;$expires=[long]0;$retry=[long]0
+  try{$expires=([DateTimeOffset]::Parse($res.Headers['Expires'])).ToUnixTimeMilliseconds()}catch{}
+  $ra=$res.Headers['Retry-After'];if($ra){try{$retry=([DateTimeOffset]::UtcNow.AddSeconds([double]$ra)).ToUnixTimeMilliseconds()}catch{try{$retry=([DateTimeOffset]::Parse($ra)).ToUnixTimeMilliseconds()}catch{}}}
+  $raw=$null
+  if($status -in 200,203){
+   $stream=$res.GetResponseStream();$mem=[IO.MemoryStream]::new();$watch=[Diagnostics.Stopwatch]::StartNew();$buf=New-Object byte[] 16384
+   try{while(($n=$stream.Read($buf,0,$buf.Length)) -gt 0){if($watch.Elapsed.TotalSeconds -gt 5 -or $mem.Length+$n -gt 2097152){throw 'Weather response limit'};$mem.Write($buf,0,$n)};$raw=[Text.Encoding]::UTF8.GetString($mem.ToArray())|ConvertFrom-Json}finally{$stream.Dispose();$mem.Dispose()}
+  }
+  return [pscustomobject]@{status=$status;data=$raw;expires=$expires;retry=$retry;modified=[string]$res.Headers['Last-Modified']}
+ }finally{if($res){$res.Dispose()}}
+}
+function Convert-TTMetCode([string]$symbol){
+ if(-not $symbol){return $null}
+ $s=$symbol -replace '_(day|night|polartwilight)$',''
+ if($s -match 'thunder'){return 95};if($s -match 'sleet'){return 66};if($s -match 'snow'){if($s -match 'heavy'){return 75};return 71}
+ if($s -match 'rain'){if($s -match 'heavy'){return 65};if($s -match 'light'){return 61};return 63}
+ switch($s){'clearsky'{return 0};'fair'{return 1};'partlycloudy'{return 2};'cloudy'{return 3};'fog'{return 45};default{return $null}}
+}
+function Convert-TTMetForecast($raw,[long]$now){
+ $series=@($raw.properties.timeseries);if($series.Count -lt 2){throw 'Invalid MET response'}
+ $local=[DateTimeOffset]::FromUnixTimeMilliseconds($now).ToOffset([timespan]::FromHours(9));$today=$local.ToString('yyyy-MM-dd');$points=@()
+ foreach($point in $series){
+  $t=([DateTimeOffset]::Parse([string]$point.time)).ToOffset([timespan]::FromHours(9));$instant=$point.data.instant.details
+  if($null -eq $instant.air_temperature){continue}
+  $one=$point.data.next_1_hours;$six=$point.data.next_6_hours;$twelve=$point.data.next_12_hours
+  $part=if($one){$one}elseif($six){$six}else{$twelve}
+  $prob=$null;if($one -and $null -ne $one.details.probability_of_precipitation){$prob=$one.details.probability_of_precipitation}
+  $code=Convert-TTMetCode $part.summary.symbol_code
+  $wind=$null;if($null -ne $instant.wind_speed){$wind=[math]::Round([double]$instant.wind_speed*3.6,1)}
+  $points+= [pscustomobject]@{time=$t.ToString('yyyy-MM-ddTHH:mm');stamp=$t.ToUnixTimeMilliseconds();temp=[double]$instant.air_temperature;code=$code;wind=$wind;rain=$prob;precip=$one.details.precipitation_amount;min=$six.details.air_temperature_min;max=$six.details.air_temperature_max;sixRain=$six.details.probability_of_precipitation}
+ }
+ $current=@($points|Where-Object {$_.stamp -le $now}|Select-Object -Last 1)[0];if(-not $current){$current=$points[0]}
+ if(-not $current -or [math]::Abs($current.stamp-$now) -gt 21600000){throw 'MET forecast is out of date'}
+ $hourly=@($points|Where-Object {$_.stamp -ge ($now-3600000) -and $_.stamp -lt ($now+43200000)})
+ $daily=@(foreach($i in 0..4){$day=$local.AddDays($i).ToString('yyyy-MM-dd');$items=@($points|Where-Object {$_.time.StartsWith($day)});if(-not $items.Count){continue}
+  $temps=@($items|ForEach-Object {$_.temp});$codes=@($items|Where-Object {$null -ne $_.code});$rains=@($items|ForEach-Object {$_.rain;$_.sixRain}|Where-Object {$null -ne $_})
+  # Daily extrema and probability are derived from available samples, not official daily values.
+  $mx=($temps|Measure-Object -Maximum).Maximum;$mn=($temps|Measure-Object -Minimum).Minimum
+  $dc=$null;if($codes.Count){$dc=($codes|Sort-Object code -Descending|Select-Object -First 1).code}
+  $rp=$null;if($rains.Count){$rp=[math]::Round(($rains|Measure-Object -Maximum).Maximum)}
+  [pscustomobject]@{time=$day;max=$mx;min=$mn;code=$dc;rain=$rp}
+ })
+ if(-not $daily.Count){throw 'MET daily forecast missing'}
+ return [pscustomobject]@{current=@{time=$current.time;temperature_2m=$current.temp;weather_code=$current.code;wind_speed_10m=$current.wind;precipitation=$current.precip};hourly=@{time=@($hourly|ForEach-Object {$_.time});temperature_2m=@($hourly|ForEach-Object {$_.temp});weather_code=@($hourly|ForEach-Object {$_.code});precipitation_probability=@($hourly|ForEach-Object {$_.rain})};daily=@{time=@($daily|ForEach-Object {$_.time});temperature_2m_max=@($daily|ForEach-Object {$_.max});temperature_2m_min=@($daily|ForEach-Object {$_.min});weather_code=@($daily|ForEach-Object {$_.code});precipitation_probability_max=@($daily|ForEach-Object {$_.rain})}}
+}
+function Test-TTForecast($w){return ($null -ne $w.current.temperature_2m -and $null -ne $w.current.weather_code -and $null -ne $w.daily.time -and $w.daily.time.Count -gt 0 -and $w.daily.temperature_2m_max.Count -eq $w.daily.time.Count -and $w.daily.temperature_2m_min.Count -eq $w.daily.time.Count -and $w.daily.weather_code.Count -eq $w.daily.time.Count -and $w.hourly.time.Count -gt 0 -and $w.hourly.temperature_2m.Count -eq $w.hourly.time.Count -and $w.hourly.weather_code.Count -eq $w.hourly.time.Count)}
+function Test-TTAir($a){return ($null -ne $a.current -and ($null -ne $a.current.pm10 -or $null -ne $a.current.pm2_5) -and $a.hourly.time.Count -gt 0 -and $a.hourly.pm10.Count -eq $a.hourly.time.Count -and $a.hourly.pm2_5.Count -eq $a.hourly.time.Count)}
+function Get-TTWeather([bool]$fresh,[bool]$allowMet=$false){
+ try{$p=Get-TTWeatherPlace}catch{throw ('TT_WEATHER_LOCATION:'+ $_.Exception.Message)}
+ $inv=[Globalization.CultureInfo]::InvariantCulture
+ $lat=([math]::Truncate([double]$p.lat*10000)/10000).ToString('0.0000',$inv);$lon=([math]::Truncate([double]$p.lon*10000)/10000).ToString('0.0000',$inv)
+ $id="$lat,$lon";$now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$store=Get-TTWeatherStore
+ if(-not $store.ContainsKey($id)){$store[$id]=[pscustomobject]@{weather=$null;air=$null;met=$null;primaryNext=[long]0;airNext=[long]0;metNext=[long]0}}
+ $c=$store[$id];$dirty=$false
+ foreach($key in @($store.Keys)){if($key -eq $id){continue};$old=$store[$key];$last=[math]::Max([long]$old.metNext,[math]::Max([long]$old.weather.at,[long]$old.air.at));if($now-$last -gt 86400000){$store.Remove($key);$dirty=$true}}
+ # A user refresh may bypass the half-hour TTL but never a failed-request backoff or MET interval.
+ if($now -ge [long]$c.primaryNext -and ($fresh -or -not $c.weather -or $now-[long]$c.weather.at -ge 1800000)){
+  $c.primaryNext=$now+300000;$dirty=$true
+  try{$r=Get-TTWeatherRemote "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5"
+   $c.primaryNext=[math]::Max([long]$c.primaryNext,[long]$r.retry)
+   if($r.status -eq 200 -and (Test-TTForecast $r.data)){$c.weather=[pscustomobject]@{data=$r.data;at=$now};$c.primaryNext=0}
+   elseif($c.weather){$c.weather|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}
+  }catch{if($c.weather){$c.weather|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}}
+ }
+ $w=$null;$at=0;$source='';$stale=$false
+ if($c.weather -and $now-[long]$c.weather.at -lt 1800000 -and -not $c.weather.attemptFailed){$w=$c.weather.data;$at=$c.weather.at;$source='Open-Meteo'}
+ if(-not $w -and $allowMet){
+  if($now -ge [long]$c.metNext -and ($store.Count -le 12 -or $c.met)){
+   # Persist the retry floor BEFORE the request, including on failure/restart.
+   $c.metNext=$now+10800000;$saved=Save-TTWeatherStore;$dirty=$true
+   try{if(-not $saved){throw 'Cannot persist MET request interval'};$r=Get-TTWeatherRemote "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$lat&lon=$lon" ([string]$c.met.modified)
+    $c.metNext=[math]::Max([long]$c.metNext,[math]::Max([long]$r.expires,[long]$r.retry))
+    if($r.status -eq 304 -and $c.met){$c.met.at=$now}
+    elseif($r.status -in 200,203){$null=Convert-TTMetForecast $r.data $now;$c.met=[pscustomobject]@{data=$r.data;at=$now;modified=$r.modified;deprecated=($r.status -eq 203)}}
+   }catch{}
+  }
+  if($c.met -and $now-[long]$c.met.at -lt 86400000){try{$w=Convert-TTMetForecast $c.met.data $now;$at=$c.met.at;$source='MET Norway';$stale=($now-[long]$at -ge 21600000)}catch{}}
+ }
+ if(-not $w -and $c.weather -and $now-[long]$c.weather.at -lt 86400000){$w=$c.weather.data;$at=$c.weather.at;$source='Open-Meteo';$stale=$true}
+ # Independent air-quality lookup, even if both weather providers fail.
+ if($now -ge [long]$c.airNext -and ($fresh -or -not $c.air -or $now-[long]$c.air.at -ge 1800000)){
+  $c.airNext=$now+300000;$dirty=$true
+  try{$r=Get-TTWeatherRemote "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5"
+   $c.airNext=[math]::Max([long]$c.airNext,[long]$r.retry)
+   if($r.status -eq 200 -and (Test-TTAir $r.data)){$c.air=[pscustomobject]@{data=$r.data;at=$now};$c.airNext=0}
+   elseif($c.air){$c.air|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}
+  }catch{if($c.air){$c.air|Add-Member -NotePropertyName attemptFailed -NotePropertyValue $true -Force}}
+ }
+ if($dirty){$null=Save-TTWeatherStore}
+ $a=$null;$airAt=0;$airStale=$false
+ if($c.air -and $now-[long]$c.air.at -lt 86400000){$a=$c.air.data;$airAt=$c.air.at;$airStale=($now-[long]$airAt -ge 1800000 -or $c.air.attemptFailed)}
+ if(-not $w -and -not $a){throw 'TT_WEATHER_FORECAST_UNAVAILABLE'}
+ return (ConvertTo-Json -Depth 16 -Compress @{place=@{name=[string]$p.name;lat=[double]$p.lat;lon=[double]$p.lon};weather=$w;air=$a;at=$at;source=$source;stale=$stale;airAt=$airAt;airStale=$airStale;metDeprecated=($source -eq 'MET Norway' -and $c.met.deprecated)})
 }
 function Fetch-NeisRows([string]$endpoint,[string]$query){
  $url="https://open.neis.go.kr/hub/${endpoint}?Type=json&pSize=100&ATPT_OFCDC_SC_CODE=$($script:school.office)&SD_SCHUL_CODE=$($script:school.code)&$query"
@@ -826,7 +943,7 @@ $script:updateApproveToken=[guid]::NewGuid().ToString('N')
         [IO.File]::WriteAllText($weatherPlaceFile,(ConvertTo-Json -Compress $p),(New-Object Text.UTF8Encoding($false)))
        }else{throw 'Invalid place.'}
        $script:weatherCache=$null;$body='{"ok":true}'
-      }elseif($path -eq '/api/weather'){$body=Get-TTWeather ($uri.Query -match 'fresh=1')}
+      }elseif($path -eq '/api/weather'){$body=Get-TTWeather ($uri.Query -match '(?:^\?|&)fresh=1(?:&|$)') ($uri.Query -match '(?:^\?|&)met=1(?:&|$)')}
       else{$status='404 Not Found';$body='{"error":"none"}'}
      }catch{
       $status='502 Bad Gateway';$why=[string]$_.Exception.Message

@@ -1,0 +1,57 @@
+name: R8 native Windows verification
+on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/r8-publisher/test-native-*','.github/workflows/r8-native-windows.yml']
+  push:
+    branches: [main]
+    paths: ['runtime-src/system/**','tools/r8-publisher/test-native-*','.github/workflows/r8-native-windows.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 734e494fad3c81033a786b4b7a5acc5c3ebcd424
+          path: reviewed-kernel
+          persist-credentials: false
+          sparse-checkout: tools/r8-updater/runtime
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 211351456b7b8895e660537cdf9782a124b3a847
+          path: first-seed
+          persist-credentials: false
+      - name: Restore bootstrap bytes and build exact native source
+        shell: pwsh
+        run: |
+          python -c "import pathlib,subprocess; root=pathlib.Path('reviewed-kernel'); paths=['tools/r8-updater/runtime/r8-kernel.ps1','tools/r8-updater/runtime/launch.ps1']; [(root/p).write_bytes(subprocess.check_output(['git','-C',str(root),'show','734e494fad3c81033a786b4b7a5acc5c3ebcd424:'+p])) for p in paths]"
+          if ($LASTEXITCODE -ne 0) { throw 'Exact bootstrap extraction failed' }
+          python tools/r8-publisher/validate.py extract first-seed/R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip "$env:RUNNER_TEMP/seed" 818c82c9e8a3ea7ed3cf9c8afef69c8b48ac5fcfe67848d5421ee36bb347235c
+          if ($LASTEXITCODE -ne 0) { throw 'Seed verification failed' }
+          python tools/r8-publisher/source-build.py build runtime-src/system stable/runtime-v1/latest.json "$env:RUNNER_TEMP/candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+      - name: Program script syntax and weather backend
+        shell: powershell
+        run: |
+          Get-ChildItem runtime-src/system -Filter *.ps1 | ForEach-Object {
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($errors|Out-String)}
+          }
+          & tools/r8-publisher/test-native-weather.ps1 -Server "$pwd/runtime-src/system/server.ps1"
+          if(-not $?) {throw 'Weather test failed'}
+      - name: Exact-file interruption and rollback
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-native-transaction.ps1 -Kernel "$pwd/reviewed-kernel/tools/r8-updater/runtime/r8-kernel.ps1" -Seed "$env:RUNNER_TEMP/seed" -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Rollback test failed'}
+      - name: Actual board window and local signed HTTP update
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-native-launch.ps1 -KernelDir "$pwd/reviewed-kernel/tools/r8-updater/runtime" -Seed "$env:RUNNER_TEMP/seed" -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Launcher test failed'}
