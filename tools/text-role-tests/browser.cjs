@@ -13,6 +13,7 @@ const results=await page.evaluate(async()=>{
 const api=window.ttTextRoles,b=document.body,results=[],wait=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 const color=c=>{if(c.startsWith('#'))return c;const m=c.match(/\d+/g);return '#'+m.slice(0,3).map(x=>(+x).toString(16).padStart(2,'0')).join('')};
 function verify(name,fg,bg){const ratio=api.ratio(color(fg),color(bg));if(ratio<4.5-.00001)throw Error(name+' contrast '+ratio+' '+fg+' / '+bg);results.push({name,ratio:Math.round(ratio*100)/100})}
+b.classList.remove('tt-scene-glass');await wait();
 const settings=document.getElementById('settings');if(!settings.open)settings.showModal();
 const privacy=settings.querySelector('#ttPrivacySection')||settings;
 const links=[...privacy.querySelectorAll('a')];if(!links.some(a=>a.textContent.includes('CC BY')||a.textContent.includes('MET Norway')))throw Error('Real privacy links not found');
@@ -29,7 +30,7 @@ for(const t of ['dark','sky','pink','green','black']){
  await wait();checks(t,[getComputedStyle(settings).backgroundColor]);
 }
 for(const [tag,bg,panel,modal,text,accent] of [['bad-light','#eeeeee','#ffffff','#f1f1f1','#e7e7e7','#f3eab4'],['bad-dark','#111111','#151515','#090909','#171717','#333333'],['mixed','#222222','#dddddd','#272727','#999999','#aaaaaa']]){
- b.dataset.theme='custom';for(const [k,v] of Object.entries({'--bg':bg,'--panel':panel,'--surface':panel,'--tt-modal-panel':modal,'--text':text,'--sub':text,'--accent':accent,'--control':panel,'--current':accent}))b.style.setProperty(k,v);await wait();checks(tag,[modal]);
+ b.classList.remove('tt-scene-glass');b.dataset.theme='custom';for(const [k,v] of Object.entries({'--bg':bg,'--panel':panel,'--surface':panel,'--tt-modal-panel':modal,'--text':text,'--sub':text,'--accent':accent,'--control':panel,'--current':accent}))b.style.setProperty(k,v);await wait();await wait();console.log('custom',tag,'scene',b.classList.contains('tt-scene-glass'),'modal',getComputedStyle(settings).backgroundColor,'role',getComputedStyle(settings).getPropertyValue('--text-primary'),'backing',b.style.getPropertyValue('--tt-ink-modal-primary'),'calc',api.ink(text,[modal]));checks(tag,[modal]);
 }
 b.classList.add('tt-scene-glass');
 for(const [id,rgb] of [['glass-light','240,240,240'],['glass-dark','25,25,25'],['glass-mid','119,119,119']]){
