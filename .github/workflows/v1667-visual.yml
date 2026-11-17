@@ -1,0 +1,21 @@
+name: V1.66.7 unified widget and weather visuals
+on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/ui1667/browser.cjs','.github/workflows/v1667-visual.yml']
+  push:
+    branches: [main, codex/v1667-unified-ui]
+    paths: ['runtime-src/system/**','tools/ui1667/browser.cjs','.github/workflows/v1667-visual.yml']
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-v1667-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-v1667-browser/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-v1667-browser/node_modules node tools/ui1667/browser.cjs
