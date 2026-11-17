@@ -4,7 +4,7 @@ on:
     paths: ['runtime-src/system/**','tools/text-role-tests/browser.cjs','.github/workflows/v1666-browser-contrast.yml']
   push:
     branches: [main, codex/v1666-text-roles]
-    paths: ['tools/text-role-tests/**','.github/workflows/v1666-browser-contrast.yml']
+    paths: ['runtime-src/system/**','tools/text-role-tests/**','.github/workflows/v1666-browser-contrast.yml']
 permissions:
   contents: read
 jobs:
