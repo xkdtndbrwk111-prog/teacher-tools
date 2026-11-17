@@ -1,8 +1,6 @@
 name: V1.66.7 UI consistency and weather animation
 on:
-  push:
-    branches: [codex/v1667-ui-light-weather]
-    paths: ['tools/v1667/**','.github/workflows/v1667-apply.yml']
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:

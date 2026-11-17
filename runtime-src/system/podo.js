@@ -53,14 +53,14 @@ css.textContent=`
 #podoConfetti{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #podoHojaJump{height:240px;width:240px;image-rendering:pixelated;image-rendering:crisp-edges;object-fit:contain}
 /* V1.62.2: dashboard is display-only, click opens teacher-controlled full-size board. */
-.grid>.card.podo-card{padding:0!important;min-height:0!important;min-width:0!important;cursor:pointer;user-select:none;overflow:hidden!important;background:#f6f9fa!important;box-shadow:inset 0 0 0 1px rgba(133,150,159,.34),0 3px 8px rgba(0,0,0,.1)}
+.grid>.card.podo-card{padding:0!important;min-height:0!important;min-width:0!important;cursor:pointer;user-select:none;overflow:hidden!important}
 .grid>.card.podo-card:focus-visible{outline:3px solid #6094c2;outline-offset:2px}
 .podo-card .podo-overview{width:100%;height:100%;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(2px,.4vh,7px);padding:clamp(4px,.7vw,13px);color:var(--text-primary);text-align:center;overflow:hidden}
 .podo-card .podo-overview-full{width:100%;min-width:0;display:flex;flex-direction:column;align-items:center;gap:clamp(1px,.35vh,6px)}
 .podo-card .podo-overview-label{font-size:clamp(11px,1.1vw,18px);font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .podo-card .podo-overview-count{font:900 clamp(18px,2.25vw,37px)/1.05 var(--tt-font,system-ui,sans-serif);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text-primary)}
 .podo-card .podo-overview-count small{font-size:.6em;font-weight:800;color:var(--text-secondary)}
-.podo-card .podo-overview-track{height:clamp(5px,.6vh,10px);width:min(85%,250px);border-radius:16px;background:#dce5e9;overflow:hidden;border:1px solid #cbd5da}
+.podo-card .podo-overview-track{height:clamp(5px,.6vh,10px);width:min(85%,250px);border-radius:16px;background:var(--surface);overflow:hidden;border:1px solid var(--border)}
 .podo-card .podo-overview-track i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ab79c1,#82519f);border-radius:inherit;transition:width .25s}
 .podo-card[data-grape='green'] .podo-overview-track i{background:linear-gradient(90deg,#b9df6d,#6f9f37)}
 .podo-card .podo-overview-caption{max-width:100%;font-size:clamp(9px,.8vw,13px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);font-weight:750}
