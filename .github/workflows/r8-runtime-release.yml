@@ -71,6 +71,9 @@ jobs:
           PAYLOAD_SHA: ${{ inputs.payload_sha }}
         run: |
           $ErrorActionPreference='Stop'
+          # Use the committed bytes, not Windows checkout newline conversion.
+          python -c "import pathlib,subprocess; p=pathlib.Path('stable/runtime-v1/latest.json'); p.write_bytes(subprocess.check_output(['git','show','HEAD:'+p.as_posix()]))"
+          if($LASTEXITCODE -ne 0){throw 'Exact old feed extraction failed'}
           if($env:ARTIFACT_ID -cnotmatch '^[0-9]{1,20}$' -or $env:ARCHIVE_SHA -cnotmatch '^[a-f0-9]{64}$' -or $env:PAYLOAD_SHA -cnotmatch '^[a-f0-9]{64}$'){throw 'Invalid release inputs'}
           if($env:FIRST_PILOT -eq 'true'){
             if((Get-Content -Raw stable/runtime-v1/latest.json | ConvertFrom-Json).status -cne 'unreleased'){throw 'First pilot authorization cannot be reused'}
@@ -129,7 +132,8 @@ jobs:
           dir="$RUNNER_TEMP/r8-signed"
           mkdir -p "$dir"
           gh run download "$GITHUB_RUN_ID" --name r8-signed-release --dir "$dir"
-          test "$(sha256sum stable/runtime-v1/latest.json | cut -d ' ' -f1)" = "$OLD_SHA"
+          actual="$(sha256sum stable/runtime-v1/latest.json | cut -d ' ' -f1)"
+          if [ "$actual" != "$OLD_SHA" ]; then echo "::error::Old feed digest differs from signer ($actual != $OLD_SHA)"; exit 1; fi
           python tools/r8-publisher/validate.py extract "$dir/candidate.zip" "$dir/candidate" "$ARCHIVE_SHA"
           python tools/r8-publisher/validate.py stage "$dir/candidate" "$dir/signature.bin" stable/runtime-v1/latest.json "$PAYLOAD_SHA" stable/runtime-v1
           git add -- stable/runtime-v1/blobs stable/runtime-v1/latest.json
