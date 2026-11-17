@@ -1578,26 +1578,22 @@ function weekViewApply(){
   cells.forEach((cell,i)=>{cell.hidden=one&&i!==0&&i!==col});
  });
  table.querySelectorAll('.tt-subject[data-tt-period]').forEach(el=>{el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label',el.dataset.ttDate+' '+el.textContent+' 과목 수정');el.title=el.textContent+' · 길게 누르거나 더블클릭하여 수정'});
- ttWeekCompactRows(table,compact,col,heads[col]?.classList.contains('today'));
+ ttWeekCompactRows(table,compact,col,one);
  ttWeekFitSoon();
  window.ttFitText?.();
 }
-function ttWeekCompactRows(table,compact,col,today){
- const rows=[...table.tBodies[0].rows].filter(r=>!r.classList.contains('lunch-row'));
- const items=rows.map((r,i)=>({r,n:Number(r.cells[0]?.textContent.match(/\d+/)?.[0]),value:String(lastWeek?.rows[i]?.cells?.[col-1]||'').trim()}));
- let shown=items;
- if(compact){
-  const lessons=items.filter(x=>x.value&&Number.isInteger(x.n)&&periods[x.n-1]);
-  const source=lessons.length?lessons:items;
-  let at=0;
-  if(today&&lessons.length){const now=seoulClock().minute;at=source.findIndex(x=>now<toPeriodMinutes(periods[x.n-1][1]));if(at<0)at=source.length-1;}
-  const start=Math.max(0,Math.min(at-1,source.length-3));shown=source.slice(start,start+3);
+function ttWeekCompactRows(table,compact,col,one){
+  const rows=[...table.tBodies[0].rows].filter(r=>!r.classList.contains('lunch-row'));
+  const items=rows.map((r,i)=>({r,n:Number(String(lastWeek?.rows[i]?.label||'').match(/\d+/)?.[0]),value:String(lastWeek?.rows[i]?.cells?.[col-1]||'').trim()}));
+  // Preserve internal gaps and source row indices. Only remove trailing empty periods in one-day view.
+  // No confirmed lesson is not proof that the day is empty; retain the original rows as a fallback.
+  const last=one?Math.max(0,...items.filter(x=>x.value&&x.value!=='—'&&Number.isInteger(x.n)&&periods[x.n-1]).map(x=>x.n)):0;
+  for(const x of items)x.r.hidden=one&&last>0&&Number.isInteger(x.n)&&x.n>last;
+  // Lunch is independent of whether afternoon lessons exist, including compact day view.
+  table.querySelectorAll('.lunch-row').forEach(r=>{r.hidden=false});
+  table.tHead.hidden=compact;
  }
- const visible=new Set(shown.map(x=>x.r));rows.forEach(r=>{r.hidden=compact&&!visible.has(r)});
- table.querySelectorAll('.lunch-row').forEach(r=>{r.hidden=compact});
- table.tHead.hidden=compact;
-}
-let ttWeekFitFrame=0,ttWeekFitMemo=null;
+ let ttWeekFitFrame=0,ttWeekFitMemo=null;
 function ttWeekFitSoon(){if(!ttWeekFitFrame)ttWeekFitFrame=requestAnimationFrame(()=>{ttWeekFitFrame=0;ttWeekFit()})}
 function ttWeekFit(){
  const box=$('#week'),table=box.querySelector('.schedule');if(!table||!box.clientWidth||!box.clientHeight)return;
@@ -10530,12 +10526,13 @@ body{
 </style>
 
 <style id="tt-media-style">
-#ttMediaDialog{width:min(720px,92vw)!important;height:auto!important;max-width:none!important;max-height:85vh!important;box-sizing:border-box;padding:clamp(8px,1vw,16px)!important;overflow:hidden;background:var(--tt-modal-panel,var(--panel));color:var(--text-primary);font-family:var(--tt-font,system-ui,sans-serif)}
-#ttMediaDialog[open]{display:flex;flex-direction:column;gap:6px} #ttMediaDialog.mm-playing .mm-head{display:none} #ttMediaDialog.mm-playing{width:98vw!important;height:98vh!important;max-height:none!important;padding:4px!important} #ttMediaDialog.mm-config{width:min(900px,94vw)!important;height:auto!important;max-height:88vh!important} #ttMediaDialog.mm-config .mm-stage{overflow:auto} #ttMediaDialog.mm-full{width:100vw!important;height:100vh!important;border-radius:0;margin:auto} #ttMediaDialog .mm-footer-title{font-size:clamp(12px,1vw,18px);font-weight:700;max-width:22vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #ttMediaDialog .mm-foot{gap:6px} #ttMediaDialog.mm-playing .mm-status:empty{display:none}
+#ttMediaDialog{width:min(var(--mm-launch-width,360px),92vw)!important;height:max-content!important;min-height:0!important;max-width:none!important;max-height:85vh!important;position:fixed!important;inset:0!important;margin:auto!important;box-sizing:border-box;padding:clamp(8px,1vw,16px)!important;overflow:hidden;background:var(--tt-modal-panel,var(--panel));color:var(--text-primary);font-family:var(--tt-font,system-ui,sans-serif)}
+#ttMediaDialog[open]{display:flex;flex-direction:column;gap:6px} #ttMediaDialog.mm-playing .mm-head{display:none} #ttMediaDialog.mm-playing{width:98vw!important;height:98vh!important;max-height:none!important;padding:4px!important} #ttMediaDialog.mm-config{width:min(900px,94vw)!important;height:max-content!important;max-height:88vh!important} #ttMediaDialog.mm-config .mm-stage{overflow:auto} #ttMediaDialog.mm-full{width:100vw!important;height:100vh!important;border-radius:0;margin:auto} #ttMediaDialog .mm-footer-title{font-size:clamp(12px,1vw,18px);font-weight:700;max-width:22vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #ttMediaDialog .mm-foot{gap:6px} #ttMediaDialog.mm-playing .mm-status:empty{display:none}
 #ttMediaDialog .mm-head,#ttMediaDialog .mm-foot{display:flex;align-items:center;flex-wrap:wrap;gap:8px;flex:none}
 #ttMediaDialog .mm-head h2{margin:0;flex:1}
 #ttMediaDialog button{min-height:44px;min-width:46px;font:inherit;font-weight:700}
-#ttMediaDialog .mm-stage{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
+#ttMediaDialog .mm-stage{flex:0 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
+#ttMediaDialog.mm-playing .mm-stage{flex:1 1 0}
 #ttMediaDialog .mm-display{flex:1;min-height:0;background:#111;display:grid;place-items:center;overflow:hidden;border-radius:8px}
 #ttMediaDialog .mm-display iframe,#ttMediaDialog .mm-display video{border:0;display:block;width:100%;height:100%;min-height:0;object-fit:contain;background:#111} #ttMediaDialog .mm-display{container-type:size} #ttMediaDialog .mm-display iframe{width:min(100cqw,177.7778cqh);height:min(100cqh,56.25cqw)}
 #ttMediaDialog .mm-foot .mm-actions{display:flex;gap:6px;flex-wrap:wrap;flex:1;align-items:center}
@@ -10611,7 +10608,7 @@ function cleanup(){epoch++;clearTimeout(readyTimer);clearInterval(listenTimer);y
 function reset(v,title,bar=false){cleanup();view=v;heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
 function wrapper(cls){const e=document.createElement('div');e.className=cls;stage.append(e);return e}
 const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'▣',run:()=>showCanva('A'),customize:settings}]);
-function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];
+function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];dialog.style.setProperty('--mm-launch-width',Math.min(720,mediaTools.length*340+20)+'px');
  function select(id,focus=false){for(const card of cards){const on=card.id===id;card.el.classList.toggle('is-flipped',on);card.front.inert=on;card.front.setAttribute('aria-hidden',String(on));card.back.inert=!on;card.back.setAttribute('aria-hidden',String(!on));if(focus&&on)card.run.focus({preventScroll:true})}}
  for(const tool of mediaTools){const el=document.createElement('div');el.className='mm-card';el.dataset.mediaTool=tool.id;const inner=document.createElement('div');inner.className='mm-card-inner';const front=button(tool.name,()=>select(tool.id,true),true);front.classList.add('mm-face','mm-tile');front.setAttribute('aria-label',tool.name);const icon=document.createElement('span');icon.textContent=tool.icon;icon.setAttribute('aria-hidden','true');front.prepend(icon);const back=document.createElement('div');back.className='mm-face mm-back';const head=document.createElement('div');head.className='mm-back-head';const name=document.createElement('span');name.className='mm-back-name';name.textContent=tool.name;const turn=button('↶',()=>{select('');front.focus({preventScroll:true})});turn.setAttribute('aria-label',tool.name+' 카드 되돌리기');const buttons=document.createElement('div');buttons.className='mm-back-actions';const run=button('실행하기',tool.run,true),custom=button('개인화',tool.customize);head.append(name,turn);buttons.append(run,custom);back.append(head,buttons);inner.append(front,back);el.append(inner);w.append(el);cards.push({id:tool.id,el,front,back,run})}
  select(selected);
