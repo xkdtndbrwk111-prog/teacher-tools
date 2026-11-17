@@ -1,0 +1,35 @@
+name: R8 recovery actual Windows launcher pilot test
+on:
+  push:
+    branches: [release/r8-v1.66.4-recovery]
+    paths: ['.github/workflows/r8-recovery-launch.yml','tools/r8-publisher/test-recovery-launch.ps1']
+permissions:
+  contents: read
+jobs:
+  actual-launch:
+    runs-on: windows-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 734e494fad3c81033a786b4b7a5acc5c3ebcd424
+          path: reviewed-kernel
+          persist-credentials: false
+          sparse-checkout: tools/r8-updater/runtime
+      - name: Verify and reconstruct the exact two release snapshots
+        shell: pwsh
+        run: |
+          python tools/r8-publisher/validate.py extract R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip "$env:RUNNER_TEMP/seed" 818c82c9e8a3ea7ed3cf9c8afef69c8b48ac5fcfe67848d5421ee36bb347235c
+          if ($LASTEXITCODE -ne 0) { throw 'Seed verification failed' }
+          python tools/r8-publisher/build-recovery.py R8_V1.66.3_UNSIGNED_RELEASE_CANDIDATE.zip stable/runtime-v1/latest.json "$env:RUNNER_TEMP/candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+          python tools/r8-publisher/validate.py check "$env:RUNNER_TEMP/candidate" stable/runtime-v1/latest.json ac14724ab56093bc1fbc93ec942d7f29074432f916cc56ceefb71684bc894658
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate verification failed' }
+      - name: Run actual launcher in disposable Windows profile
+        shell: powershell
+        run: |
+          & tools/r8-publisher/test-recovery-launch.ps1 -KernelDir "$pwd/reviewed-kernel/tools/r8-updater/runtime" -Seed "$env:RUNNER_TEMP/seed" -Candidate "$env:RUNNER_TEMP/candidate"
+          if(-not $?) {throw 'Launcher test failed'}
