@@ -54,6 +54,19 @@ class PublisherTest(unittest.TestCase):
     def test_wrong_base(self):
         self.manifest['bases']=['a'*64];self.write()
         with self.assertRaises(ValueError):v.validate_candidate(self.candidate,self.old,self.digest)
+    def test_first_1664_requires_reviewed_1663(self):
+        rel=next(f for f in self.files if f['name']=='release.json')
+        old=self.candidate/'blobs'/(rel['sha256']+'.bin')
+        raw=old.read_bytes().replace(b'1.66.3',b'1.66.4')
+        old.unlink()
+        h=v.sha(raw);(self.candidate/'blobs'/(h+'.bin')).write_bytes(raw)
+        rel.update(sha256=h,bytes=len(raw))
+        self.manifest['version']='1.66.4';self.write()
+        with self.assertRaisesRegex(ValueError,'base inventory'):v.validate_candidate(self.candidate,self.old,self.digest)
+        self.manifest['bases']=sorted(v.BASES|{v.REVIEWED_1663});self.write()
+        v.validate_candidate(self.candidate,self.old,self.digest)
+        self.manifest['bases'].append('f'*64);self.write()
+        with self.assertRaisesRegex(ValueError,'base inventory'):v.validate_candidate(self.candidate,self.old,self.digest)
     def test_wrong_approved_digest(self):
         with self.assertRaises(ValueError):v.validate_candidate(self.candidate,self.old,'a'*64)
     def test_archive_and_traversal(self):
