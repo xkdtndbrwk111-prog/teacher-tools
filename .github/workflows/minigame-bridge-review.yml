@@ -1,0 +1,26 @@
+name: Minigame bridge and live deployed page check
+on:
+  push:
+    branches: [codex/minigame-cache-handshake]
+    paths: ['tools/minigame-bridge/**','.github/workflows/minigame-bridge-review.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node --test tools/minigame-bridge/test.cjs
+          python -m py_compile tools/minigame-bridge/patch.py
+          curl --fail --silent --show-error --max-time 30 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=3&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
+          python - <<'PY'
+          import hashlib,pathlib
+          b=pathlib.Path('/tmp/current-minigames.html').read_bytes()
+          for marker in [b'const COIN_SESSION=EMBED?crypto.randomUUID()',b'classId:p.classId',b'txId:p.txId',b"coinPost({type:'hoja-ready'})"]:
+              assert marker in b, marker
+          print('Live Pages protocol V3 confirmed; sha256:',hashlib.sha256(b).hexdigest())
+          PY
