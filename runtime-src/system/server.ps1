@@ -287,9 +287,17 @@ function Save-TTWeatherStore {
   if([Text.Encoding]::UTF8.GetByteCount($json) -gt 4194304){return $false}
   $temp=$weatherCacheFile+'.tmp'
   [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
-  if([IO.File]::Exists($weatherCacheFile)){[IO.File]::Replace($temp,$weatherCacheFile,$null)}else{[IO.File]::Move($temp,$weatherCacheFile)}
+  # Windows PowerShell 5.1 coerces a null string backup path; use a concrete disposable backup.
+  $backup=$weatherCacheFile+'.bak'
+  if([IO.File]::Exists($weatherCacheFile)){
+   if([IO.File]::Exists($backup)){[IO.File]::Delete($backup)}
+   [IO.File]::Replace($temp,$weatherCacheFile,$backup)
+  }else{[IO.File]::Move($temp,$weatherCacheFile)}
   return $true
- }catch{return $false}finally{if($temp -and (Test-Path -LiteralPath $temp)){Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue}}
+ }catch{return $false}finally{
+  if($temp -and (Test-Path -LiteralPath $temp)){Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue}
+  if($backup -and (Test-Path -LiteralPath $weatherCacheFile) -and (Test-Path -LiteralPath $backup)){Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue}
+ }
 }
 function Get-TTWeatherRemote([string]$url,[string]$modified=''){
  # Fixed provider URLs only; bounded reads and no credentials or classroom data.

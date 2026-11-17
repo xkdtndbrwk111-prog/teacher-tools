@@ -35,9 +35,8 @@ try {
  $a=Get-TTWeather $true $false|ConvertFrom-Json
  Check ($a.source -eq 'Open-Meteo' -and $a.stale -and -not @($script:calls|Where-Object {$_ -like 'https://api.met.no/*'}).Count) 'no MET without consent; cached primary marked stale'
  $probe=Convert-TTMetForecast $met ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());Check ($probe.current.temperature_2m -ne $null) 'MET converter direct sample'
- $persist=Save-TTWeatherStore;Write-Host ('Persistent cache repeated write: '+$persist)
+ Check (Save-TTWeatherStore) 'persistent cache repeated atomic write'
  $a=Get-TTWeather $true $true|ConvertFrom-Json
- Write-Host ('Fallback diagnostic: source='+$a.source+' calls='+($script:calls -join ',')+' store='+((Get-TTWeatherStore)|ConvertTo-Json -Compress -Depth 3))
  Check ($a.source -eq 'MET Norway' -and $a.weather.current.temperature_2m -ne $null) 'consent enables failover'
  $script:calls=@();$script:weatherStore=$null
  $a=Get-TTWeather $true $true|ConvertFrom-Json
