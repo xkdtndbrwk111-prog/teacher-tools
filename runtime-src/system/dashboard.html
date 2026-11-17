@@ -2935,14 +2935,15 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
  vol.innerHTML='<span class="spk-mute" aria-label="음소거">🔊</span><span class="spk-track"><i></i></span><b class="spk-num">–</b>';
  btn.before(wrap);wrap.append(vol,btn);
  const fill=vol.querySelector('.spk-track i'),num=vol.querySelector('.spk-num'),mute=vol.querySelector('.spk-mute'),track=vol.querySelector('.spk-track');
- let level=null,muted=false,ok=true,sendTimer=0,pending=null;
+ let level=null,muted=false,ok=true,sendTimer=0,pending=null,writing=false,revision=0,readSequence=0;
  function draw(){
   const v=level===null?0:level;fill.style.width=v+'%';vol.style.setProperty('--tt-volume-fill',v+'%');vol.setAttribute('aria-orientation',wrap.closest('[data-tools-direction]')?.dataset.toolsDirection||'horizontal');num.textContent=level===null?'–':muted?'끔':String(v);
   mute.textContent=muted||v===0?'🔇':v<40?'🔉':'🔊';vol.setAttribute('aria-valuenow',String(v));vol.classList.toggle('is-muted',muted);vol.classList.toggle('is-off',!ok);window.dispatchEvent(new CustomEvent('tt-system-volume',{detail:{level,muted,ok}}));
  }
  const encode=o=>btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(o))));
- async function read(){try{const r=await fetch('/api/volume',{cache:'no-store'});const d=await r.json();if(!r.ok||d.error)throw Error(d.error||'read');level=Math.round(d.level);muted=!!d.muted;ok=true}catch{ok=false}draw()}
- function send(o){pending={...pending,...o};if(sendTimer)return;sendTimer=setTimeout(async()=>{const body=pending;pending=null;sendTimer=0;try{await fetch('/api/volume',{method:'POST',headers:{'Content-Type':'text/plain'},body:encode(body)})}catch{}},120)}
+ async function read(){if(pending||writing)return;const rev=revision,seq=++readSequence;const current=()=>rev===revision&&seq===readSequence&&!pending&&!writing;try{const r=await fetch('/api/volume',{cache:'no-store'});const d=await r.json();if(!r.ok||d.error)throw Error(d.error||'read');if(!current())return;level=Math.round(d.level);muted=!!d.muted;ok=true}catch{if(!current())return;ok=false}draw()}
+ function scheduleSend(){if(sendTimer||writing||!pending)return;sendTimer=setTimeout(async()=>{const body=pending;pending=null;sendTimer=0;writing=true;try{await fetch('/api/volume',{method:'POST',headers:{'Content-Type':'text/plain'},body:encode(body)})}catch{}finally{writing=false;scheduleSend()}},120)}
+ function send(o){revision++;pending={...pending,...o};scheduleSend()}
  window.ttReadVolume=read;window.ttSystemVolume={read,get:()=>({level,muted,ok}),set(o){if(!ok||level===null)return;if(Number.isFinite(o.level))level=Math.max(0,Math.min(100,Math.round(o.level)));if(typeof o.muted==='boolean')muted=o.muted;draw();send({level,muted})}};
  let drag=null;
  const vertical=()=>wrap.closest('[data-tools-direction]')?.dataset.toolsDirection==='vertical';
