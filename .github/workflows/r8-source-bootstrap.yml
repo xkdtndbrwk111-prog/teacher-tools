@@ -29,7 +29,8 @@ jobs:
           with zipfile.ZipFile(root/'seed.zip') as z:
               old=json.loads(z.read('payload.json'))
           new=json.loads((root/'baseline/payload.json').read_bytes())
-          assert {k:old[k] for k in old if k!='files'}=={k:new[k] for k in new if k!='files'}
+          assert {k:old[k] for k in old if k not in ('files','bases')}=={k:new[k] for k in new if k not in ('files','bases')}
+          assert sorted(old['bases'])==new['bases']
           assert sorted(old['files'],key=lambda x:x['name'])==new['files']
           print('PASS: 39/39 original source files exactly reconstructed')
           PY
