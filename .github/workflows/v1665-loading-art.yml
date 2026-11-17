@@ -1,0 +1,31 @@
+name: Retrieve existing official loading portraits
+on:
+  push:
+    branches: [codex/v1665-loading-art]
+    paths: ['.github/workflows/v1665-loading-art.yml']
+permissions:
+  contents: read
+jobs:
+  official-portraits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: xkdtndbrwk111-prog/hoja-minigames
+          ref: 497e8a1ad8ed5ce86bcf51b6cbc744282e9a0aa2
+          persist-credentials: false
+          sparse-checkout: src/assets/images/core/portraits
+      - run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/portraits"
+          cd src/assets/images/core/portraits
+          test "$(git hash-object hoja_09_sparkling.webp)" = e3e980d227db901b244130b46eed5a7c976dd1dd
+          test "$(git hash-object nahansang_09_sparkling.webp)" = 12ab0459b228ea9da8119242e0d11e76d067d8cd
+          cp hoja_09_sparkling.webp nahansang_09_sparkling.webp "$RUNNER_TEMP/portraits/"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: official-loading-portraits
+          path: ${{ runner.temp }}/portraits/
+          if-no-files-found: error
+          retention-days: 7
