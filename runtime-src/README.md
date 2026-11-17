@@ -20,3 +20,6 @@ Dashboard widgets inherit the common panel and text roles, including checklist a
 
 ## V1.66.7 owner operational pilot
 Exact source/manifest and prior signed V1.66.6 inventory required, five successful main CI checks (source builder includes publisher tests), actual physical classroom visual checks pending. Owner requested release. Ordinary field gate unchanged. No manual ZIP.
+
+## V1.66.8 education activities
+Imported NEIS and weekly schedule sources have distinct labels. The date editor shows existing imported rows and local editable text. Hide/restore modifies only scoped local calendar presentation; identity includes school, grade/class, source, weekly sheet, date and exact trimmed name. Full backup includes the local hidden list; settings-only does not. Signed feed remains unchanged until candidate testing and release approval.
