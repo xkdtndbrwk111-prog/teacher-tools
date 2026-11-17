@@ -20,12 +20,12 @@ pat=re.compile(r'(?<![\w-])font\s*:\s*([^;{}]*?)\s+(?:"Malgun Gothic","Apple SD 
 def fontfix(t):return pat.sub(lambda m:'font:'+m.group(1)+' var(--tt-font,system-ui,sans-serif)',t)
 s=fontfix(s)
 # Build light direction from existing sky calculation, only once per minute / weather change.
-change("state:()=>{const p=pal(season);return","light:()=>{const now=seoulNow(),G=geo(),b=bodies(utcMs(now.date,now.minute),G);return {sun:b.sun,moon:b.moon,illum:b.illum,weather:window.ttWeather?.stale||window.ttWeather?.cur?.code==null?'unknown':weatherKind(),minute:now.date+'-'+now.minute}},\n state:()=>{const p=pal(season);return")
+change("state:()=>{const p=pal(season);return","light:()=>{const now=seoulNow(),p=pal(season),b=p.body;return {sun:b.sun,moon:b.moon,illum:b.illum,weather:window.ttWeather?.stale||window.ttWeather?.cur?.code==null?'unknown':weatherKind(),minute:now.date+'-'+now.minute}},\n state:()=>{const p=pal(season);return")
 # Heavy rain has drops touching the bottom edge of the cloud. Separate the exact
 # rain palette on rows 20..21, reconstruct those obscured cloud pixels; rows 22..31
 # belong entirely to precipitation. All untouched cloud pixels remain original.
-change("    const part=(y0,y1)=>{","    const fixedBands={light_rain:24,heavy_rain:22,light_snow:23,heavy_snow:23,sleet:23};\n    if(fixedBands[name])band=fixedBands[name];\n    const part=(y0,y1)=>{")
-change("    if(o.kind==='thunder'){","""    if(name==='heavy_rain'){
+change("   const part=(y0,y1)=>{","    const fixedBands={light_rain:24,heavy_rain:22,light_snow:23,heavy_snow:23,sleet:23};\n    if(fixedBands[name])band=fixedBands[name];\n    const part=(y0,y1)=>{")
+change("   if(o.kind==='thunder'){","""    if(name==='heavy_rain'){
      const top=o.top.getContext('2d'),fall=o.fall.getContext('2d'),tp=top.getImageData(0,0,32,32),fp=fall.getImageData(0,0,32,32);
      for(let y=20;y<22;y++)for(let x=0;x<32;x++){
       const i=(y*32+x)*4,r=d[i],g=d[i+1],b=d[i+2];
