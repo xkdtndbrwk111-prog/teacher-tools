@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "version": "1.66.10",
+  "previous_version": "1.66.9",
+  "previous_payload_sha": "20047d60796719d183f95e9728f21af8621a5a7ebd027fea30febc885b9b2300",
+  "source_sha": "a10a0de5adfe527abf95af5146d5bce0fcb548b3",
+  "artifact_id": 14340700130,
+  "archive_sha": "622e3dcb04f21bff0615864489f8a46074d2e65aa5ce5152d96ebfce46ba57c3",
+  "payload_sha": "76fce63f4c0c8399ccde0c1b009019a56da60b0f31289dbb2391055ea5ae4850",
+  "build_run_id": 44108993509,
+  "windows_run_id": 44108992017,
+  "integration_run_id": 44108992515,
+  "visual_run_id": 44108991707,
+  "contrast_run_id": 44108991800,
+  "education_run_id": 44108992000,
+  "badge_run_id": 44108991961,
+  "multimedia_run_id": 44106342762,
+  "multimedia_pr_sha": "a8e363c9ec71d384751aee1193ecb1fb1a751bf9",
+  "authorization": "Owner explicitly requested V1.66.10 multimedia deployment, 2026-11-17; actual classroom external playback and field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16610_owner_field_test_only"
+}
