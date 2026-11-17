@@ -26,6 +26,10 @@ on:
         required: false
         default: false
         type: boolean
+      owner_pilot_1668:
+        required: false
+        default: false
+        type: boolean
     secrets:
       TT_SIGNING_PFX_B64:
         required: false
@@ -58,7 +62,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   sign:
-    if: github.ref == 'refs/heads/main' && (inputs.field_gate == true || (inputs.first_pilot == true && inputs.field_gate == false && inputs.artifact_id == '14299231514' && inputs.archive_sha == 'b8810ce788b75959e9f020c704b76ccdf251c34540f1fc5d76e31307687aa47e' && inputs.payload_sha == 'c3d60c5401579adc3d1e5500979c7a3ef2cc1c827e3ed8a76965fd1c4b89e0d6') || (inputs.owner_pilot_1666 == true && inputs.field_gate == false && inputs.first_pilot != true && inputs.artifact_id == '14307406730' && inputs.archive_sha == '0f9ef84d6d60a9972857710abdf450b2cb95b33d86cb96229a74ff6d28c7c8ef' && inputs.payload_sha == '49152598c67a70055afe007c9aeeb22106839bd8101bdd56dbac38b6a84f4365') || (inputs.owner_pilot_1667 == true && inputs.field_gate == false && inputs.first_pilot != true && inputs.owner_pilot_1666 != true && inputs.artifact_id == '14308925891' && inputs.archive_sha == '309a5ec31b3be25de0ca0f5ff0567ec705fa3ce3555661d2d3fd73d59f79cf25' && inputs.payload_sha == 'b65f12a4fc5f97c8df0e09835596890136cdef66ea095a220aacec9311fb56be'))
+    if: github.ref == 'refs/heads/main' && (inputs.field_gate == true || (inputs.first_pilot == true && inputs.field_gate == false && inputs.artifact_id == '14299231514' && inputs.archive_sha == 'b8810ce788b75959e9f020c704b76ccdf251c34540f1fc5d76e31307687aa47e' && inputs.payload_sha == 'c3d60c5401579adc3d1e5500979c7a3ef2cc1c827e3ed8a76965fd1c4b89e0d6') || (inputs.owner_pilot_1666 == true && inputs.field_gate == false && inputs.first_pilot != true && inputs.artifact_id == '14307406730' && inputs.archive_sha == '0f9ef84d6d60a9972857710abdf450b2cb95b33d86cb96229a74ff6d28c7c8ef' && inputs.payload_sha == '49152598c67a70055afe007c9aeeb22106839bd8101bdd56dbac38b6a84f4365') || (inputs.owner_pilot_1667 == true && inputs.field_gate == false && inputs.first_pilot != true && inputs.owner_pilot_1666 != true && inputs.artifact_id == '14308925891' && inputs.archive_sha == '309a5ec31b3be25de0ca0f5ff0567ec705fa3ce3555661d2d3fd73d59f79cf25' && inputs.payload_sha == 'b65f12a4fc5f97c8df0e09835596890136cdef66ea095a220aacec9311fb56be') || (inputs.owner_pilot_1668 == true && inputs.field_gate == false && inputs.first_pilot != true && inputs.owner_pilot_1666 != true && inputs.owner_pilot_1667 != true && inputs.artifact_id == '14309515704' && inputs.archive_sha == '9933e29c1e20f4381090ca30ad86061b8662991791f5cdff8b38e8240c35cd95' && inputs.payload_sha == '70fec73cd236fd31e5570e32ef7de4dab45ed9b1ec543356632f6efa9d8eb96b'))
     runs-on: windows-latest
     environment: teacher-tools-signing
     timeout-minutes: 10
@@ -76,6 +80,7 @@ jobs:
           FIRST_PILOT: ${{ inputs.first_pilot }}
           OWNER_PILOT_1666: ${{ inputs.owner_pilot_1666 }}
           OWNER_PILOT_1667: ${{ inputs.owner_pilot_1667 }}
+          OWNER_PILOT_1668: ${{ inputs.owner_pilot_1668 }}
           ARTIFACT_ID: ${{ inputs.artifact_id }}
           ARCHIVE_SHA: ${{ inputs.archive_sha }}
           PAYLOAD_SHA: ${{ inputs.payload_sha }}
@@ -98,6 +103,11 @@ jobs:
             if($env:ARTIFACT_ID -cne '14308925891' -or $env:ARCHIVE_SHA -cne '309a5ec31b3be25de0ca0f5ff0567ec705fa3ce3555661d2d3fd73d59f79cf25' -or $env:PAYLOAD_SHA -cne 'b65f12a4fc5f97c8df0e09835596890136cdef66ea095a220aacec9311fb56be'){throw 'Exact V1.66.7 pilot candidate required'}
             python -c "import sys,pathlib,hashlib,json; sys.path.insert(0,'tools/r8-publisher'); import validate as v; b=v.decode_feed(pathlib.Path('stable/runtime-v1/latest.json').read_bytes()); assert hashlib.sha256(b).hexdigest()=='49152598c67a70055afe007c9aeeb22106839bd8101bdd56dbac38b6a84f4365' and json.loads(b)['version']=='1.66.6','Pilot previous feed mismatch'"
             if($LASTEXITCODE -ne 0){throw 'V1.66.7 pilot requires the exact signed V1.66.6 live feed'}
+          }
+          if($env:OWNER_PILOT_1668 -eq 'true'){
+            if($env:ARTIFACT_ID -cne '14309515704' -or $env:ARCHIVE_SHA -cne '9933e29c1e20f4381090ca30ad86061b8662991791f5cdff8b38e8240c35cd95' -or $env:PAYLOAD_SHA -cne '70fec73cd236fd31e5570e32ef7de4dab45ed9b1ec543356632f6efa9d8eb96b'){throw 'Exact V1.66.8 pilot candidate required'}
+            python -c "import sys,pathlib,hashlib,json; sys.path.insert(0,'tools/r8-publisher'); import validate as v; b=v.decode_feed(pathlib.Path('stable/runtime-v1/latest.json').read_bytes()); assert hashlib.sha256(b).hexdigest()=='b65f12a4fc5f97c8df0e09835596890136cdef66ea095a220aacec9311fb56be' and json.loads(b)['version']=='1.66.7','Pilot previous feed mismatch'"
+            if($LASTEXITCODE -ne 0){throw 'V1.66.8 pilot requires the exact signed V1.66.7 live feed'}
           }
           $dir=Join-Path $env:RUNNER_TEMP 'r8-release'
           New-Item -ItemType Directory $dir | Out-Null
