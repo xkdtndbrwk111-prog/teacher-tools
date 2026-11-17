@@ -19,6 +19,11 @@ jobs:
           path: reviewed-kernel
           persist-credentials: false
           sparse-checkout: tools/r8-updater/runtime
+      - name: Restore exact committed bootstrap bytes (no checkout newline conversion)
+        shell: pwsh
+        run: |
+          python -c "import pathlib,subprocess; root=pathlib.Path('reviewed-kernel'); paths=['tools/r8-updater/runtime/r8-kernel.ps1','tools/r8-updater/runtime/launch.ps1']; [(root/p).write_bytes(subprocess.check_output(['git','-C',str(root),'show','734e494fad3c81033a786b4b7a5acc5c3ebcd424:'+p])) for p in paths]"
+          if ($LASTEXITCODE -ne 0) { throw 'Exact Git blob extraction failed' }
       - name: Verify and reconstruct the exact two release snapshots
         shell: pwsh
         run: |
