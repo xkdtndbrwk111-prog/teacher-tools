@@ -26,3 +26,4 @@ finally{
  if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
  Remove-Item Env:TT_PFX,Env:TT_PASSWORD -ErrorAction SilentlyContinue
 }
+exit 0

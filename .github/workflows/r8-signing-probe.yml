@@ -2,7 +2,7 @@ name: R8 production-key signing probe (no install)
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/r8-signing-probe.yml']
+    paths: ['.github/workflows/r8-signing-probe.yml','tools/r8-publisher/sign.ps1']
   workflow_dispatch:
 permissions:
   contents: read
