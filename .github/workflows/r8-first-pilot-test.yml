@@ -1,0 +1,19 @@
+name: R8 first pilot authorization self-test
+on:
+  pull_request:
+    paths: ['tools/r8-publisher/check-first-pilot.py','tools/r8-publisher/test-first-pilot.py','.github/workflows/r8-first-pilot*.yml','.github/workflows/r8-runtime-release.yml','runtime-src/first-pilot-approval.json']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python tools/r8-publisher/test-first-pilot.py -v
+      - run: python tools/r8-publisher/test-approval.py -v
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/r8-publisher/check-first-pilot.py
