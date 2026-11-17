@@ -18,6 +18,11 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      TT_SIGNING_PFX_B64:
+        required: false
+      TT_SIGNING_PFX_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       artifact_id:

@@ -32,6 +32,9 @@ jobs:
       actions: read
       pages: write
     uses: ./.github/workflows/r8-runtime-release.yml
+    secrets:
+      TT_SIGNING_PFX_B64: ${{ secrets.TT_SIGNING_PFX_B64 }}
+      TT_SIGNING_PFX_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
     with:
       artifact_id: ${{ needs.verify-pilot.outputs.artifact_id }}
       archive_sha: ${{ needs.verify-pilot.outputs.archive_sha }}
