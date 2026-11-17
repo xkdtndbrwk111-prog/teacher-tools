@@ -1,0 +1,19 @@
+name: V1.66.6 browser text contrast
+on:
+  push:
+    branches: [codex/v1666-text-roles]
+    paths: ['tools/text-role-tests/**','.github/workflows/v1666-browser-contrast.yml']
+permissions:
+  contents: read
+jobs:
+  contrast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-text-browser --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-text-browser/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-text-browser/node_modules node tools/text-role-tests/browser.cjs
