@@ -7,7 +7,7 @@ const repo=path.resolve(__dirname,'../..'),port=18140,origin='http://127.0.0.1:'
   const p=await browser.newPage({viewport:{width:1400,height:900}});
   await p.goto(origin+'/seating/');await p.waitForFunction(()=>window.__TT_MANAGER_HOME?.page()==='home'&&!document.documentElement.classList.contains('tt-manager-starting'));
   await p.evaluate(()=>window.__TT_SETTINGS.open('general'));
-  await p.locator('#tt-ui2-theme-select').selectOption('green');await p.locator('#tt-ui2-theme-apply').click();await p.locator('#tt-settings-close').click();
+  await p.locator('#tt-ui2-theme-auto').uncheck();await p.locator('#tt-ui2-theme-select').selectOption('green');await p.locator('#tt-ui2-theme-apply').click();await p.locator('#tt-settings-close').click();
   assert.equal(await p.locator('#tt-manager-home').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(233, 243, 236)');
   await p.locator('#tt-grade-tab').click();
   const frame=p.frameLocator('.tt-grade-iframe');await frame.locator('html[data-cm-theme="green"]').waitFor({state:'attached'});

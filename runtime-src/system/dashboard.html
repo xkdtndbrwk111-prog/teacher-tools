@@ -10787,4 +10787,42 @@ window.ttMultimedia={open,policy:{youtube,canva,available,after,clean}};
 })();
 </script>
 
+<script id="tt-board-theme-bridge-v1">
+/* Design only. Read the committed theme settings, never the live preview or other local data. */
+(()=>{
+ 'use strict';
+ const isHex=x=>typeof x==='string'&&/^#[0-9a-f]{6}$/i.test(x);
+ const read=(k,fallback)=>{try{const s=localStorage.getItem(k);return s===null?fallback:JSON.parse(s)}catch{return fallback}};
+ function snapshot(){
+  const raw=localStorage.getItem('class-theme'),font=read('class-font','');
+  if(typeof font!=='string'||font.length>=60||!/^[\p{L}\p{N} ._()-]*$/u.test(font))return null;
+  const chosen=read('class-theme-custom',null),slots=read('class-custom-themes',[]);
+  if(Number.isInteger(chosen)&&chosen>=0&&chosen<3&&Array.isArray(slots)&&slots[chosen]){
+   const t=slots[chosen];if(!['bg','panel','text','accent'].every(k=>isHex(t[k])))return null;
+   const custom={bg:t.bg,panel:t.panel,text:t.text,accent:t.accent,modal:isHex(t.modal)?t.modal:t.panel};
+   return {version:1,theme:'custom',font,custom};
+  }
+  return{version:1,theme:['dark','sky','pink','green','black'].includes(raw)?raw:'dark',font};
+ }
+ let busy=false,last='',sent=0;
+ async function publish(){
+  if(busy)return;
+  try{
+   const v=snapshot();if(!v)return;const key=JSON.stringify(v);
+   if(key===last&&Date.now()-sent<12000)return;
+   busy=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2500);
+   try{
+    // The local server's HTTP reader counts characters. Keep the body ASCII even for Korean font names.
+    const body=key.replace(/[^\x00-\x7f]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
+    const r=await fetch('/api/theme/publish',{method:'POST',headers:{'Content-Type':'application/json'},body,credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal});
+    if(r.ok){last=key;sent=Date.now()}
+   }finally{clearTimeout(timeout);busy=false}
+  }catch{busy=false}
+ }
+ // Also refresh a server restarted independently of the board. No persistent server file.
+ setInterval(publish,3000);window.addEventListener('focus',publish);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void publish()});
+ void publish();
+})();
+</script>
 </body></html>

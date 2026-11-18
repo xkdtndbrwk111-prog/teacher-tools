@@ -11,3 +11,7 @@ Base: V1.66.19 release main. No main/stable publishing.
 ## Stage B candidate — actual palette contract
 - Five palettes extracted from the actual V1.66.19 dashboard HTML; source-parity test against the original. Custom colors use the board's mix ratios, with role-based contrast for readable manager surfaces; font names strictly validated, fallback if absent.
 - Local UI theme settings, shared shell/home/settings/grade toolbar/life toolbar styling, same-origin grade frame messages, local browser restore. No board or Google synchronization yet. Do not claim full migration of legacy work surfaces; data colors, dense grade grid, charts and student views intentionally unchanged pending complete visual regression.
+
+## Stage C candidate — local one-way bridge
+- Board publishes only committed active theme/font/custom fields to same-origin POST /api/theme/publish; manager GET /api/theme is allowlisted CORS, no cross-origin writes, 45s stale rejection, in-memory server state only. Poll 5s, theme changes only, default auto on, independent option and offline cache. EASY local sync does not need Google. Board font name falls back if unavailable.
+- Tests cover publisher projection, ASCII transport, PowerShell parser/normalizer, browser mock sync/offline/opt-out. Actual Windows local server end-to-end still required. NORMAL Google preference storage remains separate. Runtime release version intentionally unchanged; no main merge or stable publish.
