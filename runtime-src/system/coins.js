@@ -177,7 +177,7 @@
 
  function checkedSpend(events,roster,{cls,ids,game,charge,at}){
   if(!cls||typeof cls!=='string')return {ok:false,message:'학급 정보가 없어요.'};
-  if(!validCharge(charge)||!Array.isArray(ids)||ids.length<1||ids.length>6||new Set(ids).size!==ids.length||typeof game!=='string'||!game||game.length>80)return {ok:false,message:'잘못된 코인 요청이에요.'};
+  if(!validCharge(charge)||!Array.isArray(ids)||ids.length<1||(typeof game==='string'&&game.startsWith('토너먼트 · ')?![4,8].includes(ids.length):ids.length>6)||new Set(ids).size!==ids.length||typeof game!=='string'||!game||game.length>80)return {ok:false,message:'잘못된 코인 요청이에요.'};
   if(events.some(e=>e.type==='coin-cancel'&&e.charge===charge))return {ok:false,message:'이미 취소된 거래예요.'};
   const old=events.filter(e=>e.type==='spend'&&e.charge===charge);
   const st=stateOf(events,cls);
