@@ -76,7 +76,19 @@ try {
  if(Test-Path -LiteralPath (Join-Path $root 'asset-book-reader-host.zip')){
   $site='http://127.0.0.1:17439'
   $headers=@{'Sec-Fetch-Site'='same-origin';Origin=$site}
-  $args=@{id='DAHbOpoUrrg';url='https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed';title='Book native installed smoke test';pages=5;start=3;saved=3}
+  Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class BookTestGeometry {
+ [StructLayout(LayoutKind.Sequential)] public struct RECT {public int L,T,R,B;}
+ [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h,out RECT r);
+}
+'@
+  $m=Get-Content -Raw (Join-Path $root 'board-mode.json')|ConvertFrom-Json
+  $rect=New-Object BookTestGeometry+RECT
+  if(![BookTestGeometry]::GetClientRect([IntPtr][long]$m.window,[ref]$rect)){throw 'No test owner rect'}
+  $vw=$rect.R-$rect.L;$vh=$rect.B-$rect.T
+  $geometry=@{vw=$vw;vh=$vh;x=10;y=10;w=($vw-20);h=($vh-100);visible=1}
+  $args=@{id='DAHbOpoUrrg';url='https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed';title='Book native installed smoke test';pages=5;start=3;saved=3;layout=$geometry}
   function Encode-Book($a){[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -Compress $a)))}
   function Assert-BookRejected([string]$request,[string]$method,$headers,$body,[int]$expected){
    try{
@@ -98,11 +110,23 @@ try {
    do{
     $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
     if($state.closed){throw ('Native reader closed prematurely: '+$state.status)}
-    if($state.ready -and $state.page -eq 3 -and $state.saved -eq 3){$passed=$true;break}
+    if($state.ready -and $state.page -eq 3 -and $state.saved -eq 3 -and $state.owned -and $state.visible -and $state.w -ge 100 -and $state.h -ge 60){$passed=$true;break}
     Start-Sleep -Milliseconds 600
    }while([DateTime]::UtcNow -lt $deadline)
    if(!$passed){throw ('Live Canva actual native resume not confirmed: '+($state|ConvertTo-Json -Compress))}
    Write-Host 'PASS: exact installed native book host, cross-site and URL rejection, live Canva direct page seek to saved page 3, no capture call'
+   $originalWidth=$state.w
+   $geometry.w=[int]($geometry.w/2)
+   $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry}) -TimeoutSec 4
+   $deadline=[DateTime]::UtcNow.AddSeconds(8)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if($state.owned -and $state.visible -and $state.w -lt ($originalWidth*0.75)){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if(!$state.visible -or $state.w -ge ($originalWidth*0.75)){throw 'Owned slot did not resize'}
+   $geometry.visible=0
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(8)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if(!$state.visible){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if($state.visible){throw 'Owned slot did not hide'}
+   Write-Host 'PASS owned book slot geometry, resize and hide'
   }finally{
    Invoke-RestMethod -Uri ($site+'/api/book-reader/close'+$suffix) -Method POST -Headers $headers -TimeoutSec 4 | Out-Null
    $deadline=[DateTime]::UtcNow.AddSeconds(12)

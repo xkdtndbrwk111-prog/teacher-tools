@@ -17,6 +17,39 @@ $script:timetableCache=@{}
 # Exact signed book dependency and private single-reader session.
 $script:ttBookSession=$null
 function Test-TTBookInt($v){return ($v -is [int] -or $v -is [long])}
+
+function Write-TTBookJson([string]$file,$value) {
+ $raw=ConvertTo-Json -Compress -Depth 5 $value
+ $temp=$file+'.tmp';[IO.File]::WriteAllText($temp,$raw,[Text.UTF8Encoding]::new($false))
+ if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,$null)}else{[IO.File]::Move($temp,$file)}
+}
+function Get-TTBookLayout($x){
+ if(!$x){throw 'layout missing'}
+ $d=@{}
+ foreach($k in @('vw','vh','x','y','w','h','visible')){
+  $v=$x.$k
+  if(!(Test-TTBookInt $v) -or $v -lt 0 -or $v -gt 32768){throw 'layout bounds'}
+  $d[$k]=[int]$v
+ }
+ if($d.vw -lt 200 -or $d.vh -lt 150 -or $d.visible -gt 1 -or $d.x+$d.w -gt $d.vw+1 -or $d.y+$d.h -gt $d.vh+1){throw 'layout invalid'}
+ return $d
+}
+function Get-TTBookRequest([string]$encoded){
+ if($encoded.Length -gt 4096){throw 'size'}
+ return (ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))))
+}
+function Sync-TTBookHost($session,[string]$encoded){
+ $x=Get-TTBookRequest $encoded
+ $layout=Get-TTBookLayout $x.layout
+ $command=$x.command
+ if($command){
+  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if($command.seq -gt $session.seq){Write-TTBookJson (Join-Path $session.dir 'command.json') @{seq=$command.seq;kind=$command.kind;page=$command.page};$session.seq=$command.seq}
+ }
+ $raw=ConvertTo-Json -Compress $layout
+ if($raw -cne $session.layout){Write-TTBookJson (Join-Path $session.dir 'layout.json') $layout;$session.layout=$raw}
+}
+
 function Get-TTBookState {
  $v=$script:ttBookSession
  $d=@{ok=$true;ready=$false;closed=$false;page=0;saved=0;status='책 재생기 시작 중'}
@@ -28,6 +61,8 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
+   $d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
+   foreach($k in @('ack','x','y','w','h')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
   }
  }catch{}
  try{if($v.process.HasExited){$d.closed=$true;if(!$d.ready){$d.status='새 재생기 실행 실패'}}}catch{$d.closed=$true}
@@ -65,19 +100,18 @@ function Open-TTBookHost([string]$encoded) {
    }
    foreach($name in $required){if(!$seen.ContainsKey($name)){throw 'missing native dependency'}}
   }finally{$archive.Dispose()}
-  $screen=$null
-  try{$mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8));if($mode.window){$screen=[Windows.Forms.Screen]::FromHandle([IntPtr][long]$mode.window)}}catch{}
-  if(!$screen){try{$device=([IO.File]::ReadAllText((Join-Path $TTInstallDir 'display.txt'),[Text.Encoding]::UTF8)).Trim();$screen=[Windows.Forms.Screen]::AllScreens|Where-Object {$_.DeviceName -eq $device}|Select-Object -First 1}catch{}}
-  if(!$screen){$screen=[Windows.Forms.Screen]::PrimaryScreen}
-  $b=$screen.Bounds;$w=$screen.WorkingArea
-  $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;screenX=$b.X;screenY=$b.Y;screenW=$b.Width;screenH=$b.Height;workX=$w.X;workY=$w.Y;workW=$w.Width;workH=$w.Height}
-  [IO.File]::WriteAllText((Join-Path $dir 'request.json'),(ConvertTo-Json -Compress $config),[Text.UTF8Encoding]::new($false))
+  $mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))
+  if(!$mode.window -or !$mode.pid -or $mode.mode -notin @('window','wallpaper') -or $mode.release -cne $TTRelease -or !(@(Get-TTProfileBrowserProcesses | Where-Object {$_.ProcessId -eq $mode.pid}).Count)){throw 'board owner unavailable'}
+  $layout=Get-TTBookLayout $x.layout
+  $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;owner=[long]$mode.window;ownerPid=[int]$mode.pid}
+  Write-TTBookJson (Join-Path $dir 'request.json') $config
+  Write-TTBookJson (Join-Path $dir 'layout.json') $layout
   [IO.File]::WriteAllText((Join-Path $dir 'lease'),'1')
   $info=New-Object Diagnostics.ProcessStartInfo
   $info.FileName=Join-Path $dir 'BookReader.exe';$info.Arguments='--session "'+$dir+'"';$info.WorkingDirectory=$dir;$info.UseShellExecute=$false;$info.CreateNoWindow=$true
   $process=[Diagnostics.Process]::Start($info)
   if(!$process){throw 'native host process missing'}
-  $script:ttBookSession=@{token=$token;dir=$dir;process=$process;pages=$x.pages}
+  $script:ttBookSession=@{token=$token;dir=$dir;process=$process;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout)}
   return @{ok=$true;session=$token}
  }catch{try{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop}catch{};throw}
 }
@@ -713,14 +747,19 @@ try {
    elseif($path -in @('/api/book-reader/open','/api/book-reader/status','/api/book-reader/close')){
     $same=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
     if(!$same){$status='403 Forbidden';$body='{"error":"forbidden"}'}
-    elseif(($path -eq '/api/book-reader/status' -and $parts[0] -ne 'GET') -or ($path -ne '/api/book-reader/status' -and $parts[0] -ne 'POST')){$status='405 Method Not Allowed';$body='{"error":"method"}'}
+    elseif(($path -eq '/api/book-reader/status' -and $parts[0] -notin @('GET','POST')) -or ($path -ne '/api/book-reader/status' -and $parts[0] -ne 'POST')){$status='405 Method Not Allowed';$body='{"error":"method"}'}
     elseif($path -eq '/api/book-reader/open'){try{$body=ConvertTo-Json -Compress (Open-TTBookHost $bodyText)}catch{$status='409 Conflict';$body='{"error":"native unavailable"}'}}
     else{
      if(!$script:ttBookSession -or $uri.Query -cnotmatch '^\?session=([a-f0-9]{32})$' -or $Matches[1] -cne $script:ttBookSession.token){$status='404 Not Found';$body='{"error":"session"}'}
      else{
       $v=$script:ttBookSession
       if($path -eq '/api/book-reader/close'){try{[IO.File]::WriteAllText((Join-Path $v.dir 'stop'),'1')}catch{};$body='{"ok":true}'}
-      else{try{if(!$v.process.HasExited){[IO.File]::SetLastWriteTimeUtc((Join-Path $v.dir 'lease'),[datetime]::UtcNow)}}catch{};$body=ConvertTo-Json -Compress (Get-TTBookState)}
+      else{
+       try{if(!$v.process.HasExited){
+        if($parts[0] -eq 'POST'){Sync-TTBookHost $v $bodyText}
+        [IO.File]::SetLastWriteTimeUtc((Join-Path $v.dir 'lease'),[datetime]::UtcNow)
+       };$body=ConvertTo-Json -Compress (Get-TTBookState)}catch{$status='400 Bad Request';$body='{"error":"invalid layout or command"}'}
+      }
      }
     }
    }
