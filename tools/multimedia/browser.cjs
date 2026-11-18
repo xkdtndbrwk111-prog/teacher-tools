@@ -14,6 +14,11 @@ await page.route('https://**/*',async r=>{
  if(u.hostname==='www.youtube.com'&&u.pathname==='/iframe_api')throw Error('Third-party script must not be loaded in dashboard');
  return r.fulfill({contentType:'text/html',body:'<html>mock external</html>'})
 });await page.goto('http://127.0.0.1:'+server.address().port+'/');await page.waitForFunction(()=>!!window.ttMultimedia);const policy=await page.evaluate(()=>{const p=ttMultimedia.policy;return [p.youtube('https://youtu.be/sVoh_DAt9is?si=test'),p.youtube('https://youtube.com.evil.test/watch?v=sVoh_DAt9is'),p.canva('https://evil.test'),p.available({media:{}}).length,p.available({media:{'2':{kind:'youtube',id:'sVoh_DAt9is'}}}).map(x=>x.n),p.after('anthem',{media:{}}),p.after('anthem',{media:{song:{}}}),p.after('song',{media:{}})]});assert.deepEqual(policy,['sVoh_DAt9is','','',4,[2],'B2','B1','C']);
+const initial=await page.evaluate(()=>({items:Object.fromEntries(Object.entries(layout.items).filter(([k,v])=>!v.off).map(([k,v])=>[k,[v.x,v.y,v.w,v.h]])),memoHidden:document.querySelector('[data-widget="memo"]').hidden,tail:[...document.querySelectorAll('.card[data-widget="tools"] .tools > button:not([hidden]),.card[data-widget="tools"] .tools > .spk-split:not([hidden])')].slice(-4).map(b=>b.dataset.app||b.dataset.toolKey||b.textContent.trim())}));
+assert.deepEqual(initial.items,{week:[0,0,12,22],meal:[12,11,12,11],calendar:[36,0,12,22],tools:[0,22,48,5],photos:[12,0,24,11],weather:[24,11,12,11]});
+assert.equal(initial.memoHidden,true);assert.deepEqual(initial.tail,['classkit','widgetmanager','fixed:전체화면','fixed:설정']);
+const rects=Object.values(initial.items);for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){const [x,y,w,h]=rects[i],[a,b,c,d]=rects[j];assert.ok(!(x<a+c&&a<x+w&&y<b+d&&b<y+h),'initial widgets overlap')}
+console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidden and four rightmost management buttons');
 await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=380&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
 async function checkFlip(reverse=false){
  const result=await page.evaluate(async reverse=>{
