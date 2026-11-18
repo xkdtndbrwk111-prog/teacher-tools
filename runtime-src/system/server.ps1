@@ -14,6 +14,74 @@ $script:backupRestoreToken=[guid]::NewGuid().ToString('N')
 $script:updateApproveToken=[guid]::NewGuid().ToString('N')
 if(Test-Path -LiteralPath $schoolFile -PathType Leaf){try{$script:school=ConvertFrom-Json ([IO.File]::ReadAllText($schoolFile,[Text.Encoding]::UTF8))}catch{$script:school=$null}}
 $script:timetableCache=@{}
+# Exact signed book dependency and private single-reader session.
+$script:ttBookSession=$null
+function Test-TTBookInt($v){return ($v -is [int] -or $v -is [long])}
+function Get-TTBookState {
+ $v=$script:ttBookSession
+ $d=@{ok=$true;ready=$false;closed=$false;page=0;saved=0;status='책 재생기 시작 중'}
+ try{
+  $p=Join-Path $v.dir 'state.json'
+  if(Test-Path -LiteralPath $p -PathType Leaf){
+   $x=ConvertFrom-Json ([IO.File]::ReadAllText($p,[Text.Encoding]::UTF8))
+   $d.ready=($x.ready -eq $true);$d.closed=($x.closed -eq $true)
+   if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
+   if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
+   $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
+  }
+ }catch{}
+ try{if($v.process.HasExited){$d.closed=$true;if(!$d.ready){$d.status='새 재생기 실행 실패'}}}catch{$d.closed=$true}
+ return $d
+}
+function Open-TTBookHost([string]$encoded) {
+ if($encoded.Length -gt 4096){throw 'size'}
+ $x=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)))
+ $url=[string]$x.url;$id=[string]$x.id;$title=[string]$x.title
+ if($url.Length -gt 500 -or $url -cnotmatch '^https://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed$' -or $Matches[1] -cne $id -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
+ $old=$script:ttBookSession
+ if($old){
+  if(!$old.process.HasExited){throw 'book already open'}
+  try{Remove-Item -LiteralPath $old.dir -Recurse -Force -ErrorAction Stop}catch{}
+  $script:ttBookSession=$null
+ }
+ $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'bb76a5b8d7fecad629f4161ef2a3087de8471dbcb12a43e2a344a7e9ab07cae1'){throw 'native dependency unavailable'}
+ Add-Type -AssemblyName System.IO.Compression.FileSystem
+ Add-Type -AssemblyName System.Windows.Forms
+ $root=Join-Path $TTInstallDir 'book-reader-sessions'
+ [void][IO.Directory]::CreateDirectory($root)
+ $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token
+ [void][IO.Directory]::CreateDirectory($dir)
+ try{
+  $required=@('BookReader.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','LICENSE.txt')
+  $allowed=$required+@('ThirdPartyNotices.txt')
+  $seen=@{};$total=0;$archive=[IO.Compression.ZipFile]::OpenRead($bundle)
+  try{
+   foreach($e in $archive.Entries){
+    $name=$e.FullName;$total+=$e.Length
+    if($name -cnotin $allowed -or $seen.ContainsKey($name) -or $e.Length -lt 1 -or $e.Length -gt 1500000 -or $total -gt 3000000){throw 'invalid native dependency'}
+    $seen[$name]=$true
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($e,(Join-Path $dir $name))
+   }
+   foreach($name in $required){if(!$seen.ContainsKey($name)){throw 'missing native dependency'}}
+  }finally{$archive.Dispose()}
+  $screen=$null
+  try{$mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8));if($mode.window){$screen=[Windows.Forms.Screen]::FromHandle([IntPtr][long]$mode.window)}}catch{}
+  if(!$screen){try{$device=([IO.File]::ReadAllText((Join-Path $TTInstallDir 'display.txt'),[Text.Encoding]::UTF8)).Trim();$screen=[Windows.Forms.Screen]::AllScreens|Where-Object {$_.DeviceName -eq $device}|Select-Object -First 1}catch{}}
+  if(!$screen){$screen=[Windows.Forms.Screen]::PrimaryScreen}
+  $b=$screen.Bounds;$w=$screen.WorkingArea
+  $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;screenX=$b.X;screenY=$b.Y;screenW=$b.Width;screenH=$b.Height;workX=$w.X;workY=$w.Y;workW=$w.Width;workH=$w.Height}
+  [IO.File]::WriteAllText((Join-Path $dir 'request.json'),(ConvertTo-Json -Compress $config),[Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText((Join-Path $dir 'lease'),'1')
+  $info=New-Object Diagnostics.ProcessStartInfo
+  $info.FileName=Join-Path $dir 'BookReader.exe';$info.Arguments='--session "'+$dir+'"';$info.WorkingDirectory=$dir;$info.UseShellExecute=$false;$info.CreateNoWindow=$true
+  $process=[Diagnostics.Process]::Start($info)
+  if(!$process){throw 'native host process missing'}
+  $script:ttBookSession=@{token=$token;dir=$dir;process=$process;pages=$x.pages}
+  return @{ok=$true;session=$token}
+ }catch{try{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop}catch{};throw}
+}
+
 function RemoteText([string]$url) {
   $req=[System.Net.WebRequest]::Create($url); $req.Method='GET'; $req.Timeout=9000; $req.ReadWriteTimeout=9000; $req.UserAgent='Mozilla/5.0'
   $res=$req.GetResponse(); try { $stream=$res.GetResponseStream(); try { $reader=New-Object System.IO.StreamReader($stream,[Text.Encoding]::UTF8); try { return $reader.ReadToEnd() } finally { $reader.Dispose() } } finally {$stream.Dispose()} } finally {$res.Dispose()}
@@ -642,6 +710,20 @@ try {
     }
    }
    elseif($parts[0] -eq 'OPTIONS'){$status='405 Method Not Allowed';$body='{"error":"method"}'}
+   elseif($path -in @('/api/book-reader/open','/api/book-reader/status','/api/book-reader/close')){
+    $same=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
+    if(!$same){$status='403 Forbidden';$body='{"error":"forbidden"}'}
+    elseif(($path -eq '/api/book-reader/status' -and $parts[0] -ne 'GET') -or ($path -ne '/api/book-reader/status' -and $parts[0] -ne 'POST')){$status='405 Method Not Allowed';$body='{"error":"method"}'}
+    elseif($path -eq '/api/book-reader/open'){try{$body=ConvertTo-Json -Compress (Open-TTBookHost $bodyText)}catch{$status='409 Conflict';$body='{"error":"native unavailable"}'}}
+    else{
+     if(!$script:ttBookSession -or $uri.Query -cnotmatch '^\?session=([a-f0-9]{32})$' -or $Matches[1] -cne $script:ttBookSession.token){$status='404 Not Found';$body='{"error":"session"}'}
+     else{
+      $v=$script:ttBookSession
+      if($path -eq '/api/book-reader/close'){try{[IO.File]::WriteAllText((Join-Path $v.dir 'stop'),'1')}catch{};$body='{"ok":true}'}
+      else{try{if(!$v.process.HasExited){[IO.File]::SetLastWriteTimeUtc((Join-Path $v.dir 'lease'),[datetime]::UtcNow)}}catch{};$body=ConvertTo-Json -Compress (Get-TTBookState)}
+     }
+    }
+   }
    elseif($parts[0] -eq 'POST' -and $path -ne '/api/seating' -and $path -ne '/api/open-manager' -and $path -ne '/api/open-web' -and $path -ne '/api/coins' -and $path -ne '/api/notice' -and $path -ne '/api/share-input' -and $path -ne '/api/share-input/restart' -and $path -ne '/api/touch-check/fix' -and $path -ne '/api/speakers/set' -and $path -ne '/api/volume' -and $path -ne '/api/weather/place' -and $path -ne '/api/open-sound-settings' -and $path -ne '/api/school' -and $path -ne '/api/open-sheet-copy' -and $path -ne '/api/privacy-reset' -and $path -ne '/api/backup/restore' -and $path -notin @('/api/update/apply','/api/update/auto/on','/api/update/auto/off')){$status='405 Method Not Allowed';$body='{"error":"method"}'}
 
    elseif($path -in @('/api/update/status','/api/update/check','/api/update/apply','/api/update/auto/on','/api/update/auto/off')){
