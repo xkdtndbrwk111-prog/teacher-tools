@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "version": "1.66.12",
+  "previous_version": "1.66.11",
+  "previous_payload_sha": "9b3b34bf8ada0eba77fdb3745fa2d0db8b8269a9c4b1d1f4aa81c7fa27041125",
+  "source_sha": "547ace4d77f2e5f598eabd3837abf120eb22be14",
+  "artifact_id": 14382397409,
+  "archive_sha": "5d89d840306f2bab2ac61e3005b9374bb065c1e4b9a9e4ecd2af88a5501f0c49",
+  "payload_sha": "f8292a2dfa090a4692d3b9dabd1ffdfd42c4b7afce456fcd3e41fb59f3b318f7",
+  "build_run_id": 44204027199,
+  "windows_run_id": 44204027380,
+  "integration_run_id": 44204027007,
+  "visual_run_id": 44204027102,
+  "contrast_run_id": 44204027089,
+  "education_run_id": 44204027023,
+  "badge_run_id": 44204027149,
+  "multimedia_run_id": 44203853107,
+  "multimedia_pr_sha": "df5c6c87d677aa2be1de091be382bb240c66a2e8",
+  "authorization": "Owner explicitly requested V1.66.12 multimedia and timetable deployment, 2026-11-18; actual classroom caption suppression and field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16612_owner_field_test_only"
+}
