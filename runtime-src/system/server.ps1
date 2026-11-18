@@ -20,12 +20,25 @@ function Test-TTBookInt($v){return ($v -is [int] -or $v -is [long])}
 
 function Write-TTBookJson([string]$file,$value) {
  $raw=ConvertTo-Json -Compress -Depth 5 $value
- $temp=$file+'.tmp';[IO.File]::WriteAllText($temp,$raw,[Text.UTF8Encoding]::new($false))
- if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,$null)}else{[IO.File]::Move($temp,$file)}
+ # Windows PowerShell may bind a null string to an empty backup path. Use a real
+ # private backup name and retain the last good file on a transient sharing violation.
+ $temp=$file+'.tmp';$backup=$file+'.bak'
+ [IO.File]::WriteAllText($temp,$raw,[Text.UTF8Encoding]::new($false))
+ try{
+  for($attempt=0;$attempt -lt 5;$attempt++){
+   try{
+    if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,$backup,$true)}else{[IO.File]::Move($temp,$file)}
+    return
+   }catch [System.IO.IOException]{if($attempt -eq 4){throw};Start-Sleep -Milliseconds 20}
+  }
+ }finally{
+  try{[IO.File]::Delete($temp)}catch{}
+  try{[IO.File]::Delete($backup)}catch{}
+ }
 }
 function Get-TTBookLayout($x){
  if(!$x){throw 'layout missing'}
- $d=@{}
+ $d=[ordered]@{}
  foreach($k in @('vw','vh','x','y','w','h','visible')){
   $v=$x.$k
   if(!(Test-TTBookInt $v) -or $v -lt 0 -or $v -gt 32768){throw 'layout bounds'}

@@ -115,6 +115,10 @@ public static class BookTestGeometry {
    }while([DateTime]::UtcNow -lt $deadline)
    if(!$passed){throw ('Live Canva actual native resume not confirmed: '+($state|ConvertTo-Json -Compress))}
    Write-Host 'PASS: exact installed native book host, cross-site and URL rejection, live Canva direct page seek to saved page 3, no capture call'
+   # Exercise the exact real HTTP status POST, including validation and repeated atomic replacement.
+   $invalid=$geometry.Clone();$invalid.w=$invalid.vw+100
+   Assert-BookRejected ('/api/book-reader/status'+$suffix) 'POST' $headers (Encode-Book @{layout=$invalid}) 400
+   Assert-BookRejected ('/api/book-reader/status'+$suffix) 'POST' @{'Sec-Fetch-Site'='cross-site';Origin='https://example.invalid'} (Encode-Book @{layout=$geometry}) 403
    $originalWidth=$state.w
    $geometry.w=[int]($geometry.w/2)
    $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry}) -TimeoutSec 4
@@ -126,7 +130,25 @@ public static class BookTestGeometry {
    $deadline=[DateTime]::UtcNow.AddSeconds(8)
    do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if(!$state.visible){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
    if($state.visible){throw 'Owned slot did not hide'}
-   Write-Host 'PASS owned book slot geometry, resize and hide'
+   $geometry.visible=1
+   $geometry.w=[int]($vw-20)
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry;command=@{seq=1;kind='manual';page=2}}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(10)
+   do{
+    $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
+    if($state.owned -and $state.visible -and $state.w -ge ($originalWidth*0.9) -and $state.manual -and $state.saved -eq 2 -and $state.ack -eq 1){break}
+    Start-Sleep -Milliseconds 350
+   }while([DateTime]::UtcNow -lt $deadline)
+   if(!$state.owned -or !$state.visible -or $state.w -lt ($originalWidth*0.9) -or !$state.manual -or $state.saved -ne 2 -or $state.ack -ne 1){throw ('Owned slot restore or manual save not confirmed: '+($state|ConvertTo-Json -Compress))}
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry;command=@{seq=2;kind='auto';page=0}}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(10)
+   do{
+    $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
+    if(!$state.manual -and $state.saved -eq 3 -and $state.ack -eq 2){break}
+    Start-Sleep -Milliseconds 350
+   }while([DateTime]::UtcNow -lt $deadline)
+   if($state.manual -or $state.saved -ne 3 -or $state.ack -ne 2){throw ('Automatic save restore not confirmed: '+($state|ConvertTo-Json -Compress))}
+   Write-Host 'PASS owned book slot geometry, resize, hide, restore, invalid and cross-site rejection, manual and automatic save'
   }finally{
    Invoke-RestMethod -Uri ($site+'/api/book-reader/close'+$suffix) -Method POST -Headers $headers -TimeoutSec 4 | Out-Null
    $deadline=[DateTime]::UtcNow.AddSeconds(12)
