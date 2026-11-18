@@ -190,7 +190,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
    if(changed){await append([{at:new Date().toISOString(),cls:roster.cls,type:'hof',hof:{...st.hof,seats},source:'settings'}]);st=state()}
   }
   const hof=st.hof,person=s=>({id:s.id,name:s.name,number:hof?hof.seats[s.id]||null:s.number});
-  reply({type:'hoja-roster',readyReq,version:3,classId:roster.cls,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),
+  reply({type:'hoja-roster',readyReq,version:3,classId:roster.cls,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),tournamentV1:true,teacherPinConfigured:Boolean(window.ttPodo?.hasTeacherPin?.()),
    hof:hof&&{code:hof.code,teacher:hof.teacher,pin:hof.pin},names:hof?C.seatNames(hof,roster.students,MAX_SEATS):null,
    everyone:roster.students.map(person),
    students:roster.students.filter(s=>!s.excluded).map(s=>({...person(s),balance:C.balanceOf(st,s.id)}))});
@@ -207,6 +207,14 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
   try{
    if(type==='hoja-ready'){
     if(await housekeepingNow())await sendRoster(reply,event.data.readyReq??null);
+   }else if(type==='hoja-tournament-auth'){
+    await load();
+    const cls=roster.cls,auth=window.ttPodo;
+    if(!cls||event.data.classId!==cls||!auth?.hasTeacherPin?.())return reply({type:'hoja-tournament-auth-result',req:event.data.req,ok:false,classId:cls,message:'교사 공통 인증번호를 먼저 설정해 주세요.'});
+    const valid=await auth.requestCoinAccess();
+    await load();
+    if(frame.contentWindow!==source||roster.cls!==cls||!valid?.())return reply({type:'hoja-tournament-auth-result',req:event.data.req,ok:false,classId:roster.cls,message:'교사 인증이 취소되었거나 학급이 변경됐어요.'});
+    reply({type:'hoja-tournament-auth-result',req:event.data.req,ok:true,classId:cls});
    }else if(type==='hoja-setup'){
     await load();
     if(!roster.cls||event.data.classId!==roster.cls)return;
@@ -245,6 +253,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
    }
   }catch(error){
    console.error(error);
+   if(type==='hoja-tournament-auth')reply({type:'hoja-tournament-auth-result',req:event.data.req,ok:false,message:'교사 인증을 확인하지 못했어요.'});
    if(type==='hoja-coin-spend')reply({type:'hoja-coin-result',req:event.data.req,ok:false,retryable:true,message:'코인 처리 결과를 확인하지 못했어요. 다시 확인해 주세요.'});
    if(type==='hoja-coin-refund')reply({type:'hoja-refund-result',charge:event.data.charge,ok:false,retryable:true});
    if(type==='hoja-hof-week')reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'결산 결과를 확인하지 못했어요. 다시 확인해 주세요.'});
