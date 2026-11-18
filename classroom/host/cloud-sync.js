@@ -9,7 +9,7 @@
  const controls=document.querySelector('.tt-class-controls');
  if(!controls)return;
  let meta=null,cloud=null,clientId='',mods=null,state='easy',busy=false,firstDirtyAt=0,lastChangeAt=0,importantAt=0,retryAt=0,backoff=60000,lastHeadCheck=0,pendingDiff=null,deferredDiff=false,lastSaved='',detail='';
- const chip=document.createElement('button');chip.type='button';chip.id='tt-cloud-chip';controls.append(chip);
+ const chip=document.createElement('button');chip.type='button';chip.id='tt-cloud-chip';chip.textContent='저장 확인 중';controls.append(chip);
  const settings=document.createElement('div');settings.className='tt-lock-settings';settings.hidden=true;settings.setAttribute('role','dialog');settings.setAttribute('aria-modal','true');settings.setAttribute('aria-labelledby','tt-cloud-title');
  settings.innerHTML=`<div class="tt-lock-settings-card tt-cloud-card">
   <h2 id="tt-cloud-title">저장 방식</h2>
@@ -302,11 +302,14 @@
   if(meta?.mode==='normal'&&!needsLogin()&&!busy&&!pendingDiff&&Date.now()-lastHeadCheck>=HEAD_CHECK_MS)void syncNow();
  });
  (async()=>{
-  meta=await store.read(KEY)||null;authInitialized=true;publishAuth();
-  await loadModules().catch(error=>console.warn(error));
+  meta=await store.read(KEY)||null;authInitialized=true;
+  // The saved mode is known before importing optional Google modules. Publish
+  // it immediately so the HUD cannot remain blank/unknown during startup.
   if(meta?.mode!=='normal'){setState('easy');return}
+  setState('login');
   loadGoogleScript();
   await ready();
+  if(authChanging||meta?.mode!=='normal')return;
   if(!meta.deviceId)await saveMeta({...meta,deviceId:crypto.randomUUID().slice(0,4)});
   if(needsLogin()){setState('login');return}
   setState('waiting');

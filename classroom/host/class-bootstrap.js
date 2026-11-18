@@ -1,7 +1,7 @@
 // The seating scripts read their data as they load, so they start only after the store is ready.
 (()=>{
  'use strict';
- const SCRIPTS=['app.js?v=20261010-seatdrag2','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-e','../classroom/host/cloud-sync.js?v=ui2-i'];
+ const SCRIPTS=['app.js?v=20261010-seatdrag2','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-e','../classroom/host/cloud-sync.js?v=ui2-m'];
  const store=window.__TT_STORE;
  const domReady=()=>new Promise(resolve=>{if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',resolve,{once:true});else resolve()});
  const load=src=>new Promise((resolve,reject)=>{
