@@ -1,5 +1,5 @@
-/* UI2 navigation shell baseline. The real HojaBoard tokens will be extracted separately. */
-#tt-manager-home-button{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:3px 6px;border:0;border-radius:7px;color:inherit;background:transparent;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer;grid-column:1;grid-row:1}
+/* UI2 navigation layout: color and radius come from the common theme contract. */
+#tt-manager-home-button{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:3px 6px;border:0;border-radius:var(--cm-button-radius);color:inherit;background:transparent;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer;grid-column:1;grid-row:1}
 #tt-manager-home-button+.tt-unused{display:none}
 #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>#topClassTitle{display:none!important}
 .tt-ui2-icon{width:20px;height:20px;flex:none;vertical-align:middle}
@@ -9,25 +9,25 @@
 body.tt-manager-special #teacherScreen>.studio,body.tt-manager-special #teacherScreen>.tt-seating-submodes{display:none!important}
 body.tt-manager-special #teacherScreen>.studio-topbar .top-actions,body.tt-life-active #teacherScreen>.studio-topbar .top-actions{visibility:hidden!important;pointer-events:none!important}
 .tt-ui2-page[hidden]{display:none!important}
-.tt-ui2-page{flex:1 1 auto;min-height:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg,#111b2d);font:inherit;color:#e8eef6}
+.tt-ui2-page{flex:1 1 auto;min-height:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--cm-bg);font:inherit;color:var(--cm-body-ink)}
 .tt-ui2-home-content{width:min(740px,100%);text-align:center;margin:auto}
 .tt-ui2-page h1{font-size:clamp(23px,3.2vw,36px);margin:0 0 9px}
-.tt-ui2-page p{line-height:1.5;margin:8px 0;color:#b8c9df}
+.tt-ui2-page p{line-height:1.5;margin:8px 0;color:var(--cm-body-sub)}
 .tt-ui2-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px}
-.tt-ui2-tile{min-height:clamp(110px,24vh,190px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:16px;border:1px solid #405777;border-radius:16px;background:#1b2e47;color:#f0f5fa;font:inherit;cursor:pointer}
-.tt-ui2-tile:hover{background:#28445f;border-color:#8aa9c8}
-.tt-ui2-tile .tt-ui2-icon{width:clamp(30px,5vw,46px);height:clamp(30px,5vw,46px);color:#a8cdeb}
+.tt-ui2-tile{min-height:clamp(110px,24vh,190px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--cm-border);border-radius:var(--cm-card-radius);background:var(--cm-panel);color:var(--cm-panel-ink);font:inherit;cursor:pointer}
+.tt-ui2-tile:hover{background:var(--cm-surface);border-color:var(--cm-accent)}
+.tt-ui2-tile .tt-ui2-icon{width:clamp(30px,5vw,46px);height:clamp(30px,5vw,46px);color:var(--cm-panel-ink)}
 .tt-ui2-tile strong{font-size:clamp(17px,2.2vw,24px)}
-.tt-ui2-tile span{font-size:13px;color:#c0d1e3}
+.tt-ui2-tile span{font-size:13px;color:var(--cm-panel-sub)}
 .tt-ui2-board-content{width:min(780px,100%);margin:auto}
-.tt-ui2-card{border:1px solid #405777;border-radius:14px;padding:18px;margin:12px 0;background:#1b2e47}
+.tt-ui2-card{border:1px solid var(--cm-border);border-radius:var(--cm-card-radius);padding:18px;margin:12px 0;background:var(--cm-panel)}
 .tt-ui2-card h2{margin:0 0 8px;font-size:18px}
-.tt-ui2-card small{display:block;color:#bacbdd;margin-top:12px}
+.tt-ui2-card small{display:block;color:var(--cm-panel-sub);margin-top:12px}
 .tt-ui2-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.tt-ui2-card :is(button,a){display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;font:inherit;font-weight:700;border:1px solid #60758d;border-radius:9px;background:#29435f;color:#fff;text-decoration:none;cursor:pointer}
-.tt-ui2-card .tt-ui2-primary{background:#2864a8}
+.tt-ui2-card :is(button,a){display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;font:inherit;font-weight:700;border:1px solid var(--cm-border);border-radius:var(--cm-button-radius);background:var(--cm-control);color:var(--cm-control-ink);text-decoration:none;cursor:pointer}
+.tt-ui2-card .tt-ui2-primary{background:var(--cm-accent)}
 .tt-ui2-card button:disabled{opacity:.45;cursor:not-allowed}
-.tt-ui2-page :is(button,a):focus-visible,#tt-manager-home-button:focus-visible{outline:3px solid #93c5fd;outline-offset:3px}
+.tt-ui2-page :is(button,a):focus-visible,#tt-manager-home-button:focus-visible{outline:3px solid var(--cm-body-emphasis);outline-offset:3px}
 /* Four tabs need additional room. Preserve legacy action placement and use the
  existing compact two-row HUD below desktop width rather than clipping tabs. */
 @media(max-width:1550px){

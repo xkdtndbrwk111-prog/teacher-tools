@@ -168,3 +168,11 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
 html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(input,select,textarea,button):focus-visible{
  outline-color:var(--text-accent)
 }
+
+/* 4-section HUD uses a stable second row until the side controls and all tabs have room. */
+@media(min-width:1551px) and (max-width:1770px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px 44px!important;height:96px!important;min-height:96px!important;max-height:96px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}
+}

@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),T=require('../../shared/hoja-theme.js');
 test('shared manager CSS uses declared color roles; no ad-hoc literal colors except named semantic tokens',()=>{
- const css=fs.readFileSync(path.join(__dirname,'../../shared/hoja-manager-theme.css'),'utf8').replace(/\/\*[\s\S]*?\*\//g,'');
+ const css=['../../shared/hoja-manager-theme.css','../host/manager-home.css'].map(p=>fs.readFileSync(path.join(__dirname,p),'utf8')).join('\n').replace(/\/\*[\s\S]*?\*\//g,'');
  const literal=[...css.matchAll(/(?:^|[;{])\s*(?:color|background(?:-color)?|border-color|outline-color)\s*:\s*(#[\da-f]{3,8}|rgba?\()/gim)];
  assert.deepEqual(literal.map(m=>m[0]),[]);
  for(const role of ['primary','secondary','accent','alert','on-fill'])assert.match(css,new RegExp('--text-'+role+'\\s*:'));
