@@ -176,3 +176,7 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}
 }
+
+/* Grid rows have explicit heights. The inherited flex gap previously added
+   vertical overflow on every two-row header. */
+@media(max-width:1770px){html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{row-gap:0!important;padding-block:0!important} }

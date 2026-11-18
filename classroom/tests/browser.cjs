@@ -1,6 +1,7 @@
 // Real-browser check of the classroom manager, with virtual data only. Needs Playwright and installed Google Chrome.
 // node classroom/tests/browser.cjs   (NODE_PATH may point to an existing Playwright installation)
 const {chromium}=require('playwright');
+const {openStudent}=require('./student-popup-helper.cjs');
 const assert=require('assert/strict');
 const {spawn}=require('child_process');
 const fs=require('fs'),os=require('os'),path=require('path');
@@ -297,11 +298,10 @@ async function setRoster(p,names){
    await p.evaluate(()=>{classState.rules.completeRandom=true;classState.rules.groupBalance=false;classState.groups=[]});
    await p.click('#generateAssignment');await wait(200);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(200);await p.click('#confirmAssignment');await wait(200);await p.click('#openPlayback');
-   await p.locator('#playbackScreen:not(.hidden)').waitFor();
-   await p.click('#instant');await wait(300);
-   assert.ok(await p.locator('#seats .seat, #seats > *').count()>0);
-   await p.click('#backToTeacher');
+   await wait(200);await p.click('#confirmAssignment');await wait(200);const student=await openStudent(p);
+   await student.click('#instant');await wait(300);
+   assert.ok(await student.locator('#seats .seat, #seats > *').count()>0);
+   await student.close();
   });
   await ctx.close();
   await step('1~2월에는 전년도 학년도가 열린다',async()=>{
@@ -581,12 +581,10 @@ async function setRoster(p,names){
    await tap('4826');await p13.waitForFunction(()=>document.querySelector('.tt-lock').hidden,{},{timeout:8000});
    await p13.click('#generateAssignment');await wait(200);
    if(await p13.locator('#seatCountProceed:not(.hidden)').count())await p13.click('#seatCountProceed');
-   await wait(200);await p13.click('#confirmAssignment');await wait(200);await p13.click('#openPlayback');
-   await p13.locator('#playbackScreen:not(.hidden)').waitFor();
-   await p13.click('#backToTeacher');
-   await locked().waitFor();
-   assert.equal(await p13.locator('#playbackScreen').evaluate(e=>e.classList.contains('hidden')),false);
-   await tap('4826');await p13.waitForFunction(()=>document.querySelector('.tt-lock').hidden,{},{timeout:8000});
+   await wait(200);await p13.click('#confirmAssignment');await wait(200);const student=await openStudent(p13);
+   assert.equal(await student.locator('#backToTeacher,#simpleBackToTeacher').count(),0,'학생 창에는 교사 복귀 버튼이 없음');
+   assert.equal(await student.evaluate(()=>Boolean(window.__TT_LOCK)),false);
+   await student.close();
    await p13.locator('#teacherScreen:not(.hidden)').waitFor();
    await settingsAction(p13,'tt-lock-now','security');await locked().waitFor();
    await p13.click('#tt-lock-forgot');
@@ -619,10 +617,10 @@ async function setRoster(p,names){
    await p14.click('#tt-lock-cancel');
    await p14.click('#generateAssignment');await p14.clock.fastForward(300);
    if(await p14.locator('#seatCountProceed:not(.hidden)').count())await p14.click('#seatCountProceed');
-   await p14.clock.fastForward(300);await p14.click('#confirmAssignment');await p14.clock.fastForward(300);await p14.click('#openPlayback');
+   await p14.clock.fastForward(300);await p14.click('#confirmAssignment');await p14.clock.fastForward(300);const student=await openStudent(p14);
    await p14.clock.fastForward('10:00');
    assert.equal(await p14.locator('.tt-lock').isVisible(),false,'학생 화면 중에는 잠기지 않음');
-   await p14.evaluate(()=>{document.getElementById('playbackScreen').classList.add('hidden');document.getElementById('teacherScreen').classList.remove('hidden')});
+   await student.close();
    await p14.clock.fastForward('06:00');
    assert.equal(await p14.locator('.tt-lock').isVisible(),true,'쉬면 잠김');
    await c13.close();
@@ -635,10 +633,11 @@ async function setRoster(p,names){
    assert.equal(await p15.evaluate(()=>classState.layout.rows),rows);
    await p15.click('#generateAssignment');await wait(200);
    if(await p15.locator('#seatCountProceed:not(.hidden)').count())await p15.click('#seatCountProceed');
-   await wait(200);await p15.click('#confirmAssignment');await wait(200);await p15.click('#openPlayback');
-   await p15.click('#run5');
-   await p15.waitForFunction(()=>playbackCompleted,{},{timeout:90000});
-   assert.equal(await p15.evaluate(()=>playbackStudents.length),10);
+   await wait(200);await p15.click('#confirmAssignment');await wait(200);const student=await openStudent(p15);
+   await student.click('#run5');
+   await student.waitForFunction(()=>playbackCompleted,{},{timeout:90000});
+   assert.equal(await student.evaluate(()=>playbackStudents.length),10);
+   await student.close();
    await c14.close();
   });
   await step('공용 이미지와 도구 홈, 한자 매니저가 열린다',async()=>{
@@ -695,12 +694,11 @@ async function setRoster(p,names){
    await p18.goto(BASE+'/seating/?section=seating');await started(p18);
    await p18.click('#generateAssignment');await wait(200);
    if(await p18.locator('#seatCountProceed:not(.hidden)').count())await p18.click('#seatCountProceed');
-   await wait(200);await p18.click('#confirmAssignment');await wait(200);await p18.click('#openPlayback');
-   await p18.locator('#playbackScreen:not(.hidden)').waitFor();
-   const tops=async sel=>p18.evaluate(s=>[...document.querySelectorAll(s)].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]),sel);
+   await wait(200);await p18.click('#confirmAssignment');await wait(200);const student=await openStudent(p18);
+   const tops=async sel=>student.evaluate(s=>[...document.querySelectorAll(s)].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]),sel);
    for(const [id,top] of await tops('#run1,#run5,#instant,#backToTeacher'))assert.ok(top>=1080*.34,`${id} ${top}`);
-   await p18.click('#instant');await p18.locator('#simpleViewButton:not(.hidden)').waitFor();
-   await p18.click('#simpleViewButton');await wait(200);
+   await student.click('#instant');await student.locator('#simpleViewButton:not(.hidden)').waitFor();
+   await student.click('#simpleViewButton');await wait(200);
    for(const [id,top] of await tops('.simple-actions button'))assert.ok(top>=1080*.34,`${id} ${top}`);
    await c17.close();
   });

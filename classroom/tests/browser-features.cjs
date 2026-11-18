@@ -1,6 +1,7 @@
 // Seating rules, PE teams, grade paste and Hanja in a real browser, with virtual data only.
 // node classroom/tests/browser-features.cjs   (NODE_PATH may point to an existing Playwright installation)
 const {chromium}=require('playwright');
+const {openStudent}=require('./student-popup-helper.cjs');
 const assert=require('assert/strict');
 const {spawn}=require('child_process');
 const path=require('path');
@@ -112,9 +113,9 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await p.click('#rowPlus');await wait(100);
    await p.click('#generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);await p.click('#openPlayback');
-   await p.click('#instant');await wait(500);
-   const overlaps=await p.evaluate(()=>{
+   await wait(100);await p.click('#confirmAssignment');await wait(100);const student=await openStudent(p);
+   await student.click('#instant');await wait(500);
+   const overlaps=await student.evaluate(()=>{
     const boxes=[...document.querySelectorAll('#seats .name-tag,#seats .seat-name,#seats [class*="name"]')].filter(e=>e.textContent.trim()&&e.offsetParent).map(e=>({t:e.textContent.trim(),r:e.getBoundingClientRect()}));
     const out=[];for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i].r,b=boxes[j].r;if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)out.push(boxes[i].t+'/'+boxes[j].t)}
     return{n:boxes.length,out};
@@ -127,17 +128,16 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await p.click('#modePE');await wait(200);
    await p.click('#generateAssignment');await wait(300);
    await p.click('#confirmAssignment');await wait(300);
-   await p.click('#openPlayback');
-   await p.locator('#pePitchReveal.is-open').waitFor();
-   const tops=await p.evaluate(()=>[...document.querySelectorAll('#pePitchRun1,#pePitchRun5,[data-pe-instant],#pePitchBack,#pePitchSimpleOpen')].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]));
+   const student=await openStudent(p,'pe');
+   const tops=await student.evaluate(()=>[...document.querySelectorAll('#pePitchRun1,#pePitchRun5,[data-pe-instant],#pePitchBack,#pePitchSimpleOpen')].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]));
    for(const [id,top] of tops)assert.ok(top>=1080*.34,`${id} ${top}`);
-   await p.click('[data-pe-instant]');await wait(300);
-   assert.equal(await p.locator('#pePitchSimpleOpen').isDisabled(),false);
-   await p.click('#pePitchSimpleOpen');await wait(200);
-   assert.equal((await p.locator('#peSimpleGrid').textContent()).length>10,true);
-   await p.click('#pePitchSimpleReturn');await wait(200);
-   await p.click('#pePitchBack');await wait(200);
-   assert.equal(await p.locator('#pePitchReveal.is-open').count(),0);
+   await student.click('[data-pe-instant]');await wait(300);
+   assert.equal(await student.locator('#pePitchSimpleOpen').isDisabled(),false);
+   await student.click('#pePitchSimpleOpen');await wait(200);
+   assert.equal((await student.locator('#peSimpleGrid').textContent()).length>10,true);
+   await student.click('#pePitchSimpleReturn');await wait(200);
+   await student.close();await wait(200);
+   assert.equal(await p.evaluate(()=>window.__TT_STUDENT_POPUP.isPresenting()),false);
    await p.click('#modeClassroom');await wait(200);
    assert.equal(await p.evaluate(()=>validatePersistentState(classState).ok),true);
    await ctx.close();

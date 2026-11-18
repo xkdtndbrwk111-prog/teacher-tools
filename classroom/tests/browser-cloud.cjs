@@ -1,6 +1,7 @@
 // EASY/NORMAL against an in-memory stand-in for Google. Nothing here reaches a real Google account.
 // node classroom/tests/browser-cloud.cjs   (NODE_PATH may point to an existing Playwright installation)
 const {chromium}=require('playwright');
+const {openStudent}=require('./student-popup-helper.cjs');
 const assert=require('assert/strict');
 const {spawn}=require('child_process');
 const path=require('path');
@@ -230,7 +231,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    nav=p.waitForNavigation();await p.click('#tt-diff-pull');await nav;await started(p);
    assert.deepEqual(await names(p),['다른PC변경']);
    await chipIs(p,/구글 \d/);await closeSettings(p);
-   await p.click('#tt-full-backup');
+   await p.click('#tt-hud-more-trigger');await p.click('[data-tt-section="backup"]');await p.click('#tt-full-backup');
    await p.locator('#tt-backup-undo-box:not([hidden])').waitFor();
    await p.click('#tt-backup-close');
   });
@@ -253,7 +254,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    if(process.env.SHOTS)await p.screenshot({path:process.env.SHOTS+'/diff.png'});
    assert.equal(google.writes,writes,'고르기 전에는 시트를 덮어쓰지 않음');
    await p.click('#tt-diff-later');
-   assert.match(await chip(p).textContent(),/자료 차이/);
+   await chipIs(p,/자료 차이/);
    await p.click('#tt-cloud-chip');
    await p.locator('#tt-diff-push').waitFor({state:'visible'});
    await p.click('#tt-diff-push');
@@ -276,12 +277,12 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await other.ctx.close();
    await p.click('#generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);await p.click('#openPlayback');
-   await wait(4000);
-   await p.evaluate(()=>{});
-   await p.waitForFunction(()=>/자료 차이/.test(document.getElementById('tt-cloud-chip').textContent),{},{timeout:20000}).catch(()=>{});
+   await wait(100);await p.click('#confirmAssignment');await wait(100);const student=await openStudent(p);
+   await chipIs(p,/자료 차이/);
    assert.equal(await p.locator('#tt-diff-text').isVisible(),false);
-   await p.click('#backToTeacher');await wait(200);
+   await student.close();
+   await p.locator('#tt-diff-text').waitFor({state:'visible',timeout:20000});
+   await p.click('#tt-diff-later');
   });
   await step('구글 오류면 브라우저 저장은 계속되고 다시 시도한다',async()=>{
    google.files.clear();
