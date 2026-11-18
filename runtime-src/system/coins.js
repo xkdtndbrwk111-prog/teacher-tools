@@ -213,7 +213,81 @@
   if(old)return originalRefund(events,charge,at);
   return {ok:true,cls,events:[{at,cls,type:'coin-cancel',charge}]};
  }
- const api={COIN_UNIT,encodeEvent,decodeEvent,snapshot,commit,managerMutation,cancelOrRefund,checkedSpend,originalRefund,validCharge,assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
+
+ // Daily routine events share the existing revision-checked append-only ledger.
+ // Freeze the tasks, students, and seat groups for each date. No retrospective day fabrication.
+ const minuteOf=now=>now.getHours()*60+now.getMinutes();
+ function routineTasks(value){
+  if(!Array.isArray(value)||value.length>16)throw Error('루틴은 최대 16개까지 설정할 수 있어요.');
+  const ids=new Set();
+  const tasks=value.map(t=>{
+   if(!t||typeof t.id!=='string'||!t.id||ids.has(t.id)||typeof t.name!=='string'||!t.name.trim()||t.name.length>60||!Number.isInteger(t.start)||!Number.isInteger(t.end)||t.start<0||t.end>1440||t.start>=t.end||!Array.isArray(t.days)||!t.days.length||t.days.some(d=>!Number.isInteger(d)||d<0||d>6))throw Error('루틴 이름, 시간, 요일을 확인해 주세요.');
+   ids.add(t.id);return{id:t.id,name:t.name.trim(),start:t.start,end:t.end,days:[...new Set(t.days)]};
+  }).sort((a,b)=>a.start-b.start);
+  for(let i=0;i<tasks.length;i++)for(let j=i+1;j<tasks.length;j++)if(tasks[i].end>tasks[j].start&&tasks[i].days.some(d=>tasks[j].days.includes(d)))throw Error('같은 요일의 루틴 시간이 겹쳐요.');
+  return tasks;
+ }
+ function routineConfig(events,cls){return events.findLast(e=>e.cls===cls&&e.type==='routine-config')?.tasks||[];}
+ function routineDay(events,cls,date){
+  const e=events.find(x=>x.cls===cls&&x.type==='routine-open'&&x.date===date);
+  if(!e)return null;
+  const checks=new Map(),excluded=new Set(e.students.filter(s=>s.excluded).map(s=>s.id)),cancelled=new Set();
+  let settled=null;
+  for(const r of events){
+   if(r.cls!==cls||r.date!==date)continue;
+   if(r.type==='routine-check')checks.set(JSON.stringify([r.task,r.student]),r.done===true);
+   if(r.type==='routine-exclude'){if(r.excluded)excluded.add(r.student);else excluded.delete(r.student);}
+   if(r.type==='routine-cancel'){if(r.cancelled)cancelled.add(r.task);else cancelled.delete(r.task);}
+   if(r.type==='routine-settle')settled=r;
+  }
+  return{...e,checks,excluded,cancelled,settled};
+ }
+ function routineOpen(events,roster,now){
+  if(!roster.cls||!roster.students.length||routineDay(events,roster.cls,dayText(now)))return [];
+  const tasks=routineTasks(routineConfig(events,roster.cls)).filter(t=>t.days.includes(now.getDay()));
+  const min=minuteOf(now);
+  if(!tasks.length||min<tasks[0].start||min>=tasks.at(-1).end)return [];
+  const students=roster.students.map(s=>({id:s.id,name:s.name,number:s.number,groupId:s.groupId||null,groupName:s.groupName||null,excluded:Boolean(s.excluded)}));
+  if(new Set(students.map(s=>s.id)).size!==students.length)return [];
+  return[{at:now.toISOString(),cls:roster.cls,type:'routine-open',date:dayText(now),tasks,students}];
+ }
+ function routineActive(day,now){
+  if(!day||day.date!==dayText(now)||day.settled)return null;
+  const min=minuteOf(now);return day.tasks.find(t=>!day.cancelled.has(t.id)&&t.start<=min&&min<t.end)||null;
+ }
+ const routineDone=(day,task,student)=>day.checks.get(JSON.stringify([task,student]))===true;
+ function routineMark(day,{task,student,done,now,teacher=false}){
+  if(!day||day.settled||day.date!==dayText(now)||!day.students.some(s=>s.id===student)||!day.tasks.some(t=>t.id===task)||day.excluded.has(student)||day.cancelled.has(task))return [];
+  if(!teacher&&routineActive(day,now)?.id!==task)return [];
+  if(routineDone(day,task,student)===Boolean(done))return [];
+  return[{at:now.toISOString(),cls:day.cls,date:day.date,type:'routine-check',task,student,done:Boolean(done)}];
+ }
+ function routineAmounts(day){
+  const tasks=day.tasks.filter(t=>!day.cancelled.has(t.id)),people=day.students.filter(s=>!day.excluded.has(s.id));
+  if(!tasks.length||!people.length)return[];
+  const complete=new Set(people.filter(s=>tasks.every(t=>routineDone(day,t.id,s.id))).map(s=>s.id));
+  // A partial mapping must not make an incomplete group falsely eligible.
+  const hasGroups=people.every(s=>typeof s.groupId==='string'&&s.groupId);
+  const classDone=people.every(s=>complete.has(s.id));
+  return people.map(s=>{
+   const individual=complete.has(s.id)?1:0;
+   const group=hasGroups&&people.filter(p=>p.groupId===s.groupId).every(p=>complete.has(p.id))?1:0;
+   return{id:s.id,name:s.name,individual,group,classroom:classDone?1:0,amount:individual+group+(classDone?1:0)};
+  });
+ }
+ function routineSettle(events,day,now){
+  if(!day||day.settled||day.date>dayText(now)||!day.tasks.length||day.date===dayText(now)&&minuteOf(now)<Math.max(...day.tasks.map(t=>t.end)))return [];
+  // Keep the same upper-limit rule as other coin rewards; no debt or repeated payment.
+  const st=stateOf(events,day.cls),awards=routineAmounts(day),out=[],results=[];
+  if(st.settings.enabled)for(const a of awards){
+   const s=day.students.find(s=>s.id===a.id);const g=grant(st,{cls:day.cls,students:[s],amount:a.amount,source:'routine',at:now.toISOString()});
+   out.push(...g.events.map(e=>({...e,type:'routine-grant',date:day.date,individual:a.individual,group:a.group,classroom:a.classroom})));
+   results.push({...a,paid:g.results[0].given});
+  }
+  out.push({at:now.toISOString(),cls:day.cls,type:'routine-settle',date:day.date,coinEnabled:st.settings.enabled,results:results.map(({id,individual,group,classroom,paid})=>({id,individual,group,classroom,paid}))});
+  return out;
+ }
+ const api={routineTasks,routineConfig,routineDay,routineOpen,routineActive,routineDone,routineMark,routineAmounts,routineSettle,dayText,minuteOf,COIN_UNIT,encodeEvent,decodeEvent,snapshot,commit,managerMutation,cancelOrRefund,checkedSpend,originalRefund,validCharge,assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  root.TTCoins=api;
 })(typeof window!=='undefined'?window:globalThis);
