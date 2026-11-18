@@ -10672,10 +10672,12 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  function encodeBookRequest(x){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(x))))}
  async function readBook(book,resume){
   reset('book',book.title,true);const token=epoch,w=wrapper('mm-display mm-book-slot');w.textContent='책을 불러오는 중…';
-  let session='',cancelled=false,pollTimer=0,errors=0;
+  let session='',cancelled=false,pollTimer=0,errors=0,seq=0,command=null;
   const statusHome=status.parentNode,statusNext=status.nextSibling;actions.before(status);
   const layout=()=>{const r=w.getBoundingClientRect(),vw=innerWidth,vh=innerHeight,x=Math.max(0,Math.ceil(r.left)),y=Math.max(0,Math.ceil(r.top));return {vw,vh,x,y,w:Math.max(0,Math.floor(Math.min(vw,r.right))-x),h:Math.max(0,Math.floor(Math.min(vh,r.bottom))-y),visible:Number(dialog.open&&!document.hidden&&epoch===token&&r.width>100&&r.height>60),immersive:Number(dialog.classList.contains('mm-full'))}};
-  bookStop=()=>{cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);statusHome.insertBefore(status,statusNext);};
+  const keyNav=e=>{if(cancelled||!dialog.classList.contains('mm-full')||e.ctrlKey||e.altKey||e.metaKey)return;if(!['Escape','ArrowLeft','ArrowRight',' ','PageUp','PageDown'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){full.click();return}if(session&&!command)command={seq:++seq,kind:['ArrowLeft','PageUp'].includes(e.key)?'prev':'next',page:0}};
+  document.addEventListener('keydown',keyNav,true);
+  bookStop=()=>{cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);document.removeEventListener('keydown',keyNav,true);statusHome.insertBefore(status,statusNext);};
   const back=button('← 책 목록',books);actions.append(back);window.ttSystemVolume?.read();status.textContent='페이지 번호를 확인하고 있어요.';
   function failed(message){
    if(cancelled||epoch!==token)return;
@@ -10694,10 +10696,12 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    async function poll(){
     if(cancelled||epoch!==token)return;
     try{
-     const payload={layout:layout()};
+     const payload={layout:layout(),command:dialog.classList.contains('mm-full')?command:null};
      const r=await fetch('/api/book-reader/status?session='+encodeURIComponent(session),{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(payload),cache:'no-store'}),x=await r.json();
      if(cancelled||epoch!==token)return;if(!r.ok||!x.ok)throw Error('session');
      errors=0;
+     if(command&&Number(x.ack)>=command.seq)command=null;
+     if(!dialog.classList.contains('mm-full'))command=null;
      if(Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=book.pages&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
      if(x.ready){w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}

@@ -101,13 +101,13 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
  assert.equal(await dlg.getByRole('button',{name:'수동 저장',exact:true}).count(),0);
  const slot=await dlg.locator('.mm-book-slot').boundingBox(),foot=await dlg.locator('.mm-foot').boundingBox();assert.ok(slot.width>=1100&&slot.y+slot.height<=foot.y+1);
- await dlg.getByRole('button',{name:'⛶ 전체화면',exact:true}).click();
+ await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
  assert.equal(await dlg.locator('.mm-foot').isVisible(),false);
  await new Promise(r=>setTimeout(r,800));assert.ok(layouts.some(x=>x.immersive===1&&x.x<=1&&x.y<=1&&x.w>=x.vw-2&&x.h>=x.vh-2));
- await page.evaluate(()=>document.dispatchEvent(new Event('fullscreenchange')));
- await page.evaluate(()=>document.getElementById('ttMediaDialog').dispatchEvent(new Event('cancel',{cancelable:true})));
- await dlg.getByRole('button',{name:'⛶ 전체화면',exact:true}).waitFor();
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
+ await dlg.getByRole('button',{name:'전체화면',exact:true}).waitFor();
  assert.equal(await dlg.locator('.mm-foot').isVisible(),true);
  await page.setViewportSize({width:1600,height:900});await new Promise(r=>setTimeout(r,900));assert.ok(layouts.some(x=>x.vw===1600&&x.w>1100));
  await page.setViewportSize({width:1280,height:720});phase=2;await dlg.getByRole('button',{name:'4쪽 이어 읽기',exact:true}).waitFor();

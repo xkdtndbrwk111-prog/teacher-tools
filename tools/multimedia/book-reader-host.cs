@@ -117,12 +117,13 @@ internal sealed class BookReader : Form {
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
  }
- void Command(){
+ async Task Command(){
   var d=ReadFile("command.json");if(d==null)return;
   long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
   string kind=Str(d,"kind");int p=Int(d,"page");
   if(kind=="manual"&&p>=1&&p<=pages){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
+  else if((kind=="prev"||kind=="next")&&immersive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
   else return;
   commandSeq=seq;Publish(manualMode!=0?"수동 저장됨":"자동 판독 중");
  }
@@ -141,7 +142,7 @@ internal sealed class BookReader : Form {
    timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
  }
- const string ImmersiveScript=@"(()=>{const on=MODE;const key='__ttBookImmersiveV1';let q=window[key];if(!on){if(q){q.remove();delete window[key]}return {exit:false,clean:false}}if(!q){let hidden=null,prior='',ended=false,exit=false,timer=0;const overlay=document.createElement('div');overlay.setAttribute('aria-label','Book fullscreen navigation');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:transparent;touch-action:manipulation;outline:none';overlay.tabIndex=0;const hint=document.createElement('button');hint.type='button';hint.textContent='전체화면 해제 (Esc)';hint.style.cssText='position:absolute;top:12px;right:12px;padding:12px 18px;font:16px sans-serif;color:white;background:#222d;border:1px solid #fff8;border-radius:8px;display:none;cursor:pointer';overlay.append(hint);const reveal=()=>{hint.style.display='block';clearTimeout(timer);timer=setTimeout(()=>hint.style.display='none',2200)};const step=(next)=>{const label=next?'Next page':'Previous page';const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>e.getAttribute('aria-label')===label&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getClientRects().length>0);if(a.length===1)a[0].click()};const keys=e=>{if(ended||e.altKey||e.ctrlKey||e.metaKey)return;if(!['ArrowLeft','ArrowRight',' ','PageDown','PageUp','Escape'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){exit=true;return}step(e.key!=='ArrowLeft'&&e.key!=='PageUp')};document.addEventListener('keydown',keys,true);overlay.addEventListener('click',e=>{e.stopPropagation();if(e.target===hint){exit=true;return}const x=e.clientX/innerWidth;if(x<.45)step(false);else if(x>.55)step(true);else reveal()});overlay.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.clientY<80)reveal()});document.body.append(overlay);overlay.focus({preventScroll:true});q=window[key]={get exit(){return exit},refresh(){const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');let bar=null;if(a.length===1){for(let p=a[0];p&&p!==document.body;p=p.parentElement){const r=p.getBoundingClientRect();if(r.height>Math.min(240,innerHeight*.28))break;if(r.top>=innerHeight*.70&&r.bottom<=innerHeight+5&&p.querySelector('[aria-label=""Next page""]')&&p.querySelector('[aria-label=""Previous page""]'))bar=p;}}if(bar!==hidden){if(hidden)hidden.style.opacity=prior;hidden=bar;if(bar){prior=bar.style.opacity;bar.style.opacity='0'}}return !!bar},remove(){ended=true;clearTimeout(timer);document.removeEventListener('keydown',keys,true);if(hidden)hidden.style.opacity=prior;overlay.remove()}};reveal();}return {exit:q.exit,clean:q.refresh()}})()";
+ const string ImmersiveScript=@"(()=>{const on=MODE;if(location.origin!=='https://www.canva.com'&&location.protocol!=='about:')return {exit:false,clean:false};const key='__ttBookImmersiveV1';let q=window[key];if(!on){if(q){q.remove();delete window[key]}return {exit:false,clean:false}}if(!q){let hidden=null,prior='',ended=false,exit=false,navigated=false,timer=0;const overlay=document.createElement('div');overlay.setAttribute('aria-label','Book fullscreen navigation');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:transparent;touch-action:manipulation;outline:none';overlay.tabIndex=0;const hint=document.createElement('button');hint.type='button';hint.textContent='전체화면 해제 (Esc)';hint.style.cssText='position:absolute;top:12px;right:12px;padding:12px 18px;font:16px sans-serif;color:white;background:#222d;border:1px solid #fff8;border-radius:8px;display:none;cursor:pointer';overlay.append(hint);const reveal=()=>{hint.style.display='block';clearTimeout(timer);timer=setTimeout(()=>hint.style.display='none',2200)};const step=(next)=>{const label=next?'Next page':'Previous page';const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>e.getAttribute('aria-label')===label&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getClientRects().length>0);if(a.length===1){navigated=true;a[0].click()}};const keys=e=>{if(ended||e.altKey||e.ctrlKey||e.metaKey)return;if(!['ArrowLeft','ArrowRight',' ','PageDown','PageUp','Escape'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){exit=true;return}step(e.key!=='ArrowLeft'&&e.key!=='PageUp')};document.addEventListener('keydown',keys,true);overlay.addEventListener('click',e=>{e.stopPropagation();if(e.target===hint){exit=true;return}const x=e.clientX/innerWidth;if(x<.45)step(false);else if(x>.55)step(true);else reveal()});overlay.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.clientY<80)reveal()});document.body.append(overlay);overlay.focus({preventScroll:true});q=window[key]={get exit(){return exit},takeNavigation(){const n=navigated;navigated=false;return n},refresh(){const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');let bar=null;if(a.length===1){for(let p=a[0];p&&p!==document.body;p=p.parentElement){const r=p.getBoundingClientRect();if(r.height>Math.min(240,innerHeight*.28))break;if(r.top>=innerHeight*.70&&r.bottom<=innerHeight+5&&p.querySelector('[aria-label=""Next page""]')&&p.querySelector('[aria-label=""Previous page""]'))bar=p;}}if(bar!==hidden){if(hidden)hidden.style.opacity=prior;hidden=bar;if(bar){prior=bar.style.opacity;bar.style.opacity='0'}}return !!bar},remove(){ended=true;clearTimeout(timer);document.removeEventListener('keydown',keys,true);if(hidden)hidden.style.opacity=prior;overlay.remove()}};reveal();}return {exit:q.exit,clean:q.refresh(),navigated:q.takeNavigation()}})()";
  async Task ApplyImmersive(){
   if(!immersive&&!immersiveApplied)return;
   string raw=await web.CoreWebView2.ExecuteScriptAsync(ImmersiveScript.Replace("MODE",immersive?"true":"false"));
@@ -149,6 +150,7 @@ internal sealed class BookReader : Form {
   if(raw=="null")return;
   var d=Json.Deserialize<Dictionary<string,object>>(raw);
   cleanControls=d.ContainsKey("clean")&&Convert.ToBoolean(d["clean"]);if(immersive&&d.ContainsKey("exit")&&Convert.ToBoolean(d["exit"]))exitFull=true;
+  if(immersive&&d.ContainsKey("navigated")&&Convert.ToBoolean(d["navigated"])){seekTarget=0;waitingFor=0;steps=0;stable=0;}
  }
  async Task<int> Read(){
   string script=fixture?PageScript.Replace("if(location.origin!=='https://www.canva.com')return null;",""):PageScript;
@@ -169,7 +171,7 @@ internal sealed class BookReader : Form {
   if(!ready)return;
   busy=true;
   try{
-   Command();
+   await Command();
    if(!fixture&&!slotVisible)return;
    await ApplyImmersive();
    if(seekTarget<0)seekTarget=requested;
@@ -191,8 +193,22 @@ internal sealed class BookReader : Form {
    }
    if(saved!=p)saved=p;
    Publish("자동 저장됨");
-   if(fixture&&saved==requested){Console.WriteLine("HOST FIXTURE PASS "+saved);Close();}
+   if(fixture&&saved==requested){if(requested==3){try{await VerifyImmersiveFixture();}catch(Exception ex){Console.Error.WriteLine(ex.Message);saved=0;Close();return;}}Console.WriteLine("HOST FIXTURE PASS "+saved);Close();}
   }catch{Publish("페이지 판독 실패 · 기존 북마크 유지");}finally{busy=false;}
+ }
+ async Task VerifyImmersiveFixture(){
+  var core=web.CoreWebView2;
+  await core.ExecuteScriptAsync(@"(()=>{let s=document.querySelector('[role=slider]'),b=document.createElement('div');b.style.cssText='position:fixed;bottom:0;left:0;width:100%;height:40px';b.append(s,...document.querySelectorAll('button'));document.body.append(b);return true})()");
+  immersive=true;await ApplyImmersive();if(!cleanControls)throw new InvalidOperationException("fixture control bar not hidden");
+  await core.ExecuteScriptAsync(@"(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));return true})()");
+  if(await Read()!=4)throw new InvalidOperationException("fixture right key");
+  await core.ExecuteScriptAsync(@"(()=>{let o=document.querySelector('[aria-label=""Book fullscreen navigation""]');o.dispatchEvent(new MouseEvent('click',{clientX:10,bubbles:true}));return true})()");
+  if(await Read()!=3)throw new InvalidOperationException("fixture left click");
+  await core.ExecuteScriptAsync(@"(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));return true})()");
+  await ApplyImmersive();if(!exitFull)throw new InvalidOperationException("fixture escape");
+  immersive=false;await ApplyImmersive();
+  if(await core.ExecuteScriptAsync(@"(()=>!document.querySelector('[aria-label=""Book fullscreen navigation""]')&&document.querySelector('[role=slider]').parentElement.style.opacity!=='0')()")!="true")throw new InvalidOperationException("fixture restore");
+  Console.WriteLine("HOST IMMERSIVE FIXTURE PASS keyboard click escape control restore");
  }
  [STAThread] static int Main(string[] args){
   try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}

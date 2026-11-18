@@ -58,7 +58,8 @@ function Sync-TTBookHost($session,[string]$encoded){
  $layout=Get-TTBookLayout $x.layout
  $command=$x.command
  if($command){
-  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual','prev','next') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if($command.kind -in @('prev','next') -and ($layout.immersive -ne 1 -or $command.page -ne 0)){throw 'navigation outside immersive mode'}
   if($command.seq -gt $session.seq){Write-TTBookJson (Join-Path $session.dir 'command.json') @{seq=$command.seq;kind=$command.kind;page=$command.page};$session.seq=$command.seq}
  }
  $raw=ConvertTo-Json -Compress $layout
