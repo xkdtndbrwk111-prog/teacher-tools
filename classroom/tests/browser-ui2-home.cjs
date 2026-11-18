@@ -22,6 +22,7 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   await p.locator('[data-tt-ui2-open="board"]').click();assert.equal(await p.locator('#tt-manager-board').isVisible(),true);
   await p.waitForFunction(()=>document.getElementById('tt-ui2-board-status').textContent.includes('연결'));
   assert.equal(await p.locator('#tt-ui2-send').isDisabled(),true);
+  assert.equal(await p.locator('#tt-ui2-send-roster').isDisabled(),true);
   await p.locator('#tt-ui2-board-settings').click();assert.equal(await p.locator('#tt-settings-overlay').isVisible(),true);
   await p.locator('#tt-settings-close').click();
   await p.locator('#tt-grade-tab').click();

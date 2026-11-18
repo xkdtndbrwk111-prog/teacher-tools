@@ -24,7 +24,7 @@
  const home=document.createElement('section');home.id='tt-manager-home';home.className='tt-ui2-page';home.hidden=true;
  home.innerHTML='<div class="tt-ui2-home-content"><h1>교실매니저</h1><p>원하는 메뉴를 선택하세요.</p><div class="tt-ui2-grid">'+tabs.map(([key,label,description])=>'<button type="button" data-tt-ui2-open="'+key+'" class="tt-ui2-tile">'+icon(key)+'<strong>'+(key==='board'?'호자보드 연동':label)+'</strong><span>'+description+'</span></button>').join('')+'</div></div>';
  const link=document.createElement('section');link.id='tt-manager-board';link.className='tt-ui2-page';link.hidden=true;
- link.innerHTML='<div class="tt-ui2-board-content"><h1>호자보드 연동</h1><p>현재 학급의 학생 명단과 확정 자리·모둠을 전자칠판에 전달합니다.</p><div class="tt-ui2-card"><h2>연결 상태</h2><p id="tt-ui2-board-status" role="status">연결 확인 중…</p><p>이미 설치했다면 호자보드를 배경화면 모드로 실행한 뒤 다시 확인하세요.</p><div class="tt-ui2-actions"><button type="button" id="tt-ui2-recheck">연결 다시 확인</button><a href="../">호자보드 다운로드 안내 · 도구 홈</a></div><small>연결되지 않았다는 사실만으로 설치 여부를 판단할 수 없습니다. 공식 설치판 공개 여부는 도구 홈에서 확인하세요.</small></div><div class="tt-ui2-card"><h2>학생 명단 및 자리·모둠 보내기</h2><p>현재 버전은 확정된 자리배치와 명단을 함께 보냅니다. 아직 배치를 확정하지 않았다면 자리배치에서 먼저 확정해 주세요.</p><div class="tt-ui2-actions"><button class="tt-ui2-primary" type="button" id="tt-ui2-send">호자보드로 보내기</button><button type="button" id="tt-ui2-open-seating">자리배치 열기</button></div><p id="tt-ui2-send-result" role="status"></p></div><div class="tt-ui2-card"><h2>학생 발표 화면</h2><p>자리배치·체육 모둠·학급생활 QR 발표는 각 메뉴의 학생 화면에서 실행할 수 있습니다.</p><button type="button" id="tt-ui2-board-settings">전자칠판 설정 열기</button></div></div>';
+ link.innerHTML='<div class="tt-ui2-board-content"><h1>호자보드 연동</h1><p>현재 학급의 학생 명단과 확정 자리·모둠을 전자칠판에 전달합니다.</p><div class="tt-ui2-card"><h2>연결 상태</h2><p id="tt-ui2-board-status" role="status">연결 확인 중…</p><p>이미 설치했다면 호자보드를 배경화면 모드로 실행한 뒤 다시 확인하세요.</p><div class="tt-ui2-actions"><button type="button" id="tt-ui2-recheck">연결 다시 확인</button><a href="../">호자보드 다운로드 안내 · 도구 홈</a></div><small>연결되지 않았다는 사실만으로 설치 여부를 판단할 수 없습니다. 공식 설치판 공개 여부는 도구 홈에서 확인하세요.</small></div><div class="tt-ui2-card"><h2>학생 명단 및 자리·모둠 보내기</h2><p>학생 명단만 보내거나, 확정된 자리·모둠까지 함께 보낼 수 있습니다. 명단만 보내면 같은 학급의 유효한 확정 자리는 유지됩니다.</p><div class="tt-ui2-actions"><button class="tt-ui2-primary" type="button" id="tt-ui2-send-roster">학생 명단만 보내기</button><button type="button" id="tt-ui2-send">자리·모둠까지 보내기</button><button type="button" id="tt-ui2-open-seating">자리배치 열기</button></div><p id="tt-ui2-send-result" role="status"></p></div><div class="tt-ui2-card"><h2>학생 발표 화면</h2><p>자리배치·체육 모둠·학급생활 QR 발표는 각 메뉴의 학생 화면에서 실행할 수 있습니다.</p><button type="button" id="tt-ui2-board-settings">전자칠판 설정 열기</button></div></div>';
  root.append(home,link);
  let current='seat';
  function show(next){
@@ -77,12 +77,14 @@
  $('tt-ui2-board-settings').onclick=()=>window.__TT_SETTINGS?.open('board');
  $('tt-ui2-recheck').onclick=()=>void window.__TT_BOARD_CONNECTION?.check();
  $('tt-ui2-send').onclick=()=>send.click();
+ $('tt-ui2-send-roster').onclick=()=>window.__TT_SEND_ROSTER?.();
  function reflect(){
   $('tt-ui2-board-status').textContent=status.textContent.trim()||'연결 확인 중…';
   $('tt-ui2-send').disabled=send.disabled;
   $('tt-ui2-send').title=send.title;
+  const roster=$('tt-ui2-send-roster');roster.disabled=!window.__TT_BOARD_CONNECTION?.rosterReady();roster.title=roster.disabled?'호자보드 V1.66.20 이상 연결 필요':'확정 배치 없이 학생 명단 전송';
  }
- new MutationObserver(reflect).observe(status,{childList:true,subtree:true,characterData:true});
+ new MutationObserver(reflect).observe(status,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['data-roster-ready']});
  new MutationObserver(reflect).observe(send,{attributes:true,attributeFilter:['disabled','title']});
  const save=$('saveStatus');
  if(save)new MutationObserver(()=>{if(current==='board')$('tt-ui2-send-result').textContent=save.textContent}).observe(save,{childList:true,subtree:true,characterData:true});

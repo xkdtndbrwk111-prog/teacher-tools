@@ -1,7 +1,7 @@
 // The seating scripts read their data as they load, so they start only after the store is ready.
 (()=>{
  'use strict';
- const SCRIPTS=['app.js?v=20261010-seatdrag2','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=20261116-board-only','../classroom/host/cloud-sync.js?v=20261115-unified-auth'];
+ const SCRIPTS=['app.js?v=20261010-seatdrag2','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-e','../classroom/host/cloud-sync.js?v=20261115-unified-auth'];
  const store=window.__TT_STORE;
  const domReady=()=>new Promise(resolve=>{if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',resolve,{once:true});else resolve()});
  const load=src=>new Promise((resolve,reject)=>{
@@ -47,11 +47,11 @@
   for(const src of SCRIPTS)await load(src);
   window.__TT_LOCK.mount();
   await load('../classroom/host/hud-shell.js?v=20261116-board-only');
-  await load('../classroom/host/board-status.js?v=20261116-board-present');
+  await load('../classroom/host/board-status.js?v=ui2-e');
   await load('../classroom/host/presentation-link.js?v=20261117-board-polish');
   await load('../classroom/host/student-popup.js?v=20261116-board-present');
   await load('../classroom/host/settings-window.js?v=20261116-board-only');
-  await load('../classroom/host/manager-home.js?v=ui2-a');
+  await load('../classroom/host/manager-home.js?v=ui2-e');
   if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
   document.documentElement.classList.remove('tt-manager-starting');

@@ -15,6 +15,45 @@ $script:updateApproveToken=[guid]::NewGuid().ToString('N')
 # Ephemeral, design-only theme snapshot. Never read/write student data or browser files.
 $script:ttBoardTheme=$null
 $script:ttBoardThemeAt=[datetime]::MinValue
+# The roster-only request is a distinct, tightly projected protocol. Existing
+# confirmed seating is kept only for the same class, current non-excluded IDs.
+function ConvertTo-TTManagerRoster($x){
+ if(!$x -or $x.rosterProtocol -ne 1 -or $x.classId -isnot [string] -or $x.classId -notmatch '^[A-Za-z0-9_-]{1,160}$' -or $x.className -isnot [string] -or !$x.className.Trim() -or $x.className.Length -gt 80){throw 'roster identity'}
+ if($x.roster -isnot [array] -or $x.roster.Count -lt 1 -or $x.roster.Count -gt 100){throw 'roster size'}
+ $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+ $numbers=[Collections.Generic.HashSet[int]]::new()
+ $list=@(foreach($s in $x.roster){
+  if($s.id -isnot [string] -or $s.id -notmatch '^[A-Za-z0-9_-]{1,160}$' -or !$seen.Add($s.id) -or $s.name -isnot [string] -or !$s.name.Trim() -or $s.name.Length -gt 80 -or $s.gender -cnotin @('male','female','none') -or $s.excluded -isnot [bool] -or ($s.number -isnot [int] -and $s.number -isnot [long]) -or $s.number -lt 1 -or $s.number -gt 10000 -or !$numbers.Add([int]$s.number)){throw 'roster member'}
+  [ordered]@{id=[string]$s.id;name=[string]$s.name;gender=[string]$s.gender;excluded=[bool]$s.excluded;number=[int]$s.number}
+ })
+ return [ordered]@{classId=[string]$x.classId;className=[string]$x.className;roster=$list}
+}
+function Merge-TTManagerRoster($x,$old){
+ $data=ConvertTo-TTManagerRoster $x
+ $byId=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+ foreach($s in $data.roster){$byId.Add($s.id,$s)}
+ $same=($old -and [string]$old.classId -ceq $data.classId)
+ $out=[ordered]@{}
+ if($same -and $old.layout -and $old.assignments){
+  # Copy existing geometry and metadata, never accept it from a roster request.
+  foreach($key in @('layout','groups','teacherAvatar')){if($null -ne $old.$key){$out[$key]=$old.$key}}
+  $out.assignments=@(foreach($a in @($old.assignments)){if($a -and $a.studentId -is [string] -and $byId.ContainsKey($a.studentId) -and !$byId[$a.studentId].excluded){$a}})
+  $assigned=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach($a in $out.assignments){[void]$assigned.Add($a.studentId)}
+  $out.students=@(foreach($s in @($old.students)){if($s -and $s.id -is [string] -and $assigned.Contains($s.id)){$s.name=$byId[$s.id].name;$s}})
+  # Pair reactions / previous history may refer to removed students; do not replay them.
+  $out.pairReactions=@();$out.previousAssignments=@();$out.historyTransition=$false;$out.previousRound=$null
+  $out.groupProtocol=1
+  $out.practice=@{genderSeats=[bool]$old.practice.genderSeats;genders=@{}}
+ }else{
+  # New class / first send: no fabricated seats or groups, only real roster.
+  $out.rosterOnly=$true;$out.students=@();$out.assignments=@();$out.groups=@();$out.groupProtocol=1
+  $out.practice=@{genderSeats=$false;genders=@{}}
+ }
+ foreach($s in $data.roster){$out.practice.genders[$s.id]=$s.gender}
+ $out.classId=$data.classId;$out.className=$data.className;$out.roster=$data.roster
+ return $out
+}
 function ConvertTo-TTBoardTheme($x){
  if(!$x -or ($x.version -isnot [int] -and $x.version -isnot [long]) -or $x.version -ne 1){throw 'theme version'}
  if($x.theme -isnot [string] -or $x.theme -cnotin @('dark','sky','pink','green','black','custom')){throw 'theme name'}
@@ -773,6 +812,26 @@ try {
     elseif(!$script:ttBoardTheme -or ([datetime]::UtcNow-$script:ttBoardThemeAt).TotalSeconds -gt 45){$status='503 Service Unavailable';$body='{"error":"theme unavailable"}'}
     else{$body=ConvertTo-Json -Compress -Depth 5 $script:ttBoardTheme}
    }
+   elseif($path -eq '/api/roster'){
+    $boardOrigin=$localHost -and $fetchSite -eq 'same-origin' -and $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port")
+    if(!$boardOrigin){$status='403 Forbidden';$body='{"error":"forbidden"}'}
+    elseif($parts[0] -ne 'POST'){$status='405 Method Not Allowed';$body='{"error":"method"}'}
+    elseif($bodyText.Length -gt 65536){$status='400 Bad Request';$body='{"error":"size"}'}
+    else{
+     try{
+      $x=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($bodyText)))
+      $old=$null
+      if([IO.File]::Exists($seatingFile)){$old=ConvertFrom-Json ([IO.File]::ReadAllText($seatingFile,[Text.Encoding]::UTF8))}
+      $merged=Merge-TTManagerRoster $x $old
+      $temp=$seatingFile+'.roster-tmp'
+      try{
+       [IO.File]::WriteAllText($temp,(ConvertTo-Json -Depth 30 -Compress $merged),[Text.UTF8Encoding]::new($false))
+       if([IO.File]::Exists($seatingFile)){[IO.File]::Replace($temp,$seatingFile,[NullString]::Value)}else{[IO.File]::Move($temp,$seatingFile)}
+      }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
+      $body='{"ok":true}'
+     }catch{$status='400 Bad Request';$body='{"error":"roster rejected"}'}
+    }
+   }
    elseif($path -eq '/api/board-status'){
     if(-not $localHost -or ($origin -and -not $managerOrigin)){$status='403 Forbidden';$body='{"error":"forbidden"}'}
     elseif($parts[0] -eq 'OPTIONS'){$status='204 No Content';$body=''}
@@ -782,7 +841,7 @@ try {
      # 'wallpaper' stays true for both modes so the published classroom manager keeps working; 'mode' says which.
       $mode=''
       try{$mode=[string](ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))).mode}catch{}
-      $result=@{service='teacher-tools-local';version=40;coinProtocol=3;presentationProtocol=1;presentationReady=[bool](Get-TTPresentReady);wallpaper=$wallpaper;mode=$(if($wallpaper){$mode}else{''});screen=$null}
+      $result=@{service='teacher-tools-local';version=40;coinProtocol=3;presentationProtocol=1;presentationReady=[bool](Get-TTPresentReady);rosterProtocol=1;wallpaper=$wallpaper;mode=$(if($wallpaper){$mode}else{''});screen=$null}
      if($wallpaper){
       # Read only Windows display bounds; never expose student data or stored files.
       try{

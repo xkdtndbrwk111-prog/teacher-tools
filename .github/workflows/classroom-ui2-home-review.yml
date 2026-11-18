@@ -18,6 +18,7 @@ jobs:
           node --test classroom/tests/hoja-theme.test.cjs classroom/tests/theme-cloud.test.mjs
           node classroom/tests/board-theme-publish.test.cjs
           pwsh -NoProfile -File classroom/tests/board-theme-server.test.ps1
+          pwsh -NoProfile -File classroom/tests/board-roster-server.test.ps1
           node --check classroom/host/manager-home.js
           node --check classroom/host/class-bootstrap.js
           node --check classroom/host/grade-mount.js
