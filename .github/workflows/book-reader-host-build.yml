@@ -1,0 +1,22 @@
+name: Book reader native host build and fixture
+on:
+  pull_request:
+    paths: ['tools/multimedia/book-reader-host*','.github/workflows/book-reader-host-build.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: tools/multimedia/book-reader-host-build.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: book-reader-native-dependency
+          path: ${{ runner.temp }}/tt-book-host/asset-book-reader-host.zip
+          if-no-files-found: error
+          retention-days: 14
