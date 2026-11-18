@@ -71,6 +71,50 @@ try {
  if(Test-Path (Join-Path $root 'r8-transaction')){throw 'Uncommitted transaction'}
  $page=Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri 'http://127.0.0.1:17439/'
  if($page.StatusCode -ne 200 -or $page.Content -notmatch [regex]::Escape([string]$target.version)){throw 'Updated HTTP dashboard unavailable'}
+
+ # Exercise the exact installed signed book dependency through the live local HTTP server.
+ if(Test-Path -LiteralPath (Join-Path $root 'asset-book-reader-host.zip')){
+  $site='http://127.0.0.1:17439'
+  $headers=@{'Sec-Fetch-Site'='same-origin';Origin=$site}
+  $args=@{id='DAHbOpoUrrg';url='https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed';title='Book native installed smoke test';pages=5;start=3;saved=3}
+  function Encode-Book($a){[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -Compress $a)))}
+  function Assert-BookRejected([string]$request,[string]$method,$headers,$body,[int]$expected){
+   try{
+    $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri ($site+$request) -Method $method -Headers $headers -ContentType 'text/plain' -Body $body
+    throw 'Unexpected successful request'
+   }catch{
+    if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne $expected){throw}
+   }
+  }
+  Assert-BookRejected '/api/book-reader/open' 'POST' @{'Sec-Fetch-Site'='cross-site';Origin='https://example.invalid'} (Encode-Book $args) 403
+  $bad=$args.Clone();$bad.url='https://example.invalid/design/DAHbOpoUrrg/test/view?embed'
+  Assert-BookRejected '/api/book-reader/open' 'POST' $headers (Encode-Book $bad) 409
+  $open=Invoke-RestMethod -TimeoutSec 10 -Uri ($site+'/api/book-reader/open') -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book $args)
+  if(!$open.ok -or $open.session -cnotmatch '^[a-f0-9]{32}$'){throw 'Native session not created'}
+  $suffix='?session='+$open.session
+  try{
+   $deadline=[DateTime]::UtcNow.AddSeconds(55)
+   $passed=$false
+   do{
+    $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
+    if($state.closed){throw ('Native reader closed prematurely: '+$state.status)}
+    if($state.ready -and $state.page -eq 3 -and $state.saved -eq 3){$passed=$true;break}
+    Start-Sleep -Milliseconds 600
+   }while([DateTime]::UtcNow -lt $deadline)
+   if(!$passed){throw ('Live Canva actual native resume not confirmed: '+($state|ConvertTo-Json -Compress))}
+   Write-Host 'PASS: exact installed native book host, cross-site and URL rejection, live Canva direct page seek to saved page 3, no capture call'
+  }finally{
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/close'+$suffix) -Method POST -Headers $headers -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(12)
+   do{
+    $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
+    if($state.closed){break}
+    Start-Sleep -Milliseconds 400
+   }while([DateTime]::UtcNow -lt $deadline)
+   if(!$state.closed){throw 'Native close not confirmed'}
+  }
+  Write-Host 'PASS native session close'
+ }
  Write-Host 'PASS: actual Windows board window, local HTTP signed update, close and restart, matching readiness, all target files, synthetic data preservation. Test key and isolated local feed only; no physical school device or installer test.'
 }finally{
  if($http -and -not $http.HasExited){$http.Kill()}

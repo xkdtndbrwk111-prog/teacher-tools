@@ -86,6 +86,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).fill('3');await dlg.locator('#ttBookSave').click();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),3);
  await dlg.getByRole('button',{name:'← 책 목록',exact:true}).click();await dlg.getByRole('button',{name:'3쪽 이어 읽기',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#ttMediaStatus').textContent.includes('저장 위치 3쪽'));
  assert.match(await dlg.locator('.mm-status').textContent(),/저장 위치 3쪽/);
  // Controlled synthetic restricted video stream: not a proof of actual browser permissions or Canva capture.
  await page.evaluate(()=>{
