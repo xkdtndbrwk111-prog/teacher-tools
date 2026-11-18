@@ -1,0 +1,50 @@
+/* Shared UI2 color roles. Keep assessment grids, seat semantic colors, public views,
+   warnings and data tables on their existing readable work surfaces. */
+html.tt-manager-theme{--cm-button-radius:10px;--cm-input-radius:8px;--cm-card-radius:17px;--cm-modal-radius:18px}
+html.tt-manager-theme,html.tt-manager-theme body{font-family:var(--cm-font)}
+html.tt-manager-theme body :is(button,input,select,textarea){font-family:var(--cm-font)}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified,
+html.tt-manager-theme #teacherScreen>.tt-seating-submodes,
+html.tt-manager-theme .life-toolbar,
+html.tt-manager-theme #app .workspace-toolbar{
+ background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important;border-color:var(--cm-border)!important;
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified :is(.brand-block,#saveStatus,.tt-class-controls label),
+html.tt-manager-theme .life-toolbar>span{color:var(--cm-panel-ink)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch{background:var(--cm-surface)!important;border-color:var(--cm-border)!important;box-shadow:none!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified :is(.prototype-mode-switch button:not(.on),.tt-class-controls button,.tt-class-controls select,.tt-hud-more-trigger,.tt-hud-cloud-chip),
+html.tt-manager-theme #teacherScreen>.tt-seating-submodes button:not(.on),
+html.tt-manager-theme .tt-life-panel .life-nav:not(.on),
+html.tt-manager-theme #app .workspace-toolbar .toolbtn:not(.on){
+ color:var(--cm-control-ink)!important;background:var(--cm-control)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)!important;
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button.on,
+html.tt-manager-theme #teacherScreen>.tt-seating-submodes button.on,
+html.tt-manager-theme .tt-life-panel .life-nav.on,
+html.tt-manager-theme #app .workspace-toolbar .toolbtn.on{
+ color:var(--cm-accent-ink)!important;background:var(--cm-accent)!important;border-color:var(--cm-accent)!important;border-radius:var(--cm-button-radius)!important;box-shadow:none!important;
+}
+html.tt-manager-theme .tt-ui2-page{background:var(--cm-bg);color:var(--cm-body-ink)}
+html.tt-manager-theme .tt-ui2-page p{color:var(--cm-body-sub)}
+html.tt-manager-theme :is(.tt-ui2-tile,.tt-ui2-card){background:var(--cm-panel);border-color:var(--cm-border);color:var(--cm-panel-ink);border-radius:var(--cm-card-radius)}
+html.tt-manager-theme .tt-ui2-tile:hover{background:var(--cm-surface);color:var(--cm-surface-ink);border-color:var(--cm-accent)}
+html.tt-manager-theme .tt-ui2-tile .tt-ui2-icon{color:var(--cm-panel-ink)}
+html.tt-manager-theme .tt-ui2-tile:hover .tt-ui2-icon{color:var(--cm-surface-ink)}
+html.tt-manager-theme .tt-ui2-tile span,html.tt-manager-theme .tt-ui2-card :is(p,small){color:var(--cm-panel-sub)}
+html.tt-manager-theme .tt-ui2-tile:hover span{color:var(--cm-surface-sub)}
+html.tt-manager-theme .tt-ui2-card :is(button,a){background:var(--cm-control);color:var(--cm-control-ink);border-color:var(--cm-border);border-radius:var(--cm-button-radius)}
+html.tt-manager-theme .tt-ui2-card .tt-ui2-primary{background:var(--cm-accent);color:var(--cm-accent-ink)}
+/* Settings uses the exact modal color and role-specific contrast; the existing lock and validation colors stay intact. */
+html.tt-manager-theme #tt-settings-overlay .tt-settings-window{background:var(--cm-modal);color:var(--cm-modal-ink);border-color:var(--cm-border);border-radius:var(--cm-modal-radius);font-family:var(--cm-font)}
+html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-heading,.tt-settings-nav){background:var(--cm-surface);color:var(--cm-surface-ink);border-color:var(--cm-border)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-heading :is(p,.tt-settings-kicker){color:var(--cm-surface-sub)}
+html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-lead,.tt-settings-panel>h3){color:var(--cm-modal-ink)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-card{background:var(--cm-panel);color:var(--cm-panel-ink);border-color:var(--cm-border);border-radius:var(--cm-card-radius)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-card :is(strong,p,label){color:var(--cm-panel-ink)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button{color:var(--cm-surface-ink);border-radius:var(--cm-button-radius)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button.is-active{background:var(--cm-accent);color:var(--cm-accent-ink);border-color:var(--cm-accent)}
+html.tt-manager-theme #tt-ui2-theme-settings :is(button,input,select){background:var(--cm-control);color:var(--cm-control-ink);border:1px solid var(--cm-border);border-radius:var(--cm-input-radius);padding:8px}
+#tt-ui2-theme-settings label{display:flex;align-items:center;gap:10px;margin:9px 0}
+#tt-ui2-custom:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+#tt-ui2-custom input[type=color]{width:48px;height:35px;padding:2px}
+#tt-ui2-theme-settings #tt-ui2-font-preview{padding:10px;border:1px solid var(--cm-border);border-radius:var(--cm-input-radius)}

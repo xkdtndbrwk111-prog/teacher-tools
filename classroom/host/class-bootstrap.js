@@ -52,6 +52,7 @@
   await load('../classroom/host/student-popup.js?v=20261116-board-present');
   await load('../classroom/host/settings-window.js?v=20261116-board-only');
   await load('../classroom/host/manager-home.js?v=ui2-a');
+  if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
   document.documentElement.classList.remove('tt-manager-starting');
  }).catch(error=>domReady().then(()=>stop(error)));
