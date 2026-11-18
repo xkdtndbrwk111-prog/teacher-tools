@@ -3,9 +3,9 @@
  'use strict';
  const C=window.TTCoins,GAME_ORIGIN='https://xkdtndbrwk111-prog.github.io';
  const $=id=>document.getElementById(id);
- const SOURCE={dashboard:'대시보드 지급',manager:'교실 매니저',weekly:'주급',game:'게임',refund:'환불',hofweek:'명예의 전당 주간 결산',year:'학년도 초기화',settings:'설정 변경'};
+ const SOURCE={dashboard:'대시보드 지급',manager:'교실 매니저',weekly:'주급',game:'게임',refund:'환불',hofweek:'명예의 전당 주간 결산',year:'학년도 초기화',settings:'설정 변경',routine:'루틴 달성'};
  const WEEKDAYS=['일','월','화','수','목','금','토'];
- const coin=n=>(Number.isInteger(n)?String(n):n.toFixed(1));
+ const coin=n=>String(n);
  const signed=n=>(n>0?'+':'')+coin(n);
  let events=[],roster={cls:'',className:'',students:[]},selected=new Set(),panel='view',access=null,epoch=0,authPending=false,filterValue='';
  const state=()=>C.stateOf(events,roster.cls);
@@ -129,8 +129,8 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
   main().replaceChildren(grid);
   if(!editable)return;
   actions.append(button(selected.size===roster.students.length?'선택 해제':'전체 선택','nav',()=>{if(!permit())return;if(selected.size===roster.students.length)selected.clear();else roster.students.forEach(s=>selected.add(s.id));render()}));
-  for(const n of [0.5,1,2,5])actions.append(button('+'+n,'act',()=>give(n)));
-  for(const n of [-0.5,-1])actions.append(button(String(n),'act neg',()=>give(n)));
+  for(const n of [1,2,4,10])actions.append(button('+'+n,'act',()=>give(n)));
+  for(const n of [-1,-2])actions.append(button(String(n),'act neg',()=>give(n)));
  }
  function give(amount){if(!permit())return;const cls=roster.cls,ids=new Set(selected),session=epoch;return serial(()=>giveNow(amount,cls,ids,session));}
  async function giveNow(amount,cls,ids,session){
@@ -156,15 +156,15 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  function renderSettings(st){
   const s=st.settings,form=document.createElement('div');form.id='coinSettings';
   const row=(label,input)=>{const l=document.createElement('label');l.textContent=label;l.append(input);form.append(l);return input};
-  const num=(id,value,min,max)=>{const i=document.createElement('input');i.type='number';i.id=id;i.value=value;i.min=min;i.max=max;i.step=0.5;return i};
+  const num=(id,value,min,max)=>{const i=document.createElement('input');i.type='number';i.id=id;i.value=value;i.min=min;i.max=max;i.step=1;return i};
   const on=document.createElement('input');on.type='checkbox';on.id='coinEnabled';on.checked=s.enabled;row('미니게임에 코인 사용',on);
-  row('보유 상한',num('coinCap',s.cap,1,999));
+  row('보유 상한',num('coinCap',s.cap,1,1998));
   const weekly=document.createElement('input');weekly.type='checkbox';weekly.id='coinWeeklyOn';weekly.checked=s.weeklyOn;row('주급 사용',weekly);
-  row('주급',num('coinWeekly',s.weeklyAmount,0,999));
+  row('주급',num('coinWeekly',s.weeklyAmount,0,1998));
   const day=document.createElement('select');day.id='coinDay';WEEKDAYS.forEach((d,i)=>day.add(new Option(d+'요일',String(i))));day.value=String(s.weeklyDay);row('주급 요일',day);
   form.append(button('공통 인증번호 변경','nav',async()=>{if(!permit())return;const ok=await window.ttPodo?.changeTeacherPin?.();if(ok){epoch++;lock();say('공통 인증번호가 변경되었습니다. 다시 인증해 주세요.');if(dialog.open)render()}}));
   form.append(button('저장','act',()=>{if(!permit())return;const cls=roster.cls,session=epoch,cap=Number($('coinCap').value),amount=Number($('coinWeekly').value),enabled=on.checked,weeklyOn=weekly.checked,weeklyDay=Number(day.value);return serial(async()=>{
-   if(!(cap>=1)||!(amount>=0)||cap%0.5||amount%0.5){say('상한과 주급은 0.5 단위 숫자로 입력하세요.');return}
+   if(!Number.isSafeInteger(cap)||cap<1||cap>1998||!Number.isSafeInteger(amount)||amount<0||amount>1998){say('상한과 주급은 정수로 입력하세요.');return}
    try{
     await load();if(epoch!==session||!permit()||roster.cls!==cls)throw Error('교사 인증 또는 학급이 변경됐어요.');
     await append([{at:new Date().toISOString(),cls:roster.cls,type:'setting',enabled,cap,weeklyOn,weeklyAmount:amount,weeklyDay,source:'settings'}]);
@@ -190,7 +190,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
    if(changed){await append([{at:new Date().toISOString(),cls:roster.cls,type:'hof',hof:{...st.hof,seats},source:'settings'}]);st=state()}
   }
   const hof=st.hof,person=s=>({id:s.id,name:s.name,number:hof?hof.seats[s.id]||null:s.number});
-  reply({type:'hoja-roster',readyReq,version:3,classId:roster.cls,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),tournamentV1:true,teacherPinConfigured:Boolean(window.ttPodo?.hasTeacherPin?.()),
+  reply({type:'hoja-roster',readyReq,version:4,coinUnit:C.COIN_UNIT,classId:roster.cls,enabled:st.settings.enabled,chosen:st.chosen,className:roster.className,floor:C.FLOOR,hofWeeks:C.hofWeeksPaid(events,roster.cls),tournamentV1:true,teacherPinConfigured:Boolean(window.ttPodo?.hasTeacherPin?.()),
    hof:hof&&{code:hof.code,teacher:hof.teacher,pin:hof.pin},names:hof?C.seatNames(hof,roster.students,MAX_SEATS):null,
    everyone:roster.students.map(person),
    students:roster.students.filter(s=>!s.excluded).map(s=>({...person(s),balance:C.balanceOf(st,s.id)}))});
@@ -226,6 +226,8 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
    }else if(type==='hoja-coin-spend'){
     await load();
     const {ids,game,txId:charge,classId:cls}=event.data;
+    if(event.data.coinUnit!==C.COIN_UNIT)return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'미니게임 최신 버전이 필요합니다. 다시 열어 주세요.'});
+    if(window.ttRoutine?.locked?.())return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'루틴 시간에는 게임을 이용할 수 없어요.'});
     const result=C.checkedSpend(events,roster,{cls,ids,game,charge,at:new Date().toISOString()});
     if(!result.ok){reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:result.message});await sendRoster(reply);return;}
     if(result.duplicate&&roster.cls!==cls){const res=C.originalRefund(events,charge,new Date().toISOString());if(res.ok)await append(res.events);return reply({type:'hoja-coin-result',req:event.data.req,ok:false,message:'학급이 바뀌어 이전 결제를 취소했어요.'});}
@@ -236,6 +238,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
     // Hall of fame weekly settlement from the mini games: amounts are fixed here, and each week is paid once.
     await load();
     if(!roster.cls||event.data.classId!==roster.cls)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'학급 명단이 없어요.'});
+    if(event.data.coinUnit!==C.COIN_UNIT)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'미니게임 최신 버전이 필요합니다.'});
     const st0=state();
     if(!st0.settings.enabled)return reply({type:'hoja-hof-week-result',req:event.data.req,ok:false,message:'코인이 꺼져 있어요.'});
     const res=C.hofWeek(events,st0,{cls:roster.cls,students:roster.students,week:String(event.data.week||''),awards:event.data.awards,now:new Date()});
