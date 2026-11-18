@@ -325,13 +325,15 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    const {ctx,p}=await newPC();
    await setRoster(p,['남는학생']);
    await connect(p);await chipIs(p,/구글 \d/);
-   await p.check('input[name="tt-cloud-mode"][value="easy"]');await wait(200);
+   await p.check('input[name="tt-cloud-mode"][value="easy"]');
+   await chipIs(p,/EASY/);await p.waitForFunction(()=>window.__TT_NORMAL_AUTH.state().mode==='easy'&&!window.__TT_NORMAL_AUTH.state().connected);
    await closeSettings(p);
    assert.match(await chip(p).textContent(),/EASY/);
    assert.deepEqual(await names(p),['남는학생']);
    assert.equal(google.files.size,1);
    assert.equal(await p.evaluate(()=>sessionStorage.getItem('tt.classroom.google.session')),null);
    await p.reload();await started(p);
+   await chipIs(p,/EASY/);assert.equal(await p.evaluate(()=>window.__TT_NORMAL_AUTH.state().mode),'easy');
    assert.match(await chip(p).textContent(),/EASY/);
    await ctx.close();
   });

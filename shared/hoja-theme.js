@@ -104,6 +104,11 @@
    out['--cm-'+role+'-emphasis']=ink(bg,p.accent);
    out['--cm-'+role+'-alert']=ink(bg,'#b91c1c');
   }
+  // On-fill role: preserve the synced accent itself while deriving a darker
+  // action fill with a white label. Aim above WCAG AA for classroom displays.
+  let action=p.accent;
+  for(let i=0;i<20&&contrast(action,'#ffffff')<5.5;i++)action=mix(action,'#000000',.12);
+  out['--cm-action-fill']=action;out['--cm-action-ink']='#ffffff';
   // Dense teacher data surfaces retain a light paper tint so legacy semantic
   // cells, labels and chart colors remain readable across all dark/custom themes.
   out['--cm-work-bg']=mix(p.bg,'#ffffff',.84);

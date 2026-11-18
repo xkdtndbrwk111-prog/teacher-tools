@@ -25,15 +25,17 @@ body.tt-manager-special #teacherScreen>.studio-topbar .top-actions,body.tt-life-
 .tt-ui2-card small{display:block;color:var(--cm-panel-sub);margin-top:12px}
 .tt-ui2-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .tt-ui2-card :is(button,a){display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;font:inherit;font-weight:700;border:1px solid var(--cm-border);border-radius:var(--cm-button-radius);background:var(--cm-control);color:var(--cm-control-ink);text-decoration:none;cursor:pointer}
-.tt-ui2-card .tt-ui2-primary{background:var(--cm-accent)}
+.tt-ui2-card .tt-ui2-primary{background:var(--cm-action-fill)}
 .tt-ui2-card button:disabled{opacity:.45;cursor:not-allowed}
 .tt-ui2-page :is(button,a):focus-visible,#tt-manager-home-button:focus-visible{outline:3px solid var(--cm-body-emphasis);outline-offset:3px}
-/* Four tabs need additional room. Preserve legacy action placement and use the
- existing compact two-row HUD below desktop width rather than clipping tabs. */
-@media(max-width:1550px){
- #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px minmax(0,1fr)!important;height:104px!important;min-height:104px!important;max-height:104px!important}
- #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start}
- #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
- #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}
-}
-@media(max-width:520px){.tt-ui2-page{padding:12px}.tt-ui2-grid{gap:8px;margin-top:16px}.tt-ui2-tile{padding:9px;gap:6px}.tt-ui2-tile span{font-size:11px}#teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{padding:0 5px!important;font-size:11px!important}}
+
+@media(max-width:520px){.tt-ui2-page{padding:12px}.tt-ui2-grid{gap:8px;margin-top:16px}.tt-ui2-tile{padding:9px;gap:6px}.tt-ui2-tile span{font-size:11px}}
+/* Seat tab unfolds inside the same navigation slot; no independent third row. */
+.tt-ui2-seat-group{display:inline-flex;align-items:center;min-width:0}
+#teacherScreen .tt-ui2-seat-group>[hidden],#teacherScreen .tt-ui2-seat-group .tt-seating-submodes[hidden]{display:none!important}
+#teacherScreen .tt-ui2-seat-group .tt-seating-submodes{display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0;margin:0;border:0;background:transparent!important;min-height:0;flex:none}
+.tt-ui2-seat-group.is-split .tt-seating-submodes{animation:tt-ui2-split-in .16s ease-out}
+@keyframes tt-ui2-split-in{from{opacity:.35;transform:scaleX(.92)}to{opacity:1;transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.tt-ui2-seat-group.is-split .tt-seating-submodes{animation:none}}
+#tt-hud-work-toggle{display:none;white-space:nowrap}
+.tt-ui2-board-content .tt-student-placement-settings{margin-top:8px}
