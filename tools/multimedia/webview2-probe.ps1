@@ -15,7 +15,7 @@ $loader=Get-ChildItem $sdk -Recurse -Filter WebView2Loader.dll | Where-Object {$
 if(!$loader -or !(Test-Path $win)){throw 'Missing WinForms or x64 loader'}
 Copy-Item $core.FullName,$win,$loader.FullName $out
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-& $csc /nologo /target:exe /platform:x64 "/out:$out\BookProbe.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll tools/multimedia/webview2-probe.cs
+& $csc /nologo /target:exe /platform:x64 "/out:$out\BookProbe.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'webview2-probe.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
 $files=Get-ChildItem $out -File
 $files | Select-Object Name,Length | Format-Table
