@@ -43,9 +43,9 @@ async function openGrades(p){
  return frame;
 }
 async function openGradesAfterClose(p){await p.click('#tt-backup-close');return openGrades(p)}
-const openSeating=p=>p.locator('.prototype-mode-switch button',{hasText:'자리배치'}).click();
+const openSeating=p=>p.locator('#modeClassroom:visible,#tt-seat-subtab:visible').click();
 async function setRoster(p,names){
- await p.locator('.prototype-mode-switch button',{hasText:'자리배치'}).waitFor();
+ await p.locator('#modeClassroom:visible,#tt-seat-subtab:visible').waitFor();
  await p.evaluate(v=>{const t=document.getElementById('studentInput');t.value=v;t.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('applyStudents').click()},names.join('\n'));
 }
 (async()=>{
@@ -502,14 +502,14 @@ async function setRoster(p,names){
     await p8.setViewportSize({width,height:800});await wait(120);
     await p8.evaluate(()=>{document.getElementById('tt-cloud-chip').textContent='☁ 자료 차이 확인'});
     const r=await p8.evaluate(()=>{
-     const ids=['tt-manager-home-button','generateAssignment','confirmAssignment','openPlayback','tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','modeClassroom','tt-life-tab','tt-board-tab'];
+     const ids=['tt-manager-home-button','generateAssignment','confirmAssignment','openPlayback','tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','tt-seat-subtab','modePE','tt-life-tab','tt-board-tab'];
      const out=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return !b||b.top<0||b.left<0||b.right>innerWidth||b.bottom>innerHeight||b.width===0});
      const header=document.querySelector('.studio-topbar'),box=header.getBoundingClientRect();
      const clipped=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return b&&(b.top<box.top-1||b.bottom>box.bottom+1)});
      const overflow=header.scrollHeight>header.clientHeight+1;
      return{out,clipped,scroll:document.documentElement.scrollWidth>innerWidth,bar:box.height,overflow,...(overflow?{detail:{scroll:header.scrollHeight,client:header.clientHeight,rows:getComputedStyle(header).gridTemplateRows,children:[...header.children].filter(e=>e.getClientRects().length).map(e=>[e.id||e.className,Math.round(e.getBoundingClientRect().top-box.top),Math.round(e.getBoundingClientRect().bottom-box.top)])}}:{})};
     });
-    if(r.out.length||r.clipped.length||r.scroll||r.overflow)bad.push([width,r]);
+    if(r.out.length||r.clipped.length||r.scroll||r.overflow||r.bar>61)bad.push([width,r]);
    }
    assert.deepEqual(bad,[]);
    await c7.close();

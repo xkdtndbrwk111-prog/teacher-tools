@@ -20,7 +20,7 @@
   '#tt-seat-subtab':['seats','학급 자리'],'#modePE':['group','체육 모둠'],
   '[data-tt-section="general"]':['settings','일반'],'[data-tt-section="cloud"]':['cloud','구글 연동'],
   '[data-tt-section="backup"]':['backup','백업 · 복원'],'[data-tt-section="security"]':['lock','잠금 · 보안'],
-  '[data-tt-section="board"]':['board','전자칠판'],'[data-tt-section="tools"]':['tools','도구'],
+  '[data-tt-section="privacy"]':['lock','개인정보 · 데이터'],'[data-tt-section="tools"]':['tools','도구'],
   '.life-nav[data-life-page="surveys"]':['form','설문 운영'],'.life-nav[data-life-page="records"]':['group','학생 기록'],'.life-nav[data-life-page="analysis"]':['chart','설문 통계'],
   '#app .nav[data-page="overview"]':['home','대시보드'],'#app .nav[data-page="classes"]':['group','학급 · 학생'],
   '#app .nav[data-page="assessments"]':['form','평가 관리'],'#app .nav[data-page="grades"]':['grid','성적 입력'],'#app .nav[data-page="traits"]':['link','능력치 연동']

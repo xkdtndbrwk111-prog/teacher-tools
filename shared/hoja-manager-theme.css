@@ -22,7 +22,7 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mo
 html.tt-manager-theme #teacherScreen>.tt-seating-submodes button.on,
 html.tt-manager-theme .tt-life-panel .life-nav.on,
 html.tt-manager-theme #app .workspace-toolbar .toolbtn.on{
- color:var(--cm-accent-ink)!important;background:var(--cm-accent)!important;border-color:var(--cm-accent)!important;border-radius:var(--cm-button-radius)!important;box-shadow:none!important;
+ color:var(--cm-action-ink)!important;background:var(--cm-action-fill)!important;border-color:var(--cm-accent)!important;border-radius:var(--cm-button-radius)!important;box-shadow:none!important;
 }
 html.tt-manager-theme .tt-ui2-page{background:var(--cm-bg);color:var(--cm-body-ink)}
 html.tt-manager-theme .tt-ui2-page p{color:var(--cm-body-sub)}
@@ -33,7 +33,7 @@ html.tt-manager-theme .tt-ui2-tile:hover .tt-ui2-icon{color:var(--cm-surface-ink
 html.tt-manager-theme .tt-ui2-tile span,html.tt-manager-theme .tt-ui2-card :is(p,small){color:var(--cm-panel-sub)}
 html.tt-manager-theme .tt-ui2-tile:hover span{color:var(--cm-surface-sub)}
 html.tt-manager-theme .tt-ui2-card :is(button,a){background:var(--cm-control);color:var(--cm-control-ink);border-color:var(--cm-border);border-radius:var(--cm-button-radius)}
-html.tt-manager-theme .tt-ui2-card .tt-ui2-primary{background:var(--cm-accent);color:var(--cm-accent-ink)}
+html.tt-manager-theme .tt-ui2-card .tt-ui2-primary{background:var(--cm-action-fill);color:var(--cm-action-ink)}
 /* Settings uses the exact modal color and role-specific contrast; the existing lock and validation colors stay intact. */
 html.tt-manager-theme #tt-settings-overlay .tt-settings-window{background:var(--cm-modal);color:var(--cm-modal-ink);border-color:var(--cm-border);border-radius:var(--cm-modal-radius);font-family:var(--cm-font)}
 html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-heading,.tt-settings-nav){background:var(--cm-surface);color:var(--cm-surface-ink);border-color:var(--cm-border)}
@@ -42,7 +42,7 @@ html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-lead,.tt-settings-pa
 html.tt-manager-theme #tt-settings-overlay .tt-settings-card{background:var(--cm-panel);color:var(--cm-panel-ink);border-color:var(--cm-border);border-radius:var(--cm-card-radius)}
 html.tt-manager-theme #tt-settings-overlay .tt-settings-card :is(strong,p,label){color:var(--cm-panel-ink)}
 html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button{color:var(--cm-surface-ink);border-radius:var(--cm-button-radius)}
-html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button.is-active{background:var(--cm-accent);color:var(--cm-accent-ink);border-color:var(--cm-accent)}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button.is-active{background:var(--cm-action-fill);color:var(--cm-action-ink);border-color:var(--cm-accent)}
 html.tt-manager-theme #tt-ui2-theme-settings :is(button,input,select){background:var(--cm-control);color:var(--cm-control-ink);border:1px solid var(--cm-border);border-radius:var(--cm-input-radius);padding:8px}
 #tt-ui2-theme-settings label{display:flex;align-items:center;gap:10px;margin:9px 0}
 #tt-ui2-custom:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
@@ -70,7 +70,7 @@ html.tt-manager-theme #teacherScreen .strip-add,
 html.tt-manager-theme #teacherScreen .strip-collapse{
  background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)
 }
-html.tt-manager-theme :is(#teacherScreen,#app) .dock-tab.on{background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important}
+html.tt-manager-theme :is(#teacherScreen,#app) .dock-tab.on{background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important}
 html.tt-manager-theme #teacherScreen .dock-panel,
 html.tt-manager-theme #app :is(.panel,.stat),
 html.tt-manager-theme #teacherScreen .tt-life-panel :is(.life-card,.life-stat){
@@ -88,7 +88,7 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(button.primary,button.ghost,b
 html.tt-manager-theme #teacherScreen .tt-life-panel button{border-radius:var(--cm-button-radius)!important}
 html.tt-manager-theme :is(#teacherScreen,#app) button.primary:not(.danger):not(.success),
 html.tt-manager-theme #teacherScreen .tt-life-panel button.life-primary{
- background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important;border-color:var(--cm-accent)!important
+ background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-accent)!important
 }
 html.tt-manager-theme :is(#teacherScreen,#app) .workspace-toolbar .toolbtn:not(.on),
 html.tt-manager-theme #teacherScreen .top-actions button.ghost,
@@ -96,7 +96,7 @@ html.tt-manager-theme #teacherScreen .top-actions a.ghost{
  background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important
 }
 html.tt-manager-theme #teacherScreen .workspace-toolbar .toolbtn[data-tool="seat"].on{
- background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important;border-color:var(--cm-accent)!important
+ background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-accent)!important
 }
 html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),select,textarea):not(.grade-input){
  border-radius:var(--cm-input-radius);border-color:var(--cm-work-line)
@@ -113,7 +113,7 @@ html.tt-manager-theme #tt-settings-overlay :is(#tt-settings-close,.tt-settings-c
 }
 html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button:not(.is-active):hover{background:var(--cm-control);color:var(--cm-control-ink)}
 html.tt-manager-theme .tt-class-modal-box{background:var(--cm-work-paper);color:var(--cm-work-ink);border-color:var(--cm-work-line);border-radius:var(--cm-modal-radius)}
-html.tt-manager-theme .tt-class-modal-actions .tt-class-primary{background:var(--cm-accent);color:var(--cm-accent-ink);border-color:var(--cm-accent)}
+html.tt-manager-theme .tt-class-modal-actions .tt-class-primary{background:var(--cm-action-fill);color:var(--cm-action-ink);border-color:var(--cm-accent)}
 html.tt-manager-theme :is(.seat-count-dialog-card,.roster-change-card){border-radius:var(--cm-modal-radius)}
 html.tt-manager-theme :is(#teacherScreen,#app) button.tt-ui2-vector{display:inline-flex;align-items:center;justify-content:center;gap:5px}
 html.tt-manager-theme #tt-settings-overlay button.tt-ui2-vector{display:flex;align-items:center;gap:8px}
@@ -157,7 +157,7 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
  color:var(--text-secondary)!important
 }
 html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(.primary,.life-primary){
- --text-on-fill:var(--cm-accent-ink);color:var(--text-on-fill)!important
+ --text-on-fill:var(--cm-action-ink);color:var(--text-on-fill)!important
 }
 html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{
  color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg)
@@ -169,25 +169,60 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
  outline-color:var(--text-accent)
 }
 
-/* 4-section HUD uses a stable second row until the side controls and all tabs have room. */
-@media(min-width:1551px) and (max-width:1770px){
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px minmax(0,1fr)!important;height:104px!important;min-height:104px!important;max-height:104px!important}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}
+
+/* One fixed header row. Wider tabs expand within the center track; class and
+   primary operations remain accessible without creating another horizontal bar. */
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{
+ box-sizing:border-box!important;grid-template-columns:max-content minmax(0,1fr) max-content!important;
+ grid-template-rows:minmax(0,1fr)!important;height:60px!important;min-height:60px!important;max-height:60px!important;
+ align-items:center!important;padding:0 9px!important;column-gap:8px!important;row-gap:0!important;flex-direction:row!important
 }
-
-/* Grid rows have explicit heights. The inherited flex gap previously added
-   vertical overflow on every two-row header. */
-@media(max-width:1770px){html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{row-gap:0!important;padding-block:0!important} }
-
-/* Two-row HUD: size tracks include the border, and mode strip includes its own
-   padding + border. Do not clip overflowing controls to make a test pass. */
-@media(max-width:1770px){
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{
-  box-sizing:border-box!important;grid-template-rows:52px minmax(0,1fr)!important;
-  height:104px!important;min-height:104px!important;max-height:104px!important;
-  row-gap:0!important;padding-block:0!important
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start;align-self:center;column-gap:5px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:3!important;grid-row:1!important;justify-self:end;gap:5px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{
+ grid-column:2!important;grid-row:1!important;justify-self:center!important;align-self:center!important;
+ box-sizing:border-box!important;min-height:0!important;padding:3px!important;margin:0!important;gap:3px;flex-wrap:nowrap!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{
+ height:38px!important;padding:0 8px!important;font-size:13px!important;min-width:0!important;border:1px solid var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch .tt-seating-submodes button{padding:0 7px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button.on{border-color:var(--cm-action-fill)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls{gap:4px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls label{display:none}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:94px!important;max-width:94px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:58px;max-width:66px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #generateAssignment{width:82px!important;min-width:82px!important;flex-basis:82px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #confirmAssignment{width:76px!important;min-width:76px!important;flex-basis:76px!important;background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-action-fill)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #openPlayback{width:94px!important;min-width:94px!important;flex-basis:94px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{flex-basis:94px;min-width:94px;max-width:94px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-overflow{flex-basis:64px;min-width:64px;max-width:64px}
+html.tt-manager-theme body:is(.tt-manager-special,.tt-grade-active,.tt-life-active) #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-right>.top-actions{display:none!important}
+html.tt-manager-theme #tt-ui2-placement .tt-student-placement-settings :is(label,p){font-family:var(--cm-font)!important;color:var(--cm-panel-ink)!important}
+html.tt-manager-theme #tt-ui2-placement input{accent-color:var(--cm-action-fill)}
+html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] a{color:var(--cm-panel-emphasis);text-decoration:underline;text-underline-offset:3px}
+html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] .tt-settings-card p{line-height:1.65;margin:7px 0}
+@media(max-width:1200px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-right>.top-actions{display:none!important}
+ html.tt-manager-theme body:not(.tt-manager-special):not(.tt-grade-active):not(.tt-life-active) #tt-hud-work-toggle{
+  display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 9px;border:1px solid var(--cm-border);border-radius:var(--cm-button-radius);background:var(--cm-control);color:var(--cm-control-ink);font-weight:800
  }
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{box-sizing:border-box!important;min-height:0!important;margin-block:0!important;padding-block:3px!important;align-self:center!important}
+ html.tt-manager-theme body:not(.tt-manager-special):not(.tt-grade-active):not(.tt-life-active) #teacherScreen>.studio-topbar.tt-hud-unified.tt-ui2-work-open .tt-hud-right>.top-actions{
+  position:absolute;right:8px;top:calc(100% + 4px);z-index:100;display:flex!important;flex-wrap:wrap!important;justify-content:flex-end;padding:8px;max-width:calc(100vw - 16px);border:1px solid var(--cm-border);border-radius:var(--cm-card-radius);background:var(--cm-modal);box-shadow:none!important
+ }
+}
+@media(max-width:790px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{column-gap:4px!important;padding:0 5px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{display:flex!important;gap:3px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button span,
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #saveStatus,
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button span{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{width:34px;padding:0!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:70px!important;max-width:70px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:46px;max-width:48px}
+}
+@media(max-width:540px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls,
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{display:none!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-overflow{min-width:48px;max-width:48px;flex-basis:48px}
 }

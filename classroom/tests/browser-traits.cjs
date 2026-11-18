@@ -92,7 +92,7 @@ async function step(name,fn){
    const t0=await traitsOf(p,0);assert.equal(t0.leadership,3);assert.equal(t0.charm,1);assert.equal(t0.initiative,2);
   });
   await step('학생 탭: 연동 축은 잠기고 표시가 붙으며, 수동 축은 그대로 바꿀 수 있다',async()=>{
-   await p.click('#modeClassroom');await wait(300);await p.click('[data-tab="student"]');
+   await p.click('#modeClassroom:visible,#tt-seat-subtab:visible');await wait(300);await p.click('[data-tab="student"]');
    assert.equal(await p.locator('.trait-prototype .trait-linked-tag').count(),2);
    assert.equal(await p.locator('.trait-prototype [data-trait="intelligence"][data-value="1"]').isDisabled(),true);
    await p.locator('.trait-prototype [data-trait="intelligence"][data-value="1"]').click({force:true});
@@ -112,7 +112,7 @@ async function step(name,fn){
   });
   await step('수동으로 되돌리면 잠금이 풀리고 마지막 값은 남는다',async()=>{
    await f.locator('[data-trait-mode="stamina"][data-value="manual"]').click();await wait(200);
-   await p.click('#modeClassroom');await wait(300);await p.click('[data-tab="student"]');
+   await p.click('#modeClassroom:visible,#tt-seat-subtab:visible');await wait(300);await p.click('[data-tab="student"]');
    assert.equal(await p.locator('.trait-prototype .trait-linked-tag').count(),1);
    assert.equal(await p.locator('.trait-prototype [data-trait="stamina"][data-value="1"]').isDisabled(),false);
    assert.equal((await traitsOf(p,0)).stamina,expected(n-1,n,8),'8단계로 마지막 반영된 값');
@@ -122,7 +122,7 @@ async function step(name,fn){
    assert.ok(r>0);
    await p.click('#modePE');await wait(200);await p.click('#generateAssignment');await wait(300);
    assert.ok(await p.locator('.pe-member').count()>=n);
-   await p.click('#modeClassroom');await wait(200);
+   await p.click('#modeClassroom:visible,#tt-seat-subtab:visible');await wait(200);
   });
   await step('성적 관리를 연 적 없는 새 화면에서 8→4로 바꿔도 연동 축이 다시 나뉜다',async()=>{
    await p.reload();await p.waitForFunction(()=>typeof classState!=='undefined'&&document.getElementById('tt-lock-now'));

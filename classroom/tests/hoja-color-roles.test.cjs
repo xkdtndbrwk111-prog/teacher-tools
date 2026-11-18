@@ -13,5 +13,6 @@ test('five text roles use contrast-safe ink on five presets and extreme custom t
    for(const ink of ['ink','sub','emphasis','alert'])assert.ok(T.contrast(bg,t['--cm-'+role+'-'+ink])>=4.5,role+' '+ink);
   }
   for(const ink of ['ink','sub','emphasis','alert'])assert.ok(T.contrast(t['--cm-work-paper'],t['--cm-work-'+ink])>=4.5);
+  assert.equal(t['--cm-action-ink'],'#ffffff');assert.ok(T.contrast(t['--cm-action-fill'],t['--cm-action-ink'])>=5.5);assert.equal(t['--cm-accent'],T.resolve(p).accent);
  }
 });

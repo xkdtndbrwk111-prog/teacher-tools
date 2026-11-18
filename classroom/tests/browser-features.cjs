@@ -138,7 +138,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await student.click('#pePitchSimpleReturn');await wait(200);
    await student.close();await wait(200);
    assert.equal(await p.evaluate(()=>window.__TT_STUDENT_POPUP.isPresenting()),false);
-   await p.click('#modeClassroom');await wait(200);
+   await p.click('#modeClassroom:visible,#tt-seat-subtab:visible');await wait(200);
    assert.equal(await p.evaluate(()=>validatePersistentState(classState).ok),true);
    await ctx.close();
   });

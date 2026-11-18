@@ -52,11 +52,11 @@
   await load('../classroom/host/board-status.js?v=ui2-e');
   await load('../classroom/host/presentation-link.js?v=ui2-i');
   await load('../classroom/host/student-popup.js?v=ui2-i');
-  await load('../classroom/host/settings-window.js?v=20261116-board-only');
-  await load('../classroom/host/manager-home.js?v=ui2-e');
+  await load('../classroom/host/settings-window.js?v=ui2-l');
+  await load('../classroom/host/manager-home.js?v=ui2-l');
   if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
-  await load('../shared/hoja-manager-icons.js?v=ui2-f');
+  await load('../shared/hoja-manager-icons.js?v=ui2-l');
   window.__TT_MANAGER_ICONS?.();
   document.documentElement.classList.remove('tt-manager-starting');
  }).catch(error=>domReady().then(()=>stop(error)));
