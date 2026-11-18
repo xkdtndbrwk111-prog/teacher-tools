@@ -102,6 +102,13 @@
    out['--cm-'+role+'-ink']=ink(bg,role==='control'?p['control-text']:p.text);
    out['--cm-'+role+'-sub']=ink(bg,p.sub);
   }
+  // Dense teacher data surfaces retain a light paper tint so legacy semantic
+  // cells, labels and chart colors remain readable across all dark/custom themes.
+  out['--cm-work-bg']=mix(p.bg,'#ffffff',.84);
+  out['--cm-work-paper']=mix(p.panel,'#ffffff',.94);
+  out['--cm-work-line']=mix(p.border,'#ffffff',.52);
+  out['--cm-work-ink']='#172033';
+  out['--cm-work-sub']='#475569';
   out['--cm-font']=v.font?'"'+v.font+'", system-ui, "Malgun Gothic", sans-serif':'system-ui, "Malgun Gothic", sans-serif';
   return out;
  }

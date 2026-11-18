@@ -69,7 +69,7 @@
  window.addEventListener('message',event=>{
   if(event.origin!==DASHBOARD||event.source!==window.parent||event.data?.type!=='tt-seating-data')return;
   data=event.data.seating;
-  if(!data)return showEmpty('아직 보낸 자리배치가 없습니다. 교실 매니저에서 배치를 확정해 주세요.');
+  if(!data||data.rosterOnly||!data.layout||!Array.isArray(data.assignments)||!data.assignments.length)return showEmpty('아직 보낸 자리배치가 없습니다. 교실 매니저에서 배치를 확정해 주세요.');
   menuTitle.textContent=data.className?data.className+' 자리배치':'자리배치';
   // V1.11 dashboards choose the mode themselves.
   const asked=new URLSearchParams(location.search).get('mode');

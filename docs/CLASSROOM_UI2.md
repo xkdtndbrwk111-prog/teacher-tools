@@ -22,3 +22,7 @@ Base: V1.66.19 release main. No main/stable publishing.
 
 ## Stage E candidate — independent roster transfer
 - Explicit capability rosterProtocol=1, original confirmed seating unchanged, roster-only popup with distinct endpoint. Strict design of classId, student ID, name, gender, number, exclusion; no grades or other metadata. Same class retains valid seat/group geometry and filters removed/excluded seats; new class never inherits old groups. Roster-only does not mark the initial confirmed-seating link. Existing revision checks and ledger untouched. Automated unit/HTTP checks required before release.
+
+## Stage F candidate — wider teacher design migration
+- Teacher workspaces, tool docks, shared student strip, life side, controls, settings and grade iframe share palette roles and font; dense work paper is a light tint from the same palette to preserve existing semantic data colors. Existing gender/group colors, grade cells, graph colors, warning/error and public student views retained. Static primary/settings/PE/life/grade navigation SVG icons without replacing button identities. This is a targeted chrome/work-surface pass, not a claim that every legacy hardcoded color or icon was removed.
+- Roster-only board playback gives explicit no confirmed seating message. Add five-theme surface browser checks and full existing classroom regression workflow. No deployment until checks reviewed.

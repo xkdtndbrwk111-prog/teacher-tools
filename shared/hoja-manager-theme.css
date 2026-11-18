@@ -48,3 +48,73 @@ html.tt-manager-theme #tt-ui2-theme-settings :is(button,input,select){background
 #tt-ui2-custom:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
 #tt-ui2-custom input[type=color]{width:48px;height:35px;padding:2px}
 #tt-ui2-theme-settings #tt-ui2-font-preview{padding:10px;border:1px solid var(--cm-border);border-radius:var(--cm-input-radius)}
+
+/* Stage F: shared teacher chrome and work surfaces. Explicit selectors only:
+   grade cells, seating gender/type, sports pitch, warning/error/lock and data charts retain semantic colors.
+   Work paper is a tint of the same palette, not a second independently selected theme. */
+html.tt-manager-theme,html.tt-manager-theme body{background:var(--cm-bg)}
+html.tt-manager-theme :is(#teacherScreen,#app) .studio{background:var(--cm-bg)!important}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace-column,.workspace-toolbar,.tool-dock,.student-strip){
+ background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important;border-color:var(--cm-border)!important;font-family:var(--cm-font)
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace-toolbar,.student-strip,.tool-dock) :is(.toolbar-label,.assignment-status:not(.success),.dock-title span,.strip-help,.student-strip-titleline span,.student-strip-head span:not(.shared-student-status)){
+ color:var(--cm-panel-sub)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.life-workspace),
+html.tt-manager-theme #teacherScreen .tt-life-panel{background:var(--cm-work-bg)!important;color:var(--cm-work-ink);font-family:var(--cm-font)}
+html.tt-manager-theme #teacherScreen .life-body{font-family:var(--cm-font)}
+html.tt-manager-theme :is(#teacherScreen,#app) .dock-tabs{background:var(--cm-border)!important;border-color:var(--cm-border)!important}
+html.tt-manager-theme :is(#teacherScreen,#app) .dock-tab,
+html.tt-manager-theme #teacherScreen .dock-collapse-handle,
+html.tt-manager-theme #teacherScreen .strip-add,
+html.tt-manager-theme #teacherScreen .strip-collapse{
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)
+}
+html.tt-manager-theme :is(#teacherScreen,#app) .dock-tab.on{background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important}
+html.tt-manager-theme #teacherScreen .dock-panel,
+html.tt-manager-theme #app :is(.panel,.stat),
+html.tt-manager-theme #teacherScreen .tt-life-panel :is(.life-card,.life-stat){
+ background:var(--cm-work-paper)!important;color:var(--cm-work-ink);border-color:var(--cm-work-line)!important;border-radius:var(--cm-card-radius)!important
+}
+html.tt-manager-theme #teacherScreen .dock-panel .dock-title span{color:var(--cm-work-sub)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important;border-radius:var(--cm-button-radius)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card.selected{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;outline:2px solid var(--cm-accent);outline-offset:-3px}
+html.tt-manager-theme #teacherScreen .shared-student-card:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card.selected:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-control-ink)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{color:#9f1239!important;background:#ffe4e6;border-radius:5px;padding:1px 4px}
+html.tt-manager-theme #teacherScreen .life-side{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important}
+html.tt-manager-theme #teacherScreen .life-side p{color:var(--cm-panel-sub)!important}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(button.primary,button.ghost,button.toolbtn,button.success,button.danger),
+html.tt-manager-theme #teacherScreen .tt-life-panel button{border-radius:var(--cm-button-radius)!important}
+html.tt-manager-theme :is(#teacherScreen,#app) button.primary:not(.danger):not(.success),
+html.tt-manager-theme #teacherScreen .tt-life-panel button.life-primary{
+ background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important;border-color:var(--cm-accent)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) .workspace-toolbar .toolbtn:not(.on),
+html.tt-manager-theme #teacherScreen .top-actions button.ghost,
+html.tt-manager-theme #teacherScreen .top-actions a.ghost{
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen .workspace-toolbar .toolbtn[data-tool="seat"].on{
+ background:var(--cm-accent)!important;color:var(--cm-accent-ink)!important;border-color:var(--cm-accent)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]),select,textarea):not(.grade-input){
+ border-radius:var(--cm-input-radius);border-color:var(--cm-work-line)
+}
+html.tt-manager-theme #teacherScreen .tt-hud-menu{
+ background:var(--cm-modal)!important;color:var(--cm-modal-ink)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-modal-radius)!important
+}
+html.tt-manager-theme #teacherScreen .tt-hud-menu .tt-hud-menu-label{color:var(--cm-modal-sub)!important}
+html.tt-manager-theme #teacherScreen .tt-hud-menu :is(button,a){background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)!important}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-heading h2{color:var(--cm-surface-ink)!important}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-panel h3{color:var(--cm-modal-ink)!important}
+html.tt-manager-theme #tt-settings-overlay :is(#tt-settings-close,.tt-settings-card button,.tt-settings-tool-actions button,.tt-settings-tool-actions a):not(:disabled){
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)!important
+}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-nav button:not(.is-active):hover{background:var(--cm-control);color:var(--cm-control-ink)}
+html.tt-manager-theme .tt-class-modal-box{background:var(--cm-work-paper);color:var(--cm-work-ink);border-color:var(--cm-work-line);border-radius:var(--cm-modal-radius)}
+html.tt-manager-theme .tt-class-modal-actions .tt-class-primary{background:var(--cm-accent);color:var(--cm-accent-ink);border-color:var(--cm-accent)}
+html.tt-manager-theme :is(.seat-count-dialog-card,.roster-change-card){border-radius:var(--cm-modal-radius)}
+html.tt-manager-theme :is(#teacherScreen,#app) button.tt-ui2-vector{display:inline-flex;align-items:center;justify-content:center;gap:5px}
+html.tt-manager-theme #tt-settings-overlay button.tt-ui2-vector{display:flex;align-items:center;gap:8px}
+.tt-ui2-vector svg{width:16px;height:16px;flex:none}

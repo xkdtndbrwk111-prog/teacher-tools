@@ -1,0 +1,30 @@
+name: Classroom UI2 full regression
+on:
+  pull_request:
+    paths: ['seating/**','classroom/**','shared/**','.github/workflows/classroom-ui2-full-regression.yml']
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          find classroom/tests -maxdepth 1 -name '*.test.mjs' ! -name 'cloud-firestore-emulator.test.mjs' -print0 | xargs -0 node --test
+          node classroom/tests/manager-board-only.test.cjs
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [browser, browser-features, browser-cloud, browser-distribution, browser-plan-import, browser-traits, browser-life-guided]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: npm install --prefix /tmp/tt-ui2-regression --no-audit --no-fund --no-package-lock playwright@1.55.0
+      - run: NODE_PATH=/tmp/tt-ui2-regression/node_modules node classroom/tests/${{ matrix.suite }}.cjs

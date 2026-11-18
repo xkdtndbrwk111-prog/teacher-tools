@@ -39,7 +39,7 @@
   if(board){
    document.documentElement.classList.add('tt-board');
    await load('app.js?v=20261010-seatdrag2');
-   await load('../classroom/host/board-view.js');
+   await load('../classroom/host/board-view.js?v=ui2-f');
    return;
   }
   await load('../classroom/host/lock-ui.js');
@@ -54,6 +54,8 @@
   await load('../classroom/host/manager-home.js?v=ui2-e');
   if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
+  await load('../shared/hoja-manager-icons.js?v=ui2-f');
+  window.__TT_MANAGER_ICONS?.();
   document.documentElement.classList.remove('tt-manager-starting');
  }).catch(error=>domReady().then(()=>stop(error)));
 })();
