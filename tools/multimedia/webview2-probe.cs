@@ -40,6 +40,26 @@ internal static class Probe {
        Console.WriteLine("LIVE initial marker="+await ReadMarker(core));
        const string scan="(()=>{if(location.origin!=='https://www.canva.com')return null;return {ready:document.readyState,buttons:document.querySelectorAll('button,[role=button]').length,frames:document.querySelectorAll('iframe').length,pageHints:Array.from(document.querySelectorAll('[aria-current],[aria-valuenow],[data-page-index],[data-page-number]')).slice(0,40).map(e=>({current:e.getAttribute('aria-current'),number:['aria-valuenow','data-page-index','data-page-number'].map(k=>e.getAttribute(k)).filter(v=>v!==null&&/^\\d{1,4}$/.test(v))})),navigation:Array.from(document.querySelectorAll('button,[role=button]')).map(e=>e.getAttribute('aria-label')||'').filter(t=>/^(next|previous)( page| slide)?$/i.test(t)).slice(0,8)}})()";
        Console.WriteLine("LIVE DOM "+await core.ExecuteScriptAsync(scan));
+       const string hints="(()=>{if(location.origin!=='https://www.canva.com')return null;return Array.from(document.querySelectorAll('[aria-valuenow],[data-page-index],[data-page-number]')).flatMap((e,i)=>['aria-valuenow','data-page-index','data-page-number'].filter(k=>/^\\d{1,4}$/.test(e.getAttribute(k)||'')).map(k=>({i,tag:e.tagName,role:e.getAttribute('role'),key:k,value:Number(e.getAttribute(k)),min:e.getAttribute('aria-valuemin'),max:e.getAttribute('aria-valuemax'),visible:e.getClientRects().length>0}))).slice(0,40)})()";
+       var states=new System.Collections.Generic.List<string>();
+       var fingerprints=new System.Collections.Generic.List<string>();
+       string[] navs={"","Next page","Next page","Previous page","Next page","Next page","Next page","Previous page"};
+       foreach(string label in navs){
+        if(label!=""){
+         string script="(()=>{if(location.origin!=='https://www.canva.com')return false;const a=Array.from(document.querySelectorAll('button,[role=button]')).filter(e=>e.getAttribute('aria-label')==='"+label+"'&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getClientRects().length>0);if(a.length!==1)return false;a[0].click();return true})()";
+         string clicked=await core.ExecuteScriptAsync(script);
+         if(clicked!="true"){Console.WriteLine("LIVE NAV INCONCLUSIVE "+label+" "+clicked);break;}
+        }
+        await Task.Delay(1800);
+        string first=await core.ExecuteScriptAsync(hints);await Task.Delay(350);string second=await core.ExecuteScriptAsync(hints);
+        states.Add(first==second?first:"UNSTABLE");
+        using(var mem=new MemoryStream()){
+         await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,mem);
+         using(var sha=System.Security.Cryptography.SHA256.Create())fingerprints.Add(BitConverter.ToString(sha.ComputeHash(mem.ToArray())).Replace("-",""));
+        }
+        Console.WriteLine("LIVE NAV "+states.Count+" "+label+" hints="+states[states.Count-1]+" previewChanged="+(fingerprints.Count>1&&fingerprints[fingerprints.Count-1]!=fingerprints[fingerprints.Count-2])+" marker="+await ReadMarker(core));
+       }
+       Console.WriteLine("LIVE NAV SUMMARY samples="+states.Count+" expected=1,2,3,2,3,4,5,4; DOM candidate requires stable exact sequence and school touch verification.");
        Console.WriteLine("LIVE diagnostic only: verify visible navigation on school PC before integration.");
       }catch(Exception ex){Console.WriteLine("LIVE INCONCLUSIVE "+ex.GetType().Name);}
      }
