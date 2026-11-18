@@ -31,7 +31,7 @@ body.tt-manager-special #teacherScreen>.studio-topbar .top-actions,body.tt-life-
 /* Four tabs need additional room. Preserve legacy action placement and use the
  existing compact two-row HUD below desktop width rather than clipping tabs. */
 @media(max-width:1550px){
- #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px 44px!important;height:96px!important;min-height:96px!important;max-height:96px!important}
+ #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px minmax(0,1fr)!important;height:104px!important;min-height:104px!important;max-height:104px!important}
  #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start}
  #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
  #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}

@@ -33,3 +33,6 @@ Base: V1.66.19 release main. No main/stable publishing.
 
 ## Stage I — actual presentation lifecycle
 - Legacy browser suites now drive the actual popup, check no opener/teacher/back buttons, test 30 names/PE/animation/touch geometry. Real presentation tracking shared by idle lock and Google pending conflict; popup handles remain until closed, failed startup removed; HojaBoard receipt refreshed every 5s with 20s freshness. Deferred conflict opens only after display ends and teacher is unlocked. Manual locking unaffected. Fix inherited two-row HUD gap. Latest CI required; not released.
+
+## Stage J — public-only return controls and two-row HUD sizing
+I regression 12/13 workflow PASS, 9 detailed failures. Eight stopped early on strict return-button count: inactive playback engine controls remained in DOM (already CSS-hidden). Remove all three controls after both engines bind, regardless of type; hidden editor inert, suppress Escape and undo/redo on public display. Tests assert IDs and actual public visibility after Escape. HUD explicit 104px two-row sizing accounts for border and mode strip padding, plus diagnostic geometry without clipping. Retest; not a PASS claim until actual results.

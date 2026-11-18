@@ -33,7 +33,7 @@
    document.documentElement.classList.add('tt-student-only');
    await load('app.js?v=20261010-seatdrag2');
    await load('pe-v1.js?v=20261115-step10-menu');
-   await load('../classroom/host/student-window.js?v=20261116-board-present');
+   await load('../classroom/host/student-window.js?v=ui2-j');
    return;
   }
   if(board){

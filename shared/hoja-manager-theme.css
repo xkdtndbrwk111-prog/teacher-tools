@@ -171,7 +171,7 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
 
 /* 4-section HUD uses a stable second row until the side controls and all tabs have room. */
 @media(min-width:1551px) and (max-width:1770px){
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px 44px!important;height:96px!important;min-height:96px!important;max-height:96px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:52px minmax(0,1fr)!important;height:104px!important;min-height:104px!important;max-height:104px!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{grid-column:1!important;grid-row:1!important;justify-self:start}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:2!important;grid-row:1!important;justify-self:end}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{grid-column:1/-1!important;grid-row:2!important;justify-self:center!important}
@@ -180,3 +180,14 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
 /* Grid rows have explicit heights. The inherited flex gap previously added
    vertical overflow on every two-row header. */
 @media(max-width:1770px){html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{row-gap:0!important;padding-block:0!important} }
+
+/* Two-row HUD: size tracks include the border, and mode strip includes its own
+   padding + border. Do not clip overflowing controls to make a test pass. */
+@media(max-width:1770px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{
+  box-sizing:border-box!important;grid-template-rows:52px minmax(0,1fr)!important;
+  height:104px!important;min-height:104px!important;max-height:104px!important;
+  row-gap:0!important;padding-block:0!important
+ }
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{box-sizing:border-box!important;min-height:0!important;margin-block:0!important;padding-block:3px!important;align-self:center!important}
+}

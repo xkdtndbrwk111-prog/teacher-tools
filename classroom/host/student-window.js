@@ -9,6 +9,16 @@
  }
  try{history.replaceState(null,'',location.pathname+'?view=student')}catch{}
  document.documentElement.classList.add('tt-student-only');
+ // Both playback engines have already bound their handlers. Remove ALL teacher
+ // return controls regardless of which presentation is received. Never expose
+ // the hidden editor through keyboard shortcuts or its original event handlers.
+ const teacher=document.getElementById('teacherScreen');
+ if(teacher){teacher.inert=true;teacher.setAttribute('aria-hidden','true')}
+ document.querySelectorAll('#backToTeacher,#simpleBackToTeacher,#pePitchBack').forEach(el=>el.remove());
+ document.addEventListener('keydown',event=>{
+  const editorShortcut=(event.ctrlKey||event.metaKey)&&['z','y'].includes(event.key.toLowerCase());
+  if(event.key==='Escape'||editorShortcut){event.preventDefault();event.stopImmediatePropagation()}
+ },true);
  const status=document.createElement('div');status.id='tt-student-wait';status.textContent='교실 매니저에서 학생 화면 자료를 받는 중…';
  status.style.cssText='position:fixed;inset:0;display:grid;place-items:center;background:#13223d;color:white;font:700 20px system-ui;z-index:100006';
  document.body.append(status);
@@ -21,12 +31,12 @@
    const data=event.data.data;
    if(data?.kind==='seating'&&data.payload?.layout&&Array.isArray(data.payload?.students)){
      showPlayback(data.payload);
-     document.querySelectorAll('#backToTeacher,#simpleBackToTeacher').forEach(el=>el.remove());
+
    }else if(data?.kind==='pe'&&Array.isArray(data.payload?.teams)){
      const api=window.__TT_PE_PUBLIC_VIEW;
      if(!api)throw Error('체육 공개 화면을 준비하지 못했습니다.');
      api.show(data.payload);
-     document.getElementById('pePitchBack')?.remove();
+
    }else if(data?.kind==='life-qr'){
      const payload=data.payload;
      const {validatePublicSurveyUrl}=await import('./life-public-url.mjs?v=20261116-qr-cloud');
