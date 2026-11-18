@@ -83,6 +83,8 @@
   sendRoster();
  });
  window.__TT_STAGE031_FLUSH_GRADE=()=>isActive()?flushGrade():Promise.resolve(true);
+ // New home/board routes must pass the same confirmed-save gate as old tabs.
+ window.__TT_STAGE031_LEAVE_GRADE=leaveGrade;
  window.addEventListener('message',e=>{
   if(e.origin!==location.origin||e.source!==frame?.contentWindow||e.data?.type!=='TT_STAGE031_SWITCH_CLASS'||e.data.installId!==TEST_INSTALL_ID)return;
   const id=e.data.sourceInstanceId?.slice((TEST_INSTALL_ID+'-').length);

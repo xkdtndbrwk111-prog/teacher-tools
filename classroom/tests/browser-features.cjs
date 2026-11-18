@@ -18,7 +18,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
  await wait(500);
  const browser=await chromium.launch({channel:'chrome',headless:true});
  const errors=[];
- const open=async(viewport={width:1600,height:1000},url='/seating/')=>{
+ const open=async(viewport={width:1600,height:1000},url='/seating/?section=seating')=>{
   const ctx=await browser.newContext({viewport});
   await ctx.route(u=>!String(u).startsWith(BASE)&&!/^(data|blob):/.test(String(u)),r=>r.abort());
   const p=await ctx.newPage();

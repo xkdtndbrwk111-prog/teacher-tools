@@ -22,7 +22,7 @@ async function step(name,fn){
   await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin:BASE});
   await ctx.route(u=>!String(u).startsWith(BASE)&&!/^(data|blob):/.test(String(u)),r=>r.abort());
   const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
-  await p.goto(BASE+'/seating/');
+  await p.goto(BASE+'/seating/?section=seating');
   await p.waitForFunction(()=>typeof classState!=='undefined'&&document.getElementById('tt-lock-now'));
   await p.click('#tt-grade-tab');
   await p.waitForFunction(()=>/공통 명단 연결/.test(document.getElementById('tt-stage03-status')?.textContent||''));

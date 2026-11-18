@@ -77,7 +77,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
   const p=await ctx.newPage();
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
   if(clock)await p.clock.install();
-  await p.goto(BASE+'/seating/');await started(p);
+  await p.goto(BASE+'/seating/?section=seating');await started(p);
   return{ctx,p};
  };
  const chip=p=>p.locator('#tt-cloud-chip');

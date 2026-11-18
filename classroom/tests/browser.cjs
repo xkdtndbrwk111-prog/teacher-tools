@@ -55,7 +55,7 @@ async function setRoster(p,names){
   const legacyState={version:10,className:'기존반',students:[{id:'legacy-1',name:'기존학생',gender:'none',balanceLevel:'none',apartFrom:[],fixedSeatId:null,assignmentExcluded:false}],layout:{rows:4,cols:8,cells:[]},groups:[],rules:{},assignments:[],history:[]};
   await p.goto(BASE+'/not-a-page');
   await p.evaluate(([k,v])=>localStorage.setItem(k,v),[LEGACY_SEAT,JSON.stringify(legacyState)]);
-  await p.goto(BASE+'/seating/');await started(p);
+  await p.goto(BASE+'/seating/?section=seating');await started(p);
   let first;
   await step('기존 자리배치 자료를 첫 반으로 옮기고 원본은 남긴다',async()=>{
    first=await classInfo(p);
@@ -270,7 +270,7 @@ async function setRoster(p,names){
   });
   await step('두 번째 탭은 열리지 않고 자료를 건드리지 않는다',async()=>{
    const other=await ctx.newPage();
-   await other.goto(BASE+'/seating/');
+   await other.goto(BASE+'/seating/?section=seating');
    await other.locator('.tt-start-blocked').waitFor({timeout:6000});
    assert.match(await other.locator('.tt-start-blocked').textContent(),/다른 탭/);
    assert.equal(await other.evaluate(()=>typeof classState),'undefined');
@@ -278,7 +278,7 @@ async function setRoster(p,names){
   });
   await step('반 이름을 바꾼 뒤 바로 전체 백업할 수 있다',async()=>{
    const {ctx:cr,p:pr}=await newContext();
-   await pr.goto(BASE+'/seating/');await started(pr);
+   await pr.goto(BASE+'/seating/?section=seating');await started(pr);
    await pr.fill('#className','이름바꾼반');await pr.press('#className','Tab');await wait(200);
    await pr.click('#tt-full-backup');await pr.check('#tt-backup-plain');
    const b=await download(pr,()=>pr.click('#tt-backup-export'));
@@ -299,7 +299,7 @@ async function setRoster(p,names){
   await ctx.close();
   await step('1~2월에는 전년도 학년도가 열린다',async()=>{
    const {ctx:c2,p:p2}=await newContext(new Date('2027-01-15T10:00:00+09:00'));
-   await p2.goto(BASE+'/seating/');await started(p2);
+   await p2.goto(BASE+'/seating/?section=seating');await started(p2);
    const f=await openGrades(p2);
    assert.equal(await f.locator('#year').inputValue(),'2026');
    const keys=await p2.evaluate(async()=>{const m=await import('/classroom/grades/storage.mjs');return(await m.listDrafts('TT_STAGE03_')).map(r=>r.key)});
@@ -323,7 +323,7 @@ async function setRoster(p,names){
     setGrade(m,a.id,m.memberships[0].id,'77');
     await new Promise((res,rej)=>{const r=indexedDB.open('tt-integrated-mount-stage03-ISOLATED-v01',1);r.onupgradeneeded=()=>r.result.createObjectStore('workspaces');r.onerror=()=>rej(r.error);r.onsuccess=()=>{const tx=r.result.transaction('workspaces','readwrite');tx.objectStore('workspaces').put(m,`TT_STAGE03_${id}_2026`);tx.oncomplete=()=>{r.result.close();res()};tx.onerror=()=>rej(tx.error)}});
    });
-   await p3.goto(BASE+'/seating/');await started(p3);
+   await p3.goto(BASE+'/seating/?section=seating');await started(p3);
    const info=await classInfo(p3);
    assert.equal(info.installId,'install-041');assert.deepEqual(info.names,['이전학생']);
    const f=await openGrades(p3);await f.locator('.nav[data-page="grades"]').click();await wait(400);
@@ -343,7 +343,7 @@ async function setRoster(p,names){
   });
   await step('반을 지운 뒤 성적까지 복구하고, 완전 삭제하면 사라진다',async()=>{
    const {ctx:c4,p:p4}=await newContext();
-   await p4.goto(BASE+'/seating/');await started(p4);
+   await p4.goto(BASE+'/seating/?section=seating');await started(p4);
    await setRoster(p4,['가온','나래']);await p4.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p4.click('#rosterChangeApply');await wait(200);
    await p4.click('#tt-class-add');await p4.fill('#tt-class-names','지울반');
    let nav=p4.waitForNavigation();await p4.click('#tt-class-create');await nav;await started(p4);
@@ -392,25 +392,25 @@ async function setRoster(p,names){
   });
   await step('저장 직후 강제 종료돼도 마지막 입력이 남는다',async()=>{
    const {ctx:c5,p:p5}=await newContext();
-   await p5.goto(BASE+'/seating/');await started(p5);
+   await p5.goto(BASE+'/seating/?section=seating');await started(p5);
    const cdp=await c5.newCDPSession(p5);
    await p5.evaluate(()=>{classState.className='종료직전';persistStateOnly()});
    cdp.send('Page.crash').catch(()=>{});await wait(600);
    const p6=await c5.newPage();p6.on('dialog',d=>d.accept());
-   await p6.goto(BASE+'/seating/');await started(p6);
+   await p6.goto(BASE+'/seating/?section=seating');await started(p6);
    assert.equal(await p6.evaluate(()=>classState.className),'종료직전');
    const key=(await classInfo(p6)).seatingKey;
    const raw=await p6.evaluate(k=>{const s=JSON.parse(window.__TT_STORE.getItem(k));s.className='임시기록';return JSON.stringify(s)},key);
    await p6.goto(BASE+'/not-a-page');
    await p6.evaluate(([k,v])=>localStorage.setItem('tt.classroom.wal.'+k,JSON.stringify(v)),[key,raw]);
-   await p6.goto(BASE+'/seating/');await started(p6);
+   await p6.goto(BASE+'/seating/?section=seating');await started(p6);
    assert.equal(await p6.evaluate(()=>classState.className),'임시기록');
    assert.equal(await p6.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('tt.classroom.wal.')).length),0);
    await c5.close();
   });
   await step('복원 중 강제 종료돼도 자리와 성적이 어긋나지 않는다',async()=>{
    const {ctx:c6,p:p7}=await newContext();
-   await p7.goto(BASE+'/seating/');await started(p7);
+   await p7.goto(BASE+'/seating/?section=seating');await started(p7);
    const setState=async(name,score)=>{
     await p7.evaluate(n=>{classState.students[0].name=n;persistStateOnly()},name);
     const f=await openGrades(p7);
@@ -444,7 +444,7 @@ async function setRoster(p,names){
     await wait(delay);
     cdp.send('Page.crash').catch(()=>{});await wait(500);
     page=await c6.newPage();page.on('dialog',d=>d.accept());page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(BASE+'/seating/');await started(page);
+    await page.goto(BASE+'/seating/?section=seating');await started(page);
     const name=await page.evaluate(()=>classState.students[0].name);
     const fr=await openGrades(page);await fr.locator('.nav[data-page="grades"]').click();await wait(300);
     const score=await fr.locator('input.grade-input').first().inputValue();
@@ -458,7 +458,7 @@ async function setRoster(p,names){
   });
   await step('상단 메뉴가 노트북 폭에서도 잘리지 않는다',async()=>{
    const {ctx:c7,p:p8}=await newContext();
-   await p8.goto(BASE+'/seating/');await started(p8);
+   await p8.goto(BASE+'/seating/?section=seating');await started(p8);
    const bad=[];
    for(const width of [1280,1366,1440,1536,1600,1920]){
     await p8.setViewportSize({width,height:800});await wait(120);
@@ -475,7 +475,7 @@ async function setRoster(p,names){
   });
   await step('임시 이름과 문구가 화면에 남아 있지 않다',async()=>{
    const {ctx:c8,p:p9}=await newContext();
-   await p9.goto(BASE+'/seating/');await started(p9);
+   await p9.goto(BASE+'/seating/?section=seating');await started(p9);
    assert.equal(await p9.title(),'교실 매니저');
    await p9.click('#tt-full-backup');
    const f=await openGradesAfterClose(p9);
@@ -485,7 +485,7 @@ async function setRoster(p,names){
   });
   await step('새 평가는 지금 반이 기본으로 선택된다',async()=>{
    const {ctx:c9,p:p10}=await newContext();
-   await p10.goto(BASE+'/seating/');await started(p10);
+   await p10.goto(BASE+'/seating/?section=seating');await started(p10);
    const f=await openGrades(p10);
    await f.locator('.nav[data-page="assessments"]').click();
    assert.equal(await f.locator('#class-checks input').first().isChecked(),true);
@@ -493,7 +493,7 @@ async function setRoster(p,names){
   });
   await step('번호를 고치면 성적표 순서가 따라가고 명단 순서는 번호를 바꾸지 않는다',async()=>{
    const {ctx:c10,p:p11}=await newContext();
-   await p11.goto(BASE+'/seating/');await started(p11);
+   await p11.goto(BASE+'/seating/?section=seating');await started(p11);
    await setRoster(p11,['가온','나래','다온']);await p11.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p11.click('#rosterChangeApply');await wait(200);
    let f=await openGrades(p11);
    await f.locator('.nav[data-page="classes"]').click();
@@ -514,7 +514,7 @@ async function setRoster(p,names){
   });
   await step('암호 백업은 맞는 암호로만 열리고 복원 전 파일도 암호로 저장된다',async()=>{
    const {ctx:c11,p:p12}=await newContext();
-   await p12.goto(BASE+'/seating/');await started(p12);
+   await p12.goto(BASE+'/seating/?section=seating');await started(p12);
    await setRoster(p12,['비밀학생']);await p12.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p12.click('#rosterChangeApply');await wait(200);
    await p12.click('#tt-full-backup');
    await p12.click('#tt-backup-export');await wait(200);
@@ -548,7 +548,7 @@ async function setRoster(p,names){
   });
   await step('잠금: 번호로만 열리고 학생 화면에서 교사 화면으로 가지 못한다',async()=>{
    const {ctx:c12,p:p13}=await newContext();
-   await p13.goto(BASE+'/seating/');await started(p13);
+   await p13.goto(BASE+'/seating/?section=seating');await started(p13);
    await setRoster(p13,['가온','나래']);await p13.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p13.click('#rosterChangeApply');await wait(200);
    await p13.click('#tt-lock-now');
    await p13.fill('#tt-lock-new','12');await p13.fill('#tt-lock-new2','12');await p13.click('#tt-lock-save');await wait(100);
@@ -603,7 +603,7 @@ async function setRoster(p,names){
   await step('자동 잠금은 쉬면 작동하고 학생 화면 중에는 작동하지 않는다',async()=>{
    const {ctx:c13,p:p14}=await newContext();
    await p14.clock.install();
-   await p14.goto(BASE+'/seating/');await started(p14);
+   await p14.goto(BASE+'/seating/?section=seating');await started(p14);
    await p14.evaluate(()=>{const t=document.getElementById('studentInput');t.value='가온\n나래';t.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('applyStudents').click()});
    await p14.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p14.click('#rosterChangeApply');
    await p14.click('#tt-lock-now');
@@ -622,7 +622,7 @@ async function setRoster(p,names){
   });
   await step('학생 화면 애니메이션이 끝까지 실행되고 되돌리기가 작동한다',async()=>{
    const {ctx:c14,p:p15}=await newContext();
-   await p15.goto(BASE+'/seating/');await started(p15);
+   await p15.goto(BASE+'/seating/?section=seating');await started(p15);
    const rows=await p15.evaluate(()=>classState.layout.rows);
    await p15.click('#rowPlus');await p15.click('#undoButton');
    assert.equal(await p15.evaluate(()=>classState.layout.rows),rows);
@@ -647,7 +647,7 @@ async function setRoster(p,names){
   });
   await step('지난 학년도 성적을 읽기 전용으로 볼 수 있고 수정되지 않는다',async()=>{
    const {ctx:c16,p:p17}=await newContext();
-   await p17.goto(BASE+'/seating/');await started(p17);
+   await p17.goto(BASE+'/seating/?section=seating');await started(p17);
    await setRoster(p17,['올해학생']);await p17.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p17.click('#rosterChangeApply');await wait(200);
    const f=await openGrades(p17);
    const seeded=await p17.evaluate(async()=>{
@@ -685,7 +685,7 @@ async function setRoster(p,names){
   await step('학생 화면 버튼은 칠판 위쪽 34% 아래에 있다',async()=>{
    const {ctx:c17,p:p18}=await newContext();
    await p18.setViewportSize({width:1920,height:1080});
-   await p18.goto(BASE+'/seating/');await started(p18);
+   await p18.goto(BASE+'/seating/?section=seating');await started(p18);
    await p18.click('#generateAssignment');await wait(200);
    if(await p18.locator('#seatCountProceed:not(.hidden)').count())await p18.click('#seatCountProceed');
    await wait(200);await p18.click('#confirmAssignment');await wait(200);await p18.click('#openPlayback');

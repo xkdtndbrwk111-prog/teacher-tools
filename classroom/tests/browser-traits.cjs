@@ -23,7 +23,7 @@ async function step(name,fn){
   await ctx.route(u=>!String(u).startsWith(BASE)&&!/^(data|blob):/.test(String(u)),r=>r.abort());
   const p=await ctx.newPage();
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
-  await p.goto(BASE+'/seating/');
+  await p.goto(BASE+'/seating/?section=seating');
   await p.waitForFunction(()=>typeof classState!=='undefined'&&document.getElementById('tt-lock-now'));
   await p.click('[data-tab="student"]');
   return{ctx,p,f:p.frameLocator('.tt-grade-iframe')};

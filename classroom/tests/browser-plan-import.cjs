@@ -51,7 +51,7 @@ const hwpx=planHwpx();
    if(a==='file')return r.fulfill({status:200,contentType:'application/octet-stream',headers:{...hdr,'X-File-Name':encodeURIComponent('2026학년도 5학년 2학기 평가계획.hwpx')},body:hwpx});
    r.fulfill({status:400,headers:hdr,body:'{}'});});
   const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
-  await p.goto(BASE+'/seating/');
+  await p.goto(BASE+'/seating/?section=seating');
   await p.waitForFunction(()=>typeof classState!=='undefined'&&document.getElementById('tt-lock-now'));
   await p.click('#tt-grade-tab');
   await p.waitForFunction(()=>/공통 명단 연결/.test(document.getElementById('tt-stage03-status')?.textContent||''));
