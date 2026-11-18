@@ -1,7 +1,7 @@
 name: Classroom UI2 home and HUD candidate
 on:
   pull_request:
-    paths: ['seating/index.html','classroom/host/manager-home.*','classroom/host/class-bootstrap.js','classroom/host/grade-mount.js','classroom/tests/browser-ui2-home.cjs','classroom/tests/browser-ui2-theme.cjs','classroom/tests/hoja-theme.test.cjs','shared/hoja-*','classroom/host/manager-theme.js','classroom/grades/manager-theme-frame.js','classroom/grades/index.html','runtime-src/system/dashboard.html','runtime-src/system/server.ps1','classroom/tests/board-theme-*','classroom/tests/browser-ui2-sync.cjs','.github/workflows/classroom-ui2-home-review.yml']
+    paths: ['seating/index.html','classroom/host/manager-home.*','classroom/host/class-bootstrap.js','classroom/host/grade-mount.js','classroom/tests/browser-ui2-home.cjs','classroom/tests/browser-ui2-theme.cjs','classroom/tests/hoja-theme.test.cjs','shared/hoja-*','classroom/host/manager-theme.js','classroom/grades/manager-theme-frame.js','classroom/grades/index.html','runtime-src/system/dashboard.html','runtime-src/system/server.ps1','classroom/tests/board-theme-*','classroom/tests/browser-ui2-sync.cjs','classroom/host/manager-theme-cloud.mjs','classroom/tests/theme-cloud.test.mjs','.github/workflows/classroom-ui2-home-review.yml']
 permissions:
   contents: read
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - run: |
           node --check shared/hoja-theme.js
           node --check classroom/host/manager-theme.js
-          node --test classroom/tests/hoja-theme.test.cjs
+          node --test classroom/tests/hoja-theme.test.cjs classroom/tests/theme-cloud.test.mjs
           node classroom/tests/board-theme-publish.test.cjs
           pwsh -NoProfile -File classroom/tests/board-theme-server.test.ps1
           node --check classroom/host/manager-home.js
