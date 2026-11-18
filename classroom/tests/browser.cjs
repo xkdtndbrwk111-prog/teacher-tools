@@ -471,15 +471,18 @@ async function setRoster(p,names){
      const c=window.__TT_STAGE031_CLASS,store=window.__TT_STORE;
      const {schoolYear}=await import('/classroom/grades/model.mjs');
      const raw=await store.read(c.seatingKey),w=await store.read('TT_STAGE03_'+c.installId+'_'+schoolYear());
-     return {name:JSON.parse(raw).students[0].name,workspace:w};
+     const pupil=JSON.parse(raw).students[0];
+     const cls=w?.classes.find(x=>x.stage03SourceId===c.installId+'-'+c.activeId);
+     const mem=w?.memberships.find(x=>x.classId===cls?.id&&x.stage03SeatingId===pupil.id&&x.active);
+     const assessment=w?.assessments.find(x=>x.title==='평가'&&x.subject==='수학'&&x.classIds.includes(cls?.id));
+     const grade=w?.gradeValues.find(x=>x.membershipId===mem?.id&&x.assessmentId===assessment?.id);
+     return {name:pupil.name,linked:Boolean(mem&&assessment&&grade),score:grade?.value};
     });
     const name=await page.evaluate(()=>classState.students[0].name);
     assert.equal(persisted.name,name,'재시작 후 메모리/저장 명단 일치');
     assert.ok(Object.hasOwn(pair,name),'복원 전/후 상태 중 하나');
-    assert.ok(persisted.workspace,'성적 원본 존재');
-    const stored=JSON.stringify(persisted.workspace);
-    // Check both restored grade payload and actual grade input, not just name.
-    assert.ok(stored.includes('"'+pair[name]+'"')||stored.includes(':'+pair[name]),'원본 성적 '+pair[name]+' 존재');
+    assert.equal(persisted.linked,true,'원본 학생 ID와 평가 ID에 연결된 성적 존재');
+    assert.equal(String(persisted.score),pair[name],'원본 성적과 자리 명단 일치');
     const fr=await openGrades(page);await fr.locator('.nav[data-page="grades"]').click();await wait(300);
     const score=await fr.locator('input.grade-input').first().inputValue();
     assert.equal(score,pair[name],`지연 ${delay}ms: ${name} / ${score}`);
