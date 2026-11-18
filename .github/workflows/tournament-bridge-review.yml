@@ -1,7 +1,8 @@
 name: Tournament host bridge review
 on:
   push:
-    branches: [codex/tournament-bridge-v1]
+    branches: [codex/tournament-bridge-v1, main]
+    paths: ['runtime-src/system/**','tools/tournament-bridge/**','.github/workflows/tournament-bridge-review.yml']
 permissions:
   contents: read
 jobs:
