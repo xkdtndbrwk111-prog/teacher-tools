@@ -1,0 +1,22 @@
+name: V1.66.18 live feed verification
+on:
+  pull_request:
+    paths: ['.github/workflows/r8-v16618-evidence.yml']
+permissions:
+  contents: read
+  pages: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Verify Pages build and hosted exact signed manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pages/builds/latest" --jq '{status,commit,error}'
+          url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)"
+          case "$url" in https://*) ;; *) exit 1;; esac
+          curl -fsSL --max-time 20 "${url%/}/stable/runtime-v1/latest.json" -o "$RUNNER_TEMP/live.json"
+          python -c 'import json,base64,hashlib,sys; feed=json.load(open(sys.argv[1])); payload=base64.b64decode(feed["payload"]); assert json.loads(payload)["version"]=="1.66.18"; assert hashlib.sha256(payload).hexdigest()=="4167fd818783a9b8ba3005a019415e62c78f3533ce22bdc22d39bb708fe38810"; assert len(base64.b64decode(feed["signature"]))>0; print("PASS live Pages V1.66.18 exact approved payload and signature present")' "$RUNNER_TEMP/live.json"
