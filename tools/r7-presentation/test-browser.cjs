@@ -43,7 +43,7 @@ const qr={kind:'life-qr',payload:{url:'https://teacher-tools-class-life-39733542
    await bp.waitForFunction(old=>document.querySelector('#ttPresentation').open&&document.querySelector('#ttPresentationLoading').hidden&&document.querySelector('#ttPresentationFrame').src.split('#')[1]!==old,oldId||'',{timeout:20000});
    await mp.waitForFunction(()=>logs.some(x=>x.includes('표시 완료')),{},{timeout:20000});
    assert(state.ack.some(a=>a.id===state.item.id&&a.st==='displayed'));
-   const f=bp.frames().find(f=>f.url().includes('/presentation/seating/'));assert(f);return f;
+   const f=bp.frames().find(f=>f.url().includes('/presentation/seating/'));assert(f);assert.equal(await f.locator('script[src*="manager-theme"],script[src*="hoja-theme"],link[href*="manager-theme"],link[href*="manager-home"]').count(),0,'offline renderer must not load manager-only theme assets');return f;
   }
   async function close(){await bp.locator('#ttPresentationClose').click();await bp.waitForFunction(()=>!document.querySelector('#ttPresentation').open);await mp.evaluate(()=>logs=[]);await new Promise(r=>setTimeout(r,700));assert.equal(state.item,null)}
   let f=await offer(seating);

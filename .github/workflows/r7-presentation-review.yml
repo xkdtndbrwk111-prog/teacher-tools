@@ -1,5 +1,7 @@
 name: R7 student presentation review
 on:
+  pull_request:
+    paths: ['tools/r7-presentation/**','classroom/host/presentation-*.js','classroom/host/presentation-*.mjs','classroom/host/board-present.*','classroom/host/public-presentation.mjs','seating/index.html','seating/app.js','.github/workflows/r7-presentation-review.yml']
   push:
     branches: [main, codex/board-presentation-r7, codex/board-presentation-polish]
     paths: ['tools/r7-presentation/**','classroom/host/presentation-*.js','classroom/host/presentation-*.mjs','classroom/host/board-present.*','classroom/host/public-presentation.mjs','seating/app.js','.github/workflows/r7-presentation-review.yml']

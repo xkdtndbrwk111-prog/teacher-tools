@@ -67,8 +67,14 @@ def bundle(target):
     # No manager login, statistics, grade or cloud-sync scripts in local offline view.
     html=(dst/'seating/index.html').read_text(encoding='utf-8')
     html=re.sub(r'\s*<script src="\.\./usage-stats\.js[^>]*></script>','',html)
-    html=re.sub(r'\s*<link rel="stylesheet" href="\.\./classroom/host/(?:grade-mount|life-mount|class-ui|hud-shell|settings-window)\.css[^"]*">','',html)
+    html=re.sub(r'\s*<link rel="stylesheet" href="\.\./classroom/host/(?:grade-mount|life-mount|class-ui|hud-shell|settings-window|manager-home)\.css[^"]*">','',html)
+    # Manager-only theme files are deliberately not shipped to the offline
+    # student renderer, whose palette comes from the board presentation bridge.
+    html=re.sub(r'\s*<link rel="stylesheet" href="\.\./shared/hoja-manager-theme\.css[^"]*">','',html)
+    html=re.sub(r'\s*<script src="\.\./(?:shared/hoja-theme|classroom/host/manager-theme)\.js[^"]*"></script>','',html)
     html=re.sub(r'\s*<link rel="icon"[^>]*>','',html)
+    if any(x in html for x in ('manager-home.css','hoja-manager-theme.css','hoja-theme.js','manager-theme.js')):
+        raise ValueError('manager-only asset reference in offline student view')
     html=re.sub(r'<script src="\.\./classroom/host/class-bootstrap\.js[^"]*"></script>','<script src="../classroom/host/offline-bootstrap.js"></script>',html)
     (dst/'seating/index.html').write_text(html,encoding='utf-8')
     shutil.copyfile(here/'runtime/offline-bootstrap.js',dst/'classroom/host/offline-bootstrap.js')
