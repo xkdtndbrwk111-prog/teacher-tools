@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "version": "1.66.13",
+  "previous_version": "1.66.12",
+  "previous_payload_sha": "f8292a2dfa090a4692d3b9dabd1ffdfd42c4b7afce456fcd3e41fb59f3b318f7",
+  "source_sha": "fcd694caa833f8762d6f51a0385ca26d6320a5f4",
+  "artifact_id": 14387611396,
+  "archive_sha": "adfad34bb7090a25860e86e60f571605603101990a26d038b52c5bc2fbae910e",
+  "payload_sha": "be3d2a098c0ba26b600fe10cb532505b1dfb8f6a2875f27776a8495b6b27d10f",
+  "build_run_id": 44213806145,
+  "windows_run_id": 44213805918,
+  "integration_run_id": 44213805894,
+  "visual_run_id": 44213805900,
+  "contrast_run_id": 44213805914,
+  "education_run_id": 44213806098,
+  "badge_run_id": 44213806148,
+  "multimedia_run_id": 44213629047,
+  "multimedia_pr_sha": "f93851ea9f98a0883968a4c51b33df839f1b38c2",
+  "authorization": "Owner explicitly requested V1.66.13 first-install layout, management order and multimedia flip fix deployment on 2026-11-18. Physical classroom and newly assembled installer field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16613_owner_field_test_only"
+}
