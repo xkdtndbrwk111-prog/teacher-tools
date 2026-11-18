@@ -30,7 +30,8 @@ internal sealed class BookReader : Form {
  int saved,detected,previous,stable,waitingFor,steps,manualMode;
  bool ready,busy,closed,fixture;
  DateTime seekStart=DateTime.UtcNow,waitingSince=DateTime.UtcNow;
- string lastState="";
+ string lastState="", lastStatus="불러오는 중", placementStatus="initial";
+ int ownerError;
 
  static int Int(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToInt32(v):0;}
  static string Str(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToString(v):"";}
@@ -61,40 +62,57 @@ internal sealed class BookReader : Form {
  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h,ref POINT p);
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
  [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h,uint cmd);
- [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr h,int n,IntPtr p);
+ [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW",SetLastError=true)] static extern IntPtr SetWindowLongPtr(IntPtr h,int n,IntPtr p);
  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int hgt,uint flags);
  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int cmd);
  [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
  protected override bool ShowWithoutActivation{get{return !fixture;}}
- protected override void OnHandleCreated(EventArgs e){base.OnHandleCreated(e);if(!fixture)SetWindowLongPtr(Handle,-8,owner);}
+ protected override CreateParams CreateParams {
+  get {
+   var p=base.CreateParams;
+   if(!fixture&&owner!=IntPtr.Zero){p.Parent=owner;p.Style=(p.Style&~0x40000000)|unchecked((int)0x80000000);p.ExStyle=(p.ExStyle|0x80)&~0x40000;}
+   return p;
+  }
+ }
+ sealed class BoardOwner : IWin32Window {
+  public IntPtr Handle{get;private set;}
+  public BoardOwner(IntPtr h){Handle=h;}
+ }
+ bool EnsureOwner(){
+  if(GetWindow(Handle,4)==owner){ownerError=0;return true;}
+  SetWindowLongPtr(Handle,-8,owner);ownerError=Marshal.GetLastWin32Error();
+  bool ok=GetWindow(Handle,4)==owner;if(ok)ownerError=0;return ok;
+ }
+ void ShowForBoard(){if(!fixture)Show(new BoardOwner(owner));}
  bool OwnerValid(){uint pid;return owner!=IntPtr.Zero&&IsWindow(owner)&&GetWindowThreadProcessId(owner,out pid)!=0&&pid==ownerPid;}
  Dictionary<string,object> ReadFile(string name){try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(dir,name),Encoding.UTF8));}catch{return null;}}
- void HideSlot(){if(slotVisible){ShowWindow(Handle,0);slotVisible=false;}}
+ void HideSlot(string reason){placementStatus=reason;if(slotVisible){ShowWindow(Handle,0);slotVisible=false;}Publish(lastStatus);}
  void Place(){
   if(fixture||closed||!shownOnce)return;
   if(!OwnerValid()){Close();return;}
+  if(!EnsureOwner()){HideSlot("owner attach failed");return;}
   var l=ReadFile("layout.json");
-  if(l==null||IsIconic(owner)||!IsWindowVisible(owner)||Int(l,"visible")!=1){HideSlot();return;}
+  if(l==null||IsIconic(owner)||!IsWindowVisible(owner)||Int(l,"visible")!=1){HideSlot("owner or slot hidden");return;}
   RECT r;POINT o=new POINT();
-  if(!GetClientRect(owner,out r)||!ClientToScreen(owner,ref o)){HideSlot();return;}
+  if(!GetClientRect(owner,out r)||!ClientToScreen(owner,ref o)){HideSlot("client rect unavailable");return;}
   int cw=r.R-r.L,ch=r.B-r.T,vw=Int(l,"vw"),vh=Int(l,"vh");
   int x=Int(l,"x"),y=Int(l,"y"),w=Int(l,"w"),h=Int(l,"h");
-  if(vw<200||vh<150||cw<200||ch<150||x<0||y<0||w<100||h<60||x+w>vw+1||y+h>vh+1){HideSlot();return;}
+  if(vw<200||vh<150||cw<200||ch<150||x<0||y<0||w<100||h<60||x+w>vw+1||y+h>vh+1){HideSlot("invalid slot geometry");return;}
   double scale=(double)cw/vw;int contentH=(int)Math.Round(vh*scale),offset=ch-contentH;
   // Chromium app has no toolbar; bottom-align CSS viewport in client area, allowing only a bounded title strip.
-  if(scale<0.45||scale>4.5||offset< -4||offset>Math.Max(96,scale*96)){HideSlot();return;}
+  if(scale<0.45||scale>4.5||offset< -4||offset>Math.Max(96,scale*96)){HideSlot("viewport scale mismatch");return;}
   int left=o.X+(int)Math.Round(x*scale),top=o.Y+Math.Max(0,offset)+(int)Math.Round(y*scale);
   int right=Math.Min(o.X+cw,o.X+(int)Math.Round((x+w)*scale)),bottom=Math.Min(o.Y+ch,o.Y+Math.Max(0,offset)+(int)Math.Round((y+h)*scale));
   var next=Rectangle.FromLTRB(left,top,right,bottom);
-  if(next.Width<100||next.Height<60||GetWindow(Handle,4)!=owner){HideSlot();return;}
+  if(next.Width<100||next.Height<60||GetWindow(Handle,4)!=owner){HideSlot("invalid projected slot");return;}
   if(!positioned||next!=lastSlot||!slotVisible){
-   if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0010|0x0004|0x0200|0x0040)){HideSlot();return;}
-   lastSlot=next;positioned=true;slotVisible=true;
+   if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0010|0x0004|0x0040)){HideSlot("position failed");return;}
+   lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError});}
  void Publish(string status){
-  string data=State(status);if(data==lastState)return;
+  lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
  }
  void Command(){
@@ -141,6 +159,7 @@ internal sealed class BookReader : Form {
   busy=true;
   try{
    Command();
+   if(!fixture&&!slotVisible)return;
    if(seekTarget<0)seekTarget=requested;
    int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 수동 저장 가능");return;}
    if(p==previous)stable++;else{previous=p;stable=1;}
@@ -170,7 +189,7 @@ internal sealed class BookReader : Form {
    if(args.Length!=2||args[0]!="--session"&&args[0]!="--self-test")return 2;
    bool lab=args[0]=="--self-test";string dir=Path.GetFullPath(args[1]);
    var d=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(dir,"request.json"),Encoding.UTF8));
-   using(var f=new BookReader(dir,d,lab)){if(lab){var watchdog=new Timer{Interval=25000};watchdog.Tick+=(s,e)=>{watchdog.Stop();f.Close();};watchdog.Start();Application.Run(f);watchdog.Dispose();return f.saved==f.requested&&f.detected==f.requested?0:1;}Application.Run(f);}
+   using(var f=new BookReader(dir,d,lab)){if(lab){var watchdog=new Timer{Interval=25000};watchdog.Tick+=(s,e)=>{watchdog.Stop();f.Close();};watchdog.Start();Application.Run(f);watchdog.Dispose();return f.saved==f.requested&&f.detected==f.requested?0:1;}f.ShowForBoard();Application.Run(f);}
    return 0;
   }catch(Exception ex){Console.Error.WriteLine(ex.GetType().Name);return 1;}
  }
