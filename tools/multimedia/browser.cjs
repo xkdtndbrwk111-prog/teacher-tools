@@ -97,13 +97,18 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'다시 시도',exact:true}).waitFor();
  assert.equal(await dlg.locator('iframe').count(),0);assert.equal(await dlg.getByText('기존 재생기',{exact:true}).count(),0);
  await dlg.getByRole('button',{name:'다시 시도',exact:true}).click();
- await dlg.getByRole('button',{name:'수동 저장',exact:true}).waitFor();
+ await dlg.getByText('4 / 5쪽 · 저장됨',{exact:true}).waitFor();
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
- assert.equal(await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).isVisible(),false);
+ assert.equal(await dlg.getByRole('button',{name:'수동 저장',exact:true}).count(),0);
  const slot=await dlg.locator('.mm-book-slot').boundingBox(),foot=await dlg.locator('.mm-foot').boundingBox();assert.ok(slot.width>=1100&&slot.y+slot.height<=foot.y+1);
- await dlg.getByRole('button',{name:'수동 저장',exact:true}).click();await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).fill('3');await dlg.getByRole('button',{name:'저장',exact:true}).click();
- await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===3);await dlg.getByRole('button',{name:'자동 저장 켜기',exact:true}).click();
- await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
+ await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),false);
+ await new Promise(r=>setTimeout(r,800));assert.ok(layouts.some(x=>x.immersive===1&&x.x<=1&&x.y<=1&&x.w>=x.vw-2&&x.h>=x.vh-2));
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
+ await dlg.getByRole('button',{name:'전체화면',exact:true}).waitFor();
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),true);
  await page.setViewportSize({width:1600,height:900});await new Promise(r=>setTimeout(r,900));assert.ok(layouts.some(x=>x.vw===1600&&x.w>1100));
  await page.setViewportSize({width:1280,height:720});phase=2;await dlg.getByRole('button',{name:'4쪽 이어 읽기',exact:true}).waitFor();
  await dlg.getByRole('button',{name:'+ 책 추가',exact:true}).click();await dlg.getByLabel('책 제목',{exact:true}).fill('다른 책');
@@ -113,7 +118,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();await page.unroute('**/api/book-reader/**');
  await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),4);
- console.log('PASS single HTML toolbar, native slot layout and resize, retry without legacy, manual and automatic bookmark, separate books and reload');
+ console.log('PASS single HTML toolbar, native slot layout and resize, retry without legacy, automatic bookmark, immersive toolbar hiding and exit, separate books and reload');
 
 // Timetable: the rendered one-day table uses all available space, preserving lunch and inner gaps.
 // Exercise the real renderer, including the compact layout, and restore the weekly view.

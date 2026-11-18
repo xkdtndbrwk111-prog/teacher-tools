@@ -148,7 +148,29 @@ public static class BookTestGeometry {
     Start-Sleep -Milliseconds 350
    }while([DateTime]::UtcNow -lt $deadline)
    if($state.manual -or $state.saved -ne 3 -or $state.ack -ne 2){throw ('Automatic save restore not confirmed: '+($state|ConvertTo-Json -Compress))}
-   Write-Host 'PASS owned book slot geometry, resize, hide, restore, invalid and cross-site rejection, manual and automatic save'
+   $geometry.immersive=1
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(10)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if($state.immersive -and $state.cleanControls){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if(!$state.immersive){throw 'Immersive mode not entered'}
+   Write-Host ('LIVE CANVA control cleanup recognized: '+$state.cleanControls)
+   if(!$state.cleanControls){throw 'Live Canva control bar was not safely recognized'}
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry;command=@{seq=3;kind='next';page=0}}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(10)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if($state.page -eq 4 -and $state.saved -eq 4 -and $state.ack -eq 3){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if($state.page -ne 4 -or $state.saved -ne 4 -or $state.ack -ne 3){throw ('Immersive next page not confirmed: '+($state|ConvertTo-Json -Compress))}
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry;command=@{seq=4;kind='prev';page=0}}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(10)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if($state.page -eq 3 -and $state.saved -eq 3 -and $state.ack -eq 4){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if($state.page -ne 3 -or $state.saved -ne 3 -or $state.ack -ne 4){throw ('Immersive previous page not confirmed: '+($state|ConvertTo-Json -Compress))}
+   if((Invoke-RestMethod -Uri ($site+'/health') -TimeoutSec 4).service -ne 'teacher-tools-local'){throw 'Local server no longer healthy'}
+   Write-Host 'PASS actual Canva immersive next/previous with auto bookmark and live server'
+   $geometry.immersive=0
+   Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$geometry}) -TimeoutSec 4 | Out-Null
+   $deadline=[DateTime]::UtcNow.AddSeconds(8)
+   do{$state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4;if(!$state.immersive){break};Start-Sleep -Milliseconds 350}while([DateTime]::UtcNow -lt $deadline)
+   if($state.immersive){throw 'Immersive mode did not restore'}
+   Write-Host 'PASS owned book slot geometry, resize, hide, restore, invalid and cross-site rejection, manual and automatic save, immersive transition'
   }finally{
    Invoke-RestMethod -Uri ($site+'/api/book-reader/close'+$suffix) -Method POST -Headers $headers -TimeoutSec 4 | Out-Null
    $deadline=[DateTime]::UtcNow.AddSeconds(12)

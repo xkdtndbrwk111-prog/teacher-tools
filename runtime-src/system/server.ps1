@@ -45,6 +45,8 @@ function Get-TTBookLayout($x){
   $d[$k]=[int]$v
  }
  if($d.vw -lt 200 -or $d.vh -lt 150 -or $d.visible -gt 1 -or $d.x+$d.w -gt $d.vw+1 -or $d.y+$d.h -gt $d.vh+1){throw 'layout invalid'}
+ $d.immersive=0
+ if($null -ne $x.immersive){if(!(Test-TTBookInt $x.immersive) -or $x.immersive -notin @(0,1)){throw 'immersive invalid'};$d.immersive=[int]$x.immersive}
  return $d
 }
 function Get-TTBookRequest([string]$encoded){
@@ -56,7 +58,8 @@ function Sync-TTBookHost($session,[string]$encoded){
  $layout=Get-TTBookLayout $x.layout
  $command=$x.command
  if($command){
-  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual','prev','next') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if($command.kind -in @('prev','next') -and ($layout.immersive -ne 1 -or $command.page -ne 0)){throw 'navigation outside immersive mode'}
   if($command.seq -gt $session.seq){Write-TTBookJson (Join-Path $session.dir 'command.json') @{seq=$command.seq;kind=$command.kind;page=$command.page};$session.seq=$command.seq}
  }
  $raw=ConvertTo-Json -Compress $layout
@@ -74,7 +77,7 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
-   $d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
+   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
    foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
   }
@@ -94,7 +97,7 @@ function Open-TTBookHost([string]$encoded) {
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
- if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '1c671a968ad410021234ce6f3d1c7ee671983e160189cdb759d3af2910dd7594'){throw 'native dependency unavailable'}
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '64456efe24dbdf87ade9b6e6669bb37535a3c2f5fdb8633f05791851d406a80e'){throw 'native dependency unavailable'}
  Add-Type -AssemblyName System.IO.Compression.FileSystem
  Add-Type -AssemblyName System.Windows.Forms
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
