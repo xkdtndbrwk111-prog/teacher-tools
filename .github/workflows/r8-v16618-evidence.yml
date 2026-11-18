@@ -13,7 +13,7 @@ jobs:
       - name: Read exact main CI evidence (no signing or publication)
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE: 05a1ece1d6ce3506d561c2f77f28d9b4b333f631
+          SOURCE: 9f54c2b67e8cf12cca74de5ce25511b3ca1e8008
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SOURCE&event=push&per_page=100" --jq '.workflow_runs[] | {id,name,head_sha,head_branch,event,status,conclusion}'
