@@ -131,6 +131,33 @@ const timetable=await page.evaluate(()=>{
 assert.deepEqual(timetable,[['1','2','3','4','점심'],['1','2','3','4','점심','5'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심'],['1','2','3','4','점심','5','6','7']]);
 console.log('PASS one-day timetable trailing periods, lunch, internal gaps, compact and weekly restoration');
 
+// Full-week modal must restore every weekday without creating phantom columns.
+// Exercise the production modal from full, one-day, and compact widget layouts.
+for(const mode of ['week','today','compact']){
+ const geometry=await page.evaluate(async mode=>{
+  const saved={...layout.items.week},savedMode=layout.weekView;
+  try{
+   layout.items.week.w=24;layout.items.week.h=mode==='compact'?5:10;layout.weekView=mode==='week'?'week':'today';
+   applyWeekView();
+   const source=document.querySelector('#week .schedule');
+   const originalLunch=[...source.querySelector('.lunch-row').cells].map(c=>c.textContent);
+   window.openWidgetZoom('week');
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const table=document.querySelector('#zoomBody .schedule'),head=[...table.tHead.rows[0].cells],rows=[...table.rows],rect=table.getBoundingClientRect();
+   const widths=head.slice(1).map(c=>c.getBoundingClientRect().width);
+   return {rowColumns:rows.map(r=>[...r.cells].reduce((sum,c)=>sum+c.colSpan,0)),visible:head.every(c=>!c.hidden&&c.getBoundingClientRect().width>0),headerVisible:!table.tHead.hidden,allPeriodsVisible:[...table.tBodies[0].rows].filter(r=>!r.classList.contains('lunch-row')).every(r=>!r.hidden),widthSpread:Math.max(...widths)-Math.min(...widths),rightGap:Math.abs(rect.right-head[5].getBoundingClientRect().right),lunch:[...table.querySelector('.lunch-row').cells].map(c=>c.textContent),originalLunch,today:head.filter(c=>c.classList.contains('today')).length,sourceToday:source.tHead.querySelectorAll('.today').length};
+  }finally{Object.assign(layout.items.week,saved);layout.weekView=savedMode;applyWeekView()}
+ },mode);
+ assert.ok(geometry.rowColumns.every(n=>n===6),mode+' '+JSON.stringify(geometry));
+ assert.ok(geometry.visible&&geometry.headerVisible&&geometry.allPeriodsVisible,mode+' modal hidden columns or rows');
+ assert.ok(geometry.widthSpread<=2&&geometry.rightGap<=2,mode+' '+JSON.stringify(geometry));
+ assert.deepEqual(geometry.lunch,geometry.originalLunch);
+ assert.equal(geometry.today,geometry.sourceToday);
+ await page.locator('#zoomClose').click();await page.waitForFunction(()=>!document.querySelector('#widgetZoom').open&&!document.querySelector('#zoomBody').children.length);
+}
+console.log('PASS full-week modal six-column geometry, weekday lunch cells and compact/today restoration');
+
+
 // Date-specific lunch edit: preserve subject overrides, hide selected day, restore lunch only.
 const lunchDate=await page.evaluate(()=>{
  const c=seoulClock(),ref=new Date(c.date+'T00:00:00Z'),dow=ref.getUTCDay();ref.setUTCDate(ref.getUTCDate()+(dow===0?1:dow===6?2:0));const idx=ref.getUTCDay()-1;

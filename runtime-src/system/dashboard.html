@@ -2379,7 +2379,8 @@ layoutApply();
   const copy=table.cloneNode(true);
   copy.querySelectorAll('td,th,.tt-subject').forEach(el=>el.style.removeProperty('font-size'));
   copy.querySelectorAll('[hidden]').forEach(c=>{c.hidden=false});
-  copy.querySelectorAll('.lunch-row td:last-child').forEach(c=>{c.colSpan=5});
+  // Each weekday has its own lunch cell. Never merge the last cell across weekdays.
+  copy.querySelectorAll('.lunch-row').forEach(row=>{row.hidden=[...row.cells].slice(1).every(cell=>cell.dataset.lunchHidden==='1')});
   show('📚 이번 주 시간표','week',copy);
  }
  function meal(){
