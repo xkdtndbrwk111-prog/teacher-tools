@@ -62,7 +62,8 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
    $d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
-   foreach($k in @('ack','x','y','w','h')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
+   foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
+   $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
   }
  }catch{}
  try{if($v.process.HasExited){$d.closed=$true;if(!$d.ready){$d.status='새 재생기 실행 실패'}}}catch{$d.closed=$true}
