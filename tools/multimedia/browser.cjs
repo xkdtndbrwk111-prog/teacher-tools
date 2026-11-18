@@ -111,6 +111,10 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.locator('[data-book-id]').count(),2);await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).waitFor();await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
  console.log('PASS separate book catalog, direct iframe, sibling mask, manual bookmark, synthetic restricted capture + CRC, resume guard, stable auto save, cleanup and independent books');
 
+ // Restart the document between the synthetic capture fixture and the native session fixture.
+ // Verify that the saved bookmark survives a real page reload; reset mocked browser APIs.
+ await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),5);
  let nativeCalls=[],nativePoll=0,nativeSession='a'.repeat(32);
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
