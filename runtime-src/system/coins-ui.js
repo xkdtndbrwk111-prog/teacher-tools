@@ -206,6 +206,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
   void serial(async()=>{
   try{
    if(type==='hoja-ready'){
+    if(event.data.coinProtocol!==4)return;
     if(await housekeepingNow())await sendRoster(reply,event.data.readyReq??null);
    }else if(type==='hoja-tournament-auth'){
     await load();
@@ -328,9 +329,11 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  const guard=e=>{if(!locked())return;const target=e.target.closest?.('#openMiniGames,[data-widget="house"]');if(target){e.preventDefault();e.stopImmediatePropagation();open();}};
  document.addEventListener('click',guard,true);
  function stopLeisure(key){
-  if(stopSent===key)return;stopSent=key;
   if(window.ttHouse?.isOpen?.())window.ttHouse.close();
-  if($('miniGames')?.open&&miniSession)$('miniFrame')?.contentWindow?.postMessage({type:'hoja-routine-stop',sessionId:miniSession},'https://xkdtndbrwk111-prog.github.io');
+  const stopKey=key+':'+miniSession;
+  if($('miniGames')?.open&&miniSession&&stopSent!==stopKey){
+   stopSent=stopKey;$('miniFrame')?.contentWindow?.postMessage({type:'hoja-routine-stop',sessionId:miniSession},'https://xkdtndbrwk111-prog.github.io');
+  }
  }
  const el=(tag,text,cls)=>{const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x};
  const btn=(text,fn)=>{const x=el('button',text);x.type='button';x.onclick=fn;return x};
@@ -357,7 +360,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  $('routineClose').onclick=()=>app.close();app.addEventListener('close',()=>{auth=null;editing=false;view='today';lastSignature=''});
  $('routineToday').onclick=()=>{editing=false;view='today';$('routineDate').value=today();render()};
  $('routineDate').onchange=()=>{editing=false;view=$('routineDate').value===today()?'today':'history';render()};
- function runWrite(fn){return serial(async()=>{try{await refresh();const out=fn();await append(out);lastSignature='';if(app.open&&!editing)render();}catch(e){note(e.message||'저장 실패 · 다시 시도해 주세요.')}})}
+ function runWrite(fn){return serial(async()=>{try{await refresh();const out=fn();await append(out);lastSignature='';if(app.open&&!editing)render();return true;}catch(e){note(e.message||'저장 실패 · 다시 시도해 주세요.');return false;}})}
  function mark(taskId,id,dayDate,cls,teacher){
   return runWrite(()=>{if(snap.roster.cls!==cls||dayDate!==today())throw Error('학급 또는 날짜가 변경됐어요.');const d=getDay();return C.routineMark(d,{task:taskId,student:id,done:!C.routineDone(d,taskId,id),now:now(),teacher:teacher&&teacherValid()});});
  }
@@ -409,7 +412,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
    const cls=snap.roster.cls;
    const mins=s=>{if(!/^\d\d:\d\d$/.test(s))return NaN;const [h,m]=s.split(':').map(Number);return h*60+m;};
    try{const tasks=C.routineTasks([...rows.children].map(row=>{const [name,start,end]=row.querySelectorAll('input');return{id:row.dataset.id,name:name.value,start:mins(start.value),end:mins(end.value),days:[...row.querySelectorAll('input[type=checkbox]:checked')].map(c=>Number(c.dataset.day))}}));
-    void runWrite(()=>{if(!teacherValid()||snap.roster.cls!==cls)throw Error('교사 인증 또는 학급이 변경됐어요.');return[{at:now().toISOString(),cls,type:'routine-config',tasks}]}).then(()=>{if(app.open){editing=false;render();void tick()}});
+    void runWrite(()=>{if(!teacherValid()||snap.roster.cls!==cls)throw Error('교사 인증 또는 학급이 변경됐어요.');return[{at:now().toISOString(),cls,type:'routine-config',tasks}]}).then(ok=>{if(ok&&app.open){editing=false;render();void tick()}});
    }catch(e){note(e.message)}
   }),btn('오늘 체크 수정',()=>{editing=false;view='today';$('routineDate').value=today();render()}));
  }
