@@ -267,3 +267,151 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  setInterval(housekeeping,10*60000);
  setInterval(()=>{if(dialog.open)void serial(async()=>{try{const oldCls=roster.cls,rev=snap?.revision;await load();if(oldCls!==roster.cls||rev!==snap.revision||panel!=='view'&&!authorized())render()}catch(error){say(error.message)}})},5000);
 })();
+
+
+ // Independent routine app. The coin ledger is only its durable transaction store.
+ (()=>{
+ 'use strict';
+ const C=window.TTCoins,$=id=>document.getElementById(id);
+ if(!$('openCoins')||!C?.routineDay)return;
+ const app=document.createElement('dialog');app.id='routineApp';app.setAttribute('aria-label','루틴');
+ const style=document.createElement('style');style.textContent=`
+ #routineApp:modal{width:96vw;height:91dvh;max-width:none;max-height:none;margin:auto;padding:0;border:1px solid var(--border);border-radius:16px;background:var(--tt-modal-panel,var(--panel));color:var(--text-primary);overflow:hidden}
+ #routineApp::backdrop{background:#07182099}
+ #routineApp *{box-sizing:border-box}
+ #routineApp [hidden]{display:none!important}
+ #routineApp .r-shell{height:100%;display:flex;flex-direction:column;min-height:0;padding:18px;gap:12px}
+ #routineApp .r-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+ #routineApp h2{margin:0;flex:1;font-size:clamp(24px,2vw,36px)}
+ #routineApp button,#routineApp input{font:inherit;color:var(--text-primary);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;min-height:42px}
+ #routineApp button{font-weight:800;cursor:pointer}
+ #routineApp button:disabled{cursor:default}
+ #routineApp .r-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+ #routineApp table{border-collapse:separate;border-spacing:3px;width:100%;font-size:clamp(15px,1.15vw,21px)}
+ #routineApp th,#routineApp td{min-width:56px;text-align:center}
+ #routineApp thead th{position:sticky;top:0;background:var(--panel);z-index:2}
+ #routineApp th:first-child{min-width:165px;max-width:210px;position:sticky;left:0;text-align:left;background:var(--panel);z-index:1;padding:6px}
+ #routineApp thead th:first-child{z-index:3}
+ #routineApp th small{display:block;font-size:.8em;font-weight:500}
+ #routineApp td button{width:100%;height:54px;padding:2px;min-width:48px;color:var(--text-primary)}
+ #routineApp td button.r-yes{background:#23784c;color:#fff}
+ #routineApp td button.r-no{background:#af4346;color:#fff}
+ #routineApp td button.r-wait{background:var(--surface)}
+ #routineApp td button.r-off{background:var(--surface);opacity:.45}
+ #routineApp tr.r-active>th,#routineApp tr.r-active>td{outline:2px solid #e9b64c;outline-offset:-1px}
+ #routineApp tr.r-active>td button{height:72px}
+ #routineApp .r-banner{font-weight:900;font-size:clamp(20px,1.7vw,29px);padding:9px 12px;background:var(--today);border-radius:10px}
+ #routineApp .r-editor{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px;border-bottom:1px solid var(--border)}
+ #routineApp .r-editor input[type=text]{min-width:130px;flex:1}
+ #routineApp .r-editor label{display:flex;align-items:center;gap:2px}
+ #routineApp .r-editor input[type=checkbox]{min-height:24px}
+ #routineApp .r-note{font-size:16px;min-height:24px}
+ `;document.head.append(style);
+ app.innerHTML='<div class="r-shell"><div class="r-top"><h2>오늘의 루틴</h2><input type="date" id="routineDate" aria-label="조회 날짜"><button type="button" id="routineToday">오늘</button><button type="button" id="routineSettings">교사 설정</button><button type="button" id="routineClose">닫기</button></div><div class="r-banner" id="routineBanner"></div><div class="r-note" id="routineNote" role="status"></div><div class="r-scroll" id="routineContent"></div></div>';
+ document.body.append(app);
+ let launch=$('openRoutine');if(!launch){launch=document.createElement('button');launch.id='openRoutine';launch.dataset.app='routine';launch.textContent='✓ 루틴';$('openCoins').after(launch)}
+ let snap=null,shown='',view='today',auth=null,editing=false,lastSignature='',timerBusy=false,queue=Promise.resolve(),stopSent='';
+ let miniSession=null;
+ window.addEventListener('message',e=>{const frame=$('miniFrame');if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===frame?.contentWindow&&e.data?.type==='hoja-ready'&&C.validCharge(e.data.sessionId))miniSession=e.data.sessionId;});
+ const serial=fn=>{const p=queue.then(fn);queue=p.catch(()=>{});return p};
+ const note=s=>{$('routineNote').textContent=s};
+ const now=()=>new Date(),today=()=>C.dayText(now()),clock=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+ const getDay=(date=today())=>snap?.roster?.cls?C.routineDay(snap.events,snap.roster.cls,date):null;
+ const active=()=>C.routineActive(getDay(),now());
+ function locked(){
+  if(!snap?.roster?.cls)return false;
+  const d=getDay();if(d)return Boolean(active());
+  const min=C.minuteOf(now()),day=now().getDay();
+  return C.routineConfig(snap.events,snap.roster.cls).some(t=>t.days.includes(day)&&t.start<=min&&min<t.end);
+ }
+ window.ttRoutine={locked,open:()=>open(),refresh:()=>tick()};
+ const guard=e=>{if(!locked())return;const target=e.target.closest?.('#openMiniGames,[data-widget="house"]');if(target){e.preventDefault();e.stopImmediatePropagation();open();}};
+ document.addEventListener('click',guard,true);
+ function stopLeisure(key){
+  if(stopSent===key)return;stopSent=key;
+  if(window.ttHouse?.isOpen?.())window.ttHouse.close();
+  if($('miniGames')?.open&&miniSession)$('miniFrame')?.contentWindow?.postMessage({type:'hoja-routine-stop',sessionId:miniSession},'https://xkdtndbrwk111-prog.github.io');
+ }
+ const el=(tag,text,cls)=>{const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x};
+ const btn=(text,fn)=>{const x=el('button',text);x.type='button';x.onclick=fn;return x};
+ const teacherValid=()=>Boolean(auth&&auth.cls===snap?.roster?.cls&&auth.valid());
+ async function refresh(){const prev=snap?.roster?.cls;snap=await C.snapshot(true);if(prev&&prev!==snap.roster.cls){auth=null;editing=false;view='today';$('routineDate').value=today();lastSignature='';shown='';stopSent='';}}
+ async function append(events){if(events.length)await C.commit(snap,events)}
+ async function tick(){
+  if(timerBusy)return;timerBusy=true;
+  try{await serial(async()=>{
+   await refresh();if(!snap.roster.cls)return;
+   const t=now();await append(C.routineOpen(snap.events,snap.roster,t));
+   // Retry unfinished days only within the same school year, using their frozen participants.
+   const dates=[...new Set(snap.events.filter(e=>e.cls===snap.roster.cls&&e.type==='routine-open').map(e=>e.date))];
+   for(const date of dates){const [y,m,d]=date.split('-').map(Number);if(C.schoolYear(new Date(y,m-1,d))!==C.schoolYear(t))continue;const day=getDay(date);await append(C.routineSettle(snap.events,day,t));}
+   const task=active(),key=task?JSON.stringify([snap.roster.cls,today(),task.id]):'';
+   if(task){stopLeisure(key);if(shown!==key){shown=key;editing=false;auth=null;view='today';$('routineDate').value=today();if(!app.open)app.showModal();lastSignature='';}}
+   else{stopSent='';}
+   const button=$('openMiniGames');if(button){button.disabled=locked();button.title=locked()?'루틴 진행 중':''}
+   if(app.open&&!editing){const sig=JSON.stringify([snap.revision,snap.roster.cls,view,$('routineDate').value,key,C.minuteOf(t),teacherValid()]);if(sig!==lastSignature){lastSignature=sig;render();}}
+  });}catch(e){if(app.open)note(e.message||'루틴 기록을 읽지 못했어요.');}finally{timerBusy=false;}
+ }
+ function open(){if(!app.open){editing=false;auth=null;view='today';$('routineDate').value=today();lastSignature='';app.showModal()}void tick();if(snap&&!editing)render()}
+ launch.onclick=open;
+ $('routineClose').onclick=()=>app.close();app.addEventListener('close',()=>{auth=null;editing=false;view='today';lastSignature=''});
+ $('routineToday').onclick=()=>{editing=false;view='today';$('routineDate').value=today();render()};
+ $('routineDate').onchange=()=>{editing=false;view=$('routineDate').value===today()?'today':'history';render()};
+ function runWrite(fn){return serial(async()=>{try{await refresh();const out=fn();await append(out);lastSignature='';if(app.open&&!editing)render();}catch(e){note(e.message||'저장 실패 · 다시 시도해 주세요.')}})}
+ function mark(taskId,id,dayDate,cls,teacher){
+  return runWrite(()=>{if(snap.roster.cls!==cls||dayDate!==today())throw Error('학급 또는 날짜가 변경됐어요.');const d=getDay();return C.routineMark(d,{task:taskId,student:id,done:!C.routineDone(d,taskId,id),now:now(),teacher:teacher&&teacherValid()});});
+ }
+ function teacherEvent(type,fields,cls,date){
+  return runWrite(()=>{const d=getDay();if(!teacherValid()||!d||d.settled||d.cls!==cls||d.date!==date)throw Error('교사 인증 또는 날짜를 확인해 주세요.');return[{at:now().toISOString(),cls,date,type,...fields}]});
+ }
+ function render(){
+  if(editing)return;
+  const content=$('routineContent'),banner=$('routineBanner'),date=$('routineDate').value||today(),d=getDay(date),t=now(),a=date===today()?active():null;
+  $('routineDate').max=today();$('routineSettings').textContent=teacherValid()?'설정 / 수정':'교사 설정';
+  content.replaceChildren();note('');
+  if(!snap?.roster?.students?.length){banner.textContent='학급 명단이 필요해요.';return;}
+  const tasks=d?.tasks||C.routineConfig(snap.events,snap.roster.cls).filter(x=>date===today()&&x.days.includes(t.getDay()));
+  if(!tasks.length){banner.textContent='설정된 루틴이 없어요.';return;}
+  const people=(d?.students||snap.roster.students).slice().sort((x,y)=>Number(x.number||0)-Number(y.number||0)||String(x.name).localeCompare(String(y.name),'ko'));
+  const settled=d?.settled;
+  banner.textContent=a?a.name+' · '+clock(a.start)+'~'+clock(a.end):settled?'오늘의 루틴 정산 완료':date===today()?'오늘의 루틴 일정':'지난 루틴 기록';
+  if(a){const eligible=people.filter(s=>!d.excluded.has(s.id));note(eligible.filter(s=>C.routineDone(d,a.id,s.id)).length+' / '+eligible.length+'명 완료 · 루틴 중 미니게임과 호자의 집은 잠겨 있어요.');}
+  const tbl=el('table'),head=tbl.createTHead().insertRow();head.append(el('th','과업 / 시간'));
+  for(const s of people){const th=el('th',s.name);if(s.groupName)th.append(el('small',s.groupName));if(d&&date===today()&&teacherValid()&&!settled){th.append(btn(d.excluded.has(s.id)?'복귀':'제외',()=>teacherEvent('routine-exclude',{student:s.id,excluded:!d.excluded.has(s.id)},d.cls,d.date)))}head.append(th);}
+  const tbody=tbl.createTBody();
+  for(const task of tasks){const row=tbody.insertRow();if(a?.id===task.id)row.classList.add('r-active');const th=el('th',task.name);th.append(el('small',clock(task.start)+'~'+clock(task.end)));
+   if(d&&date===today()&&teacherValid()&&!settled){th.append(btn(d.cancelled.has(task.id)?'복원':'취소',()=>teacherEvent('routine-cancel',{task:task.id,cancelled:!d.cancelled.has(task.id)},d.cls,d.date)));}
+   row.append(th);
+   for(const s of people){const td=row.insertCell(),off=d&&(d.excluded.has(s.id)||d.cancelled.has(task.id)),checked=d&&C.routineDone(d,task.id,s.id),ended=d&&(date<today()||C.minuteOf(t)>=task.end);
+    const cell=btn(off?'—':checked?'✓':ended?'×':'·',()=>mark(task.id,s.id,d.date,d.cls,teacherValid()));cell.className=off?'r-off':checked?'r-yes':ended?'r-no':'r-wait';cell.disabled=!d||Boolean(off)||Boolean(settled)||date!==today()||(!teacherValid()&&a?.id!==task.id);cell.setAttribute('aria-label',s.name+' '+task.name+' '+(off?'제외':checked?'완료':ended?'미완료':'대기'));td.append(cell);}
+  }content.append(tbl);
+  if(settled){const paid=(settled.results||[]).reduce((sum,x)=>sum+x.paid,0);content.append(el('p',settled.coinEnabled?'지급 완료 · 합계 '+paid+'코인':'코인이 꺼져 있어 보상 없이 마감했습니다.'))}
+  if(a&&a.id!==app.dataset.active){app.dataset.active=a.id;tbody.querySelector('.r-active')?.scrollIntoView({block:'nearest'});}
+ }
+ $('routineSettings').onclick=async()=>{
+  if(!snap?.roster?.cls){note('학급 명단이 필요해요.');return}
+  if(!teacherValid()){const cls=snap.roster.cls;const valid=await window.ttPodo?.requestCoinAccess?.();if(!valid||!app.open||snap.roster.cls!==cls)return;auth={cls,valid};}
+  if(editing){editing=false;render();return;}
+  editing=true;showEditor();
+ };
+ function showEditor(){
+  const host=$('routineContent');host.replaceChildren();$('routineBanner').textContent='루틴 설정';note('오늘의 루틴이 이미 시작되었다면 변경은 다음 날부터 적용됩니다.');
+  const rows=el('div'),weekday=['일','월','화','수','목','금','토'];
+  function add(task={id:crypto.randomUUID(),name:'',start:510,end:520,days:[1,2,3,4,5]}){
+   const row=el('div',undefined,'r-editor');row.dataset.id=task.id;
+   const input=(type,value,label)=>{const i=el('input');i.type=type;i.value=value;i.setAttribute('aria-label',label);return i;};
+   row.append(input('text',task.name,'과업 이름'),input('time',clock(task.start),'시작 시각'),input('time',clock(task.end),'종료 시각'));
+   weekday.forEach((day,i)=>{const l=el('label',day),cb=input('checkbox','',day);cb.dataset.day=i;cb.checked=task.days.includes(i);l.prepend(cb);row.append(l)});
+   row.append(btn('삭제',()=>row.remove()));rows.append(row);
+  }
+  for(const task of C.routineConfig(snap.events,snap.roster.cls))add(task);
+  host.append(rows,btn('과업 추가',()=>add()),btn('저장',()=>{
+   const cls=snap.roster.cls;
+   const mins=s=>{if(!/^\d\d:\d\d$/.test(s))return NaN;const [h,m]=s.split(':').map(Number);return h*60+m;};
+   try{const tasks=C.routineTasks([...rows.children].map(row=>{const [name,start,end]=row.querySelectorAll('input');return{id:row.dataset.id,name:name.value,start:mins(start.value),end:mins(end.value),days:[...row.querySelectorAll('input[type=checkbox]:checked')].map(c=>Number(c.dataset.day))}}));
+    void runWrite(()=>{if(!teacherValid()||snap.roster.cls!==cls)throw Error('교사 인증 또는 학급이 변경됐어요.');return[{at:now().toISOString(),cls,type:'routine-config',tasks}]}).then(()=>{if(app.open){editing=false;render();void tick()}});
+   }catch(e){note(e.message)}
+  }),btn('오늘 체크 수정',()=>{editing=false;view='today';$('routineDate').value=today();render()}));
+ }
+ setInterval(tick,3000);void tick();
+ })();
