@@ -12,13 +12,19 @@
   <link rel="stylesheet" href="../classroom/host/life-mount.css?v=20261116-life-guided">
   <link rel="stylesheet" href="../classroom/host/class-ui.css">
   <link rel="stylesheet" href="../classroom/host/hud-shell.css">
-  <link rel="stylesheet" href="../classroom/host/settings-window.css">
+  <link rel="stylesheet" href="../classroom/host/settings-window.css?v=ui2-g">
   <link rel="stylesheet" href="../classroom/host/student-window.css">
-  <script>if(new URLSearchParams(location.search).get('view')==='student')document.documentElement.classList.add('tt-student-only');</script>
+  <link rel="stylesheet" href="../classroom/host/manager-home.css?v=ui2-j">
+  <link rel="stylesheet" href="../shared/hoja-manager-theme.css?v=ui2-j">
+  <style>html.tt-manager-starting #teacherScreen{visibility:hidden!important}#tt-manager-loading{display:none}html.tt-manager-starting #tt-manager-loading{display:grid;place-items:center;min-height:100dvh;color:#e5edf8;font:600 16px system-ui}</style>
+  <script>(()=>{const view=new URLSearchParams(location.search).get('view');if(view==='student')document.documentElement.classList.add('tt-student-only');if(view!=='student'&&view!=='board')document.documentElement.classList.add('tt-manager-starting')})();</script>
+  <script src="../shared/hoja-theme.js?v=ui2-g"></script>
+  <script src="../classroom/host/manager-theme.js?v=ui2-d"></script>
   <script src="../classroom/host/class-store.js"></script>
-  <script src="../classroom/host/class-bootstrap.js?v=20261117-board-polish"></script>
+  <script src="../classroom/host/class-bootstrap.js?v=ui2-k"></script>
 </head>
 <body>
+  <div id="tt-manager-loading" role="status">교실매니저 준비 중…</div>
   <section id="teacherScreen" class="screen teacher-screen">
     <header class="studio-topbar">
       <div class="brand-block">

@@ -26,6 +26,7 @@
    reason==='window'?'⚪ 대시보드 실행 중 · 배경화면 모드가 아닙니다.':
    '⚪ 칠판 연결 안 됨 · 배경화면 실행 필요';
   if(lastResult!==message){note.textContent=message;lastResult=message}
+  note.setAttribute('data-roster-ready',String(Boolean(connected&&latest?.rosterProtocol===1)));
  }
  async function check(){
   if(pending)return connected;
@@ -39,7 +40,7 @@
    if(!response.ok)throw Error('unavailable');
    const data=await response.json();
    if(data?.service!=='teacher-tools-local')throw Error('unrecognized');
-   if(!Number.isInteger(data.version)||data.version<33){show(false,'old');return false}
+   if(!Number.isInteger(data.version)||data.version<33){latest=null;verifiedAt=0;show(false,'old');return false}
    latest=data;verifiedAt=Date.now();show(data.wallpaper===true,data.wallpaper===true?'':'window');
    return connected;
   }catch{
@@ -52,5 +53,5 @@
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void check()});
  window.addEventListener('focus',()=>void check());
  window.addEventListener('pagehide',()=>clearInterval(interval),{once:true});
- window.__TT_BOARD_CONNECTION={check,isConnected:status,presentationReady:()=>Boolean(latest?.presentationProtocol===1&&latest?.presentationReady===true&&Date.now()-verifiedAt<20000)};
+ window.__TT_BOARD_CONNECTION={check,isConnected:status,rosterReady:()=>Boolean(connected&&latest?.rosterProtocol===1&&Date.now()-verifiedAt<20000),presentationReady:()=>Boolean(latest?.presentationProtocol===1&&latest?.presentationReady===true&&Date.now()-verifiedAt<20000)};
 })();

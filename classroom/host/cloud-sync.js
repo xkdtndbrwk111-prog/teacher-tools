@@ -8,7 +8,7 @@
  const root=new URL('../',document.currentScript.src);
  const controls=document.querySelector('.tt-class-controls');
  if(!controls)return;
- let meta=null,cloud=null,clientId='',mods=null,state='easy',busy=false,firstDirtyAt=0,lastChangeAt=0,importantAt=0,retryAt=0,backoff=60000,lastHeadCheck=0,pendingDiff=null,lastSaved='',detail='';
+ let meta=null,cloud=null,clientId='',mods=null,state='easy',busy=false,firstDirtyAt=0,lastChangeAt=0,importantAt=0,retryAt=0,backoff=60000,lastHeadCheck=0,pendingDiff=null,deferredDiff=false,lastSaved='',detail='';
  const chip=document.createElement('button');chip.type='button';chip.id='tt-cloud-chip';controls.append(chip);
  const settings=document.createElement('div');settings.className='tt-lock-settings';settings.hidden=true;settings.setAttribute('role','dialog');settings.setAttribute('aria-modal','true');settings.setAttribute('aria-labelledby','tt-cloud-title');
  settings.innerHTML=`<div class="tt-lock-settings-card tt-cloud-card">
@@ -35,6 +35,7 @@
  const $=id=>document.getElementById(id);
  const time=iso=>{const d=new Date(iso);return Number.isNaN(+d)?'':d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})};
  const studentView=()=>{
+  if(window.__TT_STUDENT_POPUP?.isPresenting?.())return true;
   const seats=$('playbackScreen'),pitch=$('pePitchReveal');
   return(seats&&!seats.classList.contains('hidden'))||(pitch&&pitch.getAttribute('aria-hidden')==='false');
  };
@@ -120,9 +121,12 @@
  }
  function showDiff(info){
   pendingDiff=info;settings.hidden=true;setState('diff');
-  if(!studentView())openDiff();
+  deferredDiff=Boolean(studentView());if(!deferredDiff)openDiff();
  }
  function openDiff(){
+  if(!pendingDiff)return;
+  if(studentView()){deferredDiff=true;return}
+  deferredDiff=false;
   const {kind,local,remoteHead,changed}=pendingDiff;
   const line=(c,when,device)=>`${c?`반 ${c.classes}개 · 학생 ${c.students}명 · 성적 ${c.grades}건`:'내용 없음'}${when?` · ${time(when)} 저장`:''}${device?` · ${device}`:''}`;
   $('tt-diff-text').textContent=kind==='ask-pull'?'구글 시트에 다른 PC에서 저장한 자료가 있습니다. 불러올까요?':'이 브라우저와 구글 시트가 각각 바뀌었습니다. 어느 쪽을 쓸지 골라 주세요.';
@@ -287,7 +291,7 @@
   publishAuth();
   if(meta?.mode!=='normal'||authChanging)return;
   if(needsLogin()){if(state!=='login'&&state!=='diff')setState('login');return}
-  if(pendingDiff){if(diff.hidden&&!studentView()&&state!=='diff')setState('diff');return}
+  if(pendingDiff){if(diff.hidden&&!studentView()){if(state!=='diff')setState('diff');if(deferredDiff&&!document.getElementById('teacherScreen')?.inert)openDiff()}return}
   if(Date.now()<retryAt)return;
   const now=Date.now();
   const due=(importantAt&&now>=importantAt)||(firstDirtyAt&&(now-lastChangeAt>=QUIET_MS||now-firstDirtyAt>=LONGEST_WAIT_MS))||state==='paused';

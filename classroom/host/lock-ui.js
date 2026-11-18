@@ -157,12 +157,14 @@
   for(const type of ['pointerdown','keydown'])frame.contentWindow.addEventListener(type,()=>{lastActive=Date.now()},{passive:true});
  }
  const studentViewOpen=()=>{
+  if(window.__TT_STUDENT_POPUP?.isPresenting?.())return true;
   const seats=document.getElementById('playbackScreen'),pitch=document.getElementById('pePitchReveal');
   return(seats&&!seats.classList.contains('hidden'))||(pitch&&pitch.getAttribute('aria-hidden')==='false');
  };
  function checkIdle(){
   watchFrame();
-  if(!record||locked||!record.idleMinutes||studentViewOpen()||!dialog.hidden)return;
+  if(studentViewOpen()){lastActive=Date.now();return}
+  if(!record||locked||!record.idleMinutes||!dialog.hidden)return;
   if(Date.now()-lastActive>=record.idleMinutes*60000)lockNow();
  }
  window.__TT_LOCK={

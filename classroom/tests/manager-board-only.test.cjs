@@ -10,7 +10,7 @@ const all=()=>[...actions.children,...menu.children];const doc={querySelector:s=
 const local=new Map(), listeners={};let board={service:'teacher-tools-local',version:33,wallpaper:true};let fetches=0;
 const context={document:doc,TextEncoder,btoa:s=>Buffer.from(s,'binary').toString('base64'),console,AbortController,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},fetch:async()=>{fetches++;return {ok:true,json:async()=>board}},localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},classState:{className:'가상 학급',assignments:[],students:[]},historyView:false,confirmedRevision:1,previewRevision:1,setSaveStatus:(...x)=>statuses.push(x),window:{__TT_STAGE031_CLASS:{activeId:'virtual'},__TT_STORE:{},open(...args){const p={args,close(){},postMessage:(...a)=>messages.push(a)};popups.push(p);return p},addEventListener:(k,f)=>listeners[k]=f,removeEventListener:k=>delete listeners[k]}};
 (async()=>{vm.createContext(context);vm.runInContext(sources['dashboard-link.js'],context);
-assert.deepEqual(actions.children.map(n=>n.id),['tt-send-board']);pass('only seating send button exists');
+assert.deepEqual(actions.children.map(n=>n.id),['tt-send-board']);pass('original confirmed seating send button remains sole legacy action');
 assert.equal(typeof confirm.listeners.click,'function');pass('confirmed seating auto-send handler retained');
 vm.runInContext(sources['board-status.js'],context);await new Promise(setImmediate);
 const send=actions.children[0];assert.equal(fetches,1);assert.equal(send.disabled,false);assert.match(menu.children[0].textContent,/칠판 연결됨/);pass('connected board enables seating without requiring removed menu');
@@ -19,5 +19,9 @@ board={...board,wallpaper:true};await context.window.__TT_BOARD_CONNECTION.check
 context.classState.assignments=[{}];send.listeners.click();assert.equal(popups.length,1);assert.match(popups[0].args[0],/\/seating-inbox$/);pass('manual seating opens existing inbox');
 await listeners.message({origin:'http://127.0.0.1:17439',source:popups[0],data:{type:'tt-inbox-saved'}});assert.match(statuses.at(-1)[0],/칠판으로 보냄/);assert.equal(local.get('tt.classroom.board-linked'),'1');pass('seating reply retains linked state');
 confirm.listeners.click();assert.equal(popups.length,2);pass('confirmed seating automatically sends after first link');
+await listeners.message({origin:'http://127.0.0.1:17439',source:popups[1],data:{type:'tt-inbox-saved'}});
+assert.equal(context.window.__TT_BOARD_CONNECTION.rosterReady(),false);context.window.__TT_SEND_ROSTER();assert.equal(popups.length,2);pass('old board rejects roster-only capability');
+board={...board,rosterProtocol:1};await context.window.__TT_BOARD_CONNECTION.check();assert.equal(context.window.__TT_BOARD_CONNECTION.rosterReady(),true);
+context.classState.assignments=[];context.classState.students=[{id:'p1',name:'가상 학생',gender:'none'}];context.window.__TT_SEND_ROSTER();assert.equal(popups.length,3);pass('roster-only starts without assignments on capable board');
 console.log('TOTAL',count,'PASS — synthetic DOM, status and inbox; not physical Windows');
 })().catch(e=>{console.error(e);process.exitCode=1});

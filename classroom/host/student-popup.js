@@ -7,7 +7,8 @@
   if(!control||!('BroadcastChannel' in window))return;
   let autoTarget=true,windowDetails=null,latestDashboard=null,lastNotice='';
   try{autoTarget=localStorage.getItem('tt.student-window.auto-target')!=='0'}catch{}
-  const pending=new Map();
+  const pending=new Map(),publicWindows=new Set();
+  function isPresenting(){for(const popup of publicWindows){if(popup.closed)publicWindows.delete(popup)}return publicWindows.size>0||window.__TT_BOARD_PRESENTATION?.isActive?.()===true}
   const announce=(message)=>{
     lastNotice=message;
     const node=document.getElementById('tt-student-window-status');
@@ -138,11 +139,12 @@
     const url=new URL(location.href);url.search='?view=student';url.hash='#'+session;
     const popup=window.open(url.href,'_blank','popup=yes,width=1100,height=720,left=60,top=60');
     if(!popup){alert('학생 화면이 차단됐습니다. 이 사이트에서 팝업을 허용해 주세요.');return false}
+    publicWindows.add(popup);
     try{popup.opener=null}catch{}
     const channel=new BroadcastChannel('tt-public-'+session);
     const key={popup,channel};pending.set(session,key);
     const done=()=>{channel.close();pending.delete(session)};
-    const timeout=setTimeout(()=>{done();announce('학생 창의 시작 응답이 없습니다. 학생 창을 확인해 주세요.')},18000);
+    const timeout=setTimeout(()=>{publicWindows.delete(popup);done();announce('학생 창의 시작 응답이 없습니다. 학생 창을 확인해 주세요.')},18000);
     channel.onmessage=event=>{
       if(event.data?.type==='ready'){
         channel.postMessage({type:'student-data',data});
@@ -150,7 +152,7 @@
       }else if(event.data?.type==='received'){
         clearTimeout(timeout);done();announce('학생 공개 창에 자료 전달 완료');
       }else if(event.data?.type==='error'){
-        clearTimeout(timeout);done();announce('학생 창 오류: '+String(event.data.message||'자료 표시 실패'));
+        publicWindows.delete(popup);clearTimeout(timeout);done();announce('학생 창 오류: '+String(event.data.message||'자료 표시 실패'));
       }
     };
     void place(popup);
@@ -194,6 +196,6 @@
     showPublic(data){return show(data)},
     setAutoTarget(v){autoTarget=Boolean(v);try{localStorage.setItem('tt.student-window.auto-target',autoTarget?'1':'0')}catch{}announce(autoTarget?'학생 창 자동 모니터 배치 켜짐':'학생 창 자동 모니터 배치 꺼짐')},
     getAutoTarget:placementEnabled,getStatus:()=>lastNotice,
-    checkDashboard:getDashboard
+    checkDashboard:getDashboard,isPresenting
   };
 })();

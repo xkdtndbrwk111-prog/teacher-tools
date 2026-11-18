@@ -60,6 +60,14 @@
   },text=>setSaveStatus(text,'error'));
  }
  send.addEventListener('click',sendToBoard);
+ // Do not mark a roster-only transfer as confirmed seating auto-send.
+ function sendRoster(){
+  if(!window.__TT_BOARD_CONNECTION?.rosterReady()){setSaveStatus('호자보드 연결 및 업데이트를 확인해 주세요.','warning');return}
+  if(!classState.students.length){setSaveStatus('보낼 학생 명단이 없습니다.','warning');return}
+  viaInbox(async()=>({type:'tt-roster-send',body:encode(JSON.stringify({rosterProtocol:1,classId:cfg.activeId,className:classState.className,roster:await rosterNow()}))}),
+   ()=>setSaveStatus('학생 명단 보냄 · '+classState.className),text=>setSaveStatus(text,'error'));
+ }
+ window.__TT_SEND_ROSTER=sendRoster;
  // After the first successful send, confirming a seating sends it too.
  // The app's own handler has already run by the time this listener fires.
  confirmButton.addEventListener('click',()=>{

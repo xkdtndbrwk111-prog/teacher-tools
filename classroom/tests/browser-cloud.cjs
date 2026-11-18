@@ -1,6 +1,7 @@
 // EASY/NORMAL against an in-memory stand-in for Google. Nothing here reaches a real Google account.
 // node classroom/tests/browser-cloud.cjs   (NODE_PATH may point to an existing Playwright installation)
 const {chromium}=require('playwright');
+const {openStudent}=require('./student-popup-helper.cjs');
 const assert=require('assert/strict');
 const {spawn}=require('child_process');
 const path=require('path');
@@ -25,6 +26,10 @@ async function googleRoute(route){
  if(auth==='Bearer expired')return fakeResponse(route,401,{error:'invalid_token'});
  if(google.failNext>0){google.failNext--;return fakeResponse(route,429,{error:'rate'})}
  if(url.host==='www.googleapis.com'){
+  // Theme integration has its own independent mock and assertions in browser-ui2-google-theme.
+  // This suite models class spreadsheet storage only; theme lookup is a separate request.
+  if(url.searchParams.get('q')?.includes('teacher-tools-theme-v1'))return fakeResponse(route,200,{files:[]});
+  if(url.pathname.startsWith('/upload/drive/v3/files'))return fakeResponse(route,503,{error:'theme mock unavailable'});
   const id=url.pathname.split('/').pop();
   if(id==='files')return fakeResponse(route,200,{files:[...google.files.values()].map(f=>({id:f.id,name:f.name,mimeType:'application/vnd.google-apps.spreadsheet',trashed:false,ownedByMe:true,owners:[{emailAddress:USER.email}],createdTime:f.created}))});
   const f=google.files.get(id);
@@ -71,17 +76,17 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
  const newPC=async({withClient=true,clock=false}={})=>{
   const ctx=await browser.newContext({viewport:{width:1600,height:1000}});
   ctx.externals=[];
-  ctx.on('request',r=>{const u=r.url();if(!u.startsWith(BASE)&&!/^(data|blob):/.test(u))ctx.externals.push(u)});
+  ctx.on('request',r=>{const u=r.url();if(!u.startsWith(BASE)&&!/^(data|blob):/.test(u)){if(!/^http:\/\/127\.0\.0\.1:17439\/api\/(board-status|theme)$/.test(u))ctx.externals.push(u)}});
   await ctx.route(u=>!String(u).startsWith(BASE)&&!/^(data|blob):/.test(String(u)),googleRoute);
   await ctx.route('**/classroom/grades/google-config.mjs',r=>r.fulfill({contentType:'text/javascript',body:`export const GOOGLE_CLIENT_ID='${withClient?CLIENT:''}';`}));
   const p=await ctx.newPage();
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
   if(clock)await p.clock.install();
-  await p.goto(BASE+'/seating/');await started(p);
+  await p.goto(BASE+'/seating/?section=seating');await started(p);
   return{ctx,p};
  };
  const chip=p=>p.locator('#tt-cloud-chip');
- const chipIs=(p,re)=>p.waitForFunction(s=>new RegExp(s).test(document.getElementById('tt-cloud-chip').textContent),re.source,{timeout:15000});
+ const chipIs=(p,re)=>p.waitForFunction(s=>new RegExp(s).test(document.getElementById('tt-cloud-chip').dataset.ttHudFull||document.getElementById('tt-cloud-chip').textContent),re.source,{timeout:15000});
  const setRoster=async(p,names)=>{
   await p.evaluate(v=>{const t=document.getElementById('studentInput');t.value=v;t.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('applyStudents').click()},names.join('\n'));
   await wait(150);
@@ -226,7 +231,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    nav=p.waitForNavigation();await p.click('#tt-diff-pull');await nav;await started(p);
    assert.deepEqual(await names(p),['다른PC변경']);
    await chipIs(p,/구글 \d/);await closeSettings(p);
-   await p.click('#tt-full-backup');
+   await p.click('#tt-hud-more-trigger');await p.click('[data-tt-section="backup"]');await p.click('#tt-full-backup');
    await p.locator('#tt-backup-undo-box:not([hidden])').waitFor();
    await p.click('#tt-backup-close');
   });
@@ -249,7 +254,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    if(process.env.SHOTS)await p.screenshot({path:process.env.SHOTS+'/diff.png'});
    assert.equal(google.writes,writes,'고르기 전에는 시트를 덮어쓰지 않음');
    await p.click('#tt-diff-later');
-   assert.match(await chip(p).textContent(),/자료 차이/);
+   await chipIs(p,/자료 차이/);
    await p.click('#tt-cloud-chip');
    await p.locator('#tt-diff-push').waitFor({state:'visible'});
    await p.click('#tt-diff-push');
@@ -272,12 +277,12 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await other.ctx.close();
    await p.click('#generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);await p.click('#openPlayback');
-   await wait(4000);
-   await p.evaluate(()=>{});
-   await p.waitForFunction(()=>/자료 차이/.test(document.getElementById('tt-cloud-chip').textContent),{},{timeout:20000}).catch(()=>{});
+   await wait(100);await p.click('#confirmAssignment');await wait(100);const student=await openStudent(p);
+   await chipIs(p,/자료 차이/);
    assert.equal(await p.locator('#tt-diff-text').isVisible(),false);
-   await p.click('#backToTeacher');await wait(200);
+   await student.close();
+   await p.locator('#tt-diff-text').waitFor({state:'visible',timeout:20000});
+   await p.click('#tt-diff-later');
   });
   await step('구글 오류면 브라우저 저장은 계속되고 다시 시도한다',async()=>{
    google.files.clear();

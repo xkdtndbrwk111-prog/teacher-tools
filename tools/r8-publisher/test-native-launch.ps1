@@ -72,6 +72,24 @@ try {
  $page=Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri 'http://127.0.0.1:17439/'
  if($page.StatusCode -ne 200 -or $page.Content -notmatch [regex]::Escape([string]$target.version)){throw 'Updated HTTP dashboard unavailable'}
 
+ # Exercise the actual signed local theme endpoint after the board publishes.
+ if($page.Content -match 'tt-board-theme-bridge-v1'){
+  $site='http://127.0.0.1:17439';$managerOrigin='https://xkdtndbrwk111-prog.github.io'
+  $deadline=[datetime]::UtcNow.AddSeconds(25);$live=$null
+  do{try{$live=Invoke-RestMethod -Uri ($site+'/api/theme') -Headers @{Origin=$managerOrigin} -TimeoutSec 3}catch{};if($live){break};Start-Sleep -Milliseconds 500}while([datetime]::UtcNow -lt $deadline)
+  if(!$live -or $live.version -ne 1 -or $live.theme -notin @('dark','sky','pink','green','black','custom')){throw 'Running board did not publish a valid theme'}
+  $sample='{"version":1,"theme":"custom","font":"Malgun Gothic","custom":{"bg":"#112233","panel":"#334455","text":"#ffffff","accent":"#778899","modal":"#223344"},"private":"must not expose"}'
+  $cross=@{'Sec-Fetch-Site'='cross-site';Origin=$managerOrigin}
+  try{Invoke-WebRequest -UseBasicParsing -Uri ($site+'/api/theme/publish') -Method POST -Headers $cross -ContentType 'application/json' -Body $sample -TimeoutSec 3|Out-Null;throw 'cross-origin write accepted'}catch{if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 403){throw}}
+  $local=@{'Sec-Fetch-Site'='same-origin';Origin=$site}
+  $result=Invoke-RestMethod -Uri ($site+'/api/theme/publish') -Method POST -Headers $local -ContentType 'application/json' -Body $sample -TimeoutSec 3
+  if(!$result.ok){throw 'local theme write failed'}
+  $read=Invoke-WebRequest -UseBasicParsing -Uri ($site+'/api/theme') -Headers @{Origin=$managerOrigin} -TimeoutSec 3
+  $theme=$read.Content|ConvertFrom-Json
+  if($read.Headers['Access-Control-Allow-Origin'] -ne $managerOrigin -or $theme.custom.modal -ne '#223344' -or $theme.PSObject.Properties['private']){throw 'theme CORS/projection failed'}
+  try{Invoke-WebRequest -UseBasicParsing -Uri ($site+'/api/theme') -Headers @{Origin='https://example.invalid'} -TimeoutSec 3|Out-Null;throw 'foreign theme read accepted'}catch{if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 403){throw}}
+  Write-Host 'PASS actual installed board theme publication, local read, custom color and cross-origin isolation'
+ }
  # Exercise the exact installed signed book dependency through the live local HTTP server.
  if(Test-Path -LiteralPath (Join-Path $root 'asset-book-reader-host.zip')){
   $site='http://127.0.0.1:17439'
