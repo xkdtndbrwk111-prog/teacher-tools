@@ -45,6 +45,8 @@ function Get-TTBookLayout($x){
   $d[$k]=[int]$v
  }
  if($d.vw -lt 200 -or $d.vh -lt 150 -or $d.visible -gt 1 -or $d.x+$d.w -gt $d.vw+1 -or $d.y+$d.h -gt $d.vh+1){throw 'layout invalid'}
+ $d.immersive=0
+ if($null -ne $x.immersive){if(!(Test-TTBookInt $x.immersive) -or $x.immersive -notin @(0,1)){throw 'immersive invalid'};$d.immersive=[int]$x.immersive}
  return $d
 }
 function Get-TTBookRequest([string]$encoded){
@@ -74,7 +76,7 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
-   $d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
+   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
    foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
   }

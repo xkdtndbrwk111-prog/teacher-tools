@@ -1,0 +1,3 @@
+# V1.66.18 immersive reader candidate
+
+Owner field report: V1.66.17 playback works after local server restarted; root cause of server shutdown unresolved. Keep this candidate limited to book reader. Compact footer, automatic bookmark only, full viewport layout, reversible Canva control-bar opacity only when unique slider and navigation controls share a bounded lower bar. Input overlay supports left/right, Space, Esc and center tap to reveal exit. No screenshot capture. Native dependency must be rebuilt and pinned before integration results are meaningful. Verify actual Canva control discovery and physical fullscreen/keyboard/touch before approval. Do not publish until approved.

@@ -20,8 +20,9 @@ internal sealed class BookReader : Form {
  readonly Timer placement=new Timer();
  readonly IntPtr owner;
  readonly int ownerPid;
- bool shownOnce, positioned, slotVisible;
+ bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls;
  long commandSeq;
+ bool immersiveApplied;
  Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
@@ -98,6 +99,7 @@ internal sealed class BookReader : Form {
   int cw=r.R-r.L,ch=r.B-r.T,vw=Int(l,"vw"),vh=Int(l,"vh");
   int x=Int(l,"x"),y=Int(l,"y"),w=Int(l,"w"),h=Int(l,"h");
   if(vw<200||vh<150||cw<200||ch<150||x<0||y<0||w<100||h<60||x+w>vw+1||y+h>vh+1){HideSlot("invalid slot geometry");return;}
+  bool nextImmersive=Int(l,"immersive")==1;if(nextImmersive!=immersive){immersive=nextImmersive;exitFull=false;cleanControls=false;}
   double scale=(double)cw/vw;int contentH=(int)Math.Round(vh*scale),offset=ch-contentH;
   // Chromium app has no toolbar; bottom-align CSS viewport in client area, allowing only a bounded title strip.
   if(scale<0.45||scale>4.5||offset< -4||offset>Math.Max(96,scale*96)){HideSlot("viewport scale mismatch");return;}
@@ -110,7 +112,7 @@ internal sealed class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls});}
  void Publish(string status){
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
@@ -139,6 +141,15 @@ internal sealed class BookReader : Form {
    timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
  }
+ const string ImmersiveScript=@"(()=>{const on=MODE;const key='__ttBookImmersiveV1';let q=window[key];if(!on){if(q){q.remove();delete window[key]}return {exit:false,clean:false}}if(!q){let hidden=null,prior='',ended=false,exit=false,timer=0;const overlay=document.createElement('div');overlay.setAttribute('aria-label','Book fullscreen navigation');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:transparent;touch-action:manipulation;outline:none';overlay.tabIndex=0;const hint=document.createElement('button');hint.type='button';hint.textContent='전체화면 해제 (Esc)';hint.style.cssText='position:absolute;top:12px;right:12px;padding:12px 18px;font:16px sans-serif;color:white;background:#222d;border:1px solid #fff8;border-radius:8px;display:none;cursor:pointer';overlay.append(hint);const reveal=()=>{hint.style.display='block';clearTimeout(timer);timer=setTimeout(()=>hint.style.display='none',2200)};const step=(next)=>{const label=next?'Next page':'Previous page';const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>e.getAttribute('aria-label')===label&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getClientRects().length>0);if(a.length===1)a[0].click()};const keys=e=>{if(ended||e.altKey||e.ctrlKey||e.metaKey)return;if(!['ArrowLeft','ArrowRight',' ','PageDown','PageUp','Escape'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){exit=true;return}step(e.key!=='ArrowLeft'&&e.key!=='PageUp')};document.addEventListener('keydown',keys,true);overlay.addEventListener('click',e=>{e.stopPropagation();if(e.target===hint){exit=true;return}const x=e.clientX/innerWidth;if(x<.45)step(false);else if(x>.55)step(true);else reveal()});overlay.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.clientY<80)reveal()});document.body.append(overlay);overlay.focus({preventScroll:true});q=window[key]={get exit(){return exit},refresh(){const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');let bar=null;if(a.length===1){for(let p=a[0];p&&p!==document.body;p=p.parentElement){const r=p.getBoundingClientRect();if(r.height>Math.min(240,innerHeight*.28))break;if(r.top>=innerHeight*.70&&r.bottom<=innerHeight+5&&p.querySelector('[aria-label=""Next page""]')&&p.querySelector('[aria-label=""Previous page""]'))bar=p;}}if(bar!==hidden){if(hidden)hidden.style.opacity=prior;hidden=bar;if(bar){prior=bar.style.opacity;bar.style.opacity='0'}}return !!bar},remove(){ended=true;clearTimeout(timer);document.removeEventListener('keydown',keys,true);if(hidden)hidden.style.opacity=prior;overlay.remove()}};reveal();}return {exit:q.exit,clean:q.refresh()}})()";
+ async Task ApplyImmersive(){
+  if(!immersive&&!immersiveApplied)return;
+  string raw=await web.CoreWebView2.ExecuteScriptAsync(ImmersiveScript.Replace("MODE",immersive?"true":"false"));
+  immersiveApplied=immersive;
+  if(raw=="null")return;
+  var d=Json.Deserialize<Dictionary<string,object>>(raw);
+  cleanControls=d.ContainsKey("clean")&&Convert.ToBoolean(d["clean"]);if(immersive&&d.ContainsKey("exit")&&Convert.ToBoolean(d["exit"]))exitFull=true;
+ }
  async Task<int> Read(){
   string script=fixture?PageScript.Replace("if(location.origin!=='https://www.canva.com')return null;",""):PageScript;
   string raw=await web.CoreWebView2.ExecuteScriptAsync(script);
@@ -160,8 +171,9 @@ internal sealed class BookReader : Form {
   try{
    Command();
    if(!fixture&&!slotVisible)return;
+   await ApplyImmersive();
    if(seekTarget<0)seekTarget=requested;
-   int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 수동 저장 가능");return;}
+   int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
    if(p==previous)stable++;else{previous=p;stable=1;}
    if(stable<2)return;
    detected=p;
@@ -180,7 +192,7 @@ internal sealed class BookReader : Form {
    if(saved!=p)saved=p;
    Publish("자동 저장됨");
    if(fixture&&saved==requested){Console.WriteLine("HOST FIXTURE PASS "+saved);Close();}
-  }catch{Publish("페이지 판독 실패 · 수동 저장 가능");}finally{busy=false;}
+  }catch{Publish("페이지 판독 실패 · 기존 북마크 유지");}finally{busy=false;}
  }
  [STAThread] static int Main(string[] args){
   try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}
