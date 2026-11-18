@@ -1,0 +1,16 @@
+name: Book WebView2 lightweight host research
+on:
+  pull_request:
+    paths: ['tools/multimedia/webview2-*','.github/workflows/canva-book-webview2-research.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: tools/multimedia/webview2-probe.ps1
