@@ -13,3 +13,7 @@ V1.66.12: compact multimedia launcher, medium personalization panel, large playb
 V1.66.12 follow-up: preserve lunch for four-period days and compact one-day view, hide trailing empty periods only, retain internal gaps and weekly view, use existing fitting logic and unchanged widget grid dimensions. Explicit intrinsic launcher sizing prevents the dialog inset from stretching the picker to full height.
 
 Date-specific lunch overrides reuse existing timetable localStorage records, retain lunch even on short days, support start/end, display-only hide and independent default restore in date editor, and direct long-press/double-click on visible lunch. Lesson times remain unchanged.
+
+V1.66.13: keep 3-D flip inside the fixed rounded card envelope (`overflow:clip` on the outer card, not the preserve-3d inner). Launcher stage has vertical-only scrolling for future tools. Content and modal geometry remain stable; add per-animation-frame bounds, scroll extents and scroll-offset tests in both directions at 1280×720, 1920×1080 and 390×700. No playback, storage or timetable changes. No production authorization in this candidate.
+
+V1.66.13 default layout: six visible widgets, direct 48x27 coordinates, full-width tools at y22/h5, memo disabled (not deleted), existing saved layout/order honored. First-install order ends with app management, widget management, fullscreen, settings. Browser test checks actual fresh launch, visible order and no overlap.
