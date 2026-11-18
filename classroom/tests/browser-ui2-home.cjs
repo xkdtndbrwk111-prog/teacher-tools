@@ -15,7 +15,7 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   await p.waitForFunction(()=>window.__TT_MANAGER_HOME?.page()==='home'&&!document.documentElement.classList.contains('tt-manager-starting'));
   assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
   assert.equal(await p.locator('#tt-manager-home [data-tt-ui2-open]').count(),4);
-  assert.equal(await p.locator('.prototype-mode-switch button:not([hidden])').count(),4);
+  assert.equal(await p.locator('.prototype-mode-switch button:visible').count(),4);
   assert.equal(await p.locator('#teacherScreen>.studio').isVisible(),false);
   await p.locator('[data-tt-ui2-open="seat"]').click();assert.equal(await p.locator('#teacherScreen>.studio').isVisible(),true);
   await p.locator('#tt-manager-home-button').click();assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
