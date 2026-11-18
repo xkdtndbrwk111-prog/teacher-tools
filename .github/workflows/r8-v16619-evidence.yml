@@ -13,7 +13,7 @@ jobs:
       - name: Read exact main workflow and candidate artifact evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE: e68a15922b08a7465663abbe393dd6344366b157
+          SOURCE: 6ad0027ddf7f6fe40f04793a7612ee7927657393
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SOURCE&event=push&per_page=100" --jq '.workflow_runs[] | {id,name,head_sha,head_branch,event,status,conclusion}'
