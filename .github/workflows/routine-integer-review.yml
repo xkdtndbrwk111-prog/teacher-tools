@@ -1,0 +1,26 @@
+name: Routine integer coin candidate checks
+on:
+  pull_request:
+    paths: ['runtime-src/system/coins.js','runtime-src/system/coins-ui.js','runtime-src/system/dashboard.html','classroom/host/dashboard-link.js','tools/routine/**','.github/workflows/routine-integer-review.yml']
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: |
+          node --check runtime-src/system/coins.js
+          node --check runtime-src/system/coins-ui.js
+          node --check classroom/host/dashboard-link.js
+          node --test tools/routine/routine.test.cjs
+          python3 - <<'PY'
+          import re,pathlib,tempfile,subprocess
+          html=pathlib.Path('runtime-src/system/dashboard.html').read_text()
+          assert 'id="openRoutine"' in html and 'coin=4' in html
+          with tempfile.TemporaryDirectory() as d:
+              for i,(attrs,body) in enumerate(re.findall(r'<script\b([^>]*)>([\s\S]*?)</script>',html,re.I)):
+                  if body.strip() and not re.search(r'\bsrc\s*=',attrs,re.I) and not re.search(r'type=["\'](?:application/json|text/template)',attrs,re.I):
+                      p=pathlib.Path(d)/f'{i}.js';p.write_text(body);subprocess.run(['node','--check',str(p)],check=True)
+          PY
