@@ -1,5 +1,7 @@
 name: Tournament host bridge review
 on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/tournament-bridge/**','.github/workflows/tournament-bridge-review.yml']
   push:
     branches: [codex/tournament-bridge-v1, main]
     paths: ['runtime-src/system/**','tools/tournament-bridge/**','.github/workflows/tournament-bridge-review.yml']
