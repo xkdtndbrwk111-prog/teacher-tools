@@ -54,15 +54,15 @@ on:
         required: false
         default: false
         type: boolean
+      owner_pilot_16615:
+        required: false
+        default: false
+        type: boolean
     secrets:
       TT_SIGNING_PFX_B64:
         required: false
       TT_SIGNING_PFX_PASSWORD:
         required: false
-      owner_pilot_16615:
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       artifact_id:
