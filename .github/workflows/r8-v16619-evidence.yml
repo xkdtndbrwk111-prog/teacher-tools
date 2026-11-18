@@ -1,0 +1,22 @@
+name: V1.66.19 exact release evidence
+on:
+  pull_request:
+    paths: ['.github/workflows/r8-v16619-evidence.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read exact main workflow and candidate artifact evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: 0347de465c66984811e85b0a80a9bd6e32934a2c
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SOURCE&event=push&per_page=100" --jq '.workflow_runs[] | {id,name,head_sha,head_branch,event,status,conclusion}'
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SOURCE&event=push&per_page=100" --jq '.workflow_runs[] | select(.name=="R8 source-driven build" and .head_branch=="main" and .conclusion=="success") | .id'); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.artifacts[] | {id,name,digest,expired,workflow_run}'
+          done
