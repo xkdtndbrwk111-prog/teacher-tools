@@ -48,9 +48,12 @@
   if(send.disabled){setSaveStatus('Windows 대시보드 배경화면에 연결되지 않았습니다.','warning');return}
   if(!classState.assignments.length){setSaveStatus('확정한 배치가 없어 칠판으로 보내지 못했습니다.','warning');return}
   viaInbox(async()=>{
-   const roster=await rosterNow();
+   const roster=await rosterNow(),playback=buildPlaybackInput();
+   const bySeat=new Map();for(const g of playback.groups||[])for(const id of g.seatIds||[])bySeat.set(id,g);
+   const byStudent=new Map((playback.assignments||[]).map(a=>[a.studentId,bySeat.get(a.seatId)]));
+   for(const s of roster){const g=byStudent.get(s.id);s.groupId=g?.id||null;s.groupName=g?.name||null;}
    const practice={genderSeats:!classState.rules.completeRandom&&Boolean(classState.rules.genderSeats),genders:Object.fromEntries(roster.map(s=>[s.id,s.gender]))};
-   return{type:'tt-seating-send',body:encode(JSON.stringify({...buildPlaybackInput(),classId:cfg.activeId,roster,practice}))};
+   return{type:'tt-seating-send',body:encode(JSON.stringify({...playback,classId:cfg.activeId,roster,practice,groupProtocol:1}))};
   },()=>{
    markLinked();
    setSaveStatus(`칠판으로 보냄 · ${classState.className}`);

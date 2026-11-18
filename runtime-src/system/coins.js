@@ -1,14 +1,28 @@
 // Coin rules. The ledger is an append-only list of events on this PC; balances are worked out from it.
 (function(root){
  'use strict';
- const FLOOR=-3;
- const DEFAULTS=Object.freeze({enabled:false,cap:20,weeklyOn:true,weeklyAmount:5,weeklyDay:1});
+ const COIN_UNIT=2;
+ const FLOOR=-6;
+ const DEFAULTS=Object.freeze({enabled:false,cap:40,weeklyOn:true,weeklyAmount:10,weeklyDay:1});
  const REFUND_MS=10000;
+ // Keep the append-only disk ledger in the legacy denomination. All public domain
+ // values are integer new coins. Reprojection is deterministic, including after rollback.
+ function scaleEvent(e,factor){
+  const copy={...e};
+  for(const k of ['amount','cap','weeklyAmount'])if(typeof copy[k]==='number')copy[k]*=factor;
+  if(Array.isArray(copy.results))copy.results=copy.results.map(r=>({...r,...Object.fromEntries(['given','balance'].filter(k=>typeof r[k]==='number').map(k=>[k,r[k]*factor]))}));
+  return copy;
+ }
+ const decodeEvent=e=>scaleEvent(e,COIN_UNIT);
+ function encodeEvent(e){
+  for(const k of ['amount','cap','weeklyAmount'])if(k in e&&!Number.isSafeInteger(e[k]))throw Error('정수 코인만 사용할 수 있어요.');
+  return scaleEvent(e,1/COIN_UNIT);
+ }
  function parse(text){
   const out=[];
   for(const line of String(text||'').split('\n')){
    if(!line.trim())continue;
-   try{out.push(JSON.parse(line))}catch(error){console.warn('코인 기록 한 줄을 읽지 못했습니다.',error)}
+   try{out.push(decodeEvent(JSON.parse(line)))}catch(error){console.warn('코인 기록 한 줄을 읽지 못했습니다.',error)}
   }
   return out;
  }
@@ -30,6 +44,7 @@
  const balanceOf=(st,id)=>st.balances[id]||0;
  // A grant stops at the upper limit; removing coins is the teacher's correction, so it has no floor.
  function grant(st,{cls,students,amount,source,at}){
+  if(!Number.isSafeInteger(amount))throw Error('정수 코인만 사용할 수 있어요.');
   const events=[],results=[];
   for(const s of students){
    const before=balanceOf(st,s.id);
@@ -39,7 +54,7 @@
   }
   return{events,results};
  }
- const priceFor=count=>count>1?0.5:1;
+ const priceFor=count=>count>1?1:2;
  function spend(st,{cls,players,game,charge,at}){
   const price=priceFor(players.length);
   const short=players.filter(p=>balanceOf(st,p.id)-price<FLOOR);
@@ -54,7 +69,7 @@
  // The most recent pay day on or before now. Weeks the PC was off are not paid again.
  // Hall of fame weekly settlement: 1st 1 coin, 2nd and 3rd 0.5, for each game of one finished week.
  // The amounts are set here, not by the request, and a week is paid only once for a class.
- const HOF_PRIZE={1:1,2:.5,3:.5};
+ const HOF_PRIZE={1:2,2:1,3:1};
  const isMonday=key=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(key))return false;const [y,m,d]=key.split('-').map(Number);const t=new Date(y,m-1,d);return t.getDay()===1&&t.getDate()===d;};
  function hofWeeksPaid(events,cls){return [...new Set(events.filter(e=>e.cls===cls&&e.type==='hofweek').map(e=>e.week))];}
  function hofWeek(events,st,{cls,students,week,awards,now}){
@@ -116,7 +131,11 @@
   const cls=seating.classId||seating.className||'우리 반';
   const genders=seating.practice?.genders||{};
   const list=Array.isArray(seating.roster)?seating.roster:(seating.students||[]).map((s,i)=>({id:s.id,name:s.name,gender:genders[s.id]||'none',number:i+1}));
-  return{cls,className:seating.className||'우리 반',students:list};
+  const seatGroup=new Map(),groups=new Map();
+  for(const g of Array.isArray(seating.groups)?seating.groups:[]){if(typeof g.id!=='string'||!g.id||!Array.isArray(g.seatIds))continue;groups.set(g.id,String(g.name||g.id));for(const seat of g.seatIds)seatGroup.set(seat,seatGroup.has(seat)?null:g.id);}
+  const byStudent=new Map();for(const a of Array.isArray(seating.assignments)?seating.assignments:[])if(a&&typeof a.studentId==='string')byStudent.set(a.studentId,seatGroup.get(a.seatId)||null);
+  const students=list.map(s=>{const groupId=byStudent.get(s.id)||null;return{...s,groupId,groupName:groups.get(groupId)||null}});
+  return{cls,className:seating.className||'우리 반',students,groups:[...groups].map(([id,name])=>({id,name}))};
  }
  // Hall of fame records go by seat, so a student keeps one seat however the list changes.
  function assignSeats(hof,students,max){
@@ -149,7 +168,7 @@
  }
  async function commit(s,list){
   if(!list.length)return;
-  const bytes=new TextEncoder().encode(list.map(e=>JSON.stringify(e)).join('\n'));let b='';for(let i=0;i<bytes.length;i+=32768)b+=String.fromCharCode(...bytes.subarray(i,i+32768));
+  const bytes=new TextEncoder().encode(list.map(e=>JSON.stringify(encodeEvent(e))).join('\n'));let b='';for(let i=0;i<bytes.length;i+=32768)b+=String.fromCharCode(...bytes.subarray(i,i+32768));
   const headers={'Content-Type':'text/plain','X-TT-Coin-Revision':s.revision};if(s.seatRevision)headers['X-TT-Seating-Revision']=s.seatRevision;
   const r=await fetch('/api/coins',{method:'POST',headers,body:btoa(b)});
   if(r.status===409)throw Error('다른 코인 작업 또는 학급 변경이 있었어요. 다시 확인해 주세요.');
@@ -162,17 +181,9 @@
   const fail=message=>({ok:false,message});
   if(!cls||cls!==s.roster?.cls)return fail('호자보드의 학급이 다릅니다. 현재 반을 칠판으로 보내 주세요.');
   if(!validCharge(requestId))return fail('교실매니저를 최신 버전으로 새로고침해 주세요.');
-  const st=stateOf(s.events,cls);let key,operation;
   if(type==='tt-coins-grant')return fail('코인 지급·차감은 호자보드에서만 할 수 있습니다.');
-  if(type==='tt-coins-setting'){
-   const v=settings;if(!v||typeof v.enabled!=='boolean'||typeof v.weeklyOn!=='boolean'||!Number.isFinite(v.cap)||v.cap<1||v.cap>999||v.cap%0.5||!Number.isFinite(v.weeklyAmount)||v.weeklyAmount<0||v.weeklyAmount>999||v.weeklyAmount%0.5||!Number.isInteger(v.weeklyDay)||v.weeklyDay<0||v.weeklyDay>6)return fail('코인 설정값을 확인해 주세요.');
-   const value={enabled:v.enabled,cap:v.cap,weeklyOn:v.weeklyOn,weeklyAmount:v.weeklyAmount,weeklyDay:v.weeklyDay};key=JSON.stringify([type,value]);
-   operation=()=>({events:[{at,cls,type:'setting',...value,source:'settings'}],results:[]});
-  }else return fail('지원하지 않는 요청입니다.');
-  const old=s.events.find(e=>e.type==='manager-tx'&&e.requestId===requestId);
-  if(old)return old.cls===cls&&old.key===key?{ok:true,duplicate:true,events:[],results:old.results||[]}:fail('다른 코인 요청에 사용된 거래 ID입니다.');
-  const out=operation();if(out.ok===false)return out;
-  return {ok:true,events:[...out.events,{at,cls,type:'manager-tx',requestId,key,results:out.results}],results:out.results};
+  if(type==='tt-coins-setting')return fail('코인 설정은 호자보드에서만 변경할 수 있습니다.');
+  return fail('지원하지 않는 요청입니다.');
  }
 
  function checkedSpend(events,roster,{cls,ids,game,charge,at}){
@@ -202,7 +213,81 @@
   if(old)return originalRefund(events,charge,at);
   return {ok:true,cls,events:[{at,cls,type:'coin-cancel',charge}]};
  }
- const api={snapshot,commit,managerMutation,cancelOrRefund,checkedSpend,originalRefund,validCharge,assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
+
+ // Daily routine events share the existing revision-checked append-only ledger.
+ // Freeze the tasks, students, and seat groups for each date. No retrospective day fabrication.
+ const minuteOf=now=>now.getHours()*60+now.getMinutes();
+ function routineTasks(value){
+  if(!Array.isArray(value)||value.length>16)throw Error('루틴은 최대 16개까지 설정할 수 있어요.');
+  const ids=new Set();
+  const tasks=value.map(t=>{
+   if(!t||typeof t.id!=='string'||!t.id||ids.has(t.id)||typeof t.name!=='string'||!t.name.trim()||t.name.length>60||!Number.isInteger(t.start)||!Number.isInteger(t.end)||t.start<0||t.end>1440||t.start>=t.end||!Array.isArray(t.days)||!t.days.length||t.days.some(d=>!Number.isInteger(d)||d<0||d>6))throw Error('루틴 이름, 시간, 요일을 확인해 주세요.');
+   ids.add(t.id);return{id:t.id,name:t.name.trim(),start:t.start,end:t.end,days:[...new Set(t.days)]};
+  }).sort((a,b)=>a.start-b.start);
+  for(let i=0;i<tasks.length;i++)for(let j=i+1;j<tasks.length;j++)if(tasks[i].end>tasks[j].start&&tasks[i].days.some(d=>tasks[j].days.includes(d)))throw Error('같은 요일의 루틴 시간이 겹쳐요.');
+  return tasks;
+ }
+ function routineConfig(events,cls){return events.findLast(e=>e.cls===cls&&e.type==='routine-config')?.tasks||[];}
+ function routineDay(events,cls,date){
+  const e=events.find(x=>x.cls===cls&&x.type==='routine-open'&&x.date===date);
+  if(!e)return null;
+  const checks=new Map(),excluded=new Set(e.students.filter(s=>s.excluded).map(s=>s.id)),cancelled=new Set();
+  let settled=null;
+  for(const r of events){
+   if(r.cls!==cls||r.date!==date)continue;
+   if(r.type==='routine-check')checks.set(JSON.stringify([r.task,r.student]),r.done===true);
+   if(r.type==='routine-exclude'){if(r.excluded)excluded.add(r.student);else excluded.delete(r.student);}
+   if(r.type==='routine-cancel'){if(r.cancelled)cancelled.add(r.task);else cancelled.delete(r.task);}
+   if(r.type==='routine-settle')settled=r;
+  }
+  return{...e,checks,excluded,cancelled,settled};
+ }
+ function routineOpen(events,roster,now){
+  if(!roster.cls||!roster.students.length||routineDay(events,roster.cls,dayText(now)))return [];
+  const tasks=routineTasks(routineConfig(events,roster.cls)).filter(t=>t.days.includes(now.getDay()));
+  const min=minuteOf(now);
+  if(!tasks.length||min<tasks[0].start||min>=tasks.at(-1).end)return [];
+  const students=roster.students.map(s=>({id:s.id,name:s.name,number:s.number,groupId:s.groupId||null,groupName:s.groupName||null,excluded:Boolean(s.excluded)}));
+  if(new Set(students.map(s=>s.id)).size!==students.length)return [];
+  return[{at:now.toISOString(),cls:roster.cls,type:'routine-open',date:dayText(now),tasks,students}];
+ }
+ function routineActive(day,now){
+  if(!day||day.date!==dayText(now)||day.settled)return null;
+  const min=minuteOf(now);return day.tasks.find(t=>!day.cancelled.has(t.id)&&t.start<=min&&min<t.end)||null;
+ }
+ const routineDone=(day,task,student)=>day.checks.get(JSON.stringify([task,student]))===true;
+ function routineMark(day,{task,student,done,now,teacher=false}){
+  if(!day||day.settled||day.date!==dayText(now)||!day.students.some(s=>s.id===student)||!day.tasks.some(t=>t.id===task)||day.excluded.has(student)||day.cancelled.has(task))return [];
+  if(!teacher&&routineActive(day,now)?.id!==task)return [];
+  if(routineDone(day,task,student)===Boolean(done))return [];
+  return[{at:now.toISOString(),cls:day.cls,date:day.date,type:'routine-check',task,student,done:Boolean(done)}];
+ }
+ function routineAmounts(day){
+  const tasks=day.tasks.filter(t=>!day.cancelled.has(t.id)),people=day.students.filter(s=>!day.excluded.has(s.id));
+  if(!tasks.length||!people.length)return[];
+  const complete=new Set(people.filter(s=>tasks.every(t=>routineDone(day,t.id,s.id))).map(s=>s.id));
+  // A partial mapping must not make an incomplete group falsely eligible.
+  const hasGroups=people.every(s=>typeof s.groupId==='string'&&s.groupId);
+  const classDone=people.every(s=>complete.has(s.id));
+  return people.map(s=>{
+   const individual=complete.has(s.id)?1:0;
+   const group=hasGroups&&people.filter(p=>p.groupId===s.groupId).every(p=>complete.has(p.id))?1:0;
+   return{id:s.id,name:s.name,individual,group,classroom:classDone?1:0,amount:individual+group+(classDone?1:0)};
+  });
+ }
+ function routineSettle(events,day,now){
+  if(!day||day.settled||day.date>dayText(now)||!day.tasks.length||day.date===dayText(now)&&minuteOf(now)<Math.max(...day.tasks.map(t=>t.end)))return [];
+  // Keep the same upper-limit rule as other coin rewards; no debt or repeated payment.
+  const st=stateOf(events,day.cls),awards=routineAmounts(day),out=[],results=[];
+  if(st.settings.enabled)for(const a of awards){
+   const s=day.students.find(s=>s.id===a.id);const g=grant(st,{cls:day.cls,students:[s],amount:a.amount,source:'routine',at:now.toISOString()});
+   out.push(...g.events.map(e=>({...e,type:'routine-grant',date:day.date,individual:a.individual,group:a.group,classroom:a.classroom})));
+   results.push({...a,paid:g.results[0].given});
+  }
+  out.push({at:now.toISOString(),cls:day.cls,type:'routine-settle',date:day.date,coinEnabled:st.settings.enabled,results:results.map(({id,individual,group,classroom,paid})=>({id,individual,group,classroom,paid}))});
+  return out;
+ }
+ const api={routineTasks,routineConfig,routineDay,routineOpen,routineActive,routineDone,routineMark,routineAmounts,routineSettle,dayText,minuteOf,COIN_UNIT,encodeEvent,decodeEvent,snapshot,commit,managerMutation,cancelOrRefund,checkedSpend,originalRefund,validCharge,assignSeats,seatNames,FLOOR,DEFAULTS,REFUND_MS,parse,stateOf,balanceOf,grant,priceFor,spend,refund,payDay,weekly,yearReset,rosterOf,schoolYear,HOF_PRIZE,hofWeek,hofWeeksPaid};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;
  root.TTCoins=api;
 })(typeof window!=='undefined'?window:globalThis);

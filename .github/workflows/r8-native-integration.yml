@@ -18,13 +18,13 @@ jobs:
       - name: Actual shipped bridge and live public game protocol
         run: |
           node tools/r8-publisher/test-native-mini.cjs
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors --retry-max-time 100 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=3&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors --retry-max-time 100 "https://xkdtndbrwk111-prog.github.io/hoja-minigames/?mode=board&embed=dashboard&coin=4&fresh=$GITHUB_RUN_ID" -o /tmp/current-minigames.html
           python - <<'PY'
           import pathlib
           b=pathlib.Path('/tmp/current-minigames.html').read_bytes()
-          for marker in [b'const COIN_SESSION=EMBED?crypto.randomUUID()',b'classId:p.classId',b'txId:p.txId',b"coinPost({type:'hoja-ready'})"]:
+          for marker in [b'const COIN_SESSION=EMBED?crypto.randomUUID()',b'coinProtocol:4',b'coinUnit:COIN.coinUnit',b'classId:p.classId',b'txId:p.txId',b"coinPost({type:'hoja-ready'})"]:
               assert marker in b, marker
-          print('PASS: live V3 game handshake markers; no live student data or coin transactions')
+          print('PASS: live V4 game handshake markers; no live student data or coin transactions')
           PY
       - name: Exact installed presentation assets and renderer
         run: |
