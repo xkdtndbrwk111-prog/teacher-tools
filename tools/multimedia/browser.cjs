@@ -86,6 +86,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).fill('3');await dlg.locator('#ttBookSave').click();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),3);
  await dlg.getByRole('button',{name:'← 책 목록',exact:true}).click();await dlg.getByRole('button',{name:'3쪽 이어 읽기',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#ttMediaStatus').textContent.includes('저장 위치 3쪽'));
  assert.match(await dlg.locator('.mm-status').textContent(),/저장 위치 3쪽/);
  // Controlled synthetic restricted video stream: not a proof of actual browser permissions or Canva capture.
  await page.evaluate(()=>{
@@ -110,6 +111,33 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.locator('[data-book-id]').count(),2);await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).waitFor();await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
  console.log('PASS separate book catalog, direct iframe, sibling mask, manual bookmark, synthetic restricted capture + CRC, resume guard, stable auto save, cleanup and independent books');
 
+ // Restart the document between the synthetic capture fixture and the native session fixture.
+ // Verify that the saved bookmark survives a real page reload; reset mocked browser APIs.
+ await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),5);
+ let nativeCalls=[],nativePoll=0,nativeSession='a'.repeat(32);
+ await page.route('**/api/book-reader/**',async route=>{
+  const u=new URL(route.request().url());nativeCalls.push(u.pathname);
+  if(u.pathname.endsWith('/open')){
+   const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
+   assert.equal(a.id,'DAHbOpoUrrg');assert.equal(a.start,5);assert.equal(a.saved,5);
+   return route.fulfill({json:{ok:true,session:nativeSession}});
+  }
+  assert.equal(u.searchParams.get('session'),nativeSession);
+  if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
+  nativePoll++;return route.fulfill({json:{ok:true,ready:true,closed:nativePoll>=2,page:4,saved:4,status:'자동 저장됨'}});
+ });
+ await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'📖 책 읽어주기',exact:true}).click();
+ await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();
+ await dlg.getByRole('button',{name:'4쪽 이어 읽기',exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),4);
+ assert.ok(nativeCalls.includes('/api/book-reader/open')&&nativeCalls.includes('/api/book-reader/status'));
+ assert.equal(await dlg.locator('#ttBookTarget').count(),0);
+ await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
+ await page.unroute('**/api/book-reader/**');
+ console.log('PASS native player request, existing bookmark migration, close and catalog sync without iframe capture');
+
+
 // Timetable: the rendered one-day table uses all available space, preserving lunch and inner gaps.
 // Exercise the real renderer, including the compact layout, and restore the weekly view.
 const timetable=await page.evaluate(()=>{
@@ -130,6 +158,33 @@ const timetable=await page.evaluate(()=>{
 });
 assert.deepEqual(timetable,[['1','2','3','4','점심'],['1','2','3','4','점심','5'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심','5','6'],['1','2','3','4','점심'],['1','2','3','4','점심','5','6','7']]);
 console.log('PASS one-day timetable trailing periods, lunch, internal gaps, compact and weekly restoration');
+
+// Full-week modal must restore every weekday without creating phantom columns.
+// Exercise the production modal from full, one-day, and compact widget layouts.
+for(const mode of ['week','today','compact']){
+ const geometry=await page.evaluate(async mode=>{
+  const saved={...layout.items.week},savedMode=layout.weekView;
+  try{
+   layout.items.week.w=24;layout.items.week.h=mode==='compact'?5:10;layout.weekView=mode==='week'?'week':'today';
+   applyWeekView();
+   const source=document.querySelector('#week .schedule');
+   const originalLunch=[...source.querySelector('.lunch-row').cells].map(c=>c.textContent);
+   window.openWidgetZoom('week');
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const table=document.querySelector('#zoomBody .schedule'),head=[...table.tHead.rows[0].cells],rows=[...table.rows],rect=table.getBoundingClientRect();
+   const widths=head.slice(1).map(c=>c.getBoundingClientRect().width);
+   return {rowColumns:rows.map(r=>[...r.cells].reduce((sum,c)=>sum+c.colSpan,0)),visible:head.every(c=>!c.hidden&&c.getBoundingClientRect().width>0),headerVisible:!table.tHead.hidden,allPeriodsVisible:[...table.tBodies[0].rows].filter(r=>!r.classList.contains('lunch-row')).every(r=>!r.hidden),widthSpread:Math.max(...widths)-Math.min(...widths),rightGap:Math.abs(rect.right-head[5].getBoundingClientRect().right),lunch:[...table.querySelector('.lunch-row').cells].map(c=>c.textContent),originalLunch,today:head.filter(c=>c.classList.contains('today')).length,sourceToday:source.tHead.querySelectorAll('.today').length};
+  }finally{Object.assign(layout.items.week,saved);layout.weekView=savedMode;applyWeekView()}
+ },mode);
+ assert.ok(geometry.rowColumns.every(n=>n===6),mode+' '+JSON.stringify(geometry));
+ assert.ok(geometry.visible&&geometry.headerVisible&&geometry.allPeriodsVisible,mode+' modal hidden columns or rows');
+ assert.ok(geometry.widthSpread<=2&&geometry.rightGap<=2,mode+' '+JSON.stringify(geometry));
+ assert.deepEqual(geometry.lunch,geometry.originalLunch);
+ assert.equal(geometry.today,geometry.sourceToday);
+ await page.locator('#zoomClose').click();await page.waitForFunction(()=>!document.querySelector('#widgetZoom').open&&!document.querySelector('#zoomBody').children.length);
+}
+console.log('PASS full-week modal six-column geometry, weekday lunch cells and compact/today restoration');
+
 
 // Date-specific lunch edit: preserve subject overrides, hide selected day, restore lunch only.
 const lunchDate=await page.evaluate(()=>{
