@@ -59,7 +59,7 @@
 }
 @keyframes tt-student-breathe{
  0%,100%{filter:brightness(.93) saturate(1.1);transform:scale(1);box-shadow:0 0 0 1px rgba(29,205,211,.18),0 0 5px rgba(25,203,216,.22)}
- 50%{filter:brightness(1.4) saturate(1.5);transform:scale(1.06);box-shadow:0 0 0 5px rgba(51,240,232,.66),0 0 27px 5px rgba(51,240,232,.72)}
+ 50%{filter:brightness(1.4) saturate(1.5);transform:scale(1);box-shadow:0 0 0 5px rgba(51,240,232,.66),0 0 27px 5px rgba(51,240,232,.72)}
 }
 @media(prefers-reduced-motion:reduce){
  #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #openPlayback.tt-student-ready{animation:none!important;transform:none!important;filter:none!important;box-shadow:0 0 0 3px #59efdf,0 0 15px rgba(24,222,213,.65)!important}

@@ -81,7 +81,7 @@ html.tt-manager-theme #teacherScreen .shared-student-card{background:var(--cm-pa
 html.tt-manager-theme #teacherScreen .shared-student-card.selected{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;outline:2px solid var(--cm-accent);outline-offset:-3px}
 html.tt-manager-theme #teacherScreen .shared-student-card:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.selected:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-control-ink)!important}
-html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{color:#9f1239!important;background:#ffe4e6;border-radius:5px;padding:1px 4px}
+html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg);border-radius:5px;padding:1px 4px}
 html.tt-manager-theme #teacherScreen .life-side{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important}
 html.tt-manager-theme #teacherScreen .life-side p{color:var(--cm-panel-sub)!important}
 html.tt-manager-theme :is(#teacherScreen,#app) :is(button.primary,button.ghost,button.toolbtn,button.success,button.danger),
@@ -118,3 +118,53 @@ html.tt-manager-theme :is(.seat-count-dialog-card,.roster-change-card){border-ra
 html.tt-manager-theme :is(#teacherScreen,#app) button.tt-ui2-vector{display:inline-flex;align-items:center;justify-content:center;gap:5px}
 html.tt-manager-theme #tt-settings-overlay button.tt-ui2-vector{display:flex;align-items:center;gap:8px}
 .tt-ui2-vector svg{width:16px;height:16px;flex:none}
+
+/* G: closed text-role vocabulary (primary / secondary / accent / alert / on-fill).
+   Role values depend on the background, rather than allowing module-specific inks.
+   Semantic seat, grade, status and public experience remain explicitly separate. */
+html.tt-manager-theme{
+ --text-primary:var(--cm-body-ink);--text-secondary:var(--cm-body-sub);
+ --text-accent:var(--cm-body-emphasis);--text-alert:var(--cm-body-alert);--text-on-fill:var(--cm-control-ink);
+ --cm-status-danger:#9f1239;--cm-status-danger-bg:#ffe4e6;
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.studio-topbar,.workspace-toolbar,.tool-dock,.student-strip),
+html.tt-manager-theme #tt-settings-overlay .tt-settings-card,
+html.tt-manager-theme .tt-ui2-card{
+ --text-primary:var(--cm-panel-ink);--text-secondary:var(--cm-panel-sub);
+ --text-accent:var(--cm-panel-emphasis);--text-alert:var(--cm-panel-alert);
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body,.life-stat,.life-card),
+html.tt-manager-theme .tt-class-modal-box{
+ --text-primary:var(--cm-work-ink);--text-secondary:var(--cm-work-sub);
+ --text-accent:var(--cm-work-emphasis);--text-alert:var(--cm-work-alert);
+}
+html.tt-manager-theme #tt-settings-overlay .tt-settings-window{
+ --text-primary:var(--cm-modal-ink);--text-secondary:var(--cm-modal-sub);
+ --text-accent:var(--cm-modal-emphasis);--text-alert:var(--cm-modal-alert);
+}
+html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-heading,.tt-settings-nav){
+ --text-primary:var(--cm-surface-ink);--text-secondary:var(--cm-surface-sub);
+ --text-accent:var(--cm-surface-emphasis);--text-alert:var(--cm-surface-alert);
+}
+/* Match mount-guard's exact structural specificity, not its old gradient. */
+html.tt-manager-theme #app>.studio>.workspace-column>.workspace{
+ background:var(--cm-work-bg)!important;color:var(--text-primary)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(.eyebrow,.life-eyebrow,.student-detail-eyebrow,.stat-label span,.mini){
+ color:var(--text-accent)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(.small-info,.help,.field,.stat-label,.stat small,.page-header p,.panel p,.footer,.life-header p,.life-stat small,.life-stat span,.life-empty,.formlabel,.stack-form label){
+ color:var(--text-secondary)!important
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(.primary,.life-primary){
+ --text-on-fill:var(--cm-accent-ink);color:var(--text-on-fill)!important
+}
+html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{
+ color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg)
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(input:not([type=color]):not([type=range]):not([type=radio]):not([type=checkbox]),textarea)::placeholder{
+ color:var(--text-secondary);opacity:1
+}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body) :is(input,select,textarea,button):focus-visible{
+ outline-color:var(--text-accent)
+}

@@ -13,6 +13,7 @@ jobs:
         with:
           persist-credentials: false
       - run: |
+          npm ci --prefix classroom/cloud --no-audit --no-fund
           find classroom/tests -maxdepth 1 -name '*.test.mjs' ! -name 'cloud-firestore-emulator.test.mjs' -print0 | xargs -0 node --test
           node classroom/tests/manager-board-only.test.cjs
   browser:

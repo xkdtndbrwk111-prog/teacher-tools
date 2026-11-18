@@ -101,6 +101,8 @@
   for(const [role,bg] of Object.entries({body:p.bg,panel:p.panel,surface:p.surface,modal:p.modal,control:p.control,accent:p.accent,today:p.today})){
    out['--cm-'+role+'-ink']=ink(bg,role==='control'?p['control-text']:p.text);
    out['--cm-'+role+'-sub']=ink(bg,p.sub);
+   out['--cm-'+role+'-emphasis']=ink(bg,p.accent);
+   out['--cm-'+role+'-alert']=ink(bg,'#b91c1c');
   }
   // Dense teacher data surfaces retain a light paper tint so legacy semantic
   // cells, labels and chart colors remain readable across all dark/custom themes.
@@ -109,6 +111,8 @@
   out['--cm-work-line']=mix(p.border,'#ffffff',.52);
   out['--cm-work-ink']='#172033';
   out['--cm-work-sub']='#475569';
+  out['--cm-work-emphasis']=ink(out['--cm-work-paper'],p.accent);
+  out['--cm-work-alert']=ink(out['--cm-work-paper'],'#b91c1c');
   out['--cm-font']=v.font?'"'+v.font+'", system-ui, "Malgun Gothic", sans-serif':'system-ui, "Malgun Gothic", sans-serif';
   return out;
  }

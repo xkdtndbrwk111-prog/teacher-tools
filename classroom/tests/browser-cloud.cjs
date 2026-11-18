@@ -25,6 +25,10 @@ async function googleRoute(route){
  if(auth==='Bearer expired')return fakeResponse(route,401,{error:'invalid_token'});
  if(google.failNext>0){google.failNext--;return fakeResponse(route,429,{error:'rate'})}
  if(url.host==='www.googleapis.com'){
+  // Theme integration has its own independent mock and assertions in browser-ui2-google-theme.
+  // This suite models class spreadsheet storage only; theme lookup is a separate request.
+  if(url.searchParams.get('q')?.includes('teacher-tools-theme-v1'))return fakeResponse(route,200,{files:[]});
+  if(url.pathname.startsWith('/upload/drive/v3/files'))return fakeResponse(route,503,{error:'theme mock unavailable'});
   const id=url.pathname.split('/').pop();
   if(id==='files')return fakeResponse(route,200,{files:[...google.files.values()].map(f=>({id:f.id,name:f.name,mimeType:'application/vnd.google-apps.spreadsheet',trashed:false,ownedByMe:true,owners:[{emailAddress:USER.email}],createdTime:f.created}))});
   const f=google.files.get(id);
@@ -71,7 +75,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
  const newPC=async({withClient=true,clock=false}={})=>{
   const ctx=await browser.newContext({viewport:{width:1600,height:1000}});
   ctx.externals=[];
-  ctx.on('request',r=>{const u=r.url();if(!u.startsWith(BASE)&&!/^(data|blob):/.test(u))ctx.externals.push(u)});
+  ctx.on('request',r=>{const u=r.url();if(!u.startsWith(BASE)&&!/^(data|blob):/.test(u)){if(!/^http:\/\/127\.0\.0\.1:17439\/api\/(board-status|theme)$/.test(u))ctx.externals.push(u)}});
   await ctx.route(u=>!String(u).startsWith(BASE)&&!/^(data|blob):/.test(String(u)),googleRoute);
   await ctx.route('**/classroom/grades/google-config.mjs',r=>r.fulfill({contentType:'text/javascript',body:`export const GOOGLE_CLIENT_ID='${withClient?CLIENT:''}';`}));
   const p=await ctx.newPage();
@@ -81,7 +85,7 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
   return{ctx,p};
  };
  const chip=p=>p.locator('#tt-cloud-chip');
- const chipIs=(p,re)=>p.waitForFunction(s=>new RegExp(s).test(document.getElementById('tt-cloud-chip').textContent),re.source,{timeout:15000});
+ const chipIs=(p,re)=>p.waitForFunction(s=>new RegExp(s).test(document.getElementById('tt-cloud-chip').dataset.ttHudFull||document.getElementById('tt-cloud-chip').textContent),re.source,{timeout:15000});
  const setRoster=async(p,names)=>{
   await p.evaluate(v=>{const t=document.getElementById('studentInput');t.value=v;t.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('applyStudents').click()},names.join('\n'));
   await wait(150);
