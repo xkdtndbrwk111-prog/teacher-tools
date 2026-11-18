@@ -11,6 +11,8 @@
  });
  function stop(error){
   document.documentElement.classList.remove('tt-manager-starting');
+  // Fail closed: a startup / single-tab lock error must not expose partially initialized controls.
+  const teacher=document.getElementById('teacherScreen');if(teacher){teacher.inert=true;teacher.hidden=true;teacher.classList.add('hidden')}
   const loading=document.getElementById('tt-manager-loading');if(loading)loading.hidden=true;
   const box=document.createElement('div');box.className='tt-start-blocked';box.setAttribute('role','alert');
   const card=document.createElement('div'),title=document.createElement('h1'),text=document.createElement('p'),again=document.createElement('button');

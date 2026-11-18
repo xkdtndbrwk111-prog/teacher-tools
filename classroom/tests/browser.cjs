@@ -12,9 +12,14 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const results=[];
 async function step(name,fn){
  try{await fn();results.push([name,true]);console.log('PASS',name)}
- catch(e){results.push([name,false]);console.log('FAIL',name,'\n ',e.message)}
+ catch(e){results.push([name,false]);console.log('FAIL',name,'\n ',e.stack||e.message)}
 }
-const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'));
+const started=async p=>{
+ await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting')||document.querySelector('.tt-start-blocked'));
+ const blocked=await p.locator('.tt-start-blocked').count();
+ if(blocked)throw Error('Manager startup blocked: '+await p.locator('.tt-start-blocked').innerText());
+ assert.equal(await p.evaluate(()=>typeof classState!=='undefined'),true,'Manager startup initialized');
+};
 async function settingsAction(p,id,section){
  if(!await p.locator('#tt-settings-overlay').isVisible())await p.click('#tt-hud-more-trigger');
  await p.click('[data-tt-section="'+section+'"]');
@@ -402,7 +407,7 @@ async function setRoster(p,names){
    await p5.goto(BASE+'/seating/?section=seating');await started(p5);
    const cdp=await c5.newCDPSession(p5);
    await p5.evaluate(()=>{classState.className='종료직전';persistStateOnly()});
-   cdp.send('Page.crash').catch(()=>{});await wait(600);
+   const crashed=p5.waitForEvent('crash',{timeout:10000});void cdp.send('Page.crash').catch(()=>{});await crashed;await p5.close();
    const p6=await c5.newPage();p6.on('dialog',d=>d.accept());
    await p6.goto(BASE+'/seating/?section=seating');await started(p6);
    assert.equal(await p6.evaluate(()=>classState.className),'종료직전');
@@ -447,15 +452,38 @@ async function setRoster(p,names){
     await page.fill('#tt-backup-restore-word','복원');
     await page.check('#tt-backup-plain');
     const cdp=await c6.newCDPSession(page);
+    // A crash must actually have occurred, not just a rejected CDP request.
+    // Keep the browser context/profile, close the crashed tab only after crash
+    // acknowledgement, then start a new tab with the same IndexedDB and WAL.
+    const crashed=page.waitForEvent('crash',{timeout:10000});
     await page.click('#tt-backup-restore',{noWaitAfter:true});
     await wait(delay);
-    cdp.send('Page.crash').catch(()=>{});await wait(500);
+    const request=cdp.send('Page.crash').catch(()=>{});
+    await crashed;void request;
+    await page.close();
     page=await c6.newPage();page.on('dialog',d=>d.accept());page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(BASE+'/seating/?section=seating');await started(page);
+    try{
+     await page.goto(BASE+'/seating/?section=seating');await started(page);
+    }catch(e){throw Error('복원 강제 종료 '+delay+'ms / 새 탭 시작: '+e.message,{cause:e})}
+    // Read committed data before opening grades: roster projection must not
+    // repair or obscure a partially restored grade record.
+    const persisted=await page.evaluate(async()=>{
+     const c=window.__TT_STAGE031_CLASS,store=window.__TT_STORE;
+     const {schoolYear}=await import('/classroom/grades/model.mjs');
+     const raw=await store.read(c.seatingKey),w=await store.read('TT_STAGE03_'+c.installId+'_'+schoolYear());
+     return {name:JSON.parse(raw).students[0].name,workspace:w};
+    });
     const name=await page.evaluate(()=>classState.students[0].name);
+    assert.equal(persisted.name,name,'재시작 후 메모리/저장 명단 일치');
+    assert.ok(Object.hasOwn(pair,name),'복원 전/후 상태 중 하나');
+    assert.ok(persisted.workspace,'성적 원본 존재');
+    const stored=JSON.stringify(persisted.workspace);
+    // Check both restored grade payload and actual grade input, not just name.
+    assert.ok(stored.includes('"'+pair[name]+'"')||stored.includes(':'+pair[name]),'원본 성적 '+pair[name]+' 존재');
     const fr=await openGrades(page);await fr.locator('.nav[data-page="grades"]').click();await wait(300);
     const score=await fr.locator('input.grade-input').first().inputValue();
     assert.equal(score,pair[name],`지연 ${delay}ms: ${name} / ${score}`);
+    console.log('   강제 종료 '+delay+'ms: '+(name===target?'복원 완료':'복원 전 상태')+' / 자리·성적 일치');
     seen[name===target?'new':'old']++;
     current=name;
     await openSeating(page);await wait(200);

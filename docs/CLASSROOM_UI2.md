@@ -36,3 +36,6 @@ Base: V1.66.19 release main. No main/stable publishing.
 
 ## Stage J — public-only return controls and two-row HUD sizing
 I regression 12/13 workflow PASS, 9 detailed failures. Eight stopped early on strict return-button count: inactive playback engine controls remained in DOM (already CSS-hidden). Remove all three controls after both engines bind, regardless of type; hidden editor inert, suppress Escape and undo/redo on public display. Tests assert IDs and actual public visibility after Escape. HUD explicit 104px two-row sizing accounts for border and mode strip padding, plus diagnostic geometry without clipping. Retest; not a PASS claim until actual results.
+
+## Stage K — crash regression diagnostics
+J passes 12/13 workflows, seven of eight full-regression jobs (browser 37/38), sole restore-interruption timeout, not a demonstrated data mismatch. Wait for actual CDP crash event, dispose crashed tab while retaining browser context/database, never bypass single-tab lock. Assert original persisted roster and grade workspace before opening grade iframe, then compare actual score over all eight original crash delays. Startup guard reports actual block/stack and disables partial teacher UI on startup failure. No production store transaction change, no relaxation of atomicity or tab protection. Re-run latest workflows before release.
