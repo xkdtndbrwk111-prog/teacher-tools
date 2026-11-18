@@ -305,7 +305,14 @@
   meta=await store.read(KEY)||null;authInitialized=true;
   // The saved mode is known before importing optional Google modules. Publish
   // it immediately so the HUD cannot remain blank/unknown during startup.
-  if(meta?.mode!=='normal'){setState('easy');return}
+  if(meta?.mode!=='normal'){
+   setState('easy');
+   // Prepare the optional NORMAL settings in the background as before, without
+   // delaying the known EASY label or starting an external Google request.
+   await loadModules().catch(error=>console.warn(error));
+   if(!settings.hidden)renderSettings();
+   return;
+  }
   setState('login');
   loadGoogleScript();
   await ready();
