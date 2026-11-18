@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "version": "1.66.20",
+  "release": "2026-11-18-V1.66.20-STABLE-PILOT",
+  "channel": "stable",
+  "updateMode": "auto-pilot",
+  "audience": "owner-field-test",
+  "runtimeProtocol": 1
+}
