@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "version": "1.66.15",
+  "previous_version": "1.66.14",
+  "previous_payload_sha": "cb33169dd0bec6b26e2a0ec4d0d1fb7f5f5928236221aa1a4ea61a23209291c5",
+  "source_sha": "a0c1da13f9345b531b5cdc559156a078be65ce5a",
+  "artifact_id": 14401110484,
+  "archive_sha": "3b1a10856a4e85d96376c13e141b1efca81ab7281080217daa6908dc25fc9d83",
+  "payload_sha": "58bcc0632f6f9cf3696efb4734f27296514cf9706273671fb3693ca5fdb317f6",
+  "build_run_id": 44243934810,
+  "windows_run_id": 44243934808,
+  "integration_run_id": 44243934902,
+  "visual_run_id": 44243934759,
+  "contrast_run_id": 44243934819,
+  "education_run_id": 44243934788,
+  "badge_run_id": 44243934937,
+  "tournament_run_id": 44243934783,
+  "authorization": "Owner explicitly requested deployment to test the tournament feature on the classroom PC on 2026-11-18. Physical touch, PIN, ledger and install/update checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16615_owner_field_test_only"
+}
