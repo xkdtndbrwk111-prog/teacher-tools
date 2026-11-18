@@ -75,68 +75,45 @@ assert.equal(await page.locator('#ttMediaDialog').evaluate(el=>el.open),false);
 assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings after reload, school song route, automatic notice, shared volume state and close');
 
 
- // Book route: direct Canva iframe, masked strip outside the isolated capture target.
- await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'📖 책 읽어주기',exact:true}).click();
- await dlg.getByText('아몬드 · 시험판',{exact:true}).waitFor();assert.equal(await dlg.locator('[data-book-id]').count(),1);
- await dlg.getByRole('button',{name:'읽기',exact:true}).click();
- const bookFrame=dlg.locator('#ttBookTarget iframe');assert.equal(await bookFrame.getAttribute('src'),'https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed');
- assert.equal(await dlg.locator('.mm-book-mask').evaluate(x=>x.parentElement.querySelector('#ttBookTarget').contains(x)),false);
- assert.equal(await dlg.locator('.mm-book-mask').evaluate(x=>getComputedStyle(x).pointerEvents),'none');
- assert.equal(await dlg.locator('#ttBookTarget').evaluate(x=>getComputedStyle(x).isolation),'isolate');
- await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).fill('3');await dlg.locator('#ttBookSave').click();
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),3);
- await dlg.getByRole('button',{name:'← 책 목록',exact:true}).click();await dlg.getByRole('button',{name:'3쪽 이어 읽기',exact:true}).click();
- await page.waitForFunction(()=>document.querySelector('#ttMediaStatus').textContent.includes('저장 위치 3쪽'));
- assert.match(await dlg.locator('.mm-status').textContent(),/저장 위치 3쪽/);
- // Controlled synthetic restricted video stream: not a proof of actual browser permissions or Canva capture.
- await page.evaluate(()=>{
-  let cfg=null;Object.defineProperty(window,'RestrictionTarget',{configurable:true,value:{fromElement:async e=>{if(e.id!=='ttBookTarget')throw Error('wrong target');return e}}});
-  const c=document.createElement('canvas');c.width=960;c.height=540;const x=c.getContext('2d');let p=1;function crc(p){let c=0;for(const b of [p>>8,p&255]){c^=b;for(let j=0;j<8;j++)c=((c<<1)^((c&128)?7:0))&255}return c}
-  window.__ttDrawBook=n=>{p=n};const draw=()=>{x.fillStyle='#789';x.fillRect(0,0,960,540);const bits='10110010'+p.toString(2).padStart(12,'0')+crc(p).toString(2).padStart(8,'0')+'0101';for(let i=0;i<32;i++){x.fillStyle=bits[i]==='1'?'#fff':'#000';x.fillRect(i*30,536,30,4)}};
-  draw();const s=c.captureStream(12),t=s.getVideoTracks()[0];window.__ttBookTrack=t;window.__ttBookInterval=setInterval(draw,80);window.__ttRestricted=false;
-  Object.defineProperty(t,'getSettings',{value:()=>({displaySurface:'browser'})});Object.defineProperty(t,'getCaptureHandle',{value:()=>({handle:cfg?.handle,origin:location.origin})});Object.defineProperty(t,'restrictTo',{value:async e=>{window.__ttRestricted=e.id==='ttBookTarget'}});
-  Object.defineProperty(navigator.mediaDevices,'setCaptureHandleConfig',{configurable:true,value:o=>{cfg=o}});Object.defineProperty(navigator.mediaDevices,'getDisplayMedia',{configurable:true,value:async o=>{if(!o.preferCurrentTab||o.audio!==false)throw Error('unsafe options');return s}});
- });
- await dlg.locator('#ttBookAuto').click();await page.waitForFunction(()=>window.__ttRestricted&&document.querySelector('#ttMediaStatus').textContent.includes('현재 1쪽'),{},{timeout:10000});
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),3);
- await page.evaluate(()=>window.__ttDrawBook(3));await page.waitForFunction(()=>document.querySelector('#ttMediaStatus').textContent.includes('3쪽 · 자동 저장됨'));
- await page.evaluate(()=>window.__ttDrawBook(5));await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===5);
- await dlg.getByRole('button',{name:'← 책 목록',exact:true}).click();assert.equal(await page.evaluate(()=>window.__ttBookTrack.readyState),'ended');await page.evaluate(()=>clearInterval(window.__ttBookInterval));
- await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).waitFor();
- await dlg.getByRole('button',{name:'+ 책 추가',exact:true}).click();await dlg.getByLabel('책 제목',{exact:true}).fill('다른 책');
- await dlg.getByLabel('캔바 보기용 주소',{exact:true}).fill('https://www.canva.com/design/TEST_SECOND/ABC/view?embed');
- await dlg.getByLabel('전체 페이지 수',{exact:true}).fill('12');await dlg.getByRole('button',{name:'추가',exact:true}).click();
- assert.equal(await dlg.locator('[data-book-id]').count(),2);assert.equal(await dlg.locator('[data-book-id="TEST_SECOND"]').getByText('12쪽 · 읽기 전').count(),1);
- await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'📖 책 읽어주기',exact:true}).click();
- assert.equal(await dlg.locator('[data-book-id]').count(),2);await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).waitFor();await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
- console.log('PASS separate book catalog, direct iframe, sibling mask, manual bookmark, synthetic restricted capture + CRC, resume guard, stable auto save, cleanup and independent books');
-
- // Restart the document between the synthetic capture fixture and the native session fixture.
- // Verify that the saved bookmark survives a real page reload; reset mocked browser APIs.
- await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),5);
- let nativeCalls=[],nativePoll=0,nativeSession='a'.repeat(32);
+ // Integrated book slot: mock native process only, preserve actual HTML geometry and toolbar.
+ await page.evaluate(()=>localStorage.setItem('tt-books-v1:mark:DAHbOpoUrrg',JSON.stringify({page:5,at:Date.now()})));
+ let nativeCalls=[],session='a'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[];
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
-   assert.equal(a.id,'DAHbOpoUrrg');assert.equal(a.start,5);assert.equal(a.saved,5);
-   return route.fulfill({json:{ok:true,session:nativeSession}});
+   assert.equal(a.id,'DAHbOpoUrrg');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);
+   if(failOpen){failOpen=false;return route.fulfill({status:409,json:{error:'native unavailable'}})}
+   return route.fulfill({json:{ok:true,session}});
   }
-  assert.equal(u.searchParams.get('session'),nativeSession);
+  assert.equal(u.searchParams.get('session'),session);
   if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
-  nativePoll++;return route.fulfill({json:{ok:true,ready:true,closed:nativePoll>=2,page:4,saved:4,status:'자동 저장됨'}});
+  const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));layouts.push(a.layout);
+  if(a.command&&a.command.seq>ack){ack=a.command.seq;manual=a.command.kind==='manual';saved=manual?a.command.page:4}
+  if(!manual&&phase===0)saved=4;
+  return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:phase===2,page:4,saved,manual,ack,status:'저장됨'}});
  });
  await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'📖 책 읽어주기',exact:true}).click();
- await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();
- await dlg.getByRole('button',{name:'4쪽 이어 읽기',exact:true}).waitFor();
+ await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'다시 시도',exact:true}).waitFor();
+ assert.equal(await dlg.locator('iframe').count(),0);assert.equal(await dlg.getByText('기존 재생기',{exact:true}).count(),0);
+ await dlg.getByRole('button',{name:'다시 시도',exact:true}).click();
+ await dlg.getByRole('button',{name:'수동 저장',exact:true}).waitFor();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
+ assert.equal(await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).isVisible(),false);
+ const slot=await dlg.locator('.mm-book-slot').boundingBox(),foot=await dlg.locator('.mm-foot').boundingBox();assert.ok(slot.width>=1100&&slot.y+slot.height<=foot.y+1);
+ await dlg.getByRole('button',{name:'수동 저장',exact:true}).click();await dlg.getByRole('spinbutton',{name:'현재 페이지 번호'}).fill('3');await dlg.getByRole('button',{name:'저장',exact:true}).click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===3);await dlg.getByRole('button',{name:'자동 저장 켜기',exact:true}).click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
+ await page.setViewportSize({width:1600,height:900});await new Promise(r=>setTimeout(r,900));assert.ok(layouts.some(x=>x.vw===1600&&x.w>1100));
+ await page.setViewportSize({width:1280,height:720});phase=2;await dlg.getByRole('button',{name:'4쪽 이어 읽기',exact:true}).waitFor();
+ await dlg.getByRole('button',{name:'+ 책 추가',exact:true}).click();await dlg.getByLabel('책 제목',{exact:true}).fill('다른 책');
+ await dlg.getByLabel('캔바 보기용 주소',{exact:true}).fill('https://www.canva.com/design/TEST_SECOND/ABC/view?embed');
+ await dlg.getByLabel('전체 페이지 수',{exact:true}).fill('12');await dlg.getByRole('button',{name:'추가',exact:true}).click();
+ assert.equal(await dlg.locator('[data-book-id]').count(),2);
+ await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();await page.unroute('**/api/book-reader/**');
+ await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),4);
- assert.ok(nativeCalls.includes('/api/book-reader/open')&&nativeCalls.includes('/api/book-reader/status'));
- assert.equal(await dlg.locator('#ttBookTarget').count(),0);
- await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
- await page.unroute('**/api/book-reader/**');
- console.log('PASS native player request, existing bookmark migration, close and catalog sync without iframe capture');
-
+ console.log('PASS single HTML toolbar, native slot layout and resize, retry without legacy, manual and automatic bookmark, separate books and reload');
 
 // Timetable: the rendered one-day table uses all available space, preserving lunch and inner gaps.
 // Exercise the real renderer, including the compact layout, and restore the weekly view.

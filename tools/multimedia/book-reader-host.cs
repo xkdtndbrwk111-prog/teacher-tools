@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -16,17 +17,22 @@ internal sealed class BookReader : Form {
  static readonly Regex UrlPattern=new Regex(@"^https://www\.canva\.com/design/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/view\?embed$",RegexOptions.CultureInvariant);
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
- readonly Label caption=new Label();
- readonly NumericUpDown manual=new NumericUpDown();
+ readonly Timer placement=new Timer();
+ readonly IntPtr owner;
+ readonly int ownerPid;
+ bool shownOnce, positioned, slotVisible;
+ long commandSeq;
+ Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
  readonly int pages, requested, initialMark;
  readonly Rectangle screenArea, workingArea;
  int saved,detected,previous,stable,waitingFor,steps,manualMode;
- bool ready,busy,closed,fullscreen=false,fixture;
+ bool ready,busy,closed,fixture;
  DateTime seekStart=DateTime.UtcNow,waitingSince=DateTime.UtcNow;
- string lastState="";
- Button auto,full,mute;
+ string lastState="", lastStatus="불러오는 중", placementStatus="initial";
+ int ownerError;
+
  static int Int(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToInt32(v):0;}
  static string Str(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToString(v):"";}
  static bool ValidUrl(string u){return u!=null&&u.Length<=500&&UrlPattern.IsMatch(u);}
@@ -35,27 +41,88 @@ internal sealed class BookReader : Form {
   dir=folder;fixture=lab;url=Str(config,"url");title=Str(config,"title");pages=Int(config,"pages");requested=Int(config,"start");initialMark=Int(config,"saved");saved=initialMark;
   if(!fixture&&!ValidUrl(url)||pages<1||pages>4095||requested<1||requested>pages||initialMark<0||initialMark>pages||title.Length>80)throw new ArgumentException("invalid book request");
   screenArea=Rect(config,"screen",Screen.PrimaryScreen.Bounds);workingArea=Rect(config,"work",Screen.PrimaryScreen.WorkingArea);
-  Text=title+" · 호자보드";StartPosition=FormStartPosition.Manual;FormBorderStyle=FormBorderStyle.None;Bounds=workingArea;BackColor=Color.FromArgb(22,23,25);KeyPreview=true;
-  var foot=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=58,WrapContents=false,FlowDirection=FlowDirection.LeftToRight,Padding=new Padding(6),BackColor=Color.FromArgb(35,36,39),AutoScroll=true};
-  caption.AutoSize=false;caption.Width=320;caption.Height=42;caption.ForeColor=Color.White;caption.TextAlign=ContentAlignment.MiddleLeft;caption.Font=new Font("맑은 고딕",11,FontStyle.Bold);
-  manual.Minimum=1;manual.Maximum=pages;manual.Value=requested;manual.Width=66;manual.Height=42;manual.Font=new Font("맑은 고딕",13);manual.Enabled=true;
-  var save=Btn("쪽 저장",()=>{if(!ready)return;manualMode=1;waitingFor=0;seekTarget=0;saved=(int)manual.Value;auto.Text="자동 저장 켜기";Publish("수동 저장됨");});
-  auto=Btn("자동 저장 중지",()=>{manualMode=manualMode==0?1:0;waitingFor=0;seekTarget=0;stable=0;previous=0;auto.Text=manualMode==0?"자동 저장 중지":"자동 저장 켜기";Publish(manualMode==0?"자동 판독 중":"수동 모드");});
-  full=Btn("전체화면",()=>{fullscreen=!fullscreen;Bounds=fullscreen?screenArea:workingArea;full.Text=fullscreen?"전체화면 해제":"전체화면";});
-  mute=Btn("소리 끄기",()=>{if(web.CoreWebView2!=null){web.CoreWebView2.IsMuted=!web.CoreWebView2.IsMuted;mute.Text=web.CoreWebView2.IsMuted?"소리 켜기":"소리 끄기";}});
-  foot.Controls.Add(caption);foot.Controls.Add(manual);foot.Controls.Add(save);foot.Controls.Add(auto);foot.Controls.Add(mute);foot.Controls.Add(full);foot.Controls.Add(Btn("책 목록 ✕",Close));
-  Controls.Add(web);Controls.Add(foot);web.Dock=DockStyle.Fill;
-  KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}};
+  owner=new IntPtr(Convert.ToInt64(config.ContainsKey("owner")?config["owner"]:0));
+  ownerPid=Int(config,"ownerPid");
+  if(!fixture&&!OwnerValid())throw new ArgumentException("missing board owner");
+  Text=title+" · 호자보드";StartPosition=FormStartPosition.Manual;FormBorderStyle=FormBorderStyle.None;
+  Bounds=fixture?workingArea:new Rectangle(-30000,-30000,320,180);
+  BackColor=Color.FromArgb(17,17,17);ShowInTaskbar=false;KeyPreview=true;
+  Controls.Add(web);web.Dock=DockStyle.Fill;
   timer.Interval=350;timer.Tick+=async(s,e)=>await Poll();
-  Shown+=async(s,e)=>await Initialize();
-  FormClosing+=(s,e)=>{closed=true;timer.Stop();Publish("종료");};
+  placement.Interval=120;placement.Tick+=(s,e)=>Place();
+  Shown+=async(s,e)=>{shownOnce=true;Place();if(!fixture)placement.Start();await Initialize();};
+  FormClosing+=(s,e)=>{closed=true;timer.Stop();placement.Stop();Publish("종료");};
  }
- static Button Btn(string text,Action click){var b=new Button{Text=text,AutoSize=true,Height=42,FlatStyle=FlatStyle.Flat,ForeColor=Color.White,BackColor=Color.FromArgb(65,69,75),Font=new Font("맑은 고딕",11,FontStyle.Bold),Margin=new Padding(3)};b.Click+=(s,e)=>click();return b;}
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready});}
+ [StructLayout(LayoutKind.Sequential)] struct RECT{public int L,T,R,B;}
+ [StructLayout(LayoutKind.Sequential)] struct POINT{public int X,Y;}
+ [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+ [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h,ref POINT p);
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+ [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h,uint cmd);
+ [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW",SetLastError=true)] static extern IntPtr SetWindowLongPtr(IntPtr h,int n,IntPtr p);
+ [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int hgt,uint flags);
+ [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int cmd);
+ [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+ protected override bool ShowWithoutActivation{get{return !fixture;}}
+ protected override CreateParams CreateParams {
+  get {
+   var p=base.CreateParams;
+   if(!fixture&&owner!=IntPtr.Zero){p.Parent=owner;p.Style=(p.Style&~0x40000000)|unchecked((int)0x80000000);p.ExStyle=(p.ExStyle|0x80)&~0x40000;}
+   return p;
+  }
+ }
+ sealed class BoardOwner : IWin32Window {
+  public IntPtr Handle{get;private set;}
+  public BoardOwner(IntPtr h){Handle=h;}
+ }
+ bool EnsureOwner(){
+  if(GetWindow(Handle,4)==owner){ownerError=0;return true;}
+  SetWindowLongPtr(Handle,-8,owner);ownerError=Marshal.GetLastWin32Error();
+  bool ok=GetWindow(Handle,4)==owner;if(ok)ownerError=0;return ok;
+ }
+ void ShowForBoard(){if(!fixture)Show(new BoardOwner(owner));}
+ bool OwnerValid(){uint pid;return owner!=IntPtr.Zero&&IsWindow(owner)&&GetWindowThreadProcessId(owner,out pid)!=0&&pid==ownerPid;}
+ Dictionary<string,object> ReadFile(string name){try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(dir,name),Encoding.UTF8));}catch{return null;}}
+ void HideSlot(string reason){placementStatus=reason;if(slotVisible){ShowWindow(Handle,0);slotVisible=false;}Publish(lastStatus);}
+ void Place(){
+  if(fixture||closed||!shownOnce)return;
+  if(!OwnerValid()){Close();return;}
+  if(!EnsureOwner()){HideSlot("owner attach failed");return;}
+  var l=ReadFile("layout.json");
+  if(l==null||IsIconic(owner)||!IsWindowVisible(owner)||Int(l,"visible")!=1){HideSlot("owner or slot hidden");return;}
+  RECT r;POINT o=new POINT();
+  if(!GetClientRect(owner,out r)||!ClientToScreen(owner,ref o)){HideSlot("client rect unavailable");return;}
+  int cw=r.R-r.L,ch=r.B-r.T,vw=Int(l,"vw"),vh=Int(l,"vh");
+  int x=Int(l,"x"),y=Int(l,"y"),w=Int(l,"w"),h=Int(l,"h");
+  if(vw<200||vh<150||cw<200||ch<150||x<0||y<0||w<100||h<60||x+w>vw+1||y+h>vh+1){HideSlot("invalid slot geometry");return;}
+  double scale=(double)cw/vw;int contentH=(int)Math.Round(vh*scale),offset=ch-contentH;
+  // Chromium app has no toolbar; bottom-align CSS viewport in client area, allowing only a bounded title strip.
+  if(scale<0.45||scale>4.5||offset< -4||offset>Math.Max(96,scale*96)){HideSlot("viewport scale mismatch");return;}
+  int left=o.X+(int)Math.Round(x*scale),top=o.Y+Math.Max(0,offset)+(int)Math.Round(y*scale);
+  int right=Math.Min(o.X+cw,o.X+(int)Math.Round((x+w)*scale)),bottom=Math.Min(o.Y+ch,o.Y+Math.Max(0,offset)+(int)Math.Round((y+h)*scale));
+  var next=Rectangle.FromLTRB(left,top,right,bottom);
+  if(next.Width<100||next.Height<60||GetWindow(Handle,4)!=owner){HideSlot("invalid projected slot");return;}
+  if(!positioned||next!=lastSlot||!slotVisible){
+   if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0010|0x0004|0x0040)){HideSlot("position failed");return;}
+   lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
+  }
+ }
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError});}
  void Publish(string status){
-  caption.Text=title+"  "+(detected>0?detected.ToString():"–")+"/"+pages+"쪽"+(saved>0?" · "+saved+"쪽 저장":"")+"  "+status;
-  string data=State(status);if(data==lastState)return;lastState=data;
-  try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);}catch{}
+  lastStatus=status;string data=State(status);if(data==lastState)return;
+  try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
+ }
+ void Command(){
+  var d=ReadFile("command.json");if(d==null)return;
+  long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
+  string kind=Str(d,"kind");int p=Int(d,"page");
+  if(kind=="manual"&&p>=1&&p<=pages){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
+  else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
+  else return;
+  commandSeq=seq;Publish(manualMode!=0?"수동 저장됨":"자동 판독 중");
  }
  async Task Initialize(){
   Publish("불러오는 중");try{
@@ -70,7 +137,7 @@ internal sealed class BookReader : Form {
    if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax=5 aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min(5,+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
    else core.Navigate(url);
    timer.Start();
-  }catch{Publish("WebView2 시작 실패");MessageBox.Show("책 재생기를 실행하지 못했습니다. 기존 재생기를 사용해 주세요.","호자보드");Close();}
+  }catch{Publish("WebView2 시작 실패");Close();}
  }
  async Task<int> Read(){
   string script=fixture?PageScript.Replace("if(location.origin!=='https://www.canva.com')return null;",""):PageScript;
@@ -91,12 +158,14 @@ internal sealed class BookReader : Form {
   if(!ready)return;
   busy=true;
   try{
+   Command();
+   if(!fixture&&!slotVisible)return;
    if(seekTarget<0)seekTarget=requested;
    int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 수동 저장 가능");return;}
    if(p==previous)stable++;else{previous=p;stable=1;}
    if(stable<2)return;
-   detected=p;if(manualMode==0)manual.Value=p;
-   if(manualMode!=0){Publish("수동 모드");return;}
+   detected=p;
+   if(manualMode!=0){Publish("수동 저장됨");return;}
    if(seekTarget>0){
     if(p==seekTarget){seekTarget=0;waitingFor=0;}
     else{
@@ -114,12 +183,13 @@ internal sealed class BookReader : Form {
   }catch{Publish("페이지 판독 실패 · 수동 저장 가능");}finally{busy=false;}
  }
  [STAThread] static int Main(string[] args){
+  try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}
   Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
   try{
    if(args.Length!=2||args[0]!="--session"&&args[0]!="--self-test")return 2;
    bool lab=args[0]=="--self-test";string dir=Path.GetFullPath(args[1]);
    var d=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(dir,"request.json"),Encoding.UTF8));
-   using(var f=new BookReader(dir,d,lab)){if(lab){var watchdog=new Timer{Interval=25000};watchdog.Tick+=(s,e)=>{watchdog.Stop();f.Close();};watchdog.Start();Application.Run(f);watchdog.Dispose();return f.saved==f.requested&&f.detected==f.requested?0:1;}Application.Run(f);}
+   using(var f=new BookReader(dir,d,lab)){if(lab){var watchdog=new Timer{Interval=25000};watchdog.Tick+=(s,e)=>{watchdog.Stop();f.Close();};watchdog.Start();Application.Run(f);watchdog.Dispose();return f.saved==f.requested&&f.detected==f.requested?0:1;}f.ShowForBoard();Application.Run(f);}
    return 0;
   }catch(Exception ex){Console.Error.WriteLine(ex.GetType().Name);return 1;}
  }
