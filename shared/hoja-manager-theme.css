@@ -281,3 +281,14 @@ html.tt-manager-theme #app :is(.trait-mode button.on,.trait-subject:not(.is-miss
 html.tt-manager-theme #app .trait-subject input{accent-color:var(--cm-action-fill)}
 html.tt-manager-theme #app :is(.trait-link-class small,.trait-note){color:var(--cm-work-sub)}
 html.tt-manager-theme #app .trait-preview-head span{color:var(--cm-work-emphasis)}
+
+/* Peach only: a scrollbar is a control, not text. Its accent must not fall
+   back to black through the contrast-safe text-emphasis role.
+   Inherit the same palette in the grade iframe and nested scroll containers. */
+html.tt-manager-theme[data-cm-theme="pink"],
+html.tt-manager-theme[data-cm-theme="pink"] *{
+ scrollbar-color:var(--cm-action-fill) var(--cm-control)!important
+}
+html.tt-manager-theme[data-cm-theme="pink"] #teacherScreen .student-strip :is(.student-cards,.student-cards:hover){
+ scrollbar-color:var(--cm-action-fill) var(--cm-control)!important
+}
