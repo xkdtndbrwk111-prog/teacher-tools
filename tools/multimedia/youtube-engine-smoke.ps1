@@ -84,6 +84,55 @@ try{
  # Decode both streams from disk without any remote URL.
  $null=Invoke-Hidden 'ffmpeg.exe' @('-nostdin','-v','error','-i',$merged,'-map','0:v','-map','0:a','-f','null','-')
  Write-Host 'PASS local MP4 decoding, no remote media'
+ # Full yt-dlp transfer from a local HTTP server using only generated media.
+ # Python is a CI fixture, not a runtime dependency for the board.
+ $fixture=Join-Path $Root 'fixture.py';$ready=Join-Path $Root 'fixture-port.txt'
+ @'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+import sys
+media = Path(sys.argv[1])
+ready = Path(sys.argv[2])
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/test.mp4":
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(media.stat().st_size))
+        self.end_headers()
+        with media.open("rb") as f:
+            while chunk := f.read(65536):
+                self.wfile.write(chunk)
+server = HTTPServer(("127.0.0.1", 0), Handler)
+ready.write_text(str(server.server_port), encoding="ascii")
+server.serve_forever()
+'@ | Set-Content -LiteralPath $fixture -Encoding UTF8
+ $fixtureInfo=[Diagnostics.ProcessStartInfo]::new()
+ $fixtureInfo.FileName=(Get-Command python -CommandType Application | Select-Object -First 1).Source
+ $fixtureInfo.UseShellExecute=$false;$fixtureInfo.CreateNoWindow=$true
+ foreach($item in @($fixture,$merged,$ready)){[void]$fixtureInfo.ArgumentList.Add($item)}
+ $fixtureProcess=[Diagnostics.Process]::Start($fixtureInfo)
+ try{
+  $deadline=[DateTime]::UtcNow.AddSeconds(15)
+  while(!(Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $deadline -and !$fixtureProcess.HasExited){Start-Sleep -Milliseconds 100}
+  if(!(Test-Path -LiteralPath $ready)){throw 'fixture startup failed'}
+  $portText=(Get-Content -LiteralPath $ready -Raw).Trim()
+  if($portText -notmatch '^[0-9]{1,5}
+}finally{
+ # Only remove this fresh experiment folder, never the installed board or user data.
+ Remove-Item -LiteralPath $Root -Recurse -Force
+}
+ -or [int]$portText -lt 1 -or [int]$portText -gt 65535){throw 'invalid fixture port'}
+  $download=Join-Path $Root 'downloaded.mp4'
+  $null=Invoke-Hidden 'yt-dlp.exe' @('--ignore-config','--no-playlist','--no-cache-dir','--no-progress','--proxy','','--ffmpeg-location',$bin,'--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $bin 'deno.exe')),'-o',$download,'--',("http://127.0.0.1:"+$portText+"/test.mp4"))
+  if(!(Test-Path -LiteralPath $download -PathType Leaf) -or (Get-FileHash -LiteralPath $download).Hash -ne (Get-FileHash -LiteralPath $merged).Hash){throw 'yt-dlp downloaded bytes differ'}
+  Write-Host 'PASS yt-dlp local HTTP MP4 transfer and exact byte verification'
+ }finally{
+  if(!$fixtureProcess.HasExited){$fixtureProcess.Kill($true);$fixtureProcess.WaitForExit()}
+  $fixtureProcess.Dispose()
+ }
  Write-Host 'Engine smoke only; actual YouTube extraction and board integration not tested.'
 }finally{
  # Only remove this fresh experiment folder, never the installed board or user data.
