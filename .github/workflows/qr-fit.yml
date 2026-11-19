@@ -1,0 +1,21 @@
+name: QR square widget and integer fit checks
+on:
+  pull_request:
+    paths: ['runtime-src/system/dashboard.html','tools/qr-fit/**','.github/workflows/qr-fit.yml']
+  push:
+    branches: [main]
+    paths: ['runtime-src/system/dashboard.html','tools/qr-fit/**','.github/workflows/qr-fit.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: node --test tools/qr-fit/fit.test.cjs
+      - run: |
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix /tmp/tt-qr-fit --no-audit --no-fund --no-package-lock playwright@1.55.0
+          NODE_PATH=/tmp/tt-qr-fit/node_modules node tools/qr-fit/browser.cjs
