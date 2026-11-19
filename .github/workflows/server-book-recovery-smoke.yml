@@ -1,0 +1,44 @@
+name: Server lifecycle and book reader source smoke
+on:
+  pull_request:
+    paths:
+      - 'runtime-src/system/server.ps1'
+      - 'tools/multimedia/book-reader-host.cs'
+      - '.github/workflows/server-book-recovery-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  windows-source:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null; $errors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path runtime-src/system/server.ps1).Path,[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors | Format-List;throw 'Server parse failed'}
+          Write-Host 'PASS Windows PowerShell server syntax'
+          $root=Join-Path $env:RUNNER_TEMP ('tt-book-source-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $bundle=(Resolve-Path runtime-src/system/asset-book-reader-host.zip).Path
+          if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash -ne '64456efe24dbdf87ade9b6e6669bb37535a3c2f5fdb8633f05791851d406a80e'){throw 'Unexpected existing SDK bundle'}
+          Expand-Archive -LiteralPath $bundle -DestinationPath $root
+          $exe=Join-Path $root 'BookReader.exe'
+          $src=(Resolve-Path tools/multimedia/book-reader-host.cs).Path
+          $csc=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          & $csc /nologo /target:winexe /platform:x64 /codepage:65001 "/out:$exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll "/r:$root\Microsoft.Web.WebView2.Core.dll" "/r:$root\Microsoft.Web.WebView2.WinForms.dll" $src
+          if($LASTEXITCODE -ne 0){throw 'Native host compile failed'}
+          $request=@{url='';title='fixture';pages=5;start=3;saved=0}
+          $request | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $root 'request.json') -Encoding UTF8
+          $p=Start-Process -FilePath $exe -ArgumentList @('--self-test',('"'+$root+'"')) -PassThru -RedirectStandardOutput (Join-Path $root 'stdout.txt') -RedirectStandardError (Join-Path $root 'stderr.txt')
+          try{
+            if(!$p.WaitForExit(40000)){Stop-Process -Id $p.Id -Force;throw 'Fixture timeout'}
+            Get-Content -LiteralPath (Join-Path $root 'stdout.txt')
+            Get-Content -LiteralPath (Join-Path $root 'stderr.txt')
+            if($p.ExitCode -ne 0 -or !(Select-String -LiteralPath (Join-Path $root 'stdout.txt') -Pattern 'HOST IMMERSIVE FIXTURE PASS.*localized controls')){throw 'Native localized fixture failed'}
+          }finally{$p.Dispose()}
+          Write-Host 'PASS rebuilt native source; old signed runtime bundle unchanged'
