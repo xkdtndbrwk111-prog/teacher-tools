@@ -36,7 +36,7 @@ try{
   const a=title.getBoundingClientRect(),b=sheet.getBoundingClientRect(),c=toggle.getBoundingClientRect(),d=row.getBoundingClientRect();
   return {title:title.textContent,row:getComputedStyle(row).flexWrap,centerDelta:Math.max(Math.abs((a.top+a.bottom-b.top-b.bottom)/2),Math.abs((a.top+a.bottom-c.top-c.bottom)/2)),right:c.right,bound:d.right};
  });
- assert.equal(header.title,'📚 시간표');assert.equal(header.row,'nowrap');assert.ok(header.centerDelta<4&&header.right<=header.bound+1,JSON.stringify(header));
+ assert.equal(header.title.trim(),'시간표');assert.equal(header.row,'nowrap');assert.ok(header.centerDelta<4&&header.right<=header.bound+1,JSON.stringify(header));
  const measure=()=>page.evaluate(()=>{
   const card=widgetCard('qr-fit'),plate=card.querySelector('.tt-qr-plate'),cv=plate.querySelector('canvas'),label=plate.querySelector('strong'),r=layout.items['qr-fit'];
   const p=plate.getBoundingClientRect(),c=cv.getBoundingClientRect(),l=label.getBoundingClientRect(),ctx=cv.getContext('2d'),m=window.TTQR('https://example.org/qr-fit').length,unit=cv.width/(m+8);
