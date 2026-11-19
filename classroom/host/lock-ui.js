@@ -31,7 +31,7 @@
  }
  function setInert(on){for(const el of document.body.children)if(!el.classList.contains('tt-lock'))el.inert=on}
 
- // Lock screen. The keypad sits low so it can be reached on the classroom board.
+ // Lock screen: center the keypad and keep the opaque security cover during startup.
  const screen=document.createElement('div');screen.className='tt-lock';screen.hidden=true;screen.setAttribute('role','dialog');screen.setAttribute('aria-modal','true');screen.setAttribute('aria-labelledby','tt-lock-title');
  screen.innerHTML=`<div class="tt-lock-card">
   <h1 id="tt-lock-title">교실 매니저 잠금</h1>
@@ -52,7 +52,7 @@
  function lockNow(){
   if(!record)return;
   locked=true;document.activeElement?.blur?.();
-  setInert(true);screen.hidden=false;showPinForm();message.textContent='';pinInput.focus();
+  setInert(true);screen.hidden=false;showPinForm();message.textContent='';if(!document.documentElement.classList.contains('tt-manager-starting'))pinInput.focus();
  }
  function unlock(){
   locked=false;tries=0;screen.hidden=true;pinInput.value='';codeInput.value='';setInert(false);lastActive=Date.now();
@@ -173,6 +173,7 @@
    record=await store.read(KEY)||null;
    if(record)lockNow();
   },
+  finishStartup(){if(locked){setInert(true);pinInput.focus()}},
   // Called once the top bar and the student view exist.
   mount(){
    const controls=document.querySelector('.tt-class-controls');

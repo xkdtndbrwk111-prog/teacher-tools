@@ -19,6 +19,26 @@ const repo=path.resolve(__dirname,'../..'),port=18141,origin='http://127.0.0.1:'
   await p.evaluate(()=>window.__TT_MANAGER_THEME.setAutomatic(true));await p.waitForFunction(()=>window.__TT_MANAGER_THEME.get().theme==='green');
   response={version:1,theme:'custom',font:'bad; CSS',custom:custom.custom};await p.evaluate(()=>window.__TT_MANAGER_THEME.checkBoard());
   assert.equal(await p.evaluate(()=>window.__TT_MANAGER_THEME.get().theme),'green');assert.ok(reads>=3);
-  console.log('PASS local board theme contract, auto refresh, offline cache, opt-out, invalid payload');
+  // Set a real PIN, then deliberately delay a different board theme on reload.
+  await p.evaluate(()=>document.getElementById('tt-lock-now').click());
+  await p.fill('#tt-lock-new','4826');await p.fill('#tt-lock-new2','4826');await p.click('#tt-lock-save');
+  await p.locator('#tt-lock-code-box:not([hidden])').waitFor();await p.click('#tt-lock-cancel');
+  response={version:1,theme:'pink',font:''};
+  await p.unroute('http://127.0.0.1:17439/api/theme');
+  await p.route('http://127.0.0.1:17439/api/theme',async r=>{await new Promise(resolve=>setTimeout(resolve,1200));await r.fulfill({status:200,contentType:'application/json',headers:{'Access-Control-Allow-Origin':origin},body:JSON.stringify(response)})});
+  await p.addInitScript(()=>{
+   window.__lockPaints=[];let last='';
+   function frame(){const n=document.querySelector('.tt-lock-card'),cover=n?.parentElement;if(n&&cover&&!cover.hidden&&getComputedStyle(n).visibility==='visible'){const k=document.documentElement.dataset.cmTheme;if(k!==last){window.__lockPaints.push(k);last=k}}requestAnimationFrame(frame)}requestAnimationFrame(frame);
+  });
+  await p.reload();await p.locator('.tt-lock-card').waitFor({state:'visible'});
+  assert.equal(await p.locator('html').getAttribute('data-cm-theme'),'pink');
+  await p.waitForFunction(()=>window.__lockPaints.length>0);
+  assert.deepEqual(await p.evaluate(()=>window.__lockPaints),['pink']);
+  assert.equal(await p.locator('#teacherScreen').evaluate(el=>el.inert),true);
+  const pos=await p.locator('.tt-lock-card').evaluate(el=>{const r=el.getBoundingClientRect();return [r.x+r.width/2-innerWidth/2,r.y+r.height/2-innerHeight/2]});
+  assert.ok(pos.every(n=>Math.abs(n)<2),JSON.stringify(pos));
+  await p.fill('#tt-lock-pin','4826');await p.locator('.tt-lock-keys button[type=submit]').click();
+  await p.locator('.tt-lock').waitFor({state:'hidden'});
+  console.log('PASS local board theme contract, auto refresh, offline cache, opt-out, invalid payload, first lock paint and center');
  }finally{await browser?.close();server.kill()}
 })().catch(e=>{console.error(e);process.exitCode=1});

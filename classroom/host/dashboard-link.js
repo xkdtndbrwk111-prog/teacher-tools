@@ -45,7 +45,7 @@
  }
  const markLinked=()=>{try{localStorage.setItem(LINKED,'1')}catch{}};
  function sendToBoard(){
-  if(send.disabled){setSaveStatus('Windows 대시보드 배경화면에 연결되지 않았습니다.','warning');return}
+  if(send.disabled){setSaveStatus('호자보드에 연결되지 않았습니다.','warning');return}
   if(!classState.assignments.length){setSaveStatus('확정한 배치가 없어 칠판으로 보내지 못했습니다.','warning');return}
   viaInbox(async()=>{
    const roster=await rosterNow(),playback=buildPlaybackInput();
