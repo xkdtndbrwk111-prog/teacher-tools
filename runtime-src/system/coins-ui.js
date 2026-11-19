@@ -278,6 +278,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  const app=document.createElement('dialog');app.id='routineApp';app.setAttribute('aria-label','루틴');
  const style=document.createElement('style');style.textContent=`
  #routineApp:modal{width:96vw;height:91dvh;max-width:none;max-height:none;margin:auto;padding:0;border:1px solid var(--border);border-radius:16px;background:var(--tt-modal-panel,var(--panel));color:var(--text-primary);overflow:hidden}
+ #routineApp.r-settings:modal{width:48vw;min-width:min(560px,94vw)}
  #routineApp::backdrop{background:#07182099}
  #routineApp *{box-sizing:border-box}
  #routineApp [hidden]{display:none!important}
@@ -303,7 +304,8 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  #routineApp tr.r-active>td button{height:72px}
  #routineApp .r-banner{font-weight:900;font-size:clamp(20px,1.7vw,29px);padding:9px 12px;background:var(--today);border-radius:10px}
  #routineApp .r-editor{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px;border-bottom:1px solid var(--border)}
- #routineApp .r-editor input[type=text]{min-width:130px;flex:1}
+ #routineApp .r-editor input[type=text]{min-width:130px;flex:1 1 100%}
+ #routineApp .r-editor input[type=text]::placeholder{color:#a1a1aa;opacity:1}
  #routineApp .r-editor label{display:flex;align-items:center;gap:2px}
  #routineApp .r-editor input[type=checkbox]{min-height:24px}
  #routineApp .r-note{font-size:16px;min-height:24px}
@@ -357,7 +359,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  }
  function open(){if(!app.open){editing=false;auth=null;view='today';$('routineDate').value=today();lastSignature='';app.showModal()}void tick();if(snap&&!editing)render()}
  launch.onclick=open;
- $('routineClose').onclick=()=>app.close();app.addEventListener('close',()=>{auth=null;editing=false;view='today';lastSignature=''});
+ $('routineClose').onclick=()=>app.close();app.addEventListener('close',()=>{app.classList.remove('r-settings');auth=null;editing=false;view='today';lastSignature=''});
  $('routineToday').onclick=()=>{editing=false;view='today';$('routineDate').value=today();render()};
  $('routineDate').onchange=()=>{editing=false;view=$('routineDate').value===today()?'today':'history';render()};
  function runWrite(fn){return serial(async()=>{try{await refresh();const out=fn();await append(out);lastSignature='';if(app.open&&!editing)render();return true;}catch(e){note(e.message||'저장 실패 · 다시 시도해 주세요.');return false;}})}
@@ -369,6 +371,7 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
  }
  function render(){
   if(editing)return;
+  app.classList.remove('r-settings');
   const content=$('routineContent'),banner=$('routineBanner'),date=$('routineDate').value||today(),d=getDay(date),t=now(),a=date===today()?active():null;
   $('routineDate').max=today();$('routineSettings').textContent=teacherValid()?'설정 / 수정':'교사 설정';
   content.replaceChildren();note('');
@@ -398,13 +401,15 @@ body[data-theme=black] #coinGrid .coin-student.minus b{color:var(--text-alert)}
   editing=true;showEditor();
  };
  function showEditor(){
+  app.classList.add('r-settings');
   const host=$('routineContent');host.replaceChildren();$('routineBanner').textContent='루틴 설정';note('오늘의 루틴이 이미 시작되었다면 변경은 다음 날부터 적용됩니다.');
-  const rows=el('div'),weekday=['일','월','화','수','목','금','토'];
+  const rows=el('div'),weekday=['월','화','수','목','금'];
   function add(task={id:crypto.randomUUID(),name:'',start:510,end:520,days:[1,2,3,4,5]}){
    const row=el('div',undefined,'r-editor');row.dataset.id=task.id;
    const input=(type,value,label)=>{const i=el('input');i.type=type;i.value=value;i.setAttribute('aria-label',label);return i;};
-   row.append(input('text',task.name,'과업 이름'),input('time',clock(task.start),'시작 시각'),input('time',clock(task.end),'종료 시각'));
-   weekday.forEach((day,i)=>{const l=el('label',day),cb=input('checkbox','',day);cb.dataset.day=i;cb.checked=task.days.includes(i);l.prepend(cb);row.append(l)});
+   const nameInput=input('text',task.name,'과업 이름');nameInput.placeholder='교과서 준비';
+   row.append(nameInput,input('time',clock(task.start),'시작 시각'),input('time',clock(task.end),'종료 시각'));
+   weekday.forEach((day,index)=>{const i=index+1;const l=el('label',day),cb=input('checkbox','',day);cb.dataset.day=i;cb.checked=task.days.includes(i);l.prepend(cb);row.append(l)});
    row.append(btn('삭제',()=>row.remove()));rows.append(row);
   }
   for(const task of C.routineConfig(snap.events,snap.roster.cls))add(task);
