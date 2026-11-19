@@ -34,8 +34,8 @@ body.tt-manager-special #teacherScreen>.studio-topbar .top-actions,body.tt-life-
 .tt-ui2-seat-group{display:inline-flex;align-items:center;min-width:0}
 #teacherScreen .tt-ui2-seat-group>[hidden],#teacherScreen .tt-ui2-seat-group .tt-seating-submodes[hidden]{display:none!important}
 #teacherScreen .tt-ui2-seat-group .tt-seating-submodes{display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0;margin:0;border:0;background:transparent!important;min-height:0;flex:none}
-.tt-ui2-seat-group.is-split .tt-seating-submodes{animation:tt-ui2-split-in .16s ease-out}
-@keyframes tt-ui2-split-in{from{opacity:.35;transform:scaleX(.92)}to{opacity:1;transform:scaleX(1)}}
+.tt-ui2-seat-group.is-split .tt-seating-submodes{transform-origin:right center;animation:tt-ui2-split-in .16s ease-out}
+@keyframes tt-ui2-split-in{from{opacity:.35;transform:scaleX(.5)}to{opacity:1;transform:scaleX(1)}}
 @media(prefers-reduced-motion:reduce){.tt-ui2-seat-group.is-split .tt-seating-submodes{animation:none}}
 #tt-hud-work-toggle{display:none;white-space:nowrap}
 .tt-ui2-board-content .tt-student-placement-settings{margin-top:8px}

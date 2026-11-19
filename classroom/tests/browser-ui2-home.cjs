@@ -43,13 +43,14 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   const positions=()=>p.evaluate(()=>{
    const rect=e=>e.getBoundingClientRect(),nav=rect(document.querySelector('.prototype-mode-switch')),header=rect(document.querySelector('.studio-topbar'));
    const ids=['tt-grade-tab','tt-life-tab','tt-board-tab'];
-   return {center:nav.left+nav.width/2-(header.left+header.width/2),left:nav.left,width:nav.width,tabs:ids.map(id=>{const r=rect(document.getElementById(id));return [r.left,r.width,r.top]}),seat:rect(document.querySelector('.tt-ui2-seat-group')).left};
+   return {center:nav.left+nav.width/2-(header.left+header.width/2),left:nav.left,width:nav.width,tabs:ids.map(id=>{const r=rect(document.getElementById(id));return [r.left,r.width,r.top]}),seat:rect(document.querySelector('.tt-ui2-seat-group')).left,seatRight:rect(document.querySelector('.tt-ui2-seat-group')).right,seatButton:(()=>{const e=document.getElementById('modeClassroom'),r=rect(e);return e.hidden?null:[r.left,r.right,r.width]})(),split:(()=>{const sub=document.querySelector('.tt-ui2-seat-group>.tt-seating-submodes');return sub.hidden?null:[rect(sub).left,rect(sub).right]})()};
   });
   const same=(a,b,w)=>{assert.ok(Math.abs(a.center)<1.5&&Math.abs(b.center)<1.5,'center '+w);for(const key of ['left','width','seat'])assert.ok(Math.abs(a[key]-b[key])<1.5,key+' '+w);for(let i=0;i<a.tabs.length;i++)for(let j=0;j<3;j++)assert.ok(Math.abs(a.tabs[i][j]-b.tabs[i][j])<1.5,'tab drift '+w+' '+i+' '+j)};
   for(const width of [390,768,1024,1280,1400,1600,1920]){
    await p.setViewportSize({width,height:820});
    await p.locator('#tt-board-tab').click();const board=await positions();
-   await p.locator('#modeClassroom').click();await p.locator('#tt-seat-subtab').waitFor();same(board,await positions(),width);
+   assert.ok(Math.abs(board.seatButton[2]-board.tabs[0][1])<1.5,'same button width '+width);assert.ok(Math.abs(board.seatButton[1]-board.seatRight)<1.5,'right aligned collapsed '+width);assert.ok(board.seatButton[0]-board.seat>=board.tabs[0][1]-1,'reserved left slot '+width);
+   await p.locator('#modeClassroom').click();await p.locator('#tt-seat-subtab').waitFor();await p.waitForFunction(()=>!document.querySelector('.tt-ui2-seat-group>.tt-seating-submodes').getAnimations().some(a=>a.playState==='running'));const expanded=await positions();same(board,expanded,width);assert.ok(Math.abs(expanded.split[0]-board.seat)<1.5&&Math.abs(expanded.split[1]-board.seatRight)<1.5,'left expansion '+width);
    await p.locator('#modePE').click();same(board,await positions(),width);
    await p.locator('#tt-board-tab').click();same(board,await positions(),width);
   }

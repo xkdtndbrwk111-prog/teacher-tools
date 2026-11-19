@@ -171,7 +171,7 @@ html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-
 
 
 /* One fixed header row: equal outer tracks anchor the navigation to the viewport center.
-   The seating slot keeps the same width before and after unfolding; other tabs never move. */
+   The seating slot reserves an empty left cell until unfolded; other tabs never move. */
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{
  box-sizing:border-box!important;grid-template-columns:minmax(0,1fr) max-content minmax(0,1fr)!important;
  --tt-hud-tab-width:94px;--tt-hud-seat-width:191px;
@@ -182,14 +182,14 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:3!important;grid-row:1!important;justify-self:end;gap:5px}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{
  grid-column:2!important;grid-row:1!important;justify-self:center!important;align-self:center!important;
- box-sizing:border-box!important;min-height:0!important;padding:3px!important;margin:0!important;gap:3px;flex-wrap:nowrap!important
+ box-sizing:border-box!important;height:46px!important;min-height:46px!important;max-height:46px!important;padding:3px!important;margin:0!important;gap:3px;align-items:center!important;flex-wrap:nowrap!important
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{
- height:38px!important;padding:0 8px!important;font-size:13px!important;min-width:0!important;border:1px solid var(--cm-border)!important
+ box-sizing:border-box!important;height:38px!important;min-height:38px!important;max-height:38px!important;align-self:center!important;padding:0 8px!important;font-size:13px!important;min-width:0!important;border:1px solid var(--cm-border)!important
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch .tt-seating-submodes button{padding:0 7px!important}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch>.tt-ui2-seat-group{box-sizing:border-box;width:var(--tt-hud-seat-width);flex:0 0 var(--tt-hud-seat-width)}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch>.tt-ui2-seat-group>#modeClassroom{width:100%!important;flex:1 1 100%}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch>.tt-ui2-seat-group{box-sizing:border-box;width:var(--tt-hud-seat-width);flex:0 0 var(--tt-hud-seat-width);height:38px;justify-content:flex-end;align-items:center}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch>.tt-ui2-seat-group>#modeClassroom{box-sizing:border-box;width:var(--tt-hud-tab-width)!important;flex:0 0 var(--tt-hud-tab-width)}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch .tt-ui2-seat-group>.tt-seating-submodes{width:100%;flex:1 1 100%;min-width:0}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch .tt-ui2-seat-group>.tt-seating-submodes>button{width:var(--tt-hud-tab-width)!important;flex:1 1 0;min-width:0!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch>:is(#tt-grade-tab,#tt-life-tab,#tt-board-tab){width:var(--tt-hud-tab-width)!important;flex:0 0 var(--tt-hud-tab-width);min-width:0!important}
