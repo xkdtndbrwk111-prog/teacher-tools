@@ -17,6 +17,7 @@ try{
  await page.route('**/*',r=>r.request().url().startsWith('http://127.0.0.1:17439/')?r.continue():r.abort());
  await page.addInitScript(()=>{
   if(localStorage.getItem('class-qr-widgets'))return;
+  localStorage.setItem('class-grid-density','2');
   localStorage.setItem('class-grid-model','square48-v1');
   localStorage.setItem('class-qr-widgets',JSON.stringify([{id:'qr-fit',title:'패들렛',url:'https://example.org/qr-fit'}]));
   localStorage.setItem('class-layout',JSON.stringify({items:{'qr-fit':{x:0,y:0,w:22,h:18,off:false,z:999}}}));
@@ -24,6 +25,18 @@ try{
  await page.goto('http://127.0.0.1:17439/',{waitUntil:'domcontentloaded'});
  const plate=page.locator('[data-widget="qr-fit"] .tt-qr-plate');
  await plate.waitFor({state:'visible'});
+ // The 300px-ish timetable header must fit the shortened title, sheet link and alert master on one line.
+ await page.evaluate(()=>{
+  const card=widgetCard('week');layout.items.week.w=9;layout.items.week.h=20;layoutApply();window.weekViewApply?.();
+  const links=card.querySelector('.tt-week-links');links.hidden=false;document.getElementById('ttWeekSheet').hidden=false;
+ });
+ await page.waitForFunction(()=>document.getElementById('weekTitle').textContent.includes('시간표'));
+ const header=await page.evaluate(()=>{
+  const title=document.getElementById('weekTitle'),sheet=document.getElementById('ttWeekSheet'),toggle=document.querySelector('.tt-week-alert-switch'),row=title.parentElement;
+  const a=title.getBoundingClientRect(),b=sheet.getBoundingClientRect(),c=toggle.getBoundingClientRect(),d=row.getBoundingClientRect();
+  return {title:title.textContent,row:getComputedStyle(row).flexWrap,centerDelta:Math.max(Math.abs((a.top+a.bottom-b.top-b.bottom)/2),Math.abs((a.top+a.bottom-c.top-c.bottom)/2)),right:c.right,bound:d.right};
+ });
+ assert.equal(header.title,'📚 시간표');assert.equal(header.row,'nowrap');assert.ok(header.centerDelta<4&&header.right<=header.bound+1,JSON.stringify(header));
  const measure=()=>page.evaluate(()=>{
   const card=widgetCard('qr-fit'),plate=card.querySelector('.tt-qr-plate'),cv=plate.querySelector('canvas'),label=plate.querySelector('strong'),r=layout.items['qr-fit'];
   const p=plate.getBoundingClientRect(),c=cv.getBoundingClientRect(),l=label.getBoundingClientRect(),ctx=cv.getContext('2d'),m=window.TTQR('https://example.org/qr-fit').length,unit=cv.width/(m+8);

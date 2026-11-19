@@ -1601,12 +1601,12 @@ function weekViewApply(){
  const compact=layout.items.week.h<9,forced=compact||layout.items.week.w<ttSquareMin([4*GRID_D,1])[0],one=forced||layout.weekView==='today';
  card.classList.toggle('tt-week-compact',compact);box.classList.toggle('tt-week-compact',compact);
  const setTitle=t=>{const el=$('#weekTitle');if(el.dataset.ttFitTitle!==t){el.dataset.ttFitTitle=t;el.textContent=t}};
- if(!table)setTitle(one?'📚 오늘의 시간표':'📚 이번 주 주간학습');
+ if(!table)setTitle(one?'📚 시간표':'📚 이번 주 주간학습');
  const toggle=$('#weekViewToggle');toggle.hidden=forced;toggle.textContent=one?'이번 주 보기':'오늘만 보기';
  box.classList.toggle('week-one',one);
  if(!table)return;
  const heads=[...table.querySelectorAll('thead th')];
- let col=heads.findIndex(th=>th.classList.contains('today'));if(col<1){const i=Array.from({length:5},(_,i)=>i).find(i=>ttWeekEditable(lastWeek,i));col=i===undefined?1:i+1;}setTitle(one?(heads[col]?.classList.contains('today')?'📚 오늘의 시간표':'📚 다가오는 시간표'):'📚 이번 주 주간학습');
+ let col=heads.findIndex(th=>th.classList.contains('today'));if(col<1){const i=Array.from({length:5},(_,i)=>i).find(i=>ttWeekEditable(lastWeek,i));col=i===undefined?1:i+1;}setTitle(one?(heads[col]?.classList.contains('today')?'📚 시간표':'📚 시간표'):'📚 이번 주 주간학습');
  table.querySelectorAll('tr').forEach(tr=>{
   const cells=[...tr.children];
   if(tr.classList.contains('lunch-row')){cells.forEach((cell,i)=>{cell.hidden=one&&i!==0&&i!==col});return}
@@ -6322,7 +6322,7 @@ window.HOUSE_ART={"W":320,"H":180,"floor":156,"pal":{"O":"#5a4033","H":"#d4a877"
    <div class="tt-glass-demo-row"><div class="tt-glass-controls"><div class="scene-field"><label for="sceneGlassOpacity">위젯 불투명도</label><input type="range" id="sceneGlassOpacity" min="45" max="100" step="1"><output id="sceneGlassOpacityValue" for="sceneGlassOpacity"></output></div>
    <div class="scene-field"><label for="sceneModalOpacity">설정창·모달 불투명도</label><input type="range" id="sceneModalOpacity" min="45" max="100" step="1"><output id="sceneModalOpacityValue" for="sceneModalOpacity"></output></div>
    <div class="scene-field"><label for="sceneGlassBlur">배경 블러</label><input type="range" id="sceneGlassBlur" min="0" max="28" step="1"><output id="sceneGlassBlurValue" for="sceneGlassBlur"></output><button type="button" id="sceneGlassReset">기본값 복원</button></div></div>
-   <figure class="tt-glass-demo" aria-label="글라스 효과 미리보기"><figcaption>위젯 실시간 미리보기 · 예시 배경</figcaption><div class="tt-glass-demo-bg"><div class="tt-glass-demo-card"><b>오늘의 시간표</b><small>11/16 · 월요일</small><div>1교시 · 국어</div><div>2교시 · 수학</div></div></div></figure></div>
+   <figure class="tt-glass-demo" aria-label="글라스 효과 미리보기"><figcaption>위젯 실시간 미리보기 · 예시 배경</figcaption><div class="tt-glass-demo-bg"><div class="tt-glass-demo-card"><b>시간표</b><small>11/16 · 월요일</small><div>1교시 · 국어</div><div>2교시 · 수학</div></div></div></figure></div>
    <p class="scene-tip">100%는 불투명, 45%는 배경이 많이 비칩니다. 칠판형 알림장·학생 뽑기 등 가독성 보호 화면은 기존 스타일을 유지합니다.</p>
    <div class="scene-field"><label for="sceneParticleScope">계절·날씨 파티클 표시 범위</label><select id="sceneParticleScope"><option value="photo">사진첩 위에만 (기본)</option><option value="all">전체 위젯 위로</option></select></div>
    <p class="scene-tip">평소에는 계절 효과를 표시하고, 현재 날씨가 비 또는 뇌우이면 빗방울·번개 효과가 대신 표시됩니다. 전체 위젯 위로 선택하면 같은 파티클이 화면 앞쪽을 지나갑니다.</p>
@@ -10365,8 +10365,8 @@ new MutationObserver(show).observe(dlg,{attributes:true,attributeFilter:['open']
 .card .schedule .period-time{font-weight:500}
 .card .schedule tr:has(td.current) .period-time{font-weight:800;color:var(--text-primary)}
 </style><style id="tt-week-links-style">
-.card[data-widget="week"]>.row{flex-wrap:wrap;gap:5px}
-#weekTitle{flex:1 1 auto;min-width:0;white-space:normal;overflow:visible;text-overflow:clip;word-break:keep-all;line-height:1.15;margin:0}
+.card[data-widget="week"]>.row{flex-wrap:nowrap;gap:4px;min-width:0}
+#weekTitle{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:keep-all;line-height:1.15;margin:0}
 #weekName[hidden]{display:none!important}
 .tt-week-links{display:flex;flex:0 0 auto;gap:4px;align-items:center;margin-left:auto}
 .tt-week-links a{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;font-size:clamp(11px,1vw,15px);padding:5px 8px;min-height:32px;line-height:1.2;box-sizing:border-box;flex:none;border-radius:8px;background:var(--control-bg,var(--panel));color:var(--text-on-fill);text-decoration:none;border:1px solid var(--border);cursor:pointer}
