@@ -11,8 +11,12 @@ if(Test-Path -LiteralPath $Root){throw 'Experiment directory must be fresh'}
 [void](New-Item -ItemType Directory -Path $Root)
 $bin=Join-Path $Root 'bin';[void](New-Item -ItemType Directory -Path $bin)
 $headers=@{'User-Agent'='TeacherTools-CI-EngineProbe';'Accept'='application/vnd.github+json'}
+if($env:TT_ENGINE_API_TOKEN){
+ $headers['Authorization']='Bearer '+$env:TT_ENGINE_API_TOKEN
+ Remove-Item Env:TT_ENGINE_API_TOKEN
+}
 function Get-Asset([string]$Repo,[string]$Tag,[string]$Name,[long]$Limit){
- $meta=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -TimeoutSec 60
+ $meta=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -TimeoutSec 60 -MaximumRedirection 0
  if($meta.tag_name -cne $Tag -or $meta.draft -or $meta.prerelease){throw 'unexpected release'}
  $assets=@($meta.assets|Where-Object {$_.name -ceq $Name})
  if($assets.Count -ne 1){throw "asset not unique: $Name"}
@@ -58,8 +62,8 @@ try{
  # A pinned Deno release, not a mutable latest alias.
  $d=Get-Asset 'denoland/deno' 'v2.9.4' 'deno-x86_64-pc-windows-msvc.zip' 150MB
  Copy-ZipExe $d 'deno.exe'
- # Full static GPL build from yt-dlp's recommended upstream FFmpeg builds.
- $f=Get-Asset 'yt-dlp/FFmpeg-Builds' 'autobuild-2026-11-12-21-35' 'ffmpeg-N-128867-g21ae927dc6-win64-gpl.zip' 400MB
+ # Full static GPL release-branch build from the FFmpeg-Builds project.
+ $f=Get-Asset 'FFmpeg-Builds/FFmpeg-Builds' 'autobuild-2026-11-12-15-40' 'ffmpeg-n9.0.2-57-gd838f9f9ae-win64-gpl-9.0.zip' 400MB
  Copy-ZipExe $f 'ffmpeg.exe';Copy-ZipExe $f 'ffprobe.exe'
  $v=Invoke-Hidden 'yt-dlp.exe' @('--ignore-config','--version')
  if($v -ne '2026.10.26'){throw "unexpected yt-dlp version $v"}
