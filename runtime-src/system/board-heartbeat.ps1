@@ -7,15 +7,22 @@ using System;
 using System.Runtime.InteropServices;
 public static class TTBeatWindow {
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 }
 '@
 $file = Join-Path $TTInstallDir 'board-mode.json'
 if (-not (Test-Path -LiteralPath $file)) { exit 0 }
 $info = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8) | ConvertFrom-Json
 $window = [IntPtr][long]$info.window
-while ([TTBeatWindow]::IsWindow($window)) {
+function Test-TTHeartbeatOwner {
+  [uint32]$actual=0
+  [void][TTBeatWindow]::GetWindowThreadProcessId($window,[ref]$actual)
+  return ([TTBeatWindow]::IsWindow($window) -and $actual -eq [uint32]$info.pid -and $info.release -ceq $TTRelease)
+}
+while (Test-TTHeartbeatOwner) {
   $value = ConvertTo-Json -Compress @{mode = [string]$info.mode; window = $window.ToInt64(); pid = [int]$info.pid; release = $TTRelease}
   [IO.File]::WriteAllText($file, $value, (New-Object Text.UTF8Encoding($false)))
+  Invoke-TTServerRecovery { Test-TTHeartbeatOwner }
   Start-Sleep -Seconds 5
 }
 $now = $null
