@@ -10727,13 +10727,29 @@ function cleanup(){epoch++;if(bookStop){const stop=bookStop;bookStop=null;stop()
 function reset(v,title,bar=false){cleanup();view=v;dialog.classList.toggle('mm-book-active',v==='book');heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');dialog.classList.toggle('mm-books',v==='books');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
 function wrapper(cls){const e=document.createElement('div');e.className=cls;stage.append(e);return e}
 const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'▣',run:()=>showCanva('A'),customize:settings}]);
-function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];dialog.style.setProperty('--mm-launch-width',Math.min(720,(mediaTools.length+1)*340+20)+'px');
+function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];dialog.style.setProperty('--mm-launch-width',Math.min(1060,(mediaTools.length+2)*340+20)+'px');
  function select(id,focus=false){for(const card of cards){const on=card.id===id;card.el.classList.toggle('is-flipped',on);card.front.inert=on;card.front.setAttribute('aria-hidden',String(on));card.back.inert=!on;card.back.setAttribute('aria-hidden',String(!on));if(focus&&on)card.run.focus({preventScroll:true})}}
  for(const tool of mediaTools){const el=document.createElement('div');el.className='mm-card';el.dataset.mediaTool=tool.id;const inner=document.createElement('div');inner.className='mm-card-inner';const front=button(tool.name,()=>select(tool.id,true),true);front.classList.add('mm-face','mm-tile');front.setAttribute('aria-label',tool.name);const icon=document.createElement('span');icon.textContent=tool.icon;icon.setAttribute('aria-hidden','true');front.prepend(icon);const back=document.createElement('div');back.className='mm-face mm-back';const head=document.createElement('div');head.className='mm-back-head';const name=document.createElement('span');name.className='mm-back-name';name.textContent=tool.name;const turn=button('↶',()=>{select('');front.focus({preventScroll:true})});turn.setAttribute('aria-label',tool.name+' 카드 되돌리기');const buttons=document.createElement('div');buttons.className='mm-back-actions';const run=button('실행하기',tool.run,true),custom=button('개인화',tool.customize);head.append(name,turn);buttons.append(run,custom);back.append(head,buttons);inner.append(front,back);el.append(inner);w.append(el);cards.push({id:tool.id,el,front,back,run})}
  const book=button('📖 책 읽어주기',books,true);book.classList.add('mm-book-tile');book.dataset.mediaTool='books';w.append(book);
+  const downloader=button('▶ 유튜브 다운로더',showDownloader,true);downloader.classList.add('mm-book-tile');downloader.dataset.mediaTool='youtube-downloader';w.append(downloader);
  select(selected);
 }
 
+ // Downloader candidate: separate from meeting and book state. No executable
+ // invocation or file download until the verified Windows worker is integrated.
+ function showDownloader(){
+  dirty=false;reset('youtube-downloader','유튜브 다운로더');
+  const current=epoch,list=wrapper('mm-book-list'),form=document.createElement('form');
+  form.className='mm-book-form';
+  const note=document.createElement('p');note.textContent='개발 후보 · 영상 엔진 설치 및 실제 다운로드는 아직 연결되지 않았습니다.';
+  const label=document.createElement('label');label.textContent='유튜브 영상 주소';
+  const url=document.createElement('input');url.type='url';url.placeholder='https://www.youtube.com/watch?v=…';url.required=true;url.maxLength=2048;label.append(url);
+  const check=button('주소 확인',()=>{},true);check.type='submit';
+  form.append(label,check);
+  form.onsubmit=e=>{e.preventDefault();if(epoch!==current)return;const id=youtube(url.value);status.textContent=id?'단일 영상 주소 확인 완료 · 다운로드 기능 연결 전입니다.':'올바른 유튜브 단일 영상 주소를 입력하세요.'};
+  list.append(note,form,button('← 멀티미디어',()=>home()));
+ }
+ 
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
  const BOOKS_KEY='tt-books-v1:catalog',MARK_PREFIX='tt-books-v1:mark:';
  const firstBook=Object.freeze({id:'DAHbOpoUrrg',title:'아몬드 · 시험판',url:'https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed',pages:5});
