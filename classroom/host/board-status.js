@@ -1,5 +1,5 @@
 // Read-only connection check for the Windows Teacher Tools dashboard, V1.33+.
-// Disabled by default: only the background/wallpaper launcher enables board actions.
+// Disabled by default until the local service confirms a live, compatible board window.
 (()=>{
  'use strict';
  const send=document.getElementById('tt-send-board');
@@ -12,8 +12,8 @@
  const menu=document.getElementById('tt-hud-more-menu');
  if(menu)menu.append(note);
  let connected=false,pending=false,lastResult='',latest=null,verifiedAt=0;
- const connectedTitle='Windows 대시보드 배경화면과 연결됨';
- const disconnectedTitle='Windows 대시보드 V1.33 이상을 배경화면 모드로 실행해야 사용할 수 있습니다.';
+ const connectedTitle='호자보드와 연결됨';
+ const disconnectedTitle='호자보드를 실행하고 연결 상태를 확인해야 사용할 수 있습니다.';
  const status=()=>connected;
  function show(ok,reason=''){
   connected=Boolean(ok);
@@ -21,10 +21,10 @@
   const title=connected?connectedTitle:disconnectedTitle;
   send.title=title;
   send.setAttribute('aria-description',title);
-  const message=connected?'🟢 칠판 연결됨 · 전송 사용 가능':
+  const message=connected?(latest?.mode==='window'?'🟢 칠판 연결됨 · 일반 창 모드':latest?.mode==='wallpaper'?'🟢 칠판 연결됨 · 배경화면 모드':'🟢 칠판 연결됨 · 전송 사용 가능'):
    reason==='old'?'⚠ 대시보드를 V1.33 이상으로 업데이트해 주세요.':
-   reason==='window'?'⚪ 대시보드 실행 중 · 배경화면 모드가 아닙니다.':
-   '⚪ 칠판 연결 안 됨 · 배경화면 실행 필요';
+   reason==='window'?'⚪ 로컬 서비스 실행 중 · 호자보드 창 연결 확인 필요':
+   '⚪ 칠판 연결 안 됨 · 호자보드 실행 필요';
   if(lastResult!==message){note.textContent=message;lastResult=message}
   note.setAttribute('data-roster-ready',String(Boolean(connected&&latest?.rosterProtocol===1)));
  }

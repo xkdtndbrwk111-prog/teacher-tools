@@ -10,18 +10,18 @@
   <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css">
   <link rel="stylesheet" href="../classroom/host/life-mount.css?v=20261116-life-guided">
-  <link rel="stylesheet" href="../classroom/host/class-ui.css">
+  <link rel="stylesheet" href="../classroom/host/class-ui.css?v=ui2-lock-center">
   <link rel="stylesheet" href="../classroom/host/hud-shell.css">
   <link rel="stylesheet" href="../classroom/host/settings-window.css?v=ui2-g">
   <link rel="stylesheet" href="../classroom/host/student-window.css">
   <link rel="stylesheet" href="../classroom/host/manager-home.css?v=ui2-l">
   <link rel="stylesheet" href="../shared/hoja-manager-theme.css?v=ui2-l">
-  <style>html.tt-manager-starting #teacherScreen{visibility:hidden!important}#tt-manager-loading{display:none}html.tt-manager-starting #tt-manager-loading{display:grid;place-items:center;min-height:100dvh;color:#e5edf8;font:600 16px system-ui}</style>
+  <style>html.tt-manager-starting #teacherScreen{visibility:hidden!important}#tt-manager-loading{display:none}html.tt-manager-starting #tt-manager-loading{display:grid;place-items:center;min-height:100dvh;color:var(--cm-body-ink,#e5edf8);font:600 16px system-ui}html.tt-manager-starting .tt-lock:not([hidden]){background:#222831!important}html.tt-manager-starting .tt-lock:not([hidden])::before{content:'교실매니저 준비 중…';position:absolute;inset:0;display:grid;place-items:center;color:#f4f4f4;font:600 16px system-ui}html.tt-manager-starting .tt-lock-card{visibility:hidden}</style>
   <script>(()=>{const view=new URLSearchParams(location.search).get('view');if(view==='student')document.documentElement.classList.add('tt-student-only');if(view!=='student'&&view!=='board')document.documentElement.classList.add('tt-manager-starting')})();</script>
   <script src="../shared/hoja-theme.js?v=ui2-l"></script>
-  <script src="../classroom/host/manager-theme.js?v=ui2-d"></script>
+  <script src="../classroom/host/manager-theme.js?v=ui2-lock-center"></script>
   <script src="../classroom/host/class-store.js"></script>
-  <script src="../classroom/host/class-bootstrap.js?v=ui2-m"></script>
+  <script src="../classroom/host/class-bootstrap.js?v=ui2-lock-center"></script>
 </head>
 <body>
   <div id="tt-manager-loading" role="status">교실매니저 준비 중…</div>

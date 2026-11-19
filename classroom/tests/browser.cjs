@@ -603,8 +603,8 @@ async function setRoster(p,names){
    const tap=async digits=>{for(const d of digits)await p13.click(`.tt-lock-keys [data-key="${d}"]`);await p13.click('.tt-lock-keys button[type=submit]')};
    await settingsAction(p13,'tt-lock-now','security');await locked().waitFor();
    assert.equal(await p13.evaluate(()=>document.getElementById('teacherScreen').inert),true);
-   const box=await p13.locator('.tt-lock-keys').boundingBox();
-   assert.ok(box.y>=1000*.34,'키패드는 화면 위쪽 34% 아래에 있다');
+   const center=await p13.locator('.tt-lock-card').evaluate(el=>{const r=el.getBoundingClientRect();return {x:r.x+r.width/2-innerWidth/2,y:r.y+r.height/2-innerHeight/2}});
+   assert.ok(Math.abs(center.x)<2&&Math.abs(center.y)<2,'잠금 카드 화면 중앙');
    await tap('1111');await p13.locator('#tt-lock-message',{hasText:'맞지 않습니다'}).waitFor({timeout:8000});
    assert.equal(await locked().count(),1);
    await tap('4826');await locked().waitFor({state:'detached',timeout:8000}).catch(()=>{});
