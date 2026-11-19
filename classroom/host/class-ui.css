@@ -121,9 +121,9 @@ body.tt-grade-active #teacherScreen .student-strip .student-cards{display:flex}
  .studio-topbar{height:auto;flex-wrap:wrap;justify-content:flex-start;row-gap:6px}
  .studio-topbar .top-actions{margin-left:auto}
 }
-.tt-lock{position:fixed;inset:0;z-index:2000;display:grid;place-items:end center;padding:3vh 16px;background:#13233d}
+.tt-lock{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:16px;background:#13233d;overflow:auto}
 .tt-lock[hidden],.tt-lock-settings[hidden]{display:none}
-.tt-lock-card{width:min(380px,100%);padding:20px;border-radius:18px;background:#fff;color:#172033;text-align:center}
+.tt-lock-card{box-sizing:border-box;width:min(380px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:20px;border-radius:18px;background:#fff;color:#172033;text-align:center}
 .tt-lock-card h1{margin:0 0 12px;font-size:21px}
 .tt-lock-card form[hidden]{display:none}
 #tt-lock-pin,#tt-lock-code{box-sizing:border-box;width:100%;min-height:50px;margin-bottom:10px;padding:0 12px;border:2px solid #cbd5e1;border-radius:10px;font-size:24px;text-align:center}
@@ -135,7 +135,7 @@ button.tt-lock-ok{border:0;border-radius:12px;background:#2563eb;color:#fff;font
 #tt-lock-message{min-height:20px;margin:10px 0 2px;color:#b91c1c;font-size:13px;font-weight:800}
 .tt-lock-link{border:0;background:none;color:#475569;font-size:13px;text-decoration:underline;padding:8px}
 .tt-lock-settings{position:fixed;inset:0;z-index:1900;display:grid;place-items:center;padding:20px;background:rgba(11,20,36,.7)}
-.tt-lock-settings-card{box-sizing:border-box;display:grid;gap:10px;width:min(440px,100%);max-height:90dvh;overflow:auto;padding:22px;border-radius:16px;background:#fff;color:#172033}
+.tt-lock-settings-card{box-sizing:border-box;display:grid;gap:10px;width:min(440px,100%);max-height:min(90dvh,calc(100dvh - 40px));overflow:auto;padding:22px;border-radius:16px;background:#fff;color:#172033}
 .tt-lock-settings-card h2{margin:0;font-size:20px}
 .tt-lock-settings-card p{margin:0;color:#475569;font-size:13px;line-height:1.5}
 .tt-lock-settings-card label{display:grid;gap:4px;font-size:13px;font-weight:800}

@@ -502,7 +502,8 @@ async function setRoster(p,names){
     await p8.setViewportSize({width,height:800});await wait(120);
     await p8.evaluate(()=>{document.getElementById('tt-cloud-chip').textContent='☁ 자료 차이 확인'});
     const r=await p8.evaluate(()=>{
-     const ids=['tt-manager-home-button','generateAssignment','confirmAssignment','openPlayback','tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','tt-seat-subtab','modePE','tt-life-tab','tt-board-tab'];
+     const compact=innerWidth<=1400;
+     const ids=['tt-manager-home-button',...(compact?['tt-hud-work-toggle']:['generateAssignment','confirmAssignment','openPlayback']),'tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','tt-seat-subtab','modePE','tt-life-tab','tt-board-tab'];
      const out=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return !b||b.top<0||b.left<0||b.right>innerWidth||b.bottom>innerHeight||b.width===0});
      const header=document.querySelector('.studio-topbar'),box=header.getBoundingClientRect();
      const clipped=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return b&&(b.top<box.top-1||b.bottom>box.bottom+1)});
@@ -510,6 +511,14 @@ async function setRoster(p,names){
      return{out,clipped,scroll:document.documentElement.scrollWidth>innerWidth,bar:box.height,overflow,...(overflow?{detail:{scroll:header.scrollHeight,client:header.clientHeight,rows:getComputedStyle(header).gridTemplateRows,children:[...header.children].filter(e=>e.getClientRects().length).map(e=>[e.id||e.className,Math.round(e.getBoundingClientRect().top-box.top),Math.round(e.getBoundingClientRect().bottom-box.top)])}}:{})};
     });
     if(r.out.length||r.clipped.length||r.scroll||r.overflow||r.bar>61)bad.push([width,r]);
+    if(width<=1400){
+     await p8.locator('#tt-hud-work-toggle').click();
+     for(const id of ['generateAssignment','confirmAssignment','openPlayback']){
+      const button=p8.locator('#'+id);assert.ok(await button.isVisible(),'compact work button '+id+' '+width);
+      const b=await button.boundingBox();assert.ok(b.x>=0&&b.x+b.width<=width&&b.y>=0&&b.y+b.height<=800,'work popover bounds '+id+' '+width);
+     }
+     await p8.keyboard.press('Escape');assert.equal(await p8.locator('#generateAssignment').isVisible(),false);
+    }
    }
    assert.deepEqual(bad,[]);
    await c7.close();
@@ -603,8 +612,8 @@ async function setRoster(p,names){
    const tap=async digits=>{for(const d of digits)await p13.click(`.tt-lock-keys [data-key="${d}"]`);await p13.click('.tt-lock-keys button[type=submit]')};
    await settingsAction(p13,'tt-lock-now','security');await locked().waitFor();
    assert.equal(await p13.evaluate(()=>document.getElementById('teacherScreen').inert),true);
-   const box=await p13.locator('.tt-lock-keys').boundingBox();
-   assert.ok(box.y>=1000*.34,'키패드는 화면 위쪽 34% 아래에 있다');
+   const center=await p13.locator('.tt-lock-card').evaluate(el=>{const r=el.getBoundingClientRect();return {x:r.x+r.width/2-innerWidth/2,y:r.y+r.height/2-innerHeight/2}});
+   assert.ok(Math.abs(center.x)<2&&Math.abs(center.y)<2,'잠금 카드 화면 중앙');
    await tap('1111');await p13.locator('#tt-lock-message',{hasText:'맞지 않습니다'}).waitFor({timeout:8000});
    assert.equal(await locked().count(),1);
    await tap('4826');await locked().waitFor({state:'detached',timeout:8000}).catch(()=>{});

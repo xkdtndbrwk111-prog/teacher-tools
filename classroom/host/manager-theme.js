@@ -5,7 +5,7 @@
  if(view==='student'||view==='board')return;
  const T=window.TTHojaTheme,KEY='tt.classroom.ui2.theme.local.v1',MODE='tt.classroom.ui2.theme.auto.v1';
  if(!T)return;
- let value=T.DEFAULT,automatic=true,networkState='대기 중',pending=false,epoch=0,refreshSettings=()=>{},scope='easy',holdBoard=false,lastBoard='';
+ let value=T.DEFAULT,automatic=true,networkState='대기 중',pending=false,epoch=0,refreshSettings=()=>{},scope='easy',holdBoard=false,lastBoard='',lastCheckedEpoch=-1;
  const pref=()=>({version:1,theme:value,automatic});
  const cacheKey=()=>scope==='easy'?KEY:scope.startsWith('normal:')?KEY+'.'+encodeURIComponent(scope):null;
  function readCache(){
@@ -49,7 +49,7 @@
  function setAutomatic(on){on=Boolean(on);if(on===automatic)return;automatic=on;epoch++;lastBoard='';persist();refreshSettings();state(automatic?'연결 확인 중…':'독립 테마 사용');changed('manual');if(automatic)void checkBoard()}
  async function checkBoard(){
   if(!automatic||holdBoard||pending||document.hidden)return false;
-  pending=true;const ticket=epoch,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2500);
+  pending=true;const ticket=epoch;lastCheckedEpoch=ticket;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2500);
   try{
    const r=await fetch('http://127.0.0.1:17439/api/theme',{method:'GET',mode:'cors',credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal});
    if(!r.ok)throw Error('unavailable');const v=T.normalize(await r.json());if(!v)throw Error('invalid theme');
@@ -65,6 +65,20 @@
   const frame=document.querySelector('.tt-grade-iframe');
   if(event.origin===location.origin&&frame&&event.source===frame.contentWindow&&['TT_MANAGER_THEME_READY','TT_STAGE03_READY'].includes(event.data?.type))sendFrame();
  });
+ // At most one bounded startup wait; never requires network access to unlock.
+ async function prepareFirstPaint(){
+  const deadline=Date.now()+2800;
+  while(Date.now()<deadline){
+   authChanged();
+   const a=window.__TT_NORMAL_AUTH?.state?.();
+   if(a?.mode!=='loading'&&!holdBoard){
+    if(!automatic)return;
+    if(!pending&&lastCheckedEpoch===epoch)return;
+    if(!pending){void checkBoard();}
+   }
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+ }
  function mount(){
   const general=document.querySelector('#tt-settings-overlay [data-tt-panel="general"]');if(!general)return false;
   if(document.getElementById('tt-ui2-theme-settings'))return true;
@@ -86,5 +100,5 @@
   import('./manager-theme-cloud.mjs?v=ui2-d').then(mod=>mod.attachThemeCloud(window.__TT_MANAGER_THEME,window.__TT_NORMAL_AUTH,T)).catch(()=>{readyCloud();$('tt-ui2-theme-cloud-status').textContent='Google 테마 저장을 준비하지 못했습니다. 로컬 테마는 유지됩니다.'});
   return true;
  }
- window.__TT_MANAGER_THEME=Object.freeze({get:()=>value,set,mount,sendFrame,checkBoard,setAutomatic,isAutomatic:()=>automatic,scope:()=>scope,pref,restoreCloud,readyCloud});
+ window.__TT_MANAGER_THEME=Object.freeze({get:()=>value,set,mount,sendFrame,checkBoard,setAutomatic,isAutomatic:()=>automatic,scope:()=>scope,pref,restoreCloud,readyCloud,prepareFirstPaint});
 })();

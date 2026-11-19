@@ -14,7 +14,8 @@ assert.deepEqual(actions.children.map(n=>n.id),['tt-send-board']);pass('original
 assert.equal(typeof confirm.listeners.click,'function');pass('confirmed seating auto-send handler retained');
 vm.runInContext(sources['board-status.js'],context);await new Promise(setImmediate);
 const send=actions.children[0];assert.equal(fetches,1);assert.equal(send.disabled,false);assert.match(menu.children[0].textContent,/칠판 연결됨/);pass('connected board enables seating without requiring removed menu');
-board={...board,wallpaper:false};await context.window.__TT_BOARD_CONNECTION.check();assert.equal(send.disabled,true);send.listeners.click();assert.equal(popups.length,0);pass('non-wallpaper board disables sending');
+board={...board,wallpaper:false};await context.window.__TT_BOARD_CONNECTION.check();assert.equal(send.disabled,true);send.listeners.click();assert.equal(popups.length,0);pass('unverified board disables sending');
+board={...board,version:40,wallpaper:true,mode:'window'};await context.window.__TT_BOARD_CONNECTION.check();assert.equal(send.disabled,false);assert.match(menu.children[0].textContent,/일반 창 모드/);pass('verified ordinary window supports sending');
 board={...board,wallpaper:true};await context.window.__TT_BOARD_CONNECTION.check();send.listeners.click();assert.equal(popups.length,0);assert.match(statuses.at(-1)[0],/확정한 배치/);pass('no confirmed seating does not open popup');
 context.classState.assignments=[{}];send.listeners.click();assert.equal(popups.length,1);assert.match(popups[0].args[0],/\/seating-inbox$/);pass('manual seating opens existing inbox');
 await listeners.message({origin:'http://127.0.0.1:17439',source:popups[0],data:{type:'tt-inbox-saved'}});assert.match(statuses.at(-1)[0],/칠판으로 보냄/);assert.equal(local.get('tt.classroom.board-linked'),'1');pass('seating reply retains linked state');
