@@ -55,6 +55,21 @@ async function step(name,fn){
    assert.equal(await p.locator('.trait-prototype [data-trait="leadership"]').count(),4);
    assert.equal(await p.locator('#traitGradeLink').isVisible(),true);
   });
+
+  await step('잠금 화면, 명단 스크롤·총원, 5축 점수는 모든 테마 역할을 따른다',async()=>{
+   const checked=await p.evaluate(()=>{
+    const T=window.TTHojaTheme,root=document.documentElement,old=root.dataset.cmTheme;
+    const variants=[...Object.keys(T.PRESETS).map(theme=>({version:1,theme,font:''})),{version:1,theme:'custom',font:'',custom:{bg:'#ffffff',panel:'#151a2b',text:'#ffffff',accent:'#ff8800',modal:'#151a2b'}}];
+    const resolve=(name)=>{const e=document.createElement('span');e.style.color='var('+name+')';document.body.append(e);const c=getComputedStyle(e).color;e.remove();return c};
+    const targets=[['.tt-lock','backgroundColor','--cm-bg'],['.tt-lock-card','backgroundColor','--cm-modal'],['.tt-lock-keys button:not(.tt-lock-ok)','backgroundColor','--cm-control'],['.tt-lock-ok','backgroundColor','--cm-action-fill'],['.target-student-count','backgroundColor','--cm-surface'],['#targetStudentCount','color','--cm-control-ink'],['.trait-scale button.on','backgroundColor','--cm-action-fill'],['.trait-row button:not(.on)','backgroundColor','--cm-control'],['.trait-radar>polygon','stroke','--cm-work-emphasis']];
+    const failures=[];
+    const original=Object.fromEntries(Object.keys(T.tokens(T.DEFAULT)).map(k=>[k,root.style.getPropertyValue(k)]));
+    try{for(const variant of variants){T.apply(document,variant);for(const [selector,prop,token] of targets){const el=document.querySelector(selector),actual=el&&getComputedStyle(el)[prop],expected=resolve(token);if(actual!==expected)failures.push({theme:variant.theme,selector,actual,expected})}const cards=document.querySelector('.student-strip .student-cards');const expected=resolve('--cm-panel-emphasis')+' '+resolve('--cm-panel');if(getComputedStyle(cards).scrollbarColor!==expected)failures.push({theme:variant.theme,scrollbar:getComputedStyle(cards).scrollbarColor,expected});}}
+    finally{for(const [k,v] of Object.entries(original))root.style.setProperty(k,v);root.dataset.cmTheme=old;}
+    return failures;
+   });
+   assert.deepEqual(checked,[]);
+  });
   await step('4→8단계는 2배, 8→4단계는 안 바꾼 값은 예전 값·바꾼 값은 2로 나눠 버림',async()=>{
    await setTrait(p,'leadership',4);await setTrait(p,'charm',1);await setTrait(p,'stamina',3);
    await p.click('.trait-prototype [data-trait-scale="8"]');
