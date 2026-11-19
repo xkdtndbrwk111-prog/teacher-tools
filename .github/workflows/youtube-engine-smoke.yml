@@ -1,0 +1,19 @@
+name: YouTube engine isolated Windows smoke
+on:
+  pull_request:
+    paths:
+      - 'tools/multimedia/youtube-engine-smoke.ps1'
+      - '.github/workflows/youtube-engine-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  engine-smoke:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        run: |
+          & ./tools/multimedia/youtube-engine-smoke.ps1 -Root (Join-Path $env:RUNNER_TEMP ('tt-youtube-smoke-' + [guid]::NewGuid().ToString('N')))
