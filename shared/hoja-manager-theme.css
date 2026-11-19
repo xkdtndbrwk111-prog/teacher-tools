@@ -34,7 +34,7 @@ html.tt-manager-theme .tt-ui2-tile span,html.tt-manager-theme .tt-ui2-card :is(p
 html.tt-manager-theme .tt-ui2-tile:hover span{color:var(--cm-surface-sub)}
 html.tt-manager-theme .tt-ui2-card :is(button,a){background:var(--cm-control);color:var(--cm-control-ink);border-color:var(--cm-border);border-radius:var(--cm-button-radius)}
 html.tt-manager-theme .tt-ui2-card .tt-ui2-primary{background:var(--cm-action-fill);color:var(--cm-action-ink)}
-/* Settings uses the exact modal color and role-specific contrast; the existing lock and validation colors stay intact. */
+/* Settings uses the exact modal color and role-specific contrast; semantic validation colors stay intact. */
 html.tt-manager-theme #tt-settings-overlay .tt-settings-window{background:var(--cm-modal);color:var(--cm-modal-ink);border-color:var(--cm-border);border-radius:var(--cm-modal-radius);font-family:var(--cm-font)}
 html.tt-manager-theme #tt-settings-overlay :is(.tt-settings-heading,.tt-settings-nav){background:var(--cm-surface);color:var(--cm-surface-ink);border-color:var(--cm-border)}
 html.tt-manager-theme #tt-settings-overlay .tt-settings-heading :is(p,.tt-settings-kicker){color:var(--cm-surface-sub)}
@@ -50,7 +50,7 @@ html.tt-manager-theme #tt-ui2-theme-settings :is(button,input,select){background
 #tt-ui2-theme-settings #tt-ui2-font-preview{padding:10px;border:1px solid var(--cm-border);border-radius:var(--cm-input-radius)}
 
 /* Stage F: shared teacher chrome and work surfaces. Explicit selectors only:
-   grade cells, seating gender/type, sports pitch, warning/error/lock and data charts retain semantic colors.
+   grade cells, seating gender/type, sports pitch, warning/error and data charts retain semantic colors.
    Work paper is a tint of the same palette, not a second independently selected theme. */
 html.tt-manager-theme,html.tt-manager-theme body{background:var(--cm-bg)}
 html.tt-manager-theme :is(#teacherScreen,#app) .studio{background:var(--cm-bg)!important}
@@ -226,3 +226,52 @@ html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] .tt-setting
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{display:none!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-overflow{min-width:48px;max-width:48px;flex-basis:48px}
 }
+
+/* Teacher-only palette completion: opaque lock, roster controls and trait editor.
+   Keep danger messages, recovery-code warning, semantic grade cells and public views intact. */
+html.tt-manager-theme .tt-lock{background:var(--cm-bg)!important;color:var(--cm-body-ink)}
+html.tt-manager-theme :is(.tt-lock-card,.tt-lock-settings-card){background:var(--cm-modal)!important;color:var(--cm-modal-ink)!important;border:1px solid var(--cm-border);border-radius:var(--cm-modal-radius)}
+html.tt-manager-theme :is(.tt-lock-card,.tt-lock-settings-card) :is(input,select,.tt-lock-keys button:not(.tt-lock-ok),.tt-lock-settings-actions button:not([type=submit]):not(.tt-lock-danger)){
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme :is(.tt-lock-card,.tt-lock-settings-card) :is(.tt-lock-ok,.tt-lock-settings-actions button[type=submit]){
+ background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-action-fill)!important
+}
+html.tt-manager-theme :is(.tt-lock-card,.tt-lock-settings-card) :is(input,select,button):focus-visible{outline:2px solid var(--cm-modal-emphasis);outline-offset:2px}
+html.tt-manager-theme .tt-lock-link,html.tt-manager-theme .tt-lock-settings-card p:not(.tt-lock-error){color:var(--cm-modal-sub)!important}
+html.tt-manager-theme :is(#tt-lock-message,.tt-lock-settings-card p.tt-lock-error){color:var(--cm-modal-alert)!important}
+html.tt-manager-theme .tt-lock-code-box{color:var(--cm-recovery-ink,#713f12); /* semantic recovery warning on its original yellow fill */}
+html.tt-manager-theme .tt-lock-settings-actions .tt-lock-danger{color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg)!important}
+html.tt-manager-theme #teacherScreen .student-strip :is(.student-cards,.student-cards:hover){
+ scrollbar-color:var(--cm-panel-emphasis) var(--cm-panel)!important
+}
+html.tt-manager-theme #teacherScreen .student-strip .target-student-count{
+ background:var(--cm-surface)!important;color:var(--cm-surface-ink)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen .student-strip .target-student-count input{
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen .student-strip .target-fill{background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-action-fill)!important}
+html.tt-manager-theme #teacherScreen .student-strip .strip-collapse{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important}
+html.tt-manager-theme #teacherScreen :is(.dock-panel,.workspace,.life-body,.life-side),
+html.tt-manager-theme #app :is(.workspace,.trait-preview-wrap),html.tt-manager-theme #tt-settings-overlay .tt-settings-panel,
+html.tt-manager-theme .tt-lock-settings-card{scrollbar-color:var(--cm-work-emphasis) var(--cm-work-paper)}
+html.tt-manager-theme #teacherScreen .trait-prototype{border-color:var(--cm-work-line);color:var(--cm-work-ink)}
+html.tt-manager-theme #teacherScreen .trait-prototype :is(.trait-row>span,.trait-hint,.inspector-label){color:var(--cm-work-sub)!important}
+html.tt-manager-theme #teacherScreen .trait-prototype :is(.trait-scale,.trait-row button,.trait-grade-link){border-color:var(--cm-border)!important}
+html.tt-manager-theme #teacherScreen .trait-prototype :is(.trait-row button,.trait-scale button,.trait-grade-link,.trait-linked-tag){
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important
+}
+html.tt-manager-theme #teacherScreen .trait-prototype :is(.trait-row button.on,.trait-scale button.on){
+ background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-action-fill)!important
+}
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-radar g{stroke:var(--cm-work-line)}
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-radar>polygon{fill:var(--cm-action-fill);fill-opacity:.22;stroke:var(--cm-work-emphasis)}
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-radar text{fill:var(--cm-work-sub)}
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-radar text[fill="#aeb8c5"]{opacity:.6}
+html.tt-manager-theme #app :is(.trait-link-row,.trait-link-row.is-linked,.trait-mode,.trait-subject){background:var(--cm-work-paper);border-color:var(--cm-work-line);color:var(--cm-work-ink)}
+html.tt-manager-theme #app :is(.trait-mode button,.trait-subject:not(.is-missing)){background:var(--cm-control);color:var(--cm-control-ink);border-color:var(--cm-border)}
+html.tt-manager-theme #app :is(.trait-mode button.on,.trait-subject:not(.is-missing):has(input:checked)){background:var(--cm-action-fill);color:var(--cm-action-ink);border-color:var(--cm-action-fill)}
+html.tt-manager-theme #app .trait-subject input{accent-color:var(--cm-action-fill)}
+html.tt-manager-theme #app :is(.trait-link-class small,.trait-note){color:var(--cm-work-sub)}
+html.tt-manager-theme #app .trait-preview-head span{color:var(--cm-work-emphasis)}
