@@ -88,6 +88,69 @@ function Start-TTServer {
   if (!(Test-Path -LiteralPath $exe)) { throw 'Windows PowerShell 5.1 was not found.' }
   Start-TTHidden -ScriptPath $serverPath
 }
+# Recovery runs only from the heartbeat of a verified, live board window.
+# Never stop an existing listener or in-flight server; absence only.
+$script:TTRecoveryMisses=0
+$script:TTRecoveryAttempts=@()
+function Write-TTRecoveryEvent([string]$Event){
+ try{
+  $file=Join-Path $TTInstallDir 'server-recovery.log'
+  if((Test-Path -LiteralPath $file -PathType Leaf) -and (Get-Item -LiteralPath $file).Length -gt 65536){
+   [IO.File]::Copy($file,($file+'.previous'),$true);[IO.File]::WriteAllText($file,'')
+  }
+  [IO.File]::AppendAllText($file,((ConvertTo-Json -Compress @{at=[DateTime]::UtcNow.ToString('o');release=$TTRelease;event=$Event;pid=$PID})+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
+function Enter-TTRecoveryGuards {
+ $guards=@()
+ try{
+  foreach($name in @('r8-update.lock','stable-pilot.lock','stable-pilot-launch.lock')){
+   $path=Join-Path $TTInstallDir $name
+   if((Test-Path -LiteralPath $path) -and ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Unsafe guard path'}
+   $guards+=,[IO.File]::Open($path,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+  }
+  return $guards
+ }catch{foreach($guard in $guards){$guard.Dispose()};return}
+}
+function Test-TTRecoveryAbsent {
+ $lines=@(& "$env:SystemRoot\System32\netstat.exe" -ano -p TCP)
+ if($LASTEXITCODE -ne 0){return $false}
+ # Fail closed on any listener on this port, including wildcard addresses.
+ if(@($lines|Where-Object {$_ -match '^\s*TCP\s+\S+:17439\s+\S+\s+LISTENING\s+\d+\s*$'}).Count){return $false}
+ $server=Join-Path $TTInstallDir 'server.ps1'
+ $ps=@(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction Stop)
+ if(@($ps|Where-Object {$_.CommandLine -and $_.CommandLine -match ('(?i)(?:^|\s)-File\s+(?:"'+[regex]::Escape($server)+'"|'+[regex]::Escape($server)+')(?:\s|$)')}).Count){return $false}
+ return $true
+}
+function Invoke-TTServerRecovery([scriptblock]$OwnerAlive){
+ try{
+  if(!(& $OwnerAlive)){return}
+  $live=Get-TTHealth
+  if($live){
+   if($live.service -ceq 'teacher-tools-local' -and $live.release -ceq $TTRelease){$script:TTRecoveryMisses=0}
+   return
+  }
+  if(!(Test-TTRecoveryAbsent)){$script:TTRecoveryMisses=0;return}
+  $script:TTRecoveryMisses++
+  if($script:TTRecoveryMisses -lt 2){return}
+  $guards=@(Enter-TTRecoveryGuards)
+  if($guards.Count -ne 3){return}
+  try{
+   if((Test-Path -LiteralPath (Join-Path $TTInstallDir 'r8-transaction\pending.json')) -or (Test-Path -LiteralPath (Join-Path $TTInstallDir 'stable-pilot-rollback\pending.json'))){return}
+   $current=Get-Content -LiteralPath (Join-Path $TTInstallDir 'release.json') -Raw -Encoding UTF8|ConvertFrom-Json
+   if($current.release -cne $TTRelease -or !(& $OwnerAlive) -or (Get-TTHealth) -or !(Test-TTRecoveryAbsent)){return}
+   $now=[DateTime]::UtcNow
+   $script:TTRecoveryAttempts=@($script:TTRecoveryAttempts|Where-Object {($now-$_).TotalMinutes -lt 10})
+   if($script:TTRecoveryAttempts.Count -ge 3){return}
+   $script:TTRecoveryAttempts+=,$now
+   $script:TTRecoveryMisses=0
+   Write-TTRecoveryEvent 'restart-requested'
+   Start-TTServer
+   Write-TTRecoveryEvent 'restart-launched'
+  }finally{foreach($guard in $guards){$guard.Dispose()}}
+ }catch{Write-TTRecoveryEvent 'recovery-check-failed'}
+}
+
 # A process created with no console at all cannot appear in Windows Terminal, whatever the default terminal is.
 function Start-TTHidden {
   param([string]$ScriptPath)
