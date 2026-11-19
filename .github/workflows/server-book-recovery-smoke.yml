@@ -26,7 +26,7 @@ jobs:
           $root=Join-Path $env:RUNNER_TEMP ('tt-book-source-'+[guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $root | Out-Null
           $bundle=(Resolve-Path runtime-src/system/asset-book-reader-host.zip).Path
-          if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash -ne '64456efe24dbdf87ade9b6e6669bb37535a3c2f5fdb8633f05791851d406a80e'){throw 'Unexpected existing SDK bundle'}
+          if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash -ne 'e0119c6da12077fb998d6ce0b977f509d54aaca8f76e07395249cf0b9246e4f1'){throw 'Unexpected existing SDK bundle'}
           Expand-Archive -LiteralPath $bundle -DestinationPath $root
           $exe=Join-Path $root 'BookReader.exe'
           $src=(Resolve-Path tools/multimedia/book-reader-host.cs).Path
