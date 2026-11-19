@@ -107,7 +107,21 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   if(!manual&&phase===0)saved=4;
   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:phase===2,page:4,saved,manual,ack,status:'저장됨'}});
  });
- await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'📖 책 읽어주기',exact:true}).click();
+ // Wait for the previous modal lifecycle, then identify the book tile by its stable key.
+ // Check the visible label separately so platform emoji accessibility differences do not hide regressions.
+ await dlg.waitFor({state:'hidden'});
+ await page.evaluate(()=>ttMultimedia.open());
+ await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();
+ const bookTile=dlg.locator('button[data-media-tool="books"]');
+ try{
+  await bookTile.waitFor({state:'visible'});
+  assert.equal((await bookTile.textContent()).trim(),'📖 책 읽어주기');
+  await bookTile.click();
+  await dlg.getByRole('heading',{name:'책 읽어주기',exact:true}).waitFor();
+ }catch(error){
+  console.error('Book entry diagnostics',await dlg.evaluate(d=>({open:d.open,heading:d.querySelector('h2')?.textContent,tiles:[...d.querySelectorAll('[data-media-tool]')].map(x=>({key:x.dataset.mediaTool,text:x.textContent,hidden:x.hidden,inert:x.inert}))})));
+  throw error;
+ }
  await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'다시 시도',exact:true}).waitFor();
  assert.equal(await dlg.locator('iframe').count(),0);assert.equal(await dlg.getByText('기존 재생기',{exact:true}).count(),0);
  await dlg.getByRole('button',{name:'다시 시도',exact:true}).click();
