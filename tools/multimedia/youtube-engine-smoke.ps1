@@ -119,12 +119,7 @@ server.serve_forever()
   while(!(Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $deadline -and !$fixtureProcess.HasExited){Start-Sleep -Milliseconds 100}
   if(!(Test-Path -LiteralPath $ready)){throw 'fixture startup failed'}
   $portText=(Get-Content -LiteralPath $ready -Raw).Trim()
-  if($portText -notmatch '^[0-9]{1,5}
-}finally{
- # Only remove this fresh experiment folder, never the installed board or user data.
- Remove-Item -LiteralPath $Root -Recurse -Force
-}
- -or [int]$portText -lt 1 -or [int]$portText -gt 65535){throw 'invalid fixture port'}
+  if($portText -notmatch '^[0-9]{1,5}$' -or [int]$portText -lt 1 -or [int]$portText -gt 65535){throw 'invalid fixture port'}
   $download=Join-Path $Root 'downloaded.mp4'
   $null=Invoke-Hidden 'yt-dlp.exe' @('--ignore-config','--no-playlist','--no-cache-dir','--no-progress','--proxy','','--ffmpeg-location',$bin,'--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $bin 'deno.exe')),'-o',$download,'--',("http://127.0.0.1:"+$portText+"/test.mp4"))
   if(!(Test-Path -LiteralPath $download -PathType Leaf) -or (Get-FileHash -LiteralPath $download).Hash -ne (Get-FileHash -LiteralPath $merged).Hash){throw 'yt-dlp downloaded bytes differ'}
