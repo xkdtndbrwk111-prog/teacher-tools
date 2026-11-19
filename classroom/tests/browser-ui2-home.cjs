@@ -39,10 +39,25 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
    const box=await p.locator('.studio-topbar').boundingBox();assert.ok(box.height<=61,'single header '+width);
    const geometry=await p.locator('.prototype-mode-switch').evaluate(e=>({left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,w:innerWidth}));assert.ok(geometry.left>=0&&geometry.right<=geometry.w,'navigation in viewport '+width);
   }
-  await p.setViewportSize({width:1280,height:820});
+  // Navigation must not drift when seating unfolds or its work controls disappear.
+  const positions=()=>p.evaluate(()=>{
+   const rect=e=>e.getBoundingClientRect(),nav=rect(document.querySelector('.prototype-mode-switch')),header=rect(document.querySelector('.studio-topbar'));
+   const ids=['tt-grade-tab','tt-life-tab','tt-board-tab'];
+   return {center:nav.left+nav.width/2-(header.left+header.width/2),left:nav.left,width:nav.width,tabs:ids.map(id=>{const r=rect(document.getElementById(id));return [r.left,r.width,r.top]}),seat:rect(document.querySelector('.tt-ui2-seat-group')).left};
+  });
+  const same=(a,b,w)=>{assert.ok(Math.abs(a.center)<1.5&&Math.abs(b.center)<1.5,'center '+w);for(const key of ['left','width','seat'])assert.ok(Math.abs(a[key]-b[key])<1.5,key+' '+w);for(let i=0;i<a.tabs.length;i++)for(let j=0;j<3;j++)assert.ok(Math.abs(a.tabs[i][j]-b.tabs[i][j])<1.5,'tab drift '+w+' '+i+' '+j)};
+  for(const width of [390,768,1024,1280,1400,1600,1920]){
+   await p.setViewportSize({width,height:820});
+   await p.locator('#tt-board-tab').click();const board=await positions();
+   await p.locator('#modeClassroom').click();await p.locator('#tt-seat-subtab').waitFor();same(board,await positions(),width);
+   await p.locator('#modePE').click();same(board,await positions(),width);
+   await p.locator('#tt-board-tab').click();same(board,await positions(),width);
+  }
+  await p.setViewportSize({width:1920,height:820});const beforeGrade=await positions();
   await p.locator('#tt-grade-tab').click();
   await p.waitForFunction(()=>document.body.classList.contains('tt-grade-active')&&document.querySelector('.tt-grade-iframe'));
   await p.waitForFunction(()=>/공통 명단 연결/.test(document.getElementById('tt-stage03-status')?.textContent||''));
+  same(beforeGrade,await positions(),1920);
   await p.locator('#tt-manager-home-button').click();
   await p.waitForFunction(()=>window.__TT_MANAGER_HOME.page()==='home'&&!document.body.classList.contains('tt-grade-active'));
   assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
