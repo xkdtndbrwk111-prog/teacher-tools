@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "version": "1.66.22",
+  "previous_version": "1.66.21",
+  "previous_payload_sha": "7a654488a5cdb9905a11220cbf1b281e25749c45b7b00b2554c3089f67e0fa5d",
+  "source_sha": "6a11153c114fa29636f3a7bc65d3a8d73ecf581f",
+  "review_sha": "98ec16507bea0a28f4a7c6bbffdf279e053caf20",
+  "artifact_id": 14490605966,
+  "archive_sha": "8a9788e65660155f82839c650f08abf7ad5d8ea9f1b33a44193975ca63136747",
+  "payload_sha": "97347fc0ed55a9e1d3e00ddbad242182307a839a245361b57b651aa4beb66179",
+  "main_runs": {
+    "R8 source-driven build": 44439229043,
+    "R8 native Windows verification": 44439229145,
+    "R8 native R7 integration checks": 44439229086,
+    "Tournament host bridge review": 44439229036,
+    "V1.66.6 browser text contrast": 44439229037,
+    "V1.66.7 theme font shadow and icon regressions": 44439229008,
+    "V1.66.8 education activities browser regression": 44439228975,
+    "V1.66.9 common badge browser regression": 44439228980
+  },
+  "review_runs": {
+    "Routine integer coin candidate checks": 44434134099,
+    "R8 source-driven build": 44434134273,
+    "R8 native Windows verification": 44434134471,
+    "V1.66.7 theme font shadow and icon regressions": 44434134222,
+    "Tournament host bridge review": 44434134032,
+    "Daily lesson alert mute checks": 44434134006,
+    "Classroom UI2 home and HUD candidate": 44434134093,
+    "Multimedia candidate browser review": 44434134025,
+    "V1.66.6 browser text contrast": 44434134098,
+    "V1.66.9 common badge browser regression": 44434134094,
+    "V1.66.8 education activities browser regression": 44434134012,
+    "R8 native R7 integration checks": 44434134023
+  },
+  "authorization": "Owner requested deployment after automated tests pass; physical school PC verification remains pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16622_owner_field_test_only"
+}
