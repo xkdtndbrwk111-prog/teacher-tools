@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "version": "1.66.23",
+  "previous_version": "1.66.22",
+  "previous_payload_sha": "97347fc0ed55a9e1d3e00ddbad242182307a839a245361b57b651aa4beb66179",
+  "source_sha": "d8d1c816f697a5c42fee32c783a332f746f0cd04",
+  "review_sha": "37251b8a760e0b6b8ae20f0d80256cf493c86222",
+  "artifact_id": 14499720938,
+  "archive_sha": "4a27ca6a34f9f27e48031b22ce5d3c047f0ab314fe04ced84ca1a8815bfae025",
+  "payload_sha": "4bd5cd0f2b1d8938d3ce30eb29e1811d73594a596ab2dc216708d772b1d85ec0",
+  "main_runs": {
+    "Tournament host bridge review": 44459539486,
+    "R8 source-driven build": 44459539474,
+    "V1.66.8 education activities browser regression": 44459539456,
+    "V1.66.7 theme font shadow and icon regressions": 44459539503,
+    "V1.66.9 common badge browser regression": 44459539389,
+    "QR square widget and integer fit checks": 44459539546,
+    "R8 native R7 integration checks": 44459539378,
+    "V1.66.6 browser text contrast": 44459539450,
+    "R8 native Windows verification": 44459539447
+  },
+  "review_runs": {
+    "V1.66.9 common badge browser regression": 44450390000,
+    "Routine integer coin candidate checks": 44450390075,
+    "V1.66.8 education activities browser regression": 44450390119,
+    "Tournament host bridge review": 44450390153,
+    "V1.66.6 browser text contrast": 44450390027,
+    "R8 source-driven build": 44450390001,
+    "Daily lesson alert mute checks": 44450389984,
+    "R8 native R7 integration checks": 44450390021,
+    "V1.66.7 theme font shadow and icon regressions": 44450389967,
+    "Multimedia candidate browser review": 44450390160,
+    "QR square widget and integer fit checks": 44450389988,
+    "R8 native Windows verification": 44450390118,
+    "Classroom UI2 home and HUD candidate": 44450390033
+  },
+  "authorization": "Owner explicitly requested deployment of tested V1.66.23 QR/timetable candidate; physical school PC verification remains pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16623_owner_field_test_only"
+}
