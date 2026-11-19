@@ -19,7 +19,21 @@ assert.deepEqual(initial.items,{week:[0,0,12,22],meal:[12,11,12,11],calendar:[36
 assert.equal(initial.memoHidden,true);assert.deepEqual(initial.tail,['classkit','widgetmanager','fixed:전체화면','fixed:설정']);
 const rects=Object.values(initial.items);for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){const [x,y,w,h]=rects[i],[a,b,c,d]=rects[j];assert.ok(!(x<a+c&&a<x+w&&y<b+d&&b<y+h),'initial widgets overlap')}
 console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidden and four rightmost management buttons');
-await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=720&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
+await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=1060&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
+const mediaKeys=await dlg.locator('.mm-home > [data-media-tool]').evaluateAll(els=>els.map(e=>e.dataset.mediaTool));assert.deepEqual(mediaKeys,['meeting','books','youtube-downloader']);
+const beforeDownloader=direct;
+await dlg.locator('[data-media-tool="youtube-downloader"]').click();
+await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
+const dlURL=dlg.locator('input[type=url]');
+for(const [url,expected] of [['https://www.youtube.com/watch?v=sVoh_DAt9is',true],['https://youtu.be/sVoh_DAt9is',true],['https://m.youtube.com/watch?v=sVoh_DAt9is',true],['https://www.youtube.com/shorts/sVoh_DAt9is',true],['https://youtube.com.evil.test/watch?v=sVoh_DAt9is',false],['https://youtu.be/abc',false],['https://www.youtube.com/playlist?list=PL123',false],['http://youtube.com/watch?v=sVoh_DAt9is',false]]){
+ await dlURL.fill(url);await dlg.getByRole('button',{name:'주소 확인',exact:true}).click();
+ assert.equal((await dlg.locator('#ttMediaStatus').textContent()).includes('단일 영상 주소 확인 완료'),expected,url);
+}
+assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);
+await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
+assert.equal(await dlg.locator('[data-media-tool="books"]').count(),1);
+assert.equal(await dlg.locator('[data-media-tool="meeting"]').count(),1);
+console.log('PASS downloader tile, valid and invalid single-video URLs, no playback/request, return to multimedia');
 async function checkFlip(reverse=false){
  const result=await page.evaluate(async reverse=>{
   const d=document.querySelector('#ttMediaDialog'),stage=d.querySelector('.mm-stage'),card=d.querySelector('.mm-card'),inner=card.querySelector('.mm-card-inner');
