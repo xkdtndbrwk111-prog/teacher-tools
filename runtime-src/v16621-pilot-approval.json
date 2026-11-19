@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "version": "1.66.21",
+  "previous_version": "1.66.20",
+  "previous_payload_sha": "a721fba41fc32b2a9af678315264b2d6f27a818c3663486b908f08a875779e2f",
+  "source_sha": "ce51fc8dd6c4a40fff4f5dd7e8b205b87e175e41",
+  "review_sha": "75b39933bc12a66d376a5ccd837ef2a2b196a4d1",
+  "artifact_id": 14485606792,
+  "archive_sha": "420f643d9a7a931fd19ab15b4b37d2795a8349debe791a04d6afab33ab152edf",
+  "payload_sha": "7a654488a5cdb9905a11220cbf1b281e25749c45b7b00b2554c3089f67e0fa5d",
+  "main_runs": {
+    "R8 source-driven build": 44429055365,
+    "R8 native Windows verification": 44429055008,
+    "R8 native R7 integration checks": 44429055012,
+    "Tournament host bridge review": 44429054977,
+    "V1.66.6 browser text contrast": 44429055492,
+    "V1.66.7 theme font shadow and icon regressions": 44429054969,
+    "V1.66.8 education activities browser regression": 44429054952,
+    "V1.66.9 common badge browser regression": 44429055117
+  },
+  "review_runs": {
+    "Tournament host bridge review": 44428613174,
+    "Routine integer coin candidate checks": 44428613213,
+    "R8 source-driven build": 44428613082,
+    "V1.66.8 education activities browser regression": 44428612909,
+    "Classroom UI2 home and HUD candidate": 44428612938,
+    "V1.66.7 theme font shadow and icon regressions": 44428612978,
+    "V1.66.9 common badge browser regression": 44428612966,
+    "R8 native R7 integration checks": 44428612908,
+    "V1.66.6 browser text contrast": 44428613117,
+    "R8 native Windows verification": 44428612894,
+    "Multimedia candidate browser review": 44428613095
+  },
+  "authorization": "Owner requested deployment after automated tests passed; physical school PC verification remains pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16621_owner_field_test_only"
+}
