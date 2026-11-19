@@ -15,5 +15,7 @@ jobs:
         with:
           persist-credentials: false
       - shell: pwsh
+        env:
+          TT_ENGINE_API_TOKEN: ${{ github.token }}
         run: |
           & ./tools/multimedia/youtube-engine-smoke.ps1 -Root (Join-Path $env:RUNNER_TEMP ('tt-youtube-smoke-' + [guid]::NewGuid().ToString('N')))
