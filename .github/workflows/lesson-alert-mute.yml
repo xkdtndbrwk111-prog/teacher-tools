@@ -1,0 +1,13 @@
+name: Daily lesson alert mute checks
+on:
+  pull_request:
+    paths: ['runtime-src/system/dashboard.html','tools/lesson-alert/**','.github/workflows/lesson-alert-mute.yml']
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: node --test tools/lesson-alert/mute.test.cjs
