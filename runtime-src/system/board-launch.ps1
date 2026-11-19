@@ -119,6 +119,11 @@ $lastArea=Get-TargetArea
 while ([TeacherDesktopWindow]::IsWindow($window)) {
   Start-Sleep -Milliseconds 5000
   try { Write-BoardModeHeartbeat } catch {}
+  Invoke-TTServerRecovery {
+    [uint32]$actual=0
+    [void][TeacherDesktopWindow]::GetWindowThreadProcessId($window,[ref]$actual)
+    [TeacherDesktopWindow]::IsWindow($window) -and $actual -eq $ownerPid
+  }
   if ([TeacherDesktopWindow]::IsIconic($window)) { continue }
   $nextArea=Get-TargetArea
   if (($nextArea.X -ne $lastArea.X) -or ($nextArea.Y -ne $lastArea.Y) -or
