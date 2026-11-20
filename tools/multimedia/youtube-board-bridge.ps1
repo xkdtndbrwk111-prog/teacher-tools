@@ -19,10 +19,15 @@ function Get-TTYoutubeJobState([string]$Root){
   if($s.state -cin @('running','complete','cancelled','failed') -and $s.phase -cin @('install','download','verify','saved','stopped','error')){
    $state.state=$s.state;$state.phase=$s.phase;$state.percent=[Math]::Max(-1,[Math]::Min(100,[int]$s.percent))
    try{$state.age=[int][Math]::Max(0,([DateTime]::UtcNow-[DateTime]::Parse($s.updated).ToUniversalTime()).TotalSeconds)}catch{}
+   if($s.state -eq 'failed' -and $s.errorCode -cin @('tls_certificate','remote_rejected','remote_auth','timeout','download_failed','engine_integrity','install_failed','verify_failed')){$state.errorCode=$s.errorCode}
    $v=$s.install
    if($s.phase -eq 'install' -and $v.component -cin @('yt-dlp','Deno','FFmpeg') -and $v.step -cin @('connect','transfer','verify','extract','finalize') -and $v.index -ge 1 -and $v.index -le 3 -and $v.bytes -ge 0 -and $v.bytes -le 400MB -and $v.total -ge -1 -and $v.total -le 400MB){$state.install=@{component=$v.component;index=[int]$v.index;step=$v.step;bytes=[long]$v.bytes;total=[long]$v.total}}
   }
  }catch{}
+ if($state.state -eq 'failed' -and !$state.errorCode){
+  # Classify legacy failed downloads without exposing raw log content to UI.
+  if(Test-Path -LiteralPath (Join-Path $dir 'download.err') -PathType Leaf){$state.errorCode=Get-TTYoutubeErrorCode $dir 'download' ''}
+ }
  if($state.state -eq 'running'){
   # The worker holds the exclusive file handle until exit; tolerate launch handshake.
   $busy=$false;$lock=$null

@@ -10772,6 +10772,10 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     token=x.token;job=x.job||{state:'idle'};
     const phases={starting:'작업 준비 중',install:'엔진 설치 중',download:'영상 다운로드 중',verify:'영상 확인 중',saved:'저장 완료',stopped:'취소됨',error:'작업 실패'};
     info.textContent=job.state==='idle'?'다운로드 준비 완료':(phases[job.phase]||'작업 상태 확인 중')+(job.state==='running'&&job.percent>=0?' · '+job.percent+'%':'');
+    if(job.state==='failed'){
+     const errors={tls_certificate:'SSL 인증서 검증 실패 · Windows 신뢰 인증서 및 학교 네트워크 확인 필요',remote_rejected:'영상 서버에서 요청 거부',remote_auth:'영상 서버에서 추가 인증 요구',timeout:'네트워크 응답 시간 초과',download_failed:'영상 다운로드 실패',engine_integrity:'엔진 파일 무결성 검사 실패',install_failed:'엔진 설치 실패',verify_failed:'저장 영상 검증 실패'};
+     info.textContent=errors[job.errorCode]||'작업 실패 · 다시 시도하세요.';message.textContent='';status.textContent='';
+    }
     if(job.state==='running'&&job.phase==='install'){
      const v=job.install,mb=n=>(n/1048576).toFixed(1)+' MB';
      if(v){const labels={connect:'연결 중',transfer:'받는 중',verify:'무결성 검사',extract:'압축 해제',finalize:'설치 마무리'};info.textContent='엔진 설치 '+v.index+'/3 · '+v.component+' '+(labels[v.step]||'준비 중')+(v.step==='transfer'?' · '+mb(v.bytes)+(v.total>0?' / '+mb(v.total)+' ('+job.percent+'%)':''):'')}

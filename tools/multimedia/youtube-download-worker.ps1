@@ -13,12 +13,13 @@ function Join-TTYoutubeArgs([string[]]$Items){
  }
  return ($quoted -join ' ')
 }
-function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int]$Percent=-1,[hashtable]$Install=$null){
+function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int]$Percent=-1,[hashtable]$Install=$null,[string]$ErrorCode=''){
  $file=Join-Path $JobDir 'state.json'
  $temp=Join-Path $JobDir ('state-'+[guid]::NewGuid().ToString('N')+'.tmp')
  try{
   $record=@{state=$State;phase=$Phase;percent=$Percent;updated=[DateTime]::UtcNow.ToString('o')}
   if($Install){$record.install=$Install}
+  if($ErrorCode){$record.errorCode=$ErrorCode}
   $json=$record|ConvertTo-Json -Compress -Depth 4
   [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
   if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,[NullString]::Value)}else{[IO.File]::Move($temp,$file)}
@@ -94,13 +95,25 @@ function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$E
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
  [IO.Directory]::Move($stage,$target)
 }
+function Get-TTYoutubeErrorCode([string]$JobDir,[string]$Phase,[string]$Message){
+ if($Phase -eq 'download'){
+  $log='';try{$log=(Get-Content -LiteralPath (Join-Path $JobDir 'download.err') -Tail 30 -ErrorAction Stop) -join "`n"}catch{}
+  if($log -match 'CERTIFICATE_VERIFY_FAILED|CertificateVerifyError'){return 'tls_certificate'}
+  if($log -match 'HTTP Error 403|HTTP Error 429'){return 'remote_rejected'}
+  if($log -match 'Sign in|not a bot|login required'){return 'remote_auth'}
+  if($Message -match 'timeout' -or $log -match 'timed out|timeout'){return 'timeout'}
+  return 'download_failed'
+ }
+ if($Phase -eq 'install'){if($Message -match 'timeout'){return 'timeout'};if($Message -match 'integrity|archive'){return 'engine_integrity'};return 'install_failed'}
+ return 'verify_failed'
+}
 function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[string]$JobId){
  $request=ConvertTo-TTYoutubeRequest $VideoId $Quality
  if($JobId -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid job ID'}
  $root=[IO.Path]::GetFullPath($Root)
  [void][IO.Directory]::CreateDirectory($root)
  $lock=[IO.File]::Open((Join-Path $root '.download.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
- $job=$null
+ $job=$null;$phase='install'
  try{
   $jobs=Join-Path $root 'jobs';[void][IO.Directory]::CreateDirectory($jobs)
   $job=Join-Path $jobs $JobId
@@ -115,18 +128,18 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   Assert-TTEngineNotCancelled $job
   $library=Join-Path $root 'library'
   if(Test-Path -LiteralPath (Join-Path $library ($request.id+'-'+$request.quality))){throw 'video already stored'}
-  Write-TTYoutubeState $job 'running' 'download'
+  $phase='download';Write-TTYoutubeState $job 'running' 'download'
   $dir=$engine.directory
   $h=$request.quality
   $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
-  $argv=@('--ignore-config','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
   $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
-  Write-TTYoutubeState $job 'running' 'verify'
+  $phase='verify';Write-TTYoutubeState $job 'running' 'verify'
   Complete-TTYoutubeVideo $job $library $dir $request
   Write-TTYoutubeState $job 'complete' 'saved' 100
  }catch{
   if($job -and (Test-Path -LiteralPath $job)){
-   if(Test-Path -LiteralPath (Join-Path $job 'cancel')){Write-TTYoutubeState $job 'cancelled' 'stopped'}else{Write-TTYoutubeState $job 'failed' 'error'}
+   if(Test-Path -LiteralPath (Join-Path $job 'cancel')){Write-TTYoutubeState $job 'cancelled' 'stopped'}else{$code=Get-TTYoutubeErrorCode $job $phase $_.Exception.Message;Write-TTYoutubeState $job 'failed' 'error' -1 $null $code}
   }
   throw
  }finally{

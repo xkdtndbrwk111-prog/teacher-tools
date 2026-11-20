@@ -60,6 +60,9 @@ assert.equal(await dlg.getByRole('button',{name:'다운로드 취소',exact:true
 await dlg.getByRole('button',{name:'다운로드 취소',exact:true}).click();
 await dlg.locator('[data-youtube-state]').getByText('취소됨',{exact:true}).waitFor();
 assert.equal(dlCalls.length,2);
+dlJob={job:dlJobId,state:'failed',phase:'error',percent:-1,errorCode:'tls_certificate'};
+await dlg.locator('[data-youtube-state]').getByText('SSL 인증서 검증 실패 · Windows 신뢰 인증서 및 학교 네트워크 확인 필요',{exact:true}).waitFor();
+assert.equal(await dlg.locator('#ttMediaStatus').textContent(),'');
 dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576}];
 await dlg.locator('[data-youtube-library]').getByText('sVoh_DAt9is · 360p · 1 MB',{exact:true}).waitFor();
 assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);

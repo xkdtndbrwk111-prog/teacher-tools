@@ -25,6 +25,11 @@ function Test-TTYoutubeWorker([string]$Root,[string]$EngineDir){
  $state=Get-Content -LiteralPath (Join-Path $job 'state.json') -Raw|ConvertFrom-Json
  if($state.percent -ne 50 -or $state.state -ne 'running'){throw 'state update'}
  Write-Host 'PASS atomic status update'
+ [IO.File]::WriteAllText((Join-Path $job 'download.err'),'[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed')
+ if((Get-TTYoutubeErrorCode $job 'download' 'engine failed') -cne 'tls_certificate'){throw 'TLS failure classification'}
+ Write-TTYoutubeState $job 'failed' 'error' -1 $null 'tls_certificate'
+ if((Get-Content -LiteralPath (Join-Path $job 'state.json') -Raw|ConvertFrom-Json).errorCode -cne 'tls_certificate'){throw 'TLS code persistence'}
+ Write-Host 'PASS safe TLS error classification and persistence'
  $mp4=Join-Path $job 'video.mp4'
  $null=Invoke-TTYoutubeProcess (Join-Path $EngineDir 'ffmpeg.exe') @('-nostdin','-v','error','-f','lavfi','-i','testsrc2=size=640x360:rate=24','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','1','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',$mp4) $job 'generate' 60
  $hash=(Get-FileHash -LiteralPath $mp4).Hash
