@@ -35,7 +35,7 @@ const server=http.createServer((req,res)=>{
   const read=async()=>{await page.waitForFunction(()=>{const v=document.querySelector('video');return v.readyState>=2||v.error},{},{timeout:12000});return page.evaluate(()=>{const v=document.querySelector('video');return {error:v.error?.message||'',code:v.error?.code||0,width:v.videoWidth,height:v.videoHeight,duration:v.duration,codec:v.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')}})};
   const control=await read();
   console.log('Same-origin identical MP4 control',JSON.stringify(control));
-  await page.evaluate(src=>{const v=document.querySelector('video');v.src=src;v.load()},source);
+  await page.evaluate(src=>{const v=document.querySelector('video');v.crossOrigin='anonymous';v.src=src;v.load()},source);
   let metadata;
   try{metadata=await read()}finally{console.log('Dedicated media HTTP diagnostics',JSON.stringify(network))}
   console.log('Dedicated media metadata',JSON.stringify(metadata));

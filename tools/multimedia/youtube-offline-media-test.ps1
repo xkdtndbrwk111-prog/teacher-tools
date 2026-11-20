@@ -19,7 +19,7 @@ function Test-TTYoutubeMedia([string]$Root){
   while(!(Test-Path -LiteralPath $portFile) -and !$p.HasExited -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 100}
   if(!(Test-Path -LiteralPath $portFile)){throw 'media server did not start'}
   $port=[int](Get-Content -LiteralPath $portFile -Raw)
-  function Request-TTMediaFixture([string]$Method,[string]$Path,[string]$Referer,[string]$Range='', [string]$HostOverride=''){
+  function Request-TTMediaFixture([string]$Method,[string]$Path,[string]$Referer,[string]$Range='', [string]$HostOverride='', [string]$Origin=''){
    $tcp=[Net.Sockets.TcpClient]::new()
    $mem=[IO.MemoryStream]::new()
    try{
@@ -29,6 +29,7 @@ function Test-TTYoutubeMedia([string]$Root){
     $nl=[string][char]13+[char]10
     $headers=@("$Method $Path HTTP/1.1","Host: $hostHeader","Referer: $Referer","Connection: close")
     if($Range){$headers+=("Range: $Range")}
+    if($Origin){$headers+=("Origin: $Origin")}
     $bytes=[Text.Encoding]::ASCII.GetBytes(($headers -join $nl)+$nl+$nl)
     $stream.Write($bytes,0,$bytes.Length);$stream.CopyTo($mem)
     $out=$mem.ToArray();$ascii=[Text.Encoding]::ASCII.GetString($out);$split=$ascii.IndexOf($nl+$nl)
@@ -59,7 +60,11 @@ function Test-TTYoutubeMedia([string]$Root){
    (Request-TTMediaFixture 'GET' $path $ref '' 'evil.example')
   )){if($bad.header -notmatch '^HTTP/1.1 403' -or $bad.body.Length){throw 'unauthorized media response'}}
   if((Request-TTMediaFixture 'POST' $path $ref).header -notmatch '^HTTP/1.1 405'){throw 'method allowed'}
-  Write-Host 'PASS private playback token, host, origin and method policy'
+  $allowed=Request-TTMediaFixture 'GET' $path $ref 'bytes=0-9' '' 'http://127.0.0.1:17439'
+  if($allowed.header -notmatch '^HTTP/1.1 206' -or !$allowed.header.Contains('Access-Control-Allow-Origin: http://127.0.0.1:17439')){throw 'exact board CORS not granted'}
+  $denied=Request-TTMediaFixture 'GET' $path $ref '' '' 'https://evil.example'
+  if($denied.header -notmatch '^HTTP/1.1 403' -or $denied.header.Contains('Access-Control-Allow-Origin:') -or $denied.body.Length){throw 'foreign origin granted CORS'}
+  Write-Host 'PASS private playback token, host, origin, exact board CORS and method policy'
   if($env:TT_TEST_REAL_MEDIA_BROWSER -eq '1'){
    & node (Join-Path $PSScriptRoot 'youtube-offline-media-browser.cjs') "$port" $token $file
    if($LASTEXITCODE -ne 0){throw 'real Chrome offline media playback failed'}

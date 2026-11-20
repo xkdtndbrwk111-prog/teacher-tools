@@ -70,7 +70,7 @@ public static class TTOfflineMediaServer {
    string local="http://localhost:"+boardPort.ToString(CultureInfo.InvariantCulture);
    bool boardRef=referer==board+"/" || referer==local+"/" || referer==board+"/index.html" || referer==local+"/index.html";
    bool boardOrigin=origin==board || origin==local;
-   if(req.Length!=3 || req[2]!="HTTP/1.1" || host!="127.0.0.1:"+port.ToString(CultureInfo.InvariantCulture) || req[1]!="/"+token+"/video.mp4" || site=="cross-site" || (origin!=null&&!boardOrigin) || (!boardRef&&!boardOrigin) || mode=="navigate"){
+   if(req.Length!=3 || req[2]!="HTTP/1.1" || host!="127.0.0.1:"+port.ToString(CultureInfo.InvariantCulture) || req[1]!="/"+token+"/video.mp4" || (site=="cross-site"&&!boardOrigin) || (origin!=null&&!boardOrigin) || (!boardRef&&!boardOrigin) || mode=="navigate"){
     Header(s,"403 Forbidden",0,"");return;
    }
    if(req[0]!="GET"&&req[0]!="HEAD"){Header(s,"405 Method Not Allowed",0,"Allow: GET, HEAD\r\n");return;}
@@ -79,6 +79,8 @@ public static class TTOfflineMediaServer {
     if(size<=0||!ByteRange(range,size,out first,out last)){Header(s,"416 Range Not Satisfiable",0,"Content-Range: bytes */"+size.ToString(CultureInfo.InvariantCulture)+"\r\n");return;}
     long length=last-first+1;
     string extra=String.IsNullOrEmpty(range)?"":"Content-Range: bytes "+first.ToString(CultureInfo.InvariantCulture)+"-"+last.ToString(CultureInfo.InvariantCulture)+"/"+size.ToString(CultureInfo.InvariantCulture)+"\r\n";
+    // Exact validated board origin only; anonymous CORS permits the private port even when Chromium treats loopback ports as different sites.
+    if(boardOrigin)extra+="Access-Control-Allow-Origin: "+origin+"\r\nVary: Origin\r\n";
     Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra);
     if(req[0]=="HEAD")return;
     f.Position=first;byte[] buffer=new byte[65536];

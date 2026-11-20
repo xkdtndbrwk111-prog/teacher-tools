@@ -10825,7 +10825,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     if(x.state!=='ready')throw Error('playback ended');
     const u=new URL(x.url);
     if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/'+session+'/video.mp4')throw Error('invalid media URL');
-    video=document.createElement('video');video.controls=true;video.playsInline=true;video.preload='metadata';video.disablePictureInPicture=true;
+    video=document.createElement('video');video.crossOrigin='anonymous';video.controls=true;video.playsInline=true;video.preload='metadata';video.disablePictureInPicture=true;
     video.addEventListener('loadedmetadata',()=>{if(active())status.textContent='저장 영상 · 오프라인 재생'});
     video.addEventListener('ended',()=>{if(active())status.textContent='재생 완료'});
     video.addEventListener('error',fail);
