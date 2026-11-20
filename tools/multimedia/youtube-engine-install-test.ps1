@@ -22,6 +22,8 @@ try{
   if($LASTEXITCODE -ne 0){throw 'installed ffmpeg unable to run'}
  }
  Write-Host 'PASS extracted engine execution under Windows PowerShell 5.1'
+ . (Join-Path $PSScriptRoot 'youtube-download-worker-test.ps1')
+ Test-TTYoutubeWorker $root $dir
  [IO.File]::AppendAllText($y,'tamper fixture')
  if((Get-TTYoutubeEngineState $root).state -ne 'invalid'){throw 'tamper not detected'}
  $rejected=$false
