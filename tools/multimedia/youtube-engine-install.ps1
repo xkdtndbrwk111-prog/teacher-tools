@@ -26,13 +26,60 @@ function Get-TTYoutubeEngineState([string]$Root){
   return @{state='ready';id=$id;directory=$dir}
  }catch{return @{state='invalid';id=$id}}
 }
-function Install-TTYoutubeEngine([string]$Root){
+# The progress callback receives fixed phase labels and byte counts, not URLs or paths.
+function Assert-TTEngineNotCancelled([string]$JobDir){
+ if($JobDir -and (Test-Path -LiteralPath (Join-Path $JobDir 'cancel'))){throw 'cancelled'}
+}
+function Receive-TTEngineAsset([string]$Url,[string]$Path,[long]$Max,[string]$JobDir,[scriptblock]$ByteProgress){
+ $request=[Net.HttpWebRequest]::Create($Url)
+ $request.AllowAutoRedirect=$true;$request.MaximumAutomaticRedirections=5
+ $request.UserAgent='TeacherToolsMedia/1.66.25'
+ $deadline=[DateTime]::UtcNow.AddMinutes(15)
+ $response=$null;$stream=$null;$file=$null
+ try{
+  $pending=$request.GetResponseAsync()
+  $limit=[DateTime]::UtcNow.AddSeconds(45)
+  while(!$pending.Wait(250)){
+   Assert-TTEngineNotCancelled $JobDir
+   if([DateTime]::UtcNow -gt $limit){throw 'engine connection timeout'}
+  }
+  $response=$pending.GetAwaiter().GetResult()
+  $total=[long]$response.ContentLength
+  if($total -eq 0 -or $total -gt $Max){throw 'engine archive size'}
+  $stream=$response.GetResponseStream()
+  $file=[IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+  $buffer=New-Object byte[] 65536;$count=[long]0;$reported=[DateTime]::MinValue
+  if($ByteProgress){& $ByteProgress $count $total}
+  while($true){
+   Assert-TTEngineNotCancelled $JobDir
+   $limit=[DateTime]::UtcNow.AddSeconds(45)
+   $pending=$stream.ReadAsync($buffer,0,$buffer.Length)
+   while(!$pending.Wait(250)){
+    Assert-TTEngineNotCancelled $JobDir
+    if([DateTime]::UtcNow -gt $limit -or [DateTime]::UtcNow -gt $deadline){throw 'engine transfer timeout'}
+   }
+   $n=$pending.GetAwaiter().GetResult()
+   if($n -eq 0){break}
+   $count+=$n
+   if($count -gt $Max -or [DateTime]::UtcNow -gt $deadline){throw 'engine archive limit'}
+   $file.Write($buffer,0,$n)
+   if($ByteProgress -and ([DateTime]::UtcNow-$reported).TotalSeconds -ge 1){& $ByteProgress $count $total;$reported=[DateTime]::UtcNow}
+  }
+  if($count -le 0 -or ($total -ge 0 -and $count -ne $total)){throw 'engine archive incomplete'}
+  if($ByteProgress){& $ByteProgress $count $total}
+ }finally{
+  $request.Abort()
+  if($file){$file.Dispose()};if($stream){$stream.Dispose()};if($response){$response.Dispose()}
+ }
+}
+function Install-TTYoutubeEngine([string]$Root,[string]$JobDir='',[scriptblock]$Progress=$null){
  if($env:OS -ne 'Windows_NT' -or ![Environment]::Is64BitOperatingSystem){throw 'Windows x64 required'}
  $Root=[IO.Path]::GetFullPath($Root)
  [void][IO.Directory]::CreateDirectory($Root)
  $lock=[IO.File]::Open((Join-Path $Root '.install.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
  $stage=$null
  try{
+  Assert-TTEngineNotCancelled $JobDir
   $state=Get-TTYoutubeEngineState $Root
   if($state.state -eq 'ready'){return $state}
   if($state.state -eq 'invalid'){throw 'Existing engine failed integrity; leave untouched for explicit recovery'}
@@ -40,16 +87,25 @@ function Install-TTYoutubeEngine([string]$Root){
   [void][IO.Directory]::CreateDirectory($stage)
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+  $index=0
   foreach($pin in (Get-TTYoutubePin)){
+   $index++;Assert-TTEngineNotCancelled $JobDir
+   $component=@('yt-dlp','Deno','FFmpeg')[$index-1]
+   if($Progress){& $Progress $component $index 'connect' 0 -1}
    $src='https://github.com/'+$pin.repo+'/releases/download/'+$pin.tag+'/'+$pin.name
    $archive=Join-Path $stage $pin.name
-   Invoke-WebRequest -UseBasicParsing -Uri $src -OutFile $archive -TimeoutSec 240 -ErrorAction Stop
+   $notify={param($bytes,$total) if($Progress){& $Progress $component $index 'transfer' $bytes $total}}
+   Receive-TTEngineAsset $src $archive $pin.max $JobDir $notify
+   Assert-TTEngineNotCancelled $JobDir
+   if($Progress){& $Progress $component $index 'verify' 0 -1}
    $size=(Get-Item -LiteralPath $archive).Length
    if($size -le 0 -or $size -gt $pin.max -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin.sha){throw 'upstream asset integrity'}
    if($pin.name.EndsWith('.zip')){
+    if($Progress){& $Progress $component $index 'extract' 0 -1}
     $zip=[IO.Compression.ZipFile]::OpenRead($archive)
     try{
      foreach($name in $pin.exe){
+      Assert-TTEngineNotCancelled $JobDir
       $e=@($zip.Entries|Where-Object {$_.Name -ceq $name})
       if($e.Count -ne 1 -or $e[0].Length -le 0 -or $e[0].Length -gt 500MB){throw 'invalid archive entry'}
       [IO.Compression.ZipFileExtensions]::ExtractToFile($e[0],(Join-Path $stage $name),$false)
@@ -58,6 +114,8 @@ function Install-TTYoutubeEngine([string]$Root){
     Remove-Item -LiteralPath $archive -Force
    }
   }
+  Assert-TTEngineNotCancelled $JobDir
+  if($Progress){& $Progress 'FFmpeg' 3 'finalize' 0 -1}
   $files=@(foreach($name in @('yt-dlp.exe','deno.exe','ffmpeg.exe','ffprobe.exe')){
    @{name=$name;sha=(Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant()}
   })
