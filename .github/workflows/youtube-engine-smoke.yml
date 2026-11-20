@@ -1,0 +1,51 @@
+name: YouTube engine isolated Windows smoke
+on:
+  pull_request:
+    paths:
+      - 'tools/multimedia/youtube-engine-smoke.ps1'
+      - 'tools/multimedia/youtube-engine-install*.ps1'
+      - 'tools/multimedia/youtube-download-worker*.ps1'
+      - 'tools/multimedia/youtube-board-bridge*.ps1'
+      - 'tools/multimedia/youtube-offline-media*.ps1'
+      - 'tools/multimedia/youtube-offline-media-browser.cjs'
+      - 'runtime-src/system/server.ps1'
+      - '.github/workflows/youtube-engine-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  engine-smoke:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        env:
+          TT_ENGINE_API_TOKEN: ${{ github.token }}
+        run: |
+          $tokens = $null; $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./tools/multimedia/youtube-engine-smoke.ps1).Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'Engine smoke script syntax check failed' }
+          Write-Host 'PASS PowerShell syntax preflight'
+          & ./tools/multimedia/youtube-engine-smoke.ps1 -Root (Join-Path $env:RUNNER_TEMP ('tt-youtube-smoke-' + [guid]::NewGuid().ToString('N')))
+  engine-install-ps51:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD='1'
+          npm install --prefix "$env:RUNNER_TEMP/tt-media-chrome" --no-save --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright install failed'}
+          $env:NODE_PATH="$env:RUNNER_TEMP/tt-media-chrome/node_modules"
+          $env:TT_TEST_REAL_MEDIA_BROWSER='1'
+          foreach ($f in @('./tools/multimedia/youtube-engine-install.ps1','./tools/multimedia/youtube-engine-install-test.ps1','./tools/multimedia/youtube-download-worker.ps1','./tools/multimedia/youtube-download-worker-test.ps1','./tools/multimedia/youtube-board-bridge.ps1','./tools/multimedia/youtube-board-bridge-test.ps1','./tools/multimedia/youtube-offline-media.ps1','./tools/multimedia/youtube-offline-media-test.ps1','./runtime-src/system/server.ps1')) {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) { $errors | Format-List; throw 'Installer syntax check failed' }
+          }
+          & ./tools/multimedia/youtube-engine-install-test.ps1
