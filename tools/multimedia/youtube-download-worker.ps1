@@ -112,8 +112,8 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   $dir=$engine.directory
   $h=$request.quality
   $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
-  $args=@('--ignore-config','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
-  $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $args $job 'download' 3600
+  $argv=@('--ignore-config','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
   Write-TTYoutubeState $job 'running' 'verify'
   Complete-TTYoutubeVideo $job $library $dir $request
   Write-TTYoutubeState $job 'complete' 'saved' 100
@@ -123,10 +123,9 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   }
   throw
  }finally{
-  if($job -and (Test-Path -LiteralPath $job)){
+  try{if($job -and (Test-Path -LiteralPath $job)){
    # Retain status and bounded logs only; never touch completed library entries.
    Get-ChildItem -LiteralPath $job -Force|Where-Object {$_.Name -notin @('state.json','cancel','download.out','download.err','verify.out','verify.err')}|Remove-Item -Recurse -Force
-  }
-  $lock.Dispose()
+  }}finally{$lock.Dispose()}
  }
 }
