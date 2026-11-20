@@ -124,6 +124,8 @@ await dlg.getByRole('button',{name:'영상 등록',exact:true}).click();
 await page.evaluate(async()=>{const dir=await navigator.storage.getDirectory();const handle=await dir.getFileHandle('실험.webm',{create:true});const writable=await handle.createWritable();await writable.write(new Blob(['synthetic fixture'],{type:'video/webm'}));await writable.close();window.showOpenFilePicker=async()=>[handle]});
 assert.equal(await dlg.locator('.mm-personal-add input[type=file]').count(),0);
 await dlg.getByRole('button',{name:'로컬 영상 선택',exact:true}).click();
+// File picker resolves asynchronously; wait for the selected file's default name before overriding it.
+await page.waitForFunction(()=>document.querySelector('#ttMediaDialog input[aria-label="영상 표시 이름"]')?.value==='실험');
 await dlg.getByRole('textbox',{name:'영상 표시 이름'}).fill('개인 영상 시험');await dlg.getByRole('button',{name:'등록',exact:true}).click();
 await dlg.getByRole('button',{name:'개인 영상 시험 재생',exact:true}).waitFor();assert.equal(await dlg.locator('.mm-personal-card button.accent').count(),0);
 await dlg.getByRole('button',{name:'개인 영상 시험 재생',exact:true}).click();await dlg.locator('video').waitFor();assert.ok((await dlg.locator('video').getAttribute('src')).startsWith('blob:'));
