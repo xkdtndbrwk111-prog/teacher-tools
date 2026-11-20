@@ -3,7 +3,7 @@
 function Start-TTYoutubeMediaServer([string]$MediaPath,[string]$SessionDir,[string]$Token,[int]$BoardPort=17439,[int]$MaxSeconds=14400,[int]$ParentPid=0){
  if($Token -cnotmatch '^[a-f0-9]{32}$' -or $BoardPort -lt 1 -or $BoardPort -gt 65535 -or $MaxSeconds -lt 1 -or $MaxSeconds -gt 14400){throw 'media server parameters'}
  $item=Get-Item -LiteralPath $MediaPath -ErrorAction Stop
- if($item.PSIsContainer -or $item.Name -cne 'video.mp4' -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
+ if($item.PSIsContainer -or $item.Extension -notin @('.mp4','.webm','.ogv','.ogg') -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
  if(!(Test-Path -LiteralPath $SessionDir -PathType Container)){throw 'missing session directory'}
  if(-not ('TTOfflineMediaServer' -as [type])){
   Add-Type -TypeDefinition @'
@@ -29,8 +29,8 @@ public static class TTOfflineMediaServer {
    line.Append((char)b);
   }
  }
- static void Header(Stream s, string status, long length, string extra) {
-  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: video/mp4\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
+ static void Header(Stream s, string status, long length, string extra, string mime = "video/mp4") {
+  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: "+mime+"\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
   s.Write(bytes,0,bytes.Length);
  }
  static bool ByteRange(string value, long size, out long first, out long last) {
@@ -81,7 +81,9 @@ public static class TTOfflineMediaServer {
     string extra=String.IsNullOrEmpty(range)?"":"Content-Range: bytes "+first.ToString(CultureInfo.InvariantCulture)+"-"+last.ToString(CultureInfo.InvariantCulture)+"/"+size.ToString(CultureInfo.InvariantCulture)+"\r\n";
     // Exact validated board origin only; anonymous CORS permits the private port even when Chromium treats loopback ports as different sites.
     if(boardOrigin)extra+="Access-Control-Allow-Origin: "+origin+"\r\nVary: Origin\r\n";
-    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra);
+    string ext=Path.GetExtension(path).ToLowerInvariant();
+    string mime=ext==".webm"?"video/webm":(ext==".ogv"||ext==".ogg"?"video/ogg":"video/mp4");
+    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra,mime);
     if(req[0]=="HEAD")return;
     f.Position=first;byte[] buffer=new byte[65536];
     while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end&&(parent==null||!parent.HasExited)){

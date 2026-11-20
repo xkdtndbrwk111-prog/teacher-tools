@@ -1,7 +1,7 @@
 # Offline-only media fixture: actual generated MP4, no external network.
 function Test-TTYoutubeMedia([string]$Root){
  . (Join-Path $PSScriptRoot 'youtube-download-worker.ps1')
- $file=Join-Path $Root 'worker fixture with spaces/library/DAHbOpoUrrg-720/video.mp4'
+ $file=Join-Path $Root 'worker fixture with spaces/library/Original title [DAHbOpoUrrg-720].mp4'
  $expected=[IO.File]::ReadAllBytes($file)
  $session=Join-Path $Root 'media session';[void][IO.Directory]::CreateDirectory($session)
  $token=[guid]::NewGuid().ToString('N')

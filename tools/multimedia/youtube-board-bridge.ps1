@@ -41,6 +41,11 @@ function Get-TTYoutubeJobState([string]$Root){
 function Get-TTYoutubeLibrary([string]$Root){
  $lib=Join-Path $Root 'library'
  if(!(Test-Path -LiteralPath $lib -PathType Container)){return}
+ foreach($path in @($Root,$lib)){if((Get-Item -LiteralPath $path -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}}
+ foreach($file in @(Get-TTYoutubeFlatFiles $lib|Sort-Object Name)){
+  @{id=(Get-TTYoutubeFlatId $file.Name);quality='local';height=0;bytes=$file.Length;created=$file.LastWriteTimeUtc.ToString('o');originalTitle=$file.BaseName;customTitle='';filename=$file.Name}
+ }
+ # Compatibility: old downloads remain playable without moving or deleting source files.
  foreach($dir in @(Get-ChildItem -LiteralPath $lib -Directory|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 200)){
   if($dir.Name -cnotmatch '^([A-Za-z0-9_-]{11})-(720|1080)$' -or ($dir.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
   $id=$Matches[1];$q=$Matches[2]
@@ -69,6 +74,7 @@ function Open-TTYoutubeLibrary([string]$Root){
  return @{ok=$true}
 }
 function Set-TTYoutubeLibraryTitle([string]$Root,$InputData){
+ if($InputData.quality -ceq 'local'){throw 'use explorer to rename local media'}
  if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.title -isnot [string] -or $InputData.title.Length -gt 180){throw 'invalid title'}
  $video=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
  $path=Join-Path (Split-Path -Parent $video) 'metadata.json'
@@ -87,7 +93,7 @@ function Start-TTYoutubeBoardJob([string]$Root,[string]$ServerScript,$InputData)
  $request=ConvertTo-TTYoutubeRequest $InputData.id $InputData.quality
  [void][IO.Directory]::CreateDirectory($Root)
  if((Get-TTYoutubeJobState $Root).state -eq 'running'){throw 'busy'}
- if(Test-Path -LiteralPath (Join-Path (Join-Path $Root 'library') ($request.id+'-'+$request.quality))){throw 'already saved'}
+ if(Test-TTYoutubeStoredVideo (Join-Path $Root 'library') $request){throw 'already saved'}
  $job=[guid]::NewGuid().ToString('N')
  $record=@{job=$job;id=$request.id;quality=$request.quality;created=[DateTime]::UtcNow.ToString('o')}
  $last=Join-Path $Root 'last-job.json';$temp=$last+'.'+$job+'.tmp'
@@ -116,7 +122,9 @@ function Stop-TTYoutubeBoardJob([string]$Root,[string]$Job){
 function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript,[int]$BoardPort=17439){
  if(!$SameOrigin){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
-  return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
+  $ready=$true;$files=@()
+  try{$files=@(Get-TTYoutubeLibrary $Root)}catch{$ready=$false}
+  return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);libraryReady=$ready;library=$files})}
  }
  if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop','/api/youtube/open-library','/api/youtube/rename') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
@@ -137,6 +145,13 @@ function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigi
 # One isolated playback process per board; never wait for media or compilation in the HTTP loop.
 $script:ttYoutubePlayback=$null
 function Resolve-TTYoutubePlaybackFile([string]$Root,[string]$Id,[string]$Quality){
+ if($Quality -ceq 'local'){
+  if($Id -cnotmatch '^[a-f0-9]{64}$'){throw 'invalid library key'}
+  $lib=Join-Path $Root 'library'
+  foreach($p in @($Root,$lib)){if((Get-Item -LiteralPath $p -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}}
+  foreach($f in @(Get-TTYoutubeFlatFiles $lib)){if((Get-TTYoutubeFlatId $f.Name) -ceq $Id){return $f.FullName}}
+  throw 'missing library file'
+ }
  $req=ConvertTo-TTYoutubeRequest $Id $Quality
  $library=Join-Path $Root 'library'
  $dir=Join-Path $library ($req.id+'-'+$req.quality)

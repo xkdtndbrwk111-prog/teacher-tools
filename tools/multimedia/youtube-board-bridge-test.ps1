@@ -51,10 +51,29 @@ try{
  }finally{
   if($script:ttYoutubeProcess){if(!$script:ttYoutubeProcess.HasExited){$script:ttYoutubeProcess.Kill();$script:ttYoutubeProcess.WaitForExit()};$script:ttYoutubeProcess.Dispose();$script:ttYoutubeProcess=$null}
  }
- $lib=@(Get-TTYoutubeLibrary (Join-Path $Root 'worker fixture with spaces'))
+ $flatRoot=Join-Path $Root 'worker fixture with spaces'
+ $flatDir=Join-Path $flatRoot 'library';$flat=@(Get-TTYoutubeLibrary $flatRoot)
+ if($flat.Count -ne 1 -or $flat[0].quality -cne 'local' -or $flat[0].id -cnotmatch '^[a-f0-9]{64}$'){throw 'flat library listing'}
+ $flatVideo=Resolve-TTYoutubePlaybackFile $flatRoot $flat[0].id 'local'
+ $added=Join-Path $flatDir 'Added manually.mp4';Copy-Item -LiteralPath $flatVideo -Destination $added
+ if(@(Get-TTYoutubeLibrary $flatRoot).Count -ne 2){throw 'manually added file missing'}
+ $before=Get-TTYoutubeFlatId 'Added manually.mp4'
+ Rename-Item -LiteralPath $added -NewName 'Renamed manually.mp4'
+ $renamed=@(Get-TTYoutubeLibrary $flatRoot|Where-Object {$_.filename -eq 'Renamed manually.mp4'})
+ if($renamed.Count -ne 1 -or $renamed[0].id -ceq $before -or (Resolve-TTYoutubePlaybackFile $flatRoot $renamed[0].id 'local') -ne (Join-Path $flatDir 'Renamed manually.mp4')){throw 'renamed file missing'}
+ Remove-Item -LiteralPath (Join-Path $flatDir 'Renamed manually.mp4')
+ if(@(Get-TTYoutubeLibrary $flatRoot).Count -ne 1){throw 'deleted file still listed'}
+ $denied=$false;try{$null=Resolve-TTYoutubePlaybackFile $flatRoot '../video.mp4' 'local'}catch{$denied=$true};if(!$denied){throw 'arbitrary local path accepted'}
+ Write-Host 'PASS flat folder direct add, rename, remove and scoped file resolution'
+ # Separate legacy fixture ensures older downloaded videos continue to work.
+ $libraryRoot=Join-Path $Root 'legacy bridge fixture'
+ $legacy=Join-Path (Join-Path $libraryRoot 'library') 'DAHbOpoUrrg-720'
+ [void][IO.Directory]::CreateDirectory($legacy)
+ Copy-Item -LiteralPath $flatVideo -Destination (Join-Path $legacy 'video.mp4')
+ @{id='DAHbOpoUrrg';quality='720';height=360;bytes=(Get-Item -LiteralPath $flatVideo).Length;created=[datetime]::UtcNow.ToString('o');originalTitle='Original title';customTitle=''}|ConvertTo-Json -Compress|Set-Content -LiteralPath (Join-Path $legacy 'metadata.json') -Encoding UTF8
+ $lib=@(Get-TTYoutubeLibrary $libraryRoot)
  if($lib.Count -ne 1 -or $lib[0].id -cne 'DAHbOpoUrrg' -or $lib[0].height -ne 360){throw 'library listing contract'}
  Write-Host 'PASS validated library listing without absolute paths'
- $libraryRoot=Join-Path $Root 'worker fixture with spaces'
  $resolved=Resolve-TTYoutubePlaybackFile $libraryRoot 'DAHbOpoUrrg' '720'
  if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'playback library resolution'}
  foreach($bad in @('../unsafe','AAAAAAAAAAA')){

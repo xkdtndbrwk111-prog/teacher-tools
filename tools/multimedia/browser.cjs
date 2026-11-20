@@ -133,7 +133,15 @@ await page.evaluate(async()=>{const dir=await navigator.storage.getDirectory();a
 await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).first().click();await page.evaluate(()=>ttMultimedia.open());
 await dlg.getByRole('button',{name:'개인 영상 변경 재생',exact:true}).waitFor({state:'hidden'});
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();await dlg.getByRole('button',{name:'개인 영상 등록',exact:true}).click();await dlg.locator('.mm-download-message').getByText('멀티미디어 개인 영상에 등록했습니다.',{exact:true}).waitFor();await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();await dlg.getByRole('button',{name:'Original title 재생',exact:true}).waitFor();
-console.log('PASS reference-only personal videos, distinct style, SVG icons, local handle registration, playback, persistent name, missing source hidden and library shortcut');
+await dlg.locator('[data-media-tool="youtube-downloader"]').click();
+dlLibrary.push({id:'e'.repeat(64),quality:'local',height:0,bytes:1000,originalTitle:'직접 넣은 영상',customTitle:'',filename:'직접 넣은 영상.mp4'});
+await dlg.getByText('직접 넣은 영상',{exact:true}).waitFor();
+dlLibrary[dlLibrary.length-1]={...dlLibrary[dlLibrary.length-1],id:'f'.repeat(64),originalTitle:'이름 변경 영상',filename:'이름 변경 영상.mp4'};
+await dlg.getByText('이름 변경 영상',{exact:true}).waitFor();
+dlLibrary.pop();
+await dlg.getByText('이름 변경 영상',{exact:true}).waitFor({state:'hidden'});
+await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
+console.log('PASS reference-only personal videos, distinct style, SVG icons, local handle registration, playback, persistent name, missing source hidden and library shortcut; flat file add rename and delete');
 page.off('dialog',dlConfirm);await page.unroute('**/api/youtube/**');
 console.log('PASS downloader tile, valid and invalid URLs, teacher denial, start, progress, cancel, library and return');
 async function checkFlip(reverse=false){
