@@ -1,5 +1,24 @@
 ﻿param([int]$Port=17439)
 $ErrorActionPreference='Stop'
+# Diagnostic events only: no request payloads, URLs, names, credentials or student data.
+$script:ttServerPhase='startup'
+function Write-TTServerLifecycle([string]$Event,[System.Management.Automation.ErrorRecord]$Record=$null){
+ try{
+  $root=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+  $file=Join-Path $root 'server-lifecycle.log'
+  if(!(Test-Path -LiteralPath $root -PathType Container)){return}
+  if((Test-Path -LiteralPath $file -PathType Leaf) -and (Get-Item -LiteralPath $file).Length -gt 262144){
+   [IO.File]::Copy($file,($file+'.previous'),$true)
+   [IO.File]::WriteAllText($file,'')
+  }
+  $e=@{at=[DateTime]::UtcNow.ToString('o');pid=$PID;port=$Port;event=$Event;phase=$script:ttServerPhase}
+  if($Record){$e.exception=$Record.Exception.GetType().FullName;$e.hresult=$Record.Exception.HResult;$e.line=$Record.InvocationInfo.ScriptLineNumber}
+  if($TTRelease){$e.release=$TTRelease}
+  [IO.File]::AppendAllText($file,((ConvertTo-Json -Compress $e)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
+trap { Write-TTServerLifecycle 'fatal' $_; break }
+Write-TTServerLifecycle 'start'
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 . (Join-Path $PSScriptRoot 'presentation-server.ps1')
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
@@ -155,7 +174,7 @@ function Open-TTBookHost([string]$encoded) {
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
- if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '64456efe24dbdf87ade9b6e6669bb37535a3c2f5fdb8633f05791851d406a80e'){throw 'native dependency unavailable'}
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'e0119c6da12077fb998d6ce0b977f509d54aaca8f76e07395249cf0b9246e4f1'){throw 'native dependency unavailable'}
  Add-Type -AssemblyName System.IO.Compression.FileSystem
  Add-Type -AssemblyName System.Windows.Forms
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
@@ -746,11 +765,13 @@ public static class TTSocketHandleGuard {
 }
 '@
 }
+$script:ttServerPhase='listener-start'
 $listener=New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::Loopback,$Port)
 try {
  [TTSocketHandleGuard]::MakeNonInheritable($listener.Server.Handle)
  $listener.Start()
  [TTSocketHandleGuard]::MakeNonInheritable($listener.Server.Handle)
+ $script:ttServerPhase='accept';Write-TTServerLifecycle 'listening'
  while($true){
  $client=$listener.AcceptTcpClient();$client.ReceiveTimeout=1000;$client.SendTimeout=10000
  $reader=$null;$stream=$null
@@ -1349,5 +1370,5 @@ $script:updateApproveToken=[guid]::NewGuid().ToString('N')
   if($statusCors){$corsHeaders="Access-Control-Allow-Origin: $origin`r`nAccess-Control-Allow-Methods: GET, OPTIONS`r`nAccess-Control-Allow-Private-Network: true`r`nVary: Origin, Access-Control-Request-Private-Network`r`n"}
   if($presentCors){$corsHeaders="Access-Control-Allow-Origin: $origin`r`nAccess-Control-Allow-Methods: GET, POST, OPTIONS`r`nAccess-Control-Allow-Headers: Content-Type`r`nAccess-Control-Allow-Private-Network: true`r`nVary: Origin, Access-Control-Request-Private-Network`r`n"}
   $headers="HTTP/1.1 $status`r`nContent-Type: $ctype`r`nContent-Length: $($bytes.Length)`r`nCache-Control: no-store`r`nConnection: close`r`nX-Content-Type-Options: nosniff`r`n$corsHeaders$extraHeaders`r`n";$headerBytes=[Text.Encoding]::ASCII.GetBytes($headers);$stream.Write($headerBytes,0,$headerBytes.Length);$stream.Write($bytes,0,$bytes.Length);$stream.Flush()
- } catch {} finally {if($reader){try{$reader.Dispose()}catch{}};if($stream){try{$stream.Dispose()}catch{}};$client.Close()}
-} } finally {$listener.Stop()}
+ } catch {} finally {if($reader){try{$reader.Dispose()}catch{}};if($stream){try{$stream.Dispose()}catch{}};try{$client.Close()}catch{Write-TTServerLifecycle 'client-close-failed' $_}}
+} } catch { Write-TTServerLifecycle 'listener-fatal' $_; throw } finally {try{$listener.Stop()}finally{Write-TTServerLifecycle 'listener-stopped'}}

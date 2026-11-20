@@ -1,0 +1,80 @@
+name: Server lifecycle and book reader source smoke
+on:
+  pull_request:
+    paths:
+      - 'runtime-src/system/**'
+      - 'tools/multimedia/server-recovery-test.ps1'
+      - 'tools/multimedia/book-reader-host.cs'
+      - '.github/workflows/server-book-recovery-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  windows-source:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null; $errors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path runtime-src/system/server.ps1).Path,[ref]$tokens,[ref]$errors)
+          if($errors.Count){$errors | Format-List;throw 'Server parse failed'}
+          Write-Host 'PASS Windows PowerShell server syntax'
+          $root=Join-Path $env:RUNNER_TEMP ('tt-book-source-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $bundle=(Resolve-Path runtime-src/system/asset-book-reader-host.zip).Path
+          if((Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash -ne 'e0119c6da12077fb998d6ce0b977f509d54aaca8f76e07395249cf0b9246e4f1'){throw 'Unexpected existing SDK bundle'}
+          Expand-Archive -LiteralPath $bundle -DestinationPath $root
+          $exe=Join-Path $root 'BookReader.exe'
+          $src=(Resolve-Path tools/multimedia/book-reader-host.cs).Path
+          $csc=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          & $csc /nologo /target:exe /platform:x64 /codepage:65001 "/out:$exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll "/r:$root\Microsoft.Web.WebView2.Core.dll" "/r:$root\Microsoft.Web.WebView2.WinForms.dll" $src
+          if($LASTEXITCODE -ne 0){throw 'Native host compile failed'}
+          $request=@{url='';title='fixture';pages=5;start=3;saved=0}
+          $request | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $root 'request.json') -Encoding UTF8
+          & $exe --self-test $root
+          if($LASTEXITCODE -ne 0){throw 'Native localized fixture failed'}
+          $state=Get-Content -Raw (Join-Path $root 'state.json') | ConvertFrom-Json
+          if($state.page -ne 3 -or $state.saved -ne 3 -or !$state.closed){throw 'Invalid native final state'}
+          Write-Host 'PASS rebuilt native source; old signed runtime bundle unchanged'
+      - shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('tt-server-life-'+[guid]::NewGuid().ToString('N'))
+          $d=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          New-Item -ItemType Directory -Path $d -Force | Out-Null
+          $server=(Resolve-Path runtime-src/system/server.ps1).Path
+          $port=17439
+          $exe=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$server+'"'),'-Port',$port)
+          $p=Start-Process -FilePath $exe -ArgumentList $args -PassThru -RedirectStandardError (Join-Path $d 'stderr.txt')
+          $q=$null
+          try{
+            $deadline=[DateTime]::UtcNow.AddSeconds(30)
+            $health=$null
+            do{
+              try{$health=Invoke-RestMethod "http://127.0.0.1:$port/health" -TimeoutSec 2}catch{}
+              if($health.service -eq 'teacher-tools-local'){break}
+              Start-Sleep -Milliseconds 300
+            }while(!$p.HasExited -and [DateTime]::UtcNow -lt $deadline)
+            if($health.service -ne 'teacher-tools-local'){Get-Content (Join-Path $d 'stderr.txt');throw 'Server startup failed'}
+            $file=Join-Path $d 'server-lifecycle.log'
+            $events=@(Get-Content $file | ForEach-Object {ConvertFrom-Json $_})
+            if(!@($events | Where-Object {$_.pid -eq $p.Id -and $_.event -eq 'listening'}).Count){throw 'Missing listening record'}
+            $q=Start-Process -FilePath $exe -ArgumentList $args -PassThru -RedirectStandardError (Join-Path $d 'collision-stderr.txt')
+            if(!$q.WaitForExit(15000)){throw 'Duplicate listener did not exit'}
+            $events=@(Get-Content $file | ForEach-Object {ConvertFrom-Json $_})
+            if(!@($events | Where-Object {$_.pid -eq $q.Id -and $_.event -in @('fatal','listener-fatal')}).Count){throw 'Missing fatal bind failure record'}
+            if((Invoke-RestMethod "http://127.0.0.1:$port/health" -TimeoutSec 5).service -ne 'teacher-tools-local'){throw 'Original listener stopped'}
+            Get-Content $file
+            Write-Host 'PASS isolated server lifecycle, port collision diagnostic and original server health'
+          }finally{
+            if($q){if(!$q.HasExited){$q.Kill()};$q.Dispose()}
+            if(!$p.HasExited){$p.Kill()};$p.Dispose()
+          }
+      - shell: powershell
+        run: |
+          & tools/multimedia/server-recovery-test.ps1
