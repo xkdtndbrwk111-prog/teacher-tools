@@ -138,7 +138,6 @@ function Install-TTYoutubeEngine([string]$Root,[string]$JobDir='',[scriptblock]$
 # BEGIN GENERATED youtube-download-worker.ps1
 # Candidate worker library, Windows PowerShell 5.1. Not exposed to HTTP yet.
 # Only an authorized board-side launcher may invoke Start-TTYoutubeJob.
-. (Join-Path $PSScriptRoot 'youtube-engine-install.ps1')
 function ConvertTo-TTYoutubeRequest([string]$VideoId,[string]$Quality){
  if($VideoId -cnotmatch '^[A-Za-z0-9_-]{11}$'){throw 'invalid video ID'}
  if($Quality -cnotin @('720','1080')){throw 'invalid quality'}
