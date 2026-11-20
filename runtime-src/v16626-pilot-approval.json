@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "version": "1.66.26",
+  "previous_version": "1.66.25",
+  "previous_payload_sha": "598b0d3271b26b81ef2caff2c354a010c236347693856a28504cdd2f9e4e25e5",
+  "source_sha": "dc3096a7702ccc5448bc9a8bb8dc2d11ecc59df2",
+  "review_sha": "6a4935a6e6a6c3a0d8914109b930ccd479dd71e1",
+  "artifact_id": 14611253454,
+  "archive_sha": "5e21c6ab4727e6da8f4283ad92888f7aab4d6ebc0c9c297be3d9bea296d6b236",
+  "payload_sha": "28c3fce54deca82732e0c3c53ce778a1483159e9b16b76115ab59ffd06fae118",
+  "main_runs": {
+    "V1.66.7 theme font shadow and icon regressions": 44698444005,
+    "Tournament host bridge review": 44698444001,
+    "QR square widget and integer fit checks": 44698444067,
+    "R8 native Windows verification": 44698444080,
+    "R8 native R7 integration checks": 44698444072,
+    "V1.66.8 education activities browser regression": 44698444053,
+    "V1.66.9 common badge browser regression": 44698444063,
+    "V1.66.6 browser text contrast": 44698444097,
+    "R8 source-driven build": 44698444043
+  },
+  "review_runs": {
+    "V1.66.8 education activities browser regression": 44696397423,
+    "R8 native R7 integration checks": 44696397448,
+    "QR square widget and integer fit checks": 44696397225,
+    "R8 source-driven build": 44696397389,
+    "R8 native Windows verification": 44696397406,
+    "V1.66.6 browser text contrast": 44696397426,
+    "V1.66.7 theme font shadow and icon regressions": 44696397367,
+    "V1.66.9 common badge browser regression": 44696397497,
+    "Tournament host bridge review": 44696397351,
+    "Classroom UI2 home and HUD candidate": 44696397363,
+    "Routine integer coin candidate checks": 44696397354,
+    "Daily lesson alert mute checks": 44696397521,
+    "YouTube engine isolated Windows smoke": 44696397317,
+    "Multimedia candidate browser review": 44696397347
+  },
+  "authorization": "Owner explicitly authorized V1.66.26 deployment after all required CI checks. Actual classroom Windows video playback and field checks remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16626_owner_field_test_only"
+}
