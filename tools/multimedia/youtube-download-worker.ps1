@@ -73,6 +73,45 @@ function Invoke-TTYoutubeProcess([string]$Exe,[string[]]$Argv,[string]$JobDir,[s
  }
  return $out
 }
+# Titles are display data only; never use them as filesystem paths or commands.
+function ConvertTo-TTYoutubeTitle($Value){
+ if($Value -isnot [string]){return ''}
+ $v=[regex]::Replace($Value,'[\p{Cc}\p{Zl}\p{Zp}]',' ').Trim()
+ if($v.Length -gt 180){$v=$v.Substring(0,180);if([char]::IsHighSurrogate($v[$v.Length-1])){$v=$v.Substring(0,$v.Length-1)}}
+ return $v.Trim()
+}
+function Get-TTYoutubeOriginalTitle([string]$JobDir){
+ try{
+  $p=Get-Item -LiteralPath (Join-Path $JobDir 'title.json') -ErrorAction Stop
+  if($p.PSIsContainer -or $p.Length -gt 65536 -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint)){return ''}
+  $raw=[IO.File]::ReadAllText($p.FullName,[Text.Encoding]::UTF8).Trim()
+  $v=('{"title":'+$raw+'}'|ConvertFrom-Json).title
+  return (ConvertTo-TTYoutubeTitle $v)
+ }catch{return ''}
+}
+# Files in the single library folder are the source of truth. Never accept a path from HTTP.
+function Get-TTYoutubeFlatFiles([string]$LibraryRoot){
+ if(!(Test-Path -LiteralPath $LibraryRoot -PathType Container)){return}
+ $folder=Get-Item -LiteralPath $LibraryRoot -ErrorAction Stop
+ if($folder.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}
+ Get-ChildItem -LiteralPath $folder.FullName -File -ErrorAction Stop|Where-Object {$_.Extension -in @('.mp4','.webm','.ogv','.ogg') -and $_.Length -gt 0 -and !($_.Attributes -band [IO.FileAttributes]::ReparsePoint)}
+}
+function Get-TTYoutubeFlatId([string]$Name){
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Name.ToUpperInvariant())))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+}
+function Get-TTYoutubeDownloadName([string]$Title,[hashtable]$Request){
+ $safe=[regex]::Replace($Title,'[<>:"/\\|?*\x00-\x1F]','_').Trim().TrimEnd('.')
+ if($safe.Length -gt 80){$safe=$safe.Substring(0,80);if([char]::IsHighSurrogate($safe[$safe.Length-1])){$safe=$safe.Substring(0,$safe.Length-1)}}
+ if(!$safe){$safe='YouTube'}
+ return $safe+' ['+$Request.id+'-'+$Request.quality+'].mp4'
+}
+function Test-TTYoutubeStoredVideo([string]$LibraryRoot,[hashtable]$Request){
+ $key=$Request.id+'-'+$Request.quality
+ if(Test-Path -LiteralPath (Join-Path (Join-Path $LibraryRoot $key) 'video.mp4') -PathType Leaf){return $true}
+ foreach($file in @(Get-TTYoutubeFlatFiles $LibraryRoot)){if($file.Name.EndsWith(' ['+$key+'].mp4',[StringComparison]::Ordinal)){return $true}}
+ return $false
+}
 function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$EngineDir,[hashtable]$Request){
  $file=Join-Path $JobDir 'video.mp4'
  if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'missing MP4'}
@@ -83,17 +122,13 @@ function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$E
  if($video.Count -ne 1 -or $audio.Count -ne 1 -or $video[0].codec_name -ne 'h264' -or $audio[0].codec_name -ne 'aac' -or $video[0].height -le 0 -or $video[0].height -gt [int]$Request.quality -or $meta.format.format_name -notmatch '(^|,)mp4(,|$)'){throw 'media validation'}
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
  [void][IO.Directory]::CreateDirectory($LibraryRoot)
- $key=$Request.id+'-'+$Request.quality
- $target=Join-Path $LibraryRoot $key
- if(Test-Path -LiteralPath $target){throw 'video already stored'}
- # Same-volume atomic directory move: staging and library must share the per-user root.
- $stage=Join-Path $JobDir 'completed'
- [void][IO.Directory]::CreateDirectory($stage)
- [IO.File]::Move($file,(Join-Path $stage 'video.mp4'))
- $info=@{id=$Request.id;quality=$Request.quality;height=[int]$video[0].height;bytes=(Get-Item -LiteralPath (Join-Path $stage 'video.mp4')).Length;created=[DateTime]::UtcNow.ToString('o')}
- [IO.File]::WriteAllText((Join-Path $stage 'metadata.json'),($info|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+ if(Test-TTYoutubeStoredVideo $LibraryRoot $Request){throw 'video already stored'}
+ $folder=Get-Item -LiteralPath $LibraryRoot -ErrorAction Stop
+ if($folder.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}
+ $target=Join-Path $folder.FullName (Get-TTYoutubeDownloadName (Get-TTYoutubeOriginalTitle $JobDir) $Request)
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
- [IO.Directory]::Move($stage,$target)
+ # Same-volume atomic move, no overwrite and no persistent metadata required.
+ [IO.File]::Move($file,$target)
 }
 function Get-TTYoutubeErrorCode([string]$JobDir,[string]$Phase,[string]$Message){
  if($Phase -eq 'download'){
@@ -127,12 +162,12 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   $engine=Install-TTYoutubeEngine (Join-Path $root 'engines') $job $progress
   Assert-TTEngineNotCancelled $job
   $library=Join-Path $root 'library'
-  if(Test-Path -LiteralPath (Join-Path $library ($request.id+'-'+$request.quality))){throw 'video already stored'}
+  if(Test-TTYoutubeStoredVideo $library $request){throw 'video already stored'}
   $phase='download';Write-TTYoutubeState $job 'running' 'download'
   $dir=$engine.directory
   $h=$request.quality
   $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
-  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--print-to-file','after_move:%(title)j','title.json','--no-simulate','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
   $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
   $phase='verify';Write-TTYoutubeState $job 'running' 'verify'
   Complete-TTYoutubeVideo $job $library $dir $request

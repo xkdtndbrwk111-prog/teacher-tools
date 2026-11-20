@@ -210,6 +210,45 @@ function Invoke-TTYoutubeProcess([string]$Exe,[string[]]$Argv,[string]$JobDir,[s
  }
  return $out
 }
+# Titles are display data only; never use them as filesystem paths or commands.
+function ConvertTo-TTYoutubeTitle($Value){
+ if($Value -isnot [string]){return ''}
+ $v=[regex]::Replace($Value,'[\p{Cc}\p{Zl}\p{Zp}]',' ').Trim()
+ if($v.Length -gt 180){$v=$v.Substring(0,180);if([char]::IsHighSurrogate($v[$v.Length-1])){$v=$v.Substring(0,$v.Length-1)}}
+ return $v.Trim()
+}
+function Get-TTYoutubeOriginalTitle([string]$JobDir){
+ try{
+  $p=Get-Item -LiteralPath (Join-Path $JobDir 'title.json') -ErrorAction Stop
+  if($p.PSIsContainer -or $p.Length -gt 65536 -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint)){return ''}
+  $raw=[IO.File]::ReadAllText($p.FullName,[Text.Encoding]::UTF8).Trim()
+  $v=('{"title":'+$raw+'}'|ConvertFrom-Json).title
+  return (ConvertTo-TTYoutubeTitle $v)
+ }catch{return ''}
+}
+# Files in the single library folder are the source of truth. Never accept a path from HTTP.
+function Get-TTYoutubeFlatFiles([string]$LibraryRoot){
+ if(!(Test-Path -LiteralPath $LibraryRoot -PathType Container)){return}
+ $folder=Get-Item -LiteralPath $LibraryRoot -ErrorAction Stop
+ if($folder.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}
+ Get-ChildItem -LiteralPath $folder.FullName -File -ErrorAction Stop|Where-Object {$_.Extension -in @('.mp4','.webm','.ogv','.ogg') -and $_.Length -gt 0 -and !($_.Attributes -band [IO.FileAttributes]::ReparsePoint)}
+}
+function Get-TTYoutubeFlatId([string]$Name){
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Name.ToUpperInvariant())))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+}
+function Get-TTYoutubeDownloadName([string]$Title,[hashtable]$Request){
+ $safe=[regex]::Replace($Title,'[<>:"/\\|?*\x00-\x1F]','_').Trim().TrimEnd('.')
+ if($safe.Length -gt 80){$safe=$safe.Substring(0,80);if([char]::IsHighSurrogate($safe[$safe.Length-1])){$safe=$safe.Substring(0,$safe.Length-1)}}
+ if(!$safe){$safe='YouTube'}
+ return $safe+' ['+$Request.id+'-'+$Request.quality+'].mp4'
+}
+function Test-TTYoutubeStoredVideo([string]$LibraryRoot,[hashtable]$Request){
+ $key=$Request.id+'-'+$Request.quality
+ if(Test-Path -LiteralPath (Join-Path (Join-Path $LibraryRoot $key) 'video.mp4') -PathType Leaf){return $true}
+ foreach($file in @(Get-TTYoutubeFlatFiles $LibraryRoot)){if($file.Name.EndsWith(' ['+$key+'].mp4',[StringComparison]::Ordinal)){return $true}}
+ return $false
+}
 function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$EngineDir,[hashtable]$Request){
  $file=Join-Path $JobDir 'video.mp4'
  if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'missing MP4'}
@@ -220,17 +259,13 @@ function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$E
  if($video.Count -ne 1 -or $audio.Count -ne 1 -or $video[0].codec_name -ne 'h264' -or $audio[0].codec_name -ne 'aac' -or $video[0].height -le 0 -or $video[0].height -gt [int]$Request.quality -or $meta.format.format_name -notmatch '(^|,)mp4(,|$)'){throw 'media validation'}
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
  [void][IO.Directory]::CreateDirectory($LibraryRoot)
- $key=$Request.id+'-'+$Request.quality
- $target=Join-Path $LibraryRoot $key
- if(Test-Path -LiteralPath $target){throw 'video already stored'}
- # Same-volume atomic directory move: staging and library must share the per-user root.
- $stage=Join-Path $JobDir 'completed'
- [void][IO.Directory]::CreateDirectory($stage)
- [IO.File]::Move($file,(Join-Path $stage 'video.mp4'))
- $info=@{id=$Request.id;quality=$Request.quality;height=[int]$video[0].height;bytes=(Get-Item -LiteralPath (Join-Path $stage 'video.mp4')).Length;created=[DateTime]::UtcNow.ToString('o')}
- [IO.File]::WriteAllText((Join-Path $stage 'metadata.json'),($info|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+ if(Test-TTYoutubeStoredVideo $LibraryRoot $Request){throw 'video already stored'}
+ $folder=Get-Item -LiteralPath $LibraryRoot -ErrorAction Stop
+ if($folder.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}
+ $target=Join-Path $folder.FullName (Get-TTYoutubeDownloadName (Get-TTYoutubeOriginalTitle $JobDir) $Request)
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
- [IO.Directory]::Move($stage,$target)
+ # Same-volume atomic move, no overwrite and no persistent metadata required.
+ [IO.File]::Move($file,$target)
 }
 function Get-TTYoutubeErrorCode([string]$JobDir,[string]$Phase,[string]$Message){
  if($Phase -eq 'download'){
@@ -264,12 +299,12 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   $engine=Install-TTYoutubeEngine (Join-Path $root 'engines') $job $progress
   Assert-TTEngineNotCancelled $job
   $library=Join-Path $root 'library'
-  if(Test-Path -LiteralPath (Join-Path $library ($request.id+'-'+$request.quality))){throw 'video already stored'}
+  if(Test-TTYoutubeStoredVideo $library $request){throw 'video already stored'}
   $phase='download';Write-TTYoutubeState $job 'running' 'download'
   $dir=$engine.directory
   $h=$request.quality
   $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
-  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--print-to-file','after_move:%(title)j','title.json','--no-simulate','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
   $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
   $phase='verify';Write-TTYoutubeState $job 'running' 'verify'
   Complete-TTYoutubeVideo $job $library $dir $request
@@ -332,6 +367,11 @@ function Get-TTYoutubeJobState([string]$Root){
 function Get-TTYoutubeLibrary([string]$Root){
  $lib=Join-Path $Root 'library'
  if(!(Test-Path -LiteralPath $lib -PathType Container)){return}
+ foreach($path in @($Root,$lib)){if((Get-Item -LiteralPath $path -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}}
+ foreach($file in @(Get-TTYoutubeFlatFiles $lib|Sort-Object Name)){
+  @{id=(Get-TTYoutubeFlatId $file.Name);quality='local';height=0;bytes=$file.Length;created=$file.LastWriteTimeUtc.ToString('o');originalTitle=$file.BaseName;customTitle='';filename=$file.Name}
+ }
+ # Compatibility: old downloads remain playable without moving or deleting source files.
  foreach($dir in @(Get-ChildItem -LiteralPath $lib -Directory|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 200)){
   if($dir.Name -cnotmatch '^([A-Za-z0-9_-]{11})-(720|1080)$' -or ($dir.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
   $id=$Matches[1];$q=$Matches[2]
@@ -339,16 +379,47 @@ function Get-TTYoutubeLibrary([string]$Root){
    $p=Get-Item -LiteralPath (Join-Path $dir.FullName 'video.mp4')
    $m=Get-Content -LiteralPath (Join-Path $dir.FullName 'metadata.json') -Raw -Encoding UTF8|ConvertFrom-Json
    if($p.PSIsContainer -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $p.Length -le 0 -or $m.id -cne $id -or $m.quality -cne $q -or $m.bytes -ne $p.Length){continue}
-   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created}
+   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created;originalTitle=(ConvertTo-TTYoutubeTitle $m.originalTitle);customTitle=(ConvertTo-TTYoutubeTitle $m.customTitle)}
   }catch{}
  }
+}
+function Get-TTYoutubeLibraryDirectory([string]$Root){
+ $lib=Join-Path $Root 'library'
+ [void][IO.Directory]::CreateDirectory($Root)
+ $item=Get-Item -LiteralPath $Root
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media root'}
+ [void][IO.Directory]::CreateDirectory($lib)
+ $item=Get-Item -LiteralPath $lib
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid library root'}
+ return $item.FullName
+}
+function Open-TTYoutubeLibrary([string]$Root){
+ $dir=Get-TTYoutubeLibraryDirectory $Root
+ # Fixed executable and fixed application-owned directory. No request-supplied path.
+ Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList ('"'+$dir+'"')
+ return @{ok=$true}
+}
+function Set-TTYoutubeLibraryTitle([string]$Root,$InputData){
+ if($InputData.quality -ceq 'local'){throw 'use explorer to rename local media'}
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.title -isnot [string] -or $InputData.title.Length -gt 180){throw 'invalid title'}
+ $video=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
+ $path=Join-Path (Split-Path -Parent $video) 'metadata.json'
+ $m=Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json
+ $title=ConvertTo-TTYoutubeTitle $InputData.title
+ $m|Add-Member -NotePropertyName customTitle -NotePropertyValue $title -Force
+ $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+ try{
+  [IO.File]::WriteAllText($tmp,($m|ConvertTo-Json -Compress -Depth 6),[Text.UTF8Encoding]::new($false))
+  [IO.File]::Replace($tmp,$path,[NullString]::Value)
+ }finally{if([IO.File]::Exists($tmp)){[IO.File]::Delete($tmp)}}
+ return @{ok=$true}
 }
 function Start-TTYoutubeBoardJob([string]$Root,[string]$ServerScript,$InputData){
  if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.authorized -isnot [bool] -or !$InputData.authorized){throw 'invalid request'}
  $request=ConvertTo-TTYoutubeRequest $InputData.id $InputData.quality
  [void][IO.Directory]::CreateDirectory($Root)
  if((Get-TTYoutubeJobState $Root).state -eq 'running'){throw 'busy'}
- if(Test-Path -LiteralPath (Join-Path (Join-Path $Root 'library') ($request.id+'-'+$request.quality))){throw 'already saved'}
+ if(Test-TTYoutubeStoredVideo (Join-Path $Root 'library') $request){throw 'already saved'}
  $job=[guid]::NewGuid().ToString('N')
  $record=@{job=$job;id=$request.id;quality=$request.quality;created=[DateTime]::UtcNow.ToString('o')}
  $last=Join-Path $Root 'last-job.json';$temp=$last+'.'+$job+'.tmp'
@@ -377,14 +448,18 @@ function Stop-TTYoutubeBoardJob([string]$Root,[string]$Job){
 function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript,[int]$BoardPort=17439){
  if(!$SameOrigin){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
-  return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
+  $ready=$true;$files=@()
+  try{$files=@(Get-TTYoutubeLibrary $Root)}catch{$ready=$false}
+  return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);libraryReady=$ready;library=$files})}
  }
- if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop','/api/youtube/open-library','/api/youtube/rename') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
  try{
   $x=ConvertFrom-Json $Body
   if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
+  elseif($Path -eq '/api/youtube/open-library'){if($null -eq $x -or @($x.PSObject.Properties).Count -ne 0){throw 'unexpected folder request'};$answer=Open-TTYoutubeLibrary $Root}
+  elseif($Path -eq '/api/youtube/rename'){$answer=Set-TTYoutubeLibraryTitle $Root $x}
   elseif($Path -eq '/api/youtube/cancel'){$answer=Stop-TTYoutubeBoardJob $Root $x.job}
   elseif($Path -eq '/api/youtube/play-start'){$answer=Start-TTYoutubeBoardPlayback $Root $ServerScript $x $BoardPort}
   elseif($x.session -isnot [string] -or $x.session -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid session'}
@@ -396,6 +471,13 @@ function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigi
 # One isolated playback process per board; never wait for media or compilation in the HTTP loop.
 $script:ttYoutubePlayback=$null
 function Resolve-TTYoutubePlaybackFile([string]$Root,[string]$Id,[string]$Quality){
+ if($Quality -ceq 'local'){
+  if($Id -cnotmatch '^[a-f0-9]{64}$'){throw 'invalid library key'}
+  $lib=Join-Path $Root 'library'
+  foreach($p in @($Root,$lib)){if((Get-Item -LiteralPath $p -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid library directory'}}
+  foreach($f in @(Get-TTYoutubeFlatFiles $lib)){if((Get-TTYoutubeFlatId $f.Name) -ceq $Id){return $f.FullName}}
+  throw 'missing library file'
+ }
  $req=ConvertTo-TTYoutubeRequest $Id $Quality
  $library=Join-Path $Root 'library'
  $dir=Join-Path $library ($req.id+'-'+$req.quality)
@@ -469,7 +551,7 @@ function Get-TTYoutubePlaybackState([string]$Session){
 function Start-TTYoutubeMediaServer([string]$MediaPath,[string]$SessionDir,[string]$Token,[int]$BoardPort=17439,[int]$MaxSeconds=14400,[int]$ParentPid=0){
  if($Token -cnotmatch '^[a-f0-9]{32}$' -or $BoardPort -lt 1 -or $BoardPort -gt 65535 -or $MaxSeconds -lt 1 -or $MaxSeconds -gt 14400){throw 'media server parameters'}
  $item=Get-Item -LiteralPath $MediaPath -ErrorAction Stop
- if($item.PSIsContainer -or $item.Name -cne 'video.mp4' -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
+ if($item.PSIsContainer -or $item.Extension -notin @('.mp4','.webm','.ogv','.ogg') -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
  if(!(Test-Path -LiteralPath $SessionDir -PathType Container)){throw 'missing session directory'}
  if(-not ('TTOfflineMediaServer' -as [type])){
   Add-Type -TypeDefinition @'
@@ -495,8 +577,8 @@ public static class TTOfflineMediaServer {
    line.Append((char)b);
   }
  }
- static void Header(Stream s, string status, long length, string extra) {
-  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: video/mp4\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
+ static void Header(Stream s, string status, long length, string extra, string mime = "video/mp4") {
+  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: "+mime+"\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
   s.Write(bytes,0,bytes.Length);
  }
  static bool ByteRange(string value, long size, out long first, out long last) {
@@ -547,7 +629,9 @@ public static class TTOfflineMediaServer {
     string extra=String.IsNullOrEmpty(range)?"":"Content-Range: bytes "+first.ToString(CultureInfo.InvariantCulture)+"-"+last.ToString(CultureInfo.InvariantCulture)+"/"+size.ToString(CultureInfo.InvariantCulture)+"\r\n";
     // Exact validated board origin only; anonymous CORS permits the private port even when Chromium treats loopback ports as different sites.
     if(boardOrigin)extra+="Access-Control-Allow-Origin: "+origin+"\r\nVary: Origin\r\n";
-    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra);
+    string ext=Path.GetExtension(path).ToLowerInvariant();
+    string mime=ext==".webm"?"video/webm":(ext==".ogv"||ext==".ogg"?"video/ogg":"video/mp4");
+    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra,mime);
     if(req[0]=="HEAD")return;
     f.Position=first;byte[] buffer=new byte[65536];
     while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end&&(parent==null||!parent.HasExited)){

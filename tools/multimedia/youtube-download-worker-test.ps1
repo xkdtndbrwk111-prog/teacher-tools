@@ -32,12 +32,12 @@ function Test-TTYoutubeWorker([string]$Root,[string]$EngineDir){
  Write-Host 'PASS safe TLS error classification and persistence'
  $mp4=Join-Path $job 'video.mp4'
  $null=Invoke-TTYoutubeProcess (Join-Path $EngineDir 'ffmpeg.exe') @('-nostdin','-v','error','-f','lavfi','-i','testsrc2=size=640x360:rate=24','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','1','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',$mp4) $job 'generate' 60
+ [IO.File]::WriteAllText((Join-Path $job 'title.json'),'"Original title"',[Text.UTF8Encoding]::new($false))
  $hash=(Get-FileHash -LiteralPath $mp4).Hash
  Complete-TTYoutubeVideo $job $lib $EngineDir $request
- $stored=Join-Path $lib 'DAHbOpoUrrg-720';$video=Join-Path $stored 'video.mp4'
+ $video=Join-Path $lib 'Original title [DAHbOpoUrrg-720].mp4'
  if(!(Test-Path -LiteralPath $video) -or (Get-FileHash -LiteralPath $video).Hash -ne $hash -or (Test-Path -LiteralPath $mp4)){throw 'library transfer'}
- $meta=Get-Content -LiteralPath (Join-Path $stored 'metadata.json') -Raw|ConvertFrom-Json
- if($meta.height -ne 360 -or $meta.quality -ne '720' -or $meta.id -cne $request.id){throw 'library metadata'}
+ if(@(Get-TTYoutubeFlatFiles $lib).Count -ne 1 -or @(Get-ChildItem -LiteralPath $lib -Directory).Count -ne 0){throw 'flat library shape'}
  Write-Host 'PASS H264 AAC verification and atomic media library commit'
  $duplicate=Join-Path $workerRoot 'duplicate';[void][IO.Directory]::CreateDirectory($duplicate)
  Copy-Item -LiteralPath $video -Destination (Join-Path $duplicate 'video.mp4')
@@ -47,7 +47,7 @@ function Test-TTYoutubeWorker([string]$Root,[string]$EngineDir){
  $badJob=Join-Path $workerRoot 'bad';[void][IO.Directory]::CreateDirectory($badJob)
  [IO.File]::WriteAllText((Join-Path $badJob 'video.mp4'),'not video')
  $rejected=$false;try{Complete-TTYoutubeVideo $badJob $lib $EngineDir (ConvertTo-TTYoutubeRequest 'aaaaaaaaaaa' '720')}catch{$rejected=$true}
- if(!$rejected -or (Test-Path -LiteralPath (Join-Path $lib 'aaaaaaaaaaa-720'))){throw 'invalid video accepted'}
+ if(!$rejected -or (@(Get-TTYoutubeFlatFiles $lib).Count -ne 1)){throw 'invalid video accepted'}
  Write-Host 'PASS corrupted media rejected'
  $cancelJob=Join-Path $workerRoot 'cancel';[void][IO.Directory]::CreateDirectory($cancelJob)
  $exe=Join-Path $PSHOME 'powershell.exe'
