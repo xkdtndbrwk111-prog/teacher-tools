@@ -19,7 +19,7 @@ function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int
  try{
   $json=@{state=$State;phase=$Phase;percent=$Percent;updated=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Compress
   [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
-  if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,$null)}else{[IO.File]::Move($temp,$file)}
+  if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,[NullString]::Value)}else{[IO.File]::Move($temp,$file)}
  }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
 }
 # Internal process function; never accept an executable path or argv from an HTTP request.
