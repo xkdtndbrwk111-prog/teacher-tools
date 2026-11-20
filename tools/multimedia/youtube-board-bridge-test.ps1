@@ -73,6 +73,17 @@ try{
   $null=Set-TTYoutubeLibraryTitle $libraryRoot @{id='DAHbOpoUrrg';quality='720';title=''}
   if(@(Get-TTYoutubeLibrary $libraryRoot)[0].customTitle -ne ''){throw 'title reset'}
   Write-Host 'PASS fixed folder scope, authorized title rename and original title preservation'
+  $external=Join-Path $Root 'external changes fixture';[void][IO.Directory]::CreateDirectory($external)
+  Copy-Item -LiteralPath $dir -Destination $external -Recurse
+  $externalVideo=Resolve-TTYoutubePlaybackFile $external 'DAHbOpoUrrg' '720'
+  $externalDir=Split-Path -Parent $externalVideo
+  Rename-Item -LiteralPath $externalVideo -NewName 'renamed.mp4'
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 0){throw 'renamed file visible'}
+  Rename-Item -LiteralPath (Join-Path $externalDir 'renamed.mp4') -NewName 'video.mp4'
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 1){throw 'restored file not visible'}
+  Remove-Item -LiteralPath $externalDir -Recurse -Force
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 0 -or (Test-Path -LiteralPath $externalDir)){throw 'deleted folder visible'}
+  Write-Host 'PASS external rename, restoration and complete folder deletion reflected in library'
  Write-Host 'PASS playback library validation and API authorization'
  # Actual signed server source as isolated child, with a synthetic MP4 and sandboxed LOCALAPPDATA.
  $oldAppData=$env:LOCALAPPDATA

@@ -10793,7 +10793,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const libraryItems=document.createElement('div');libraryItems.className='mm-library-items';
   libraryHead.append(libraryCount,openFolder);library.append(libraryHead,libraryItems);
   const cancel=button('다운로드 취소',stop);cancel.hidden=true;
-  let token='',job=null,pending=false,timer=0,libraryKey=null,refreshing=false,firstStatus=true,ignoredJob='',expectedJob='';
+  let token='',job=null,pending=false,timer=0,libraryKey=null,refreshing=false,firstStatus=true,ignoredJob='',expectedJob='',lastFailure='';
   const active=()=>epoch===current&&dialog.open;
   function renderActivity(){
    const running=!!token&&job?.state==='running',busy=pending||running||(!token&&job===null);
@@ -10822,7 +10822,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     info.textContent=job.state==='idle'?'다운로드 준비 완료':(phases[job.phase]||'작업 상태 확인 중')+(job.state==='running'&&job.percent>=0?' · '+job.percent+'%':'');
     if(job.state==='failed'){
      const errors={tls_certificate:'SSL 인증서 검증 실패 · Windows 신뢰 인증서 및 학교 네트워크 확인 필요',remote_rejected:'영상 서버에서 요청 거부',remote_auth:'영상 서버에서 추가 인증 요구',timeout:'네트워크 응답 시간 초과',download_failed:'영상 다운로드 실패',engine_integrity:'엔진 파일 무결성 검사 실패',install_failed:'엔진 설치 실패',verify_failed:'저장 영상 검증 실패'};
-     info.textContent=errors[job.errorCode]||'작업 실패 · 다시 시도하세요.';message.textContent='';status.textContent='';
+     info.textContent=errors[job.errorCode]||'작업 실패 · 다시 시도하세요.';if(lastFailure!==job.job){lastFailure=job.job;message.textContent='';status.textContent='';}
     }
     if(job.state==='running'&&job.phase==='install'){
      const v=job.install,mb=n=>(n/1048576).toFixed(1)+' MB';

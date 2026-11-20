@@ -22,7 +22,7 @@ console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidd
 await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=1060&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
 const mediaKeys=await dlg.locator('.mm-home > [data-media-tool]').evaluateAll(els=>els.map(e=>e.dataset.mediaTool));assert.deepEqual(mediaKeys,['meeting','books','youtube-downloader']);
 const beforeDownloader=direct;
-let dlCalls=[],dlJob={state:'idle'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32),playSession='d'.repeat(32);
+let dlCalls=[],dlJob={job:'a'.repeat(32),state:'failed',phase:'error',percent:-1,errorCode:'tls_certificate'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32),playSession='d'.repeat(32);
 await page.route('**/api/youtube/**',async route=>{
  const req=route.request(),p=new URL(req.url()).pathname;
  if(p.endsWith('/status'))return route.fulfill({json:{ok:true,token:dlToken,job:dlJob,library:dlLibrary}});
@@ -41,6 +41,7 @@ let renameValue='Morning music';const dlConfirm=async d=>{if(d.type()==='prompt'
 
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();
 await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
+await dlg.locator('[data-youtube-state]').getByText('다운로드 준비 완료',{exact:true}).waitFor();
 const dlURL=dlg.locator('input[type=url]');
 for(const size of [{width:1920,height:1080},{width:1280,height:720},{width:390,height:844}]){
  await page.setViewportSize(size);
@@ -81,6 +82,7 @@ dlJob={job:dlJobId,state:'failed',phase:'error',percent:-1,errorCode:'tls_certif
 await dlg.locator('[data-youtube-state]').getByText('SSL 인증서 검증 실패 · Windows 신뢰 인증서 및 학교 네트워크 확인 필요',{exact:true}).waitFor();
 assert.equal(await dlg.locator('#ttMediaStatus').textContent(),'');
 assert.equal(await dlg.locator('.mm-download-activity').isVisible(),false);
+const terminalBox=await dlg.boundingBox();assert.ok(Math.abs(terminalBox.height-fixedBox.height)<1&&Math.abs(terminalBox.width-fixedBox.width)<1,'dialog size changed on failure');
 console.log('PASS determinate transfer bar, indeterminate spinner, cancel/error cleanup and accessible state');
 dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576,originalTitle:'Original title',customTitle:''}];
 await dlg.locator('[data-youtube-library]').getByText('Original title',{exact:true}).waitFor();
