@@ -22,6 +22,18 @@ console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidd
 await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=1060&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
 const mediaKeys=await dlg.locator('.mm-home > [data-media-tool]').evaluateAll(els=>els.map(e=>e.dataset.mediaTool));assert.deepEqual(mediaKeys,['meeting','books','youtube-downloader']);
 const beforeDownloader=direct;
+let dlCalls=[],dlJob={state:'idle'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32);
+await page.route('**/api/youtube/**',async route=>{
+ const req=route.request(),p=new URL(req.url()).pathname;
+ if(p.endsWith('/status'))return route.fulfill({json:{ok:true,token:dlToken,job:dlJob,library:dlLibrary}});
+ assert.equal(req.headers()['x-tt-youtube-token'],dlToken);const data=req.postDataJSON();dlCalls.push({p,data});
+ if(p.endsWith('/start')){assert.deepEqual(data,{id:'sVoh_DAt9is',quality:'720',authorized:true});dlJob={job:dlJobId,state:'running',phase:'download',percent:45};return route.fulfill({json:{ok:true,job:dlJobId}})}
+ if(p.endsWith('/cancel')){assert.deepEqual(data,{job:dlJobId});dlJob={job:dlJobId,state:'cancelled',phase:'stopped',percent:-1};return route.fulfill({json:{ok:true}})}
+ throw Error('unexpected downloader endpoint '+p)
+});
+await page.evaluate(()=>{window.ttPodo.requestTeacherAccess=async()=>window.__downloadFixtureAuth===true;window.__downloadFixtureAuth=false});
+const dlConfirm=async d=>{if(d.type()==='confirm'&&d.message().includes('다운로드 권한'))await d.accept();else await d.dismiss()};page.on('dialog',dlConfirm);
+
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();
 await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
 const dlURL=dlg.locator('input[type=url]');
@@ -29,11 +41,27 @@ for(const [url,expected] of [['https://www.youtube.com/watch?v=sVoh_DAt9is',true
  await dlURL.fill(url);await dlg.getByRole('button',{name:'주소 확인',exact:true}).click();
  assert.equal((await dlg.locator('#ttMediaStatus').textContent()).includes('단일 영상 주소 확인 완료'),expected,url);
 }
+assert.equal(dlCalls.length,0);
+await dlURL.fill('https://youtu.be/sVoh_DAt9is');
+await dlg.getByLabel('최대 화질',{exact:true}).selectOption('720');
+await dlg.getByRole('button',{name:'다운로드',exact:true}).click();
+await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog .mm-book-form button[type=button]').disabled);
+assert.equal(dlCalls.length,0,'denied teacher access must not send a start');
+await page.evaluate(()=>{window.__downloadFixtureAuth=true});
+await dlg.getByRole('button',{name:'다운로드',exact:true}).click();
+await dlg.locator('[data-youtube-state]').getByText('영상 다운로드 중 · 45%',{exact:true}).waitFor();
+assert.equal(dlCalls.length,1);
+await dlg.getByRole('button',{name:'다운로드 취소',exact:true}).click();
+await dlg.locator('[data-youtube-state]').getByText('취소됨',{exact:true}).waitFor();
+assert.equal(dlCalls.length,2);
+dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576}];
+await dlg.locator('[data-youtube-library]').getByText('sVoh_DAt9is · 360p · 1 MB',{exact:true}).waitFor();
 assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);
 await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
 assert.equal(await dlg.locator('[data-media-tool="books"]').count(),1);
 assert.equal(await dlg.locator('[data-media-tool="meeting"]').count(),1);
-console.log('PASS downloader tile, valid and invalid single-video URLs, no playback/request, return to multimedia');
+page.off('dialog',dlConfirm);await page.unroute('**/api/youtube/**');
+console.log('PASS downloader tile, valid and invalid URLs, teacher denial, start, progress, cancel, library and return');
 async function checkFlip(reverse=false){
  const result=await page.evaluate(async reverse=>{
   const d=document.querySelector('#ttMediaDialog'),stage=d.querySelector('.mm-stage'),card=d.querySelector('.mm-card'),inner=card.querySelector('.mm-card-inner');
