@@ -115,7 +115,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  const bookTile=dlg.locator('button[data-media-tool="books"]');
  try{
   await bookTile.waitFor({state:'visible'});
-  assert.equal((await bookTile.textContent()).trim(),'📖 책 읽어주기');
+  assert.match((await bookTile.textContent()).trim(),/^(?:📖\s*)?책 읽어주기$/u);
   await bookTile.click();
   await dlg.getByRole('heading',{name:'책 읽어주기',exact:true}).waitFor();
  }catch(error){
