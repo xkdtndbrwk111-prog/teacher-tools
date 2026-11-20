@@ -1,0 +1,143 @@
+# Offline bridge contract and asynchronous process launch. No real YouTube request.
+function Test-TTYoutubeBridge([string]$Root){
+ . (Join-Path $PSScriptRoot 'youtube-download-worker.ps1')
+ . (Join-Path $PSScriptRoot 'youtube-board-bridge.ps1')
+ $base=Join-Path $Root 'bridge with spaces';[void][IO.Directory]::CreateDirectory($base)
+ $fake=Join-Path $base 'fixture.ps1'
+ @'
+param([string]$YoutubeJob,[string]$YoutubeVideoId,[string]$YoutubeQuality)
+$ErrorActionPreference='Stop'
+$root=(Get-Location).Path
+$lock=[IO.File]::Open((Join-Path $root '.download.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try{
+ if($YoutubeVideoId -cne 'DAHbOpoUrrg' -or $YoutubeQuality -cne '720'){exit 2}
+ $dir=Join-Path (Join-Path $root 'jobs') $YoutubeJob
+ [void][IO.Directory]::CreateDirectory($dir)
+ [IO.File]::WriteAllText((Join-Path $dir 'state.json'),'{"state":"running","phase":"download","percent":45}')
+ $until=[DateTime]::UtcNow.AddSeconds(20)
+ while(!(Test-Path -LiteralPath (Join-Path $dir 'cancel')) -and [DateTime]::UtcNow -lt $until){Start-Sleep -Milliseconds 100}
+ if(!(Test-Path -LiteralPath (Join-Path $dir 'cancel'))){exit 3}
+ [IO.File]::WriteAllText((Join-Path $dir 'state.json'),'{"state":"cancelled","phase":"stopped","percent":-1}')
+}finally{$lock.Dispose()}
+'@ | Set-Content -LiteralPath $fake -Encoding UTF8
+ $s=Invoke-TTYoutubeBoardApi '/api/youtube/status' 'GET' $true $false '' '' $base $fake
+ $initial=$s.body|ConvertFrom-Json
+ if($s.status -ne '200 OK' -or $initial.job.state -ne 'idle' -or $initial.token -cnotmatch '^[a-f0-9]{32}$'){throw 'status contract'}
+ $token=$initial.token
+ $body='{"id":"DAHbOpoUrrg","quality":"720","authorized":true}'
+ foreach($x in @(
+  (Invoke-TTYoutubeBoardApi '/api/youtube/status' 'GET' $false $false '' '' $base $fake),
+  (Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $false $token $body $base $fake),
+  (Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $true 'wrong' $body $base $fake)
+ )){if($x.status -ne '403 Forbidden'){throw 'origin or token accepted'}}
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/start' 'GET' $true $true $token $body $base $fake).status -ne '405 Method Not Allowed'){throw 'method accepted'}
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $true $token '{"id":"../unsafe","quality":"720","authorized":true}' $base $fake).status -ne '409 Conflict'){throw 'unsafe input accepted'}
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $true $token '{"id":"DAHbOpoUrrg","quality":"720","authorized":false}' $base $fake).status -ne '409 Conflict'){throw 'missing consent accepted'}
+ Write-Host 'PASS bridge origin, method, token and request policy'
+ try{
+  $r=Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $true $token $body $base $fake
+  if($r.status -ne '200 OK'){throw 'bridge launch failed'}
+  $job=($r.body|ConvertFrom-Json).job
+  $limit=[DateTime]::UtcNow.AddSeconds(10)
+  do{$state=Get-TTYoutubeJobState $base;if($state.percent -eq 45){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $limit)
+  if($state.job -cne $job -or $state.percent -ne 45 -or $script:ttYoutubeProcess.HasExited){throw 'asynchronous state missing'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/start' 'POST' $true $true $token $body $base $fake).status -ne '409 Conflict'){throw 'second bridge start accepted'}
+  Write-Host 'PASS asynchronous process launch, live status and busy rejection'
+  $cancel=ConvertTo-Json -Compress @{job=$job}
+  $r=Invoke-TTYoutubeBoardApi '/api/youtube/cancel' 'POST' $true $true $token $cancel $base $fake
+  if($r.status -ne '200 OK' -or !$script:ttYoutubeProcess.WaitForExit(10000) -or $script:ttYoutubeProcess.ExitCode -ne 0){throw 'bridge cancel failed'}
+  if((Get-TTYoutubeJobState $base).state -ne 'cancelled'){throw 'cancel state missing'}
+  Write-Host 'PASS bridge cancellation and persistent terminal status'
+ }finally{
+  if($script:ttYoutubeProcess){if(!$script:ttYoutubeProcess.HasExited){$script:ttYoutubeProcess.Kill();$script:ttYoutubeProcess.WaitForExit()};$script:ttYoutubeProcess.Dispose();$script:ttYoutubeProcess=$null}
+ }
+ $flatRoot=Join-Path $Root 'worker fixture with spaces'
+ $flatDir=Join-Path $flatRoot 'library';$flat=@(Get-TTYoutubeLibrary $flatRoot)
+ if($flat.Count -ne 1 -or $flat[0].quality -cne 'local' -or $flat[0].id -cnotmatch '^[a-f0-9]{64}$'){throw 'flat library listing'}
+ $flatVideo=Resolve-TTYoutubePlaybackFile $flatRoot $flat[0].id 'local'
+ $added=Join-Path $flatDir 'Added manually.mp4';Copy-Item -LiteralPath $flatVideo -Destination $added
+ if(@(Get-TTYoutubeLibrary $flatRoot).Count -ne 2){throw 'manually added file missing'}
+ $before=Get-TTYoutubeFlatId 'Added manually.mp4'
+ Rename-Item -LiteralPath $added -NewName 'Renamed manually.mp4'
+ $renamed=@(Get-TTYoutubeLibrary $flatRoot|Where-Object {$_.filename -eq 'Renamed manually.mp4'})
+ if($renamed.Count -ne 1 -or $renamed[0].id -ceq $before -or (Resolve-TTYoutubePlaybackFile $flatRoot $renamed[0].id 'local') -ne (Join-Path $flatDir 'Renamed manually.mp4')){throw 'renamed file missing'}
+ Remove-Item -LiteralPath (Join-Path $flatDir 'Renamed manually.mp4')
+ if(@(Get-TTYoutubeLibrary $flatRoot).Count -ne 1){throw 'deleted file still listed'}
+ $denied=$false;try{$null=Resolve-TTYoutubePlaybackFile $flatRoot '../video.mp4' 'local'}catch{$denied=$true};if(!$denied){throw 'arbitrary local path accepted'}
+ Write-Host 'PASS flat folder direct add, rename, remove and scoped file resolution'
+ # Separate legacy fixture ensures older downloaded videos continue to work.
+ $libraryRoot=Join-Path $Root 'legacy bridge fixture'
+ $legacy=Join-Path (Join-Path $libraryRoot 'library') 'DAHbOpoUrrg-720'
+ [void][IO.Directory]::CreateDirectory($legacy)
+ Copy-Item -LiteralPath $flatVideo -Destination (Join-Path $legacy 'video.mp4')
+ @{id='DAHbOpoUrrg';quality='720';height=360;bytes=(Get-Item -LiteralPath $flatVideo).Length;created=[datetime]::UtcNow.ToString('o');originalTitle='Original title';customTitle=''}|ConvertTo-Json -Compress|Set-Content -LiteralPath (Join-Path $legacy 'metadata.json') -Encoding UTF8
+ $lib=@(Get-TTYoutubeLibrary $libraryRoot)
+ if($lib.Count -ne 1 -or $lib[0].id -cne 'DAHbOpoUrrg' -or $lib[0].height -ne 360){throw 'library listing contract'}
+ Write-Host 'PASS validated library listing without absolute paths'
+ $resolved=Resolve-TTYoutubePlaybackFile $libraryRoot 'DAHbOpoUrrg' '720'
+ if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'playback library resolution'}
+ foreach($bad in @('../unsafe','AAAAAAAAAAA')){
+  $denied=$false;try{$null=Resolve-TTYoutubePlaybackFile $libraryRoot $bad '720'}catch{$denied=$true};if(!$denied){throw 'invalid playback resolution accepted'}
+ }
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true 'wrong' $body $libraryRoot $fake).status -ne '403 Forbidden'){throw 'playback token accepted'}
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true $token '{"id":"../unsafe","quality":"720"}' $libraryRoot $fake).status -ne '409 Conflict'){throw 'playback invalid path accepted'}
+  $dir=Get-TTYoutubeLibraryDirectory $libraryRoot
+  if($dir -cne (Join-Path $libraryRoot 'library')){throw 'folder scope'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/open-library' 'POST' $true $true 'wrong' '{}' $libraryRoot $fake).status -ne '403 Forbidden'){throw 'folder token accepted'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/open-library' 'POST' $true $true $token '{"path":"C:\\"}' $libraryRoot $fake).status -ne '409 Conflict'){throw 'arbitrary folder accepted'}
+  $custom=ConvertTo-Json -Compress @{id='DAHbOpoUrrg';quality='720';title='Classroom film'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/rename' 'POST' $true $true $token $custom $libraryRoot $fake).status -ne '200 OK'){throw 'rename API'}
+  $renamed=@(Get-TTYoutubeLibrary $libraryRoot)
+  if($renamed[0].customTitle -cne 'Classroom film' -or $renamed[0].originalTitle -ne 'Original title' -or (Resolve-TTYoutubePlaybackFile $libraryRoot 'DAHbOpoUrrg' '720') -cne $resolved){throw 'rename changed original or media path'}
+  $null=Set-TTYoutubeLibraryTitle $libraryRoot @{id='DAHbOpoUrrg';quality='720';title=''}
+  if(@(Get-TTYoutubeLibrary $libraryRoot)[0].customTitle -ne ''){throw 'title reset'}
+  Write-Host 'PASS fixed folder scope, authorized title rename and original title preservation'
+  $external=Join-Path $Root 'external changes fixture';[void][IO.Directory]::CreateDirectory($external)
+  Copy-Item -LiteralPath $dir -Destination $external -Recurse
+  $externalVideo=Resolve-TTYoutubePlaybackFile $external 'DAHbOpoUrrg' '720'
+  $externalDir=Split-Path -Parent $externalVideo
+  Rename-Item -LiteralPath $externalVideo -NewName 'renamed.mp4'
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 0){throw 'renamed file visible'}
+  Rename-Item -LiteralPath (Join-Path $externalDir 'renamed.mp4') -NewName 'video.mp4'
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 1){throw 'restored file not visible'}
+  Remove-Item -LiteralPath $externalDir -Recurse -Force
+  if(@(Get-TTYoutubeLibrary $external).Count -ne 0 -or (Test-Path -LiteralPath $externalDir)){throw 'deleted folder visible'}
+  Write-Host 'PASS external rename, restoration and complete folder deletion reflected in library'
+ Write-Host 'PASS playback library validation and API authorization'
+ # Actual signed server source as isolated child, with a synthetic MP4 and sandboxed LOCALAPPDATA.
+ $oldAppData=$env:LOCALAPPDATA
+ $env:LOCALAPPDATA=Join-Path $Root 'playback app data'
+ $actual=Join-Path $env:LOCALAPPDATA 'TeacherToolsMedia'
+ try{
+  [void][IO.Directory]::CreateDirectory($actual)
+  Copy-Item -LiteralPath (Join-Path $libraryRoot 'library') -Destination $actual -Recurse
+  $scriptPath=Join-Path (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path 'runtime-src/system/server.ps1'
+  $r=Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true $token '{"id":"DAHbOpoUrrg","quality":"720"}' $actual $scriptPath
+  if($r.status -ne '200 OK'){throw 'playback start failed'}
+  $session=($r.body|ConvertFrom-Json).session
+  $limit=[datetime]::UtcNow.AddSeconds(25)
+  do{$state=Get-TTYoutubePlaybackState $session;if($state.state -ne 'starting'){break};Start-Sleep -Milliseconds 100}while([datetime]::UtcNow -lt $limit)
+  if($state.state -ne 'ready'){throw 'dedicated child not ready'}
+  $u=[uri]$state.url
+  $tcp=[Net.Sockets.TcpClient]::new()
+  try{
+   $tcp.Connect('127.0.0.1',$u.Port);$tcp.ReceiveTimeout=5000;$tcp.SendTimeout=5000
+   $stream=$tcp.GetStream();$request=[Text.Encoding]::ASCII.GetBytes("HEAD $($u.AbsolutePath) HTTP/1.1`r`nHost: 127.0.0.1:$($u.Port)`r`nReferer: http://127.0.0.1:17439/`r`nConnection: close`r`n`r`n")
+   $stream.Write($request,0,$request.Length);$reader=[IO.StreamReader]::new($stream)
+   if($reader.ReadLine() -cne 'HTTP/1.1 200 OK'){throw 'private child HEAD rejected'}
+  }finally{$tcp.Dispose()}
+  $r=Invoke-TTYoutubeBoardApi '/api/youtube/play-stop' 'POST' $true $true $token (ConvertTo-Json -Compress @{session=$session}) $actual $scriptPath
+  if($r.status -ne '200 OK'){throw 'playback stop failed'}
+  if($script:ttYoutubePlayback -and !$script:ttYoutubePlayback.process.WaitForExit(10000)){throw 'playback process not stopped'}
+  Clear-TTYoutubePlayback
+  if($script:ttYoutubePlayback){throw 'playback session not cleared'}
+  Write-Host 'PASS actual signed child playback launch, local media HEAD and stop'
+ }finally{
+  if($script:ttYoutubePlayback){
+   $p=$script:ttYoutubePlayback
+   if(!$p.process.HasExited){$p.process.Kill();$p.process.WaitForExit()}
+   Clear-TTYoutubePlayback
+  }
+  $env:LOCALAPPDATA=$oldAppData
+ }
+}
