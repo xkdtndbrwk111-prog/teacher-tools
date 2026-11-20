@@ -7,6 +7,7 @@ on:
       - 'tools/multimedia/youtube-download-worker*.ps1'
       - 'tools/multimedia/youtube-board-bridge*.ps1'
       - 'tools/multimedia/youtube-offline-media*.ps1'
+      - 'tools/multimedia/youtube-offline-media-browser.cjs'
       - 'runtime-src/system/server.ps1'
       - '.github/workflows/youtube-engine-smoke.yml'
 permissions:
@@ -37,6 +38,11 @@ jobs:
           persist-credentials: false
       - shell: powershell
         run: |
+          $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD='1'
+          npm install --prefix "$env:RUNNER_TEMP/tt-media-chrome" --no-save --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright install failed'}
+          $env:NODE_PATH="$env:RUNNER_TEMP/tt-media-chrome/node_modules"
+          $env:TT_TEST_REAL_MEDIA_BROWSER='1'
           foreach ($f in @('./tools/multimedia/youtube-engine-install.ps1','./tools/multimedia/youtube-engine-install-test.ps1','./tools/multimedia/youtube-download-worker.ps1','./tools/multimedia/youtube-download-worker-test.ps1','./tools/multimedia/youtube-board-bridge.ps1','./tools/multimedia/youtube-board-bridge-test.ps1','./tools/multimedia/youtube-offline-media.ps1','./tools/multimedia/youtube-offline-media-test.ps1','./runtime-src/system/server.ps1')) {
             $tokens = $null; $errors = $null
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$tokens, [ref]$errors)

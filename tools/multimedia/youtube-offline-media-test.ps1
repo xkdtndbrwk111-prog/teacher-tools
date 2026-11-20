@@ -60,6 +60,10 @@ function Test-TTYoutubeMedia([string]$Root){
   )){if($bad.header -notmatch '^HTTP/1.1 403' -or $bad.body.Length){throw 'unauthorized media response'}}
   if((Request-TTMediaFixture 'POST' $path $ref).header -notmatch '^HTTP/1.1 405'){throw 'method allowed'}
   Write-Host 'PASS private playback token, host, origin and method policy'
+  if($env:TT_TEST_REAL_MEDIA_BROWSER -eq '1'){
+   & node (Join-Path $PSScriptRoot 'youtube-offline-media-browser.cjs') "$port" $token
+   if($LASTEXITCODE -ne 0){throw 'real Chrome offline media playback failed'}
+  }
   [IO.File]::WriteAllText((Join-Path $session 'stop'),'1')
   if(!$p.WaitForExit(10000) -or $p.ExitCode -ne 0){throw 'media process not stopped'}
   Write-Host 'PASS dedicated media process lifecycle'
