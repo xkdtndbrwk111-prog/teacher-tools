@@ -10686,6 +10686,18 @@ body{
 #ttMediaDialog .mm-input input,#ttMediaDialog .mm-input select{min-width:0;width:100%;box-sizing:border-box;font:inherit}
 #ttMediaDialog .mm-home{width:100%;max-width:100%;min-width:0;box-sizing:border-box;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:12px;padding:8px 0}
 /* Clip projected 3-D faces at the fixed card envelope, not at the preserve-3d inner element. */
+#ttMediaDialog .mm-app-icon{width:1.5em;height:1.5em;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#ttMediaDialog .mm-personal{display:grid;gap:8px;min-width:0;padding-top:2px;border-top:1px solid var(--border)}
+#ttMediaDialog .mm-personal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#ttMediaDialog .mm-personal-head button{min-height:40px}
+#ttMediaDialog .mm-personal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:8px}
+#ttMediaDialog .mm-personal-card{display:flex;align-items:center;min-width:0;gap:4px;padding:6px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-primary)}
+#ttMediaDialog .mm-personal-card button{background:transparent;color:var(--text-primary);box-shadow:none;min-width:0}
+#ttMediaDialog .mm-personal-play{display:flex;flex:1;min-width:0;align-items:center;gap:8px;text-align:left;padding:8px}
+#ttMediaDialog .mm-personal-play span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ttMediaDialog .mm-personal-card .mm-personal-edit{flex:none;width:42px;display:grid;place-items:center;padding:4px}
+#ttMediaDialog .mm-personal-add{width:min(600px,100%);margin:auto;display:grid;gap:12px;padding:6px;box-sizing:border-box}
+#ttMediaDialog .mm-personal-add input{min-width:0;width:100%;box-sizing:border-box;font:inherit}
 #ttMediaDialog .mm-card{position:relative;height:110px;min-width:0;perspective:900px;overflow:hidden;overflow:clip;border-radius:12px}
 #ttMediaDialog .mm-card-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .25s ease}
 #ttMediaDialog .mm-card.is-flipped .mm-card-inner{transform:rotateY(180deg)}
@@ -10754,13 +10766,50 @@ const button=(name,fn,primary=false)=>{const b=document.createElement('button');
 function cleanup(){epoch++;if(offlineStop){const stop=offlineStop;offlineStop=null;stop()}if(bookStop){const stop=bookStop;bookStop=null;stop()}clearTimeout(readyTimer);clearInterval(listenTimer);ytPlay=null;if(receiver)window.removeEventListener('message',receiver);receiver=null;if(video){video.pause();video.removeAttribute('src');video.load();video=null}if(frame){frame.remove();frame=null}if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=''}}
 function reset(v,title,bar=false){cleanup();view=v;dialog.classList.toggle('mm-book-active',v==='book');heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');dialog.classList.toggle('mm-books',v==='books');dialog.classList.toggle('mm-downloader',v==='youtube-downloader');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
 function wrapper(cls){const e=document.createElement('div');e.className=cls;stage.append(e);return e}
-const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'▣',run:()=>showCanva('A'),customize:settings}]);
+const appIconPaths=Object.freeze({
+ meeting:'<rect x="3" y="3" width="18" height="11" rx="2"/><path d="M8 7h8M8 10h5M8 14l-2 3h12l-2-3"/><circle cx="8" cy="21" r="1"/><circle cx="16" cy="21" r="1"/>',
+ books:'<path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1zM12 5v15"/>',
+ download:'<rect x="2.5" y="3" width="19" height="12" rx="3"/><path d="m10 6 5 3-5 3zM12 15v7m-4-4 4 4 4-4"/>',
+ film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 8 6 4-6 4z"/>',
+ edit:'<path d="m14 5 5 5M4 20l5-1L21 7l-5-5L4 14z"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>'
+});
+function appIcon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class','mm-app-icon');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.innerHTML=appIconPaths[name];return svg}
+function iconButton(name,fn,kind,primary=false){const b=button(name,fn,primary);b.prepend(appIcon(kind));return b}
+const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'meeting',run:()=>showCanva('A'),customize:settings}]);
+let personal=[],personalReady=false,personalBusy=false;
+const validPersonalFile=f=>f instanceof Blob&&f.size>0&&(/\.(mp4|webm|og[gv])$/i.test(f.name||'')||['video/mp4','video/webm','video/ogg'].includes(f.type));
+const personalName=s=>String(s||'').trim().slice(0,180);
+function cleanPersonal(a){return (Array.isArray(a)?a:[]).filter(x=>x&&typeof x.key==='string'&&/^[a-f0-9-]{36}$/.test(x.key)&&personalName(x.name)&&(x.kind==='library'&&/^[A-Za-z0-9_-]{11}$/.test(x.id)&&['720','1080'].includes(x.quality)||x.kind==='handle'&&x.handle?.kind==='file'&&typeof x.handle.getFile==='function'||x.kind==='copy'&&validPersonalFile(x.file)&&x.file.size<=250*1024*1024)).slice(0,30)}
+async function loadPersonal(){const d=await db();try{return await new Promise((ok,no)=>{const r=d.transaction('apps').objectStore('apps').get('personal-videos');r.onsuccess=()=>ok(cleanPersonal(r.result));r.onerror=()=>no(r.error)})}finally{d.close()}}
+async function savePersonal(next){if(!personalReady||personalBusy)throw Error('personal storage unavailable');personalBusy=true;let d;try{d=await db();await new Promise((ok,no)=>{const t=d.transaction('apps','readwrite');t.objectStore('apps').put(next,'personal-videos');t.oncomplete=ok;t.onerror=t.onabort=()=>no(t.error||Error('save failed'))});personal=next}finally{d?.close();personalBusy=false}}
+async function addPersonal(item){if(personal.length>=30)throw Error('video limit');await savePersonal([...personal,{...item,key:crypto.randomUUID()}])}
+function renderPersonal(){const section=wrapper('mm-personal'),head=document.createElement('div');head.className='mm-personal-head';const title=document.createElement('strong');title.textContent='개인 영상';const add=iconButton('영상 등록',showPersonalAdd,'plus');add.disabled=!personalReady||personalBusy;head.append(title,add);section.append(head);
+ const grid=document.createElement('div');grid.className='mm-personal-grid';section.append(grid);
+ for(const item of personal){const card=document.createElement('div');card.className='mm-personal-card';card.dataset.personalVideo=item.key;const play=button('',()=>playPersonal(item));play.className='mm-personal-play';play.title=item.name;play.setAttribute('aria-label',item.name+' 재생');const label=document.createElement('span');label.textContent=item.name;play.append(appIcon('film'),label);const edit=button('',()=>showPersonalEdit(item));edit.className='mm-personal-edit';edit.setAttribute('aria-label',item.name+' 관리');edit.title='영상 관리';edit.append(appIcon('edit'));card.append(play,edit);grid.append(card)}
+ if(!personalReady){const msg=document.createElement('small');msg.textContent='개인 영상 저장소를 열 수 없습니다.';section.append(msg)}
+}
+function showPersonalAdd(){reset('personal-add','개인 영상 등록');const current=epoch,w=wrapper('mm-personal-add');let picked=null;const title=document.createElement('input');title.placeholder='영상 표시 이름';title.maxLength=180;title.setAttribute('aria-label','영상 표시 이름');const detail=document.createElement('small');detail.textContent='MP4 · WebM · Ogg 영상 파일을 선택하세요.';const saveBtn=button('등록',async()=>{if(!picked||personalBusy||epoch!==current)return;saveBtn.disabled=true;try{await addPersonal({...picked,name:personalName(title.value)||picked.name});if(epoch===current&&dialog.open)home()}catch{if(epoch===current){status.textContent='영상 등록 실패 · 최대 30개 또는 저장 공간을 확인하세요.';saveBtn.disabled=false}}},true);saveBtn.disabled=true;
+ function choose(f,handle=null){if(!validPersonalFile(f)||!handle&&f.size>250*1024*1024){status.textContent='지원되는 영상 파일을 선택하세요. 사본 등록은 최대 250MB입니다.';return}picked=handle?{kind:'handle',handle,name:personalName(f.name.replace(/\.[^.]+$/,''))||'영상'}:{kind:'copy',file:f,name:personalName(f.name.replace(/\.[^.]+$/,''))||'영상'};title.value=picked.name;detail.textContent=f.name;status.textContent='';saveBtn.disabled=false}
+ const local=button('로컬 영상 선택',async()=>{try{const [handle]=await window.showOpenFilePicker({multiple:false,types:[{description:'영상',accept:{'video/mp4':['.mp4'],'video/webm':['.webm'],'video/ogg':['.ogv','.ogg']}}]});const f=await handle.getFile();if(epoch===current&&dialog.open)choose(f,handle)}catch(e){if(epoch===current&&e.name!=='AbortError')status.textContent='파일 선택 권한을 확인하거나 사본 등록을 사용하세요.'}},true);local.hidden=typeof window.showOpenFilePicker!=='function';
+ const input=document.createElement('input');input.type='file';input.accept='video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.ogg';input.hidden=true;input.onchange=()=>{if(input.files[0])choose(input.files[0])};
+ w.append(local,button('파일 사본 선택 (최대 250MB)',()=>input.click()),input,detail,title,saveBtn,button('← 멀티미디어',()=>home()));
+}
+function showPersonalEdit(item){reset('personal-edit','개인 영상 관리');const current=epoch,w=wrapper('mm-personal-add');const input=document.createElement('input');input.value=item.name;input.maxLength=180;input.setAttribute('aria-label','영상 표시 이름');const apply=async(remove)=>{if(personalBusy||epoch!==current)return;if(remove&&!confirm('바로가기만 제거할까요? 원본 파일은 삭제하지 않습니다.'))return;if(!remove&&!personalName(input.value)){status.textContent='영상 이름을 입력하세요.';return}try{await savePersonal(remove?personal.filter(x=>x.key!==item.key):personal.map(x=>x.key===item.key?{...x,name:personalName(input.value)}:x));if(epoch===current&&dialog.open)home()}catch{if(epoch===current)status.textContent='개인 영상 변경을 저장할 수 없습니다.'}};
+ w.append(input,button('이름 저장',()=>apply(false),true),button('바로가기 제거',()=>apply(true)),button('← 멀티미디어',()=>home()));
+}
+async function playPersonal(item){const current=epoch;try{
+ if(item.kind==='library'){if(!window.ttPodo?.requestTeacherAccess||!await window.ttPodo.requestTeacherAccess()||epoch!==current)return;const r=await fetch('/api/youtube/status',{cache:'no-store'}),x=await r.json();if(epoch!==current||!dialog.open)return;if(!r.ok||!x.ok||!/^[a-f0-9]{32}$/.test(x.token)||!x.library?.some(v=>v.id===item.id&&v.quality===item.quality))throw Error('missing library');showOfflineVideo(item,x.token,home,item.name);return}
+ let file=item.file;if(item.kind==='handle'){if(await item.handle.queryPermission({mode:'read'})!=='granted'&&await item.handle.requestPermission({mode:'read'})!=='granted')throw Error('permission');file=await item.handle.getFile()}
+ if(epoch!==current||!dialog.open)return;if(!validPersonalFile(file))throw Error('missing file');reset('personal-play',item.name,true);const token=epoch,w=wrapper('mm-display');video=document.createElement('video');video.controls=true;video.playsInline=true;video.preload='metadata';blobUrl=URL.createObjectURL(file);video.src=blobUrl;video.onerror=()=>{if(epoch===token)status.textContent='이 영상 형식은 재생할 수 없습니다. MP4(H.264/AAC)를 권장합니다.'};w.append(video);actions.append(button('← 멀티미디어',()=>home()),button('재생 / 일시정지',()=>{if(video?.paused)video.play().catch(()=>{});else video?.pause()},true));const repeat=button('반복 꺼짐',()=>{if(video){video.loop=!video.loop;repeat.textContent=video.loop?'반복 켜짐':'반복 꺼짐';repeat.setAttribute('aria-pressed',String(video.loop))}});repeat.setAttribute('aria-pressed','false');actions.append(repeat);window.ttSystemVolume?.read();video.play().catch(()=>{if(epoch===token)status.textContent='재생 버튼을 눌러 주세요.'})
+ }catch{if(epoch===current&&dialog.open)status.textContent='영상이 이동되었거나 삭제되었거나 읽기 권한이 없습니다. 바로가기를 다시 등록하세요.'}}
+
 function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];dialog.style.setProperty('--mm-launch-width',Math.min(1060,(mediaTools.length+2)*340+20)+'px');
  function select(id,focus=false){for(const card of cards){const on=card.id===id;card.el.classList.toggle('is-flipped',on);card.front.inert=on;card.front.setAttribute('aria-hidden',String(on));card.back.inert=!on;card.back.setAttribute('aria-hidden',String(!on));if(focus&&on)card.run.focus({preventScroll:true})}}
- for(const tool of mediaTools){const el=document.createElement('div');el.className='mm-card';el.dataset.mediaTool=tool.id;const inner=document.createElement('div');inner.className='mm-card-inner';const front=button(tool.name,()=>select(tool.id,true),true);front.classList.add('mm-face','mm-tile');front.setAttribute('aria-label',tool.name);const icon=document.createElement('span');icon.textContent=tool.icon;icon.setAttribute('aria-hidden','true');front.prepend(icon);const back=document.createElement('div');back.className='mm-face mm-back';const head=document.createElement('div');head.className='mm-back-head';const name=document.createElement('span');name.className='mm-back-name';name.textContent=tool.name;const turn=button('↶',()=>{select('');front.focus({preventScroll:true})});turn.setAttribute('aria-label',tool.name+' 카드 되돌리기');const buttons=document.createElement('div');buttons.className='mm-back-actions';const run=button('실행하기',tool.run,true),custom=button('개인화',tool.customize);head.append(name,turn);buttons.append(run,custom);back.append(head,buttons);inner.append(front,back);el.append(inner);w.append(el);cards.push({id:tool.id,el,front,back,run})}
- const book=button('📖 책 읽어주기',books,true);book.classList.add('mm-book-tile');book.dataset.mediaTool='books';w.append(book);
-  const downloader=button('▶ 유튜브 다운로더',showDownloader,true);downloader.classList.add('mm-book-tile');downloader.dataset.mediaTool='youtube-downloader';w.append(downloader);
- select(selected);
+ for(const tool of mediaTools){const el=document.createElement('div');el.className='mm-card';el.dataset.mediaTool=tool.id;const inner=document.createElement('div');inner.className='mm-card-inner';const front=button(tool.name,()=>select(tool.id,true),true);front.classList.add('mm-face','mm-tile');front.setAttribute('aria-label',tool.name);front.prepend(appIcon(tool.icon));const back=document.createElement('div');back.className='mm-face mm-back';const head=document.createElement('div');head.className='mm-back-head';const name=document.createElement('span');name.className='mm-back-name';name.textContent=tool.name;const turn=button('↶',()=>{select('');front.focus({preventScroll:true})});turn.setAttribute('aria-label',tool.name+' 카드 되돌리기');const buttons=document.createElement('div');buttons.className='mm-back-actions';const run=button('실행하기',tool.run,true),custom=button('개인화',tool.customize);head.append(name,turn);buttons.append(run,custom);back.append(head,buttons);inner.append(front,back);el.append(inner);w.append(el);cards.push({id:tool.id,el,front,back,run})}
+ const book=iconButton('책 읽어주기',books,'books',true);book.classList.add('mm-book-tile');book.dataset.mediaTool='books';w.append(book);
+  const downloader=iconButton('유튜브 다운로더',showDownloader,'download',true);downloader.classList.add('mm-book-tile');downloader.dataset.mediaTool='youtube-downloader';w.append(downloader);
+ select(selected);renderPersonal();
 }
 
  // Downloader: local worker only; no third-party script or playback request.
@@ -10833,13 +10882,14 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     const key=JSON.stringify(entries.map(e=>[e.id,e.quality,e.height,e.bytes,e.originalTitle,e.customTitle]));
     if(key!==libraryKey){libraryKey=key;
     libraryItems.replaceChildren();libraryCount.textContent='영상 보관함 ('+entries.length+')';
-    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('div');name.className='mm-library-name';const title=document.createElement('strong');title.textContent=entry.customTitle||entry.originalTitle||entry.id;title.title=title.textContent;const detail=document.createElement('small');detail.textContent=entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';name.append(title,detail);row.append(name,button('이름 변경',()=>rename(entry)),button('재생',async()=>{if(pending||!token||!active())return;pending=true;updateButtons();try{if(await teacher()&&active())showOfflineVideo(entry,token)}catch{if(active())report('재생 권한을 확인할 수 없습니다.')}finally{pending=false;if(active())updateButtons()}},true));libraryItems.append(row)}
+    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('div');name.className='mm-library-name';const title=document.createElement('strong');title.textContent=entry.customTitle||entry.originalTitle||entry.id;title.title=title.textContent;const detail=document.createElement('small');detail.textContent=entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';name.append(title,detail);row.append(name,button('이름 변경',()=>rename(entry)),button('개인 영상 등록',()=>registerLibrary(entry)),button('재생',async()=>{if(pending||!token||!active())return;pending=true;updateButtons();try{if(await teacher()&&active())showOfflineVideo(entry,token)}catch{if(active())report('재생 권한을 확인할 수 없습니다.')}finally{pending=false;if(active())updateButtons()}},true));libraryItems.append(row)}
     }
    }catch{if(active()){token='';job=job||{state:'unavailable'};info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
    finally{refreshing=false;if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
   }
   async function teacher(){if(!window.ttPodo?.requestTeacherAccess)return false;return Boolean(await window.ttPodo.requestTeacherAccess())}
   async function libraryAction(action,data){if(pending||!token||!active())return;pending=true;updateButtons();try{if(!await teacher()||!active())return;await api(action,data);if(active())report(action==='rename'?'영상 이름 저장 완료':'영상 보관함 폴더를 열었습니다.')}catch{if(active())report('보관함 작업에 실패했습니다.')}finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}}
+  async function registerLibrary(entry){if(pending||!active()||!personalReady)return;if(personal.some(x=>x.kind==='library'&&x.id===entry.id&&x.quality===entry.quality)){report('이미 등록된 개인 영상입니다.');return}pending=true;updateButtons();try{if(!await teacher()||!active())return;await addPersonal({kind:'library',id:entry.id,quality:entry.quality,name:personalName(entry.customTitle||entry.originalTitle||entry.id)});if(active())report('멀티미디어 개인 영상에 등록했습니다.')}catch{if(active())report('개인 영상 등록 실패 · 등록 수 또는 저장 공간을 확인하세요.')}finally{pending=false;if(active())updateButtons()}}
   function rename(entry){const value=prompt('영상 표시 이름을 입력하세요. 비워 두면 원래 이름으로 돌아갑니다.',entry.customTitle||entry.originalTitle||entry.id);if(value===null)return;if(value.length>180){report('영상 이름은 180자까지 입력할 수 있습니다.');return}void libraryAction('rename',{id:entry.id,quality:entry.quality,title:value.trim()})}
   async function start(){
    const id=youtube(url.value);if(!id){report('올바른 유튜브 단일 영상 주소를 입력하세요.');return}
@@ -10862,8 +10912,8 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  
 
  // Downloaded files are streamed exclusively by the dedicated loopback process.
- function showOfflineVideo(entry,auth){
-  reset('youtube-offline','저장 영상 재생',true);const current=epoch,w=wrapper('mm-display');
+ function showOfflineVideo(entry,auth,back=showDownloader,title='저장 영상 재생'){
+  reset('youtube-offline',title,true);const current=epoch,w=wrapper('mm-display');
   let session='',timer=0,stopped=false;
   const active=()=>epoch===current&&dialog.open&&!stopped;
   async function request(action,data,keepalive=false){
@@ -10873,7 +10923,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const stop=id=>{if(id)void request('play-stop',{session:id},true).catch(()=>{})};
   offlineStop=()=>{stopped=true;clearTimeout(timer);stop(session)};
   const fail=()=>{if(!active())return;stop(session);status.textContent='저장 영상을 재생할 수 없습니다. 보관함에서 다시 시도하세요.'};
-  actions.append(button('← 영상 보관함',showDownloader),button('재생 / 일시정지',()=>{if(video){if(video.paused)video.play().catch(()=>{});else video.pause()}},true));
+  actions.append(button(back===home?'← 멀티미디어':'← 영상 보관함',back),button('재생 / 일시정지',()=>{if(video){if(video.paused)video.play().catch(()=>{});else video.pause()}},true));
   window.ttSystemVolume?.read();status.textContent='저장 영상 준비 중…';
   async function check(){
    if(!active())return;
@@ -10965,7 +11015,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  window.addEventListener('pagehide',()=>{if(bookStop)bookStop()});
 
 function detail(){home('meeting')}
-async function open(manage=false){if(opening||dialog.open)return;opening=true;try{cfg=await load()}catch{cfg=empty()}finally{opening=false}dialog.showModal();syncFull();if(manage)detail();else home()}
+async function open(manage=false){if(opening||dialog.open)return;opening=true;try{cfg=await load()}catch{cfg=empty()}try{personal=await loadPersonal();personalReady=true}catch{personal=[];personalReady=false}finally{opening=false}dialog.showModal();syncFull();if(manage)detail();else home()}
 function close(){if(saving)return;if(dirty&&!confirm('저장하지 않은 변경을 취소할까요?'))return;dirty=false;cleanup();stage.replaceChildren();actions.replaceChildren();view='';dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;dialog.close()}
 $('ttMediaClose').onclick=$('ttMediaBottomClose').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();if(view==='book'&&dialog.classList.contains('mm-full'))full.click();else close()});dialog.addEventListener('close',()=>{if(dialog.open)return;cleanup();stage.replaceChildren();actions.replaceChildren();view='';dirty=false});const full=$('ttMediaFull');function syncFull(){const on=dialog.classList.contains('mm-full');full.textContent=on?'⤢ 전체화면 해제':'⛶ 전체화면';full.setAttribute('aria-pressed',String(on))} full.onclick=async()=>{if(dialog.classList.contains('mm-full')){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)await document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull}else{dialog.classList.add('mm-full');if(!document.fullscreenElement){try{await document.documentElement.requestFullscreen();if(dialog.open)dialog.dataset.ownsFull='1';else await document.exitFullscreen()}catch{}}}syncFull()};document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&dialog.dataset.ownsFull==='1'){delete dialog.dataset.ownsFull;dialog.classList.remove('mm-full')}syncFull()});
 $('ttMediaOpen').onclick=()=>open();$('ttMediaManage')?.addEventListener('click',()=>open(true));

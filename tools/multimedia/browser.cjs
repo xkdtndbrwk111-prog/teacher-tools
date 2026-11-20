@@ -21,6 +21,7 @@ const rects=Object.values(initial.items);for(let i=0;i<rects.length;i++)for(let 
 console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidden and four rightmost management buttons');
 await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=1060&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
 const mediaKeys=await dlg.locator('.mm-home > [data-media-tool]').evaluateAll(els=>els.map(e=>e.dataset.mediaTool));assert.deepEqual(mediaKeys,['meeting','books','youtube-downloader']);
+assert.equal(await dlg.locator('.mm-home [data-media-tool] .mm-app-icon').count(),3);
 const beforeDownloader=direct;
 let dlCalls=[],dlJob={job:'a'.repeat(32),state:'failed',phase:'error',percent:-1,errorCode:'tls_certificate'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32),playSession='d'.repeat(32);
 await page.route('**/api/youtube/**',async route=>{
@@ -112,6 +113,15 @@ console.log('PASS offline playback UI start, private loopback source and teardow
 await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
 assert.equal(await dlg.locator('[data-media-tool="books"]').count(),1);
 assert.equal(await dlg.locator('[data-media-tool="meeting"]').count(),1);
+await dlg.getByRole('button',{name:'영상 등록',exact:true}).click();
+await dlg.locator('.mm-personal-add input[type=file]').setInputFiles({name:'실험.webm',mimeType:'video/webm',buffer:Buffer.from('synthetic fixture')});
+await dlg.getByRole('textbox',{name:'영상 표시 이름'}).fill('개인 영상 시험');await dlg.getByRole('button',{name:'등록',exact:true}).click();
+await dlg.getByRole('button',{name:'개인 영상 시험 재생',exact:true}).waitFor();assert.equal(await dlg.locator('.mm-personal-card button.accent').count(),0);
+await dlg.getByRole('button',{name:'개인 영상 시험 재생',exact:true}).click();await dlg.locator('video').waitFor();assert.ok((await dlg.locator('video').getAttribute('src')).startsWith('blob:'));
+await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();await dlg.getByRole('button',{name:'개인 영상 시험 관리',exact:true}).click();await dlg.getByRole('textbox',{name:'영상 표시 이름'}).fill('개인 영상 변경');await dlg.getByRole('button',{name:'이름 저장',exact:true}).click();await dlg.getByRole('button',{name:'개인 영상 변경 재생',exact:true}).waitFor();
+await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).first().click();await page.evaluate(()=>ttMultimedia.open());await dlg.getByRole('button',{name:'개인 영상 변경 재생',exact:true}).waitFor();
+await dlg.locator('[data-media-tool="youtube-downloader"]').click();await dlg.getByRole('button',{name:'개인 영상 등록',exact:true}).click();await dlg.locator('.mm-download-message').getByText('멀티미디어 개인 영상에 등록했습니다.',{exact:true}).waitFor();await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();await dlg.getByRole('button',{name:'Original title 재생',exact:true}).waitFor();
+console.log('PASS personal videos, distinct style, SVG icons, local registration, playback, persistent name and library shortcut');
 page.off('dialog',dlConfirm);await page.unroute('**/api/youtube/**');
 console.log('PASS downloader tile, valid and invalid URLs, teacher denial, start, progress, cancel, library and return');
 async function checkFlip(reverse=false){
