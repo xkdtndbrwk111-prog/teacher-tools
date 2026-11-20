@@ -11,7 +11,7 @@ html.tt-manager-theme #app .workspace-toolbar{
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified :is(.brand-block,#saveStatus,.tt-class-controls label),
 html.tt-manager-theme .life-toolbar>span{color:var(--cm-panel-ink)!important}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch{background:var(--cm-surface)!important;border-color:var(--cm-border)!important;box-shadow:none!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified :is(.prototype-mode-switch button:not(.on),.tt-class-controls button,.tt-class-controls select,.tt-hud-more-trigger,.tt-hud-cloud-chip),
 html.tt-manager-theme #teacherScreen>.tt-seating-submodes button:not(.on),
 html.tt-manager-theme .tt-life-panel .life-nav:not(.on),
@@ -182,7 +182,20 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.tt-hud-right{grid-column:3!important;grid-row:1!important;justify-self:end;gap:5px}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch{
  grid-column:2!important;grid-row:1!important;justify-self:center!important;align-self:center!important;
- box-sizing:border-box!important;height:46px!important;min-height:46px!important;max-height:46px!important;padding:3px!important;margin:0!important;gap:3px;align-items:center!important;flex-wrap:nowrap!important
+ box-sizing:border-box!important;height:46px!important;min-height:46px!important;max-height:46px!important;padding:3px!important;margin:0!important;gap:3px;align-items:center!important;flex-wrap:nowrap!important;
+ position:relative;isolation:isolate;pointer-events:none
+}
+/* Keep the reserved left cell in the layout, not in the visible navigation frame.
+   Only the frame's left edge animates; its right edge and every common button stay fixed. */
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch::before{
+ content:"";position:absolute;inset:-1px;left:calc(var(--tt-hud-tab-width) + 2px);
+ z-index:-1;pointer-events:none;border:1px solid var(--cm-border);border-radius:inherit;
+ background:var(--cm-surface);transition:left .16s ease-out
+}
+html.tt-manager-theme #teacherScreen[data-tt-ui2-page="seat"]>.studio-topbar.tt-hud-unified>.prototype-mode-switch::before{left:-1px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch button{pointer-events:auto}
+@media(prefers-reduced-motion:reduce){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.prototype-mode-switch::before{transition:none}
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{
  box-sizing:border-box!important;height:38px!important;min-height:38px!important;max-height:38px!important;align-self:center!important;padding:0 8px!important;font-size:13px!important;min-width:0!important;border:1px solid var(--cm-border)!important
