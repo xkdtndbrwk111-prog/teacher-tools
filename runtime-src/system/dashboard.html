@@ -10721,9 +10721,9 @@ const dialog=document.createElement('dialog');dialog.id='ttMediaDialog';dialog.s
 dialog.innerHTML='<div class="mm-head"><h2 id="ttMediaHeading">멀티미디어</h2><button type="button" id="ttMediaClose">닫기 ✕</button></div><div class="mm-stage" id="ttMediaStage"></div><div class="mm-status" id="ttMediaStatus" role="status"></div><div class="mm-foot" id="ttMediaFoot" hidden><span class="mm-footer-title" id="ttMediaFooterTitle"></span><div class="mm-actions" id="ttMediaActions"></div><div class="mm-volume"><button type="button" id="ttMediaMute" aria-label="음소거">🔊</button><input type="range" id="ttMediaVolume" min="0" max="100" aria-label="시스템 소리 크기"><output id="ttMediaVolText">–</output></div><button type="button" id="ttMediaFull" aria-label="전체화면">⛶ 전체화면</button><button type="button" id="ttMediaBottomClose">닫기 ✕</button></div>';
 document.body.append(dialog);
 const stage=$('ttMediaStage'),foot=$('ttMediaFoot'),actions=$('ttMediaActions'),status=$('ttMediaStatus'),heading=$('ttMediaHeading');
-let cfg=empty(),epoch=0,view='',frame=null,video=null,blobUrl='',receiver=null,readyTimer=0,listenTimer=0,ytPlay=null,draft=null,opening=false,dirty=false,saving=false,bookStop=null;
+let cfg=empty(),epoch=0,view='',frame=null,video=null,blobUrl='',receiver=null,readyTimer=0,listenTimer=0,ytPlay=null,draft=null,opening=false,dirty=false,saving=false,bookStop=null,offlineStop=null;
 const button=(name,fn,primary=false)=>{const b=document.createElement('button');b.type='button';b.textContent=name;if(primary)b.className='accent';b.onclick=fn;return b};
-function cleanup(){epoch++;if(bookStop){const stop=bookStop;bookStop=null;stop()}clearTimeout(readyTimer);clearInterval(listenTimer);ytPlay=null;if(receiver)window.removeEventListener('message',receiver);receiver=null;if(video){video.pause();video.removeAttribute('src');video.load();video=null}if(frame){frame.remove();frame=null}if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=''}}
+function cleanup(){epoch++;if(offlineStop){const stop=offlineStop;offlineStop=null;stop()}if(bookStop){const stop=bookStop;bookStop=null;stop()}clearTimeout(readyTimer);clearInterval(listenTimer);ytPlay=null;if(receiver)window.removeEventListener('message',receiver);receiver=null;if(video){video.pause();video.removeAttribute('src');video.load();video=null}if(frame){frame.remove();frame=null}if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=''}}
 function reset(v,title,bar=false){cleanup();view=v;dialog.classList.toggle('mm-book-active',v==='book');heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');dialog.classList.toggle('mm-books',v==='books');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
 function wrapper(cls){const e=document.createElement('div');e.className=cls;stage.append(e);return e}
 const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'▣',run:()=>showCanva('A'),customize:settings}]);
@@ -10774,7 +10774,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     const entries=Array.isArray(x.library)?x.library:[];
     library.replaceChildren();
     const h=document.createElement('strong');h.textContent='영상 보관함 ('+entries.length+')';library.append(h);
-    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';row.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';library.append(row)}
+    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('span');name.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';row.append(name,button('재생',async()=>{if(pending||!token||!active())return;pending=true;try{if(await teacher()&&active())showOfflineVideo(entry,token)}finally{pending=false;if(active())updateButtons()}},true));library.append(row)}
    }catch{if(active()){token='';info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
    finally{if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
   }
@@ -10798,6 +10798,48 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   list.append(note,form,message,info,cancel,library,button('← 멀티미디어',()=>home()));refresh();
  }
  
+
+ // Downloaded files are streamed exclusively by the dedicated loopback process.
+ function showOfflineVideo(entry,auth){
+  reset('youtube-offline','저장 영상 재생',true);const current=epoch,w=wrapper('mm-display');
+  let session='',timer=0,stopped=false;
+  const active=()=>epoch===current&&dialog.open&&!stopped;
+  async function request(action,data,keepalive=false){
+   const r=await fetch('/api/youtube/'+action,{method:'POST',cache:'no-store',credentials:'same-origin',redirect:'error',headers:{'Content-Type':'application/json','X-TT-Youtube-Token':auth},body:JSON.stringify(data),keepalive});
+   if(!r.ok)throw Error('playback request');const x=await r.json();if(!x.ok)throw Error('invalid playback response');return x;
+  }
+  const stop=id=>{if(id)void request('play-stop',{session:id},true).catch(()=>{})};
+  offlineStop=()=>{stopped=true;clearTimeout(timer);stop(session)};
+  const fail=()=>{if(!active())return;stop(session);status.textContent='저장 영상을 재생할 수 없습니다. 보관함에서 다시 시도하세요.'};
+  actions.append(button('← 영상 보관함',showDownloader),button('재생 / 일시정지',()=>{if(video){if(video.paused)video.play().catch(()=>{});else video.pause()}},true));
+  window.ttSystemVolume?.read();status.textContent='저장 영상 준비 중…';
+  async function check(){
+   if(!active())return;
+   try{
+    const x=await request('play-status',{session});if(!active())return;
+    if(x.state==='starting'){timer=setTimeout(check,250);return}
+    if(x.state!=='ready')throw Error('playback ended');
+    const u=new URL(x.url);
+    if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/'+session+'/video.mp4')throw Error('invalid media URL');
+    video=document.createElement('video');video.controls=true;video.playsInline=true;video.preload='metadata';video.disablePictureInPicture=true;
+    video.addEventListener('loadedmetadata',()=>{if(active())status.textContent='저장 영상 · 오프라인 재생'});
+    video.addEventListener('ended',()=>{if(active())status.textContent='재생 완료'});
+    video.addEventListener('error',fail);
+    w.append(video);video.src=u.href;
+    video.play().catch(()=>{if(active())status.textContent='영상의 재생 버튼을 눌러 주세요.'});
+   }catch{fail()}
+  }
+  void(async()=>{
+   try{
+    const x=await request('play-start',{id:entry.id,quality:entry.quality});
+    if(!/^[a-f0-9]{32}$/.test(x.session))throw Error('invalid session');
+    session=x.session;if(!active()){stop(session);return}
+    await check();
+   }catch{fail()}
+  })();
+ }
+ window.addEventListener('pagehide',()=>{if(offlineStop){const stop=offlineStop;offlineStop=null;stop()}});
+
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
  const BOOKS_KEY='tt-books-v1:catalog',MARK_PREFIX='tt-books-v1:mark:';
  const firstBook=Object.freeze({id:'DAHbOpoUrrg',title:'아몬드 · 시험판',url:'https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed',pages:5});

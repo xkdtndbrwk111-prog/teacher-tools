@@ -22,13 +22,16 @@ console.log('PASS clean first-install layout exact 48x27, no overlaps, memo hidd
 await page.evaluate(()=>ttMultimedia.open());const dlg=page.locator('#ttMediaDialog');await dlg.getByRole('heading',{name:'멀티미디어',exact:true}).waitFor();const compact=await dlg.boundingBox();assert.ok(compact.width<=1060&&compact.height<350,JSON.stringify(compact));const tile=dlg.locator('.mm-card');
 const mediaKeys=await dlg.locator('.mm-home > [data-media-tool]').evaluateAll(els=>els.map(e=>e.dataset.mediaTool));assert.deepEqual(mediaKeys,['meeting','books','youtube-downloader']);
 const beforeDownloader=direct;
-let dlCalls=[],dlJob={state:'idle'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32);
+let dlCalls=[],dlJob={state:'idle'},dlLibrary=[],dlToken='b'.repeat(32),dlJobId='c'.repeat(32),playSession='d'.repeat(32);
 await page.route('**/api/youtube/**',async route=>{
  const req=route.request(),p=new URL(req.url()).pathname;
  if(p.endsWith('/status'))return route.fulfill({json:{ok:true,token:dlToken,job:dlJob,library:dlLibrary}});
  assert.equal(req.headers()['x-tt-youtube-token'],dlToken);const data=req.postDataJSON();dlCalls.push({p,data});
  if(p.endsWith('/start')){assert.deepEqual(data,{id:'sVoh_DAt9is',quality:'720',authorized:true});dlJob={job:dlJobId,state:'running',phase:'download',percent:45};return route.fulfill({json:{ok:true,job:dlJobId}})}
  if(p.endsWith('/cancel')){assert.deepEqual(data,{job:dlJobId});dlJob={job:dlJobId,state:'cancelled',phase:'stopped',percent:-1};return route.fulfill({json:{ok:true}})}
+ if(p.endsWith('/play-start')){assert.deepEqual(data,{id:'sVoh_DAt9is',quality:'720'});return route.fulfill({json:{ok:true,session:playSession,state:'starting'}})}
+ if(p.endsWith('/play-status')){assert.deepEqual(data,{session:playSession});return route.fulfill({json:{ok:true,state:'ready',url:'http://127.0.0.1:'+server.address().port+'/'+playSession+'/video.mp4'}})}
+ if(p.endsWith('/play-stop')){assert.deepEqual(data,{session:playSession});return route.fulfill({json:{ok:true}})}
  throw Error('unexpected downloader endpoint '+p)
 });
 await page.evaluate(()=>{window.ttPodo.requestTeacherAccess=async()=>window.__downloadFixtureAuth===true;window.__downloadFixtureAuth=false});
@@ -57,6 +60,18 @@ assert.equal(dlCalls.length,2);
 dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576}];
 await dlg.locator('[data-youtube-library]').getByText('sVoh_DAt9is · 360p · 1 MB',{exact:true}).waitFor();
 assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);
+await page.route('**/'+playSession+'/video.mp4',r=>r.fulfill({status:200,contentType:'video/mp4',body:Buffer.from('invalid synthetic video fixture')}));
+await dlg.locator('[data-youtube-library]').getByRole('button',{name:'재생',exact:true}).click();
+await dlg.getByRole('heading',{name:'저장 영상 재생',exact:true}).waitFor();
+await dlg.locator('video').waitFor();assert.ok((await dlg.locator('video').getAttribute('src')).endsWith('/'+playSession+'/video.mp4'));
+assert.ok(dlCalls.some(x=>x.p.endsWith('/play-start'))&&dlCalls.some(x=>x.p.endsWith('/play-status')));
+await dlg.getByRole('button',{name:'← 영상 보관함',exact:true}).click();
+await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
+await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog video'));
+for(let i=0;i<20&&!dlCalls.some(x=>x.p.endsWith('/play-stop'));i++)await page.waitForTimeout(100);
+assert.ok(dlCalls.some(x=>x.p.endsWith('/play-stop')));assert.equal(direct,beforeDownloader);
+await page.unroute('**/'+playSession+'/video.mp4');
+console.log('PASS offline playback UI start, private loopback source and teardown (mocked media)');
 await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
 assert.equal(await dlg.locator('[data-media-tool="books"]').count(),1);
 assert.equal(await dlg.locator('[data-media-tool="meeting"]').count(),1);
