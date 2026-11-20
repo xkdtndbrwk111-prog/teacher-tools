@@ -10749,6 +10749,8 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const check=button('주소 확인',()=>{},true);check.type='submit';
   const download=button('다운로드',start,true);download.type='button';download.disabled=true;
   form.append(label,qlabel,check,download);
+  const message=document.createElement('p');message.setAttribute('aria-live','polite');
+  function report(text){status.textContent=text;message.textContent=text}
   const info=document.createElement('p');info.setAttribute('role','status');info.dataset.youtubeState='';info.textContent='로컬 연결 확인 중…';
   const library=document.createElement('div');library.dataset.youtubeLibrary='';
   const cancel=button('다운로드 취소',stop);cancel.hidden=true;
@@ -10778,22 +10780,22 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   }
   async function teacher(){if(!window.ttPodo?.requestTeacherAccess)return false;return Boolean(await window.ttPodo.requestTeacherAccess())}
   async function start(){
-   const id=youtube(url.value);if(!id){status.textContent='올바른 유튜브 단일 영상 주소를 입력하세요.';return}
+   const id=youtube(url.value);if(!id){report('올바른 유튜브 단일 영상 주소를 입력하세요.');return}
    if(pending||!token||job?.state==='running')return;
    if(!confirm('다운로드 권한이 있는 영상인가요? 최초 이용 시 외부 엔진을 설치합니다.'))return;
    pending=true;updateButtons();
-   try{if(!await teacher()||!active())return;await api('start',{id,quality:quality.value,authorized:true});if(active()){job={state:'running',phase:'starting',percent:-1};info.textContent='작업 준비 중';status.textContent='다운로드 요청 완료'}}
-   catch{if(active())status.textContent='다운로드 요청에 실패했습니다. 중복 영상 또는 작업 상태를 확인하세요.'}
+   try{if(!await teacher()||!active())return;await api('start',{id,quality:quality.value,authorized:true});if(active()){job={state:'running',phase:'starting',percent:-1};info.textContent='작업 준비 중';report('다운로드 요청 완료')}}
+   catch{if(active())report('다운로드 요청에 실패했습니다. 중복 영상 또는 작업 상태를 확인하세요.')}
    finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
   }
   async function stop(){
    if(pending||job?.state!=='running')return;const id=job.job;pending=true;updateButtons();
-   try{if(!await teacher()||!active())return;await api('cancel',{job:id});if(active())status.textContent='취소 요청 완료'}
-   catch{if(active())status.textContent='취소할 수 없습니다. 작업 상태를 확인하세요.'}
+   try{if(!await teacher()||!active())return;await api('cancel',{job:id});if(active())report('취소 요청 완료')}
+   catch{if(active())report('취소할 수 없습니다. 작업 상태를 확인하세요.')}
    finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
   }
-  form.onsubmit=e=>{e.preventDefault();if(!active())return;const id=youtube(url.value);status.textContent=id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.'};
-  list.append(note,form,info,cancel,library,button('← 멀티미디어',()=>home()));refresh();
+  form.onsubmit=e=>{e.preventDefault();if(!active())return;const id=youtube(url.value);report(id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.')};
+  list.append(note,form,message,info,cancel,library,button('← 멀티미디어',()=>home()));refresh();
  }
  
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
