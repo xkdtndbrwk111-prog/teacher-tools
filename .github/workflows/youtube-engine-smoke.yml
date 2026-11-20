@@ -4,6 +4,7 @@ on:
     paths:
       - 'tools/multimedia/youtube-engine-smoke.ps1'
       - 'tools/multimedia/youtube-engine-install*.ps1'
+      - 'tools/multimedia/youtube-download-worker*.ps1'
       - '.github/workflows/youtube-engine-smoke.yml'
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
           persist-credentials: false
       - shell: powershell
         run: |
-          foreach ($f in @('./tools/multimedia/youtube-engine-install.ps1','./tools/multimedia/youtube-engine-install-test.ps1')) {
+          foreach ($f in @('./tools/multimedia/youtube-engine-install.ps1','./tools/multimedia/youtube-engine-install-test.ps1','./tools/multimedia/youtube-download-worker.ps1','./tools/multimedia/youtube-download-worker-test.ps1')) {
             $tokens = $null; $errors = $null
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$tokens, [ref]$errors)
             if ($errors.Count -gt 0) { $errors | Format-List; throw 'Installer syntax check failed' }
