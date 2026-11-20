@@ -19,3 +19,9 @@ Adds third multimedia tile and isolated URL validation screen using existing You
 4. UI connection, installer progress, error/cancel/retry, library deletion confirmation and fullscreen/volume handling; no cloud/backup inclusion.
 5. Tests: malformed/hostile URLs, playlists, origin/authorization, escaping/path traversal, invalid checksum, rollback, offline install error, download/merge/cancel, restart, low disk, corrupted files, library persistence, offline playback and existing meeting/book/coins/QR regression. Use authorized test media; field test on school Windows separate.
 6. Candidate review and exact release approval before any signed publication. No production changes in this draft.
+
+## 2026-11-20 — Installer implementation gate
+- Engine smoke 44527013450 succeeded: pinned yt-dlp 2026.10.26, Deno 2.9.4 and FFmpeg n9.0.2-57; official asset SHA256, synthetic media merge/decode and localhost transfer verified. Actual YouTube extraction not tested.
+- Last full regression: 13/14 workflows passed; Windows book label differed because emoji removal is platform-specific. Test now accepts only the exact Korean label with optional display emoji (823ae8d).
+- Candidate installer implemented in tools/multimedia/youtube-engine-install.ps1, not yet packaged in signed runtime. Immutable version directory, fixed upstream SHA256, exact executable extraction, exclusive install lock, staging cleanup, manifest and installed file hash checks, idempotent reuse. Invalid existing install fails closed; explicit repair and rollback not yet implemented. No production paths used in CI.
+- Windows PowerShell 5.1 real installer test registered: fresh install, reuse, executable start, corruption detection, no overwrite, staging cleanup. Results pending. Next gate: bounded asynchronous worker and board API, then UI/library. V1.66.23 unchanged.
