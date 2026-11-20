@@ -28,6 +28,8 @@ await page.route('**/api/youtube/**',async route=>{
  if(p.endsWith('/status'))return route.fulfill({json:{ok:true,token:dlToken,job:dlJob,library:dlLibrary}});
  assert.equal(req.headers()['x-tt-youtube-token'],dlToken);const data=req.postDataJSON();dlCalls.push({p,data});
  if(p.endsWith('/start')){assert.deepEqual(data,{id:'sVoh_DAt9is',quality:'720',authorized:true});dlJob={job:dlJobId,state:'running',phase:'download',percent:45};return route.fulfill({json:{ok:true,job:dlJobId}})}
+ if(p.endsWith('/open-library')){assert.deepEqual(data,{});return route.fulfill({json:{ok:true}})}
+ if(p.endsWith('/rename')){assert.equal(data.id,'sVoh_DAt9is');dlLibrary[0].customTitle=data.title;return route.fulfill({json:{ok:true}})}
  if(p.endsWith('/cancel')){assert.deepEqual(data,{job:dlJobId});dlJob={job:dlJobId,state:'cancelled',phase:'stopped',percent:-1};return route.fulfill({json:{ok:true}})}
  if(p.endsWith('/play-start')){assert.deepEqual(data,{id:'sVoh_DAt9is',quality:'720'});return route.fulfill({json:{ok:true,session:playSession,state:'starting'}})}
  if(p.endsWith('/play-status')){assert.deepEqual(data,{session:playSession});return route.fulfill({json:{ok:true,state:'ready',url:'http://127.0.0.1:'+server.address().port+'/'+playSession+'/video.mp4'}})}
@@ -35,7 +37,7 @@ await page.route('**/api/youtube/**',async route=>{
  throw Error('unexpected downloader endpoint '+p)
 });
 await page.evaluate(()=>{window.ttPodo.requestTeacherAccess=async()=>window.__downloadFixtureAuth===true;window.__downloadFixtureAuth=false});
-const dlConfirm=async d=>{if(d.type()==='confirm'&&d.message().includes('다운로드 권한'))await d.accept();else await d.dismiss()};page.on('dialog',dlConfirm);
+let renameValue='Morning music';const dlConfirm=async d=>{if(d.type()==='prompt')await d.accept(renameValue);else if(d.type()==='confirm'&&d.message().includes('다운로드 권한'))await d.accept();else await d.dismiss()};page.on('dialog',dlConfirm);
 
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();
 await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
@@ -47,9 +49,11 @@ for(const size of [{width:1920,height:1080},{width:1280,height:720},{width:390,h
 }
 await page.setViewportSize({width:1280,height:720});
 console.log('PASS downloader dialog two-thirds width, narrow viewport and no horizontal overflow');
+const fixedBox=await dlg.boundingBox();
 for(const [url,expected] of [['https://www.youtube.com/watch?v=sVoh_DAt9is',true],['https://youtu.be/sVoh_DAt9is',true],['https://m.youtube.com/watch?v=sVoh_DAt9is',true],['https://www.youtube.com/shorts/sVoh_DAt9is',true],['https://youtube.com.evil.test/watch?v=sVoh_DAt9is',false],['https://youtu.be/abc',false],['https://www.youtube.com/playlist?list=PL123',false],['http://youtube.com/watch?v=sVoh_DAt9is',false]]){
  await dlURL.fill(url);await dlg.getByRole('button',{name:'주소 확인',exact:true}).click();
  assert.equal((await dlg.locator('#ttMediaStatus').textContent()).includes('단일 영상 주소 확인 완료'),expected,url);
+ const rect=await dlg.boundingBox();assert.ok(Math.abs(rect.height-fixedBox.height)<1&&Math.abs(rect.width-fixedBox.width)<1,'dialog size changed on address check');
 }
 assert.equal(dlCalls.length,0);
 await dlURL.fill('https://youtu.be/sVoh_DAt9is');
@@ -78,8 +82,12 @@ await dlg.locator('[data-youtube-state]').getByText('SSL 인증서 검증 실패
 assert.equal(await dlg.locator('#ttMediaStatus').textContent(),'');
 assert.equal(await dlg.locator('.mm-download-activity').isVisible(),false);
 console.log('PASS determinate transfer bar, indeterminate spinner, cancel/error cleanup and accessible state');
-dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576}];
-await dlg.locator('[data-youtube-library]').getByText('sVoh_DAt9is · 360p · 1 MB',{exact:true}).waitFor();
+dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576,originalTitle:'Original title',customTitle:''}];
+await dlg.locator('[data-youtube-library]').getByText('Original title',{exact:true}).waitFor();
+await dlg.getByRole('button',{name:'폴더 바로 열기',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.mm-library-head button').disabled);assert.ok(dlCalls.some(x=>x.p.endsWith('/open-library')));
+await dlg.getByRole('button',{name:'이름 변경',exact:true}).click();await dlg.locator('[data-youtube-library]').getByText('Morning music',{exact:true}).waitFor();
+renameValue='';await dlg.getByRole('button',{name:'이름 변경',exact:true}).click();await dlg.locator('[data-youtube-library]').getByText('Original title',{exact:true}).waitFor();
+console.log('PASS fixed modal, shared folder action, original and custom title display/reset');
 assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);
 await page.route('**/'+playSession+'/video.mp4',r=>r.fulfill({status:200,contentType:'video/mp4',body:Buffer.from('invalid synthetic video fixture')}));
 const playButton=dlg.locator('[data-youtube-library]').getByRole('button',{name:'재생',exact:true});

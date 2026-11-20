@@ -48,9 +48,39 @@ function Get-TTYoutubeLibrary([string]$Root){
    $p=Get-Item -LiteralPath (Join-Path $dir.FullName 'video.mp4')
    $m=Get-Content -LiteralPath (Join-Path $dir.FullName 'metadata.json') -Raw -Encoding UTF8|ConvertFrom-Json
    if($p.PSIsContainer -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $p.Length -le 0 -or $m.id -cne $id -or $m.quality -cne $q -or $m.bytes -ne $p.Length){continue}
-   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created}
+   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created;originalTitle=(ConvertTo-TTYoutubeTitle $m.originalTitle);customTitle=(ConvertTo-TTYoutubeTitle $m.customTitle)}
   }catch{}
  }
+}
+function Get-TTYoutubeLibraryDirectory([string]$Root){
+ $lib=Join-Path $Root 'library'
+ [void][IO.Directory]::CreateDirectory($Root)
+ $item=Get-Item -LiteralPath $Root
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media root'}
+ [void][IO.Directory]::CreateDirectory($lib)
+ $item=Get-Item -LiteralPath $lib
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid library root'}
+ return $item.FullName
+}
+function Open-TTYoutubeLibrary([string]$Root){
+ $dir=Get-TTYoutubeLibraryDirectory $Root
+ # Fixed executable and fixed application-owned directory. No request-supplied path.
+ Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList ('"'+$dir+'"')
+ return @{ok=$true}
+}
+function Set-TTYoutubeLibraryTitle([string]$Root,$InputData){
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.title -isnot [string] -or $InputData.title.Length -gt 180){throw 'invalid title'}
+ $video=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
+ $path=Join-Path (Split-Path -Parent $video) 'metadata.json'
+ $m=Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json
+ $title=ConvertTo-TTYoutubeTitle $InputData.title
+ $m|Add-Member -NotePropertyName customTitle -NotePropertyValue $title -Force
+ $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+ try{
+  [IO.File]::WriteAllText($tmp,($m|ConvertTo-Json -Compress -Depth 6),[Text.UTF8Encoding]::new($false))
+  [IO.File]::Replace($tmp,$path,[NullString]::Value)
+ }finally{if([IO.File]::Exists($tmp)){[IO.File]::Delete($tmp)}}
+ return @{ok=$true}
 }
 function Start-TTYoutubeBoardJob([string]$Root,[string]$ServerScript,$InputData){
  if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.authorized -isnot [bool] -or !$InputData.authorized){throw 'invalid request'}
@@ -88,12 +118,14 @@ function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigi
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
   return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
  }
- if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop','/api/youtube/open-library','/api/youtube/rename') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
  try{
   $x=ConvertFrom-Json $Body
   if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
+  elseif($Path -eq '/api/youtube/open-library'){if($null -eq $x -or @($x.PSObject.Properties).Count -ne 0){throw 'unexpected folder request'};$answer=Open-TTYoutubeLibrary $Root}
+  elseif($Path -eq '/api/youtube/rename'){$answer=Set-TTYoutubeLibraryTitle $Root $x}
   elseif($Path -eq '/api/youtube/cancel'){$answer=Stop-TTYoutubeBoardJob $Root $x.job}
   elseif($Path -eq '/api/youtube/play-start'){$answer=Start-TTYoutubeBoardPlayback $Root $ServerScript $x $BoardPort}
   elseif($x.session -isnot [string] -or $x.session -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid session'}

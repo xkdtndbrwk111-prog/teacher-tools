@@ -62,6 +62,17 @@ try{
  }
  if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true 'wrong' $body $libraryRoot $fake).status -ne '403 Forbidden'){throw 'playback token accepted'}
  if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true $token '{"id":"../unsafe","quality":"720"}' $libraryRoot $fake).status -ne '409 Conflict'){throw 'playback invalid path accepted'}
+  $dir=Get-TTYoutubeLibraryDirectory $libraryRoot
+  if($dir -cne (Join-Path $libraryRoot 'library')){throw 'folder scope'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/open-library' 'POST' $true $true 'wrong' '{}' $libraryRoot $fake).status -ne '403 Forbidden'){throw 'folder token accepted'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/open-library' 'POST' $true $true $token '{"path":"C:\\"}' $libraryRoot $fake).status -ne '409 Conflict'){throw 'arbitrary folder accepted'}
+  $custom=ConvertTo-Json -Compress @{id='DAHbOpoUrrg';quality='720';title='Classroom film'}
+  if((Invoke-TTYoutubeBoardApi '/api/youtube/rename' 'POST' $true $true $token $custom $libraryRoot $fake).status -ne '200 OK'){throw 'rename API'}
+  $renamed=@(Get-TTYoutubeLibrary $libraryRoot)
+  if($renamed[0].customTitle -cne 'Classroom film' -or $renamed[0].originalTitle -ne 'Original title' -or (Resolve-TTYoutubePlaybackFile $libraryRoot 'DAHbOpoUrrg' '720') -cne $resolved){throw 'rename changed original or media path'}
+  $null=Set-TTYoutubeLibraryTitle $libraryRoot @{id='DAHbOpoUrrg';quality='720';title=''}
+  if(@(Get-TTYoutubeLibrary $libraryRoot)[0].customTitle -ne ''){throw 'title reset'}
+  Write-Host 'PASS fixed folder scope, authorized title rename and original title preservation'
  Write-Host 'PASS playback library validation and API authorization'
  # Actual signed server source as isolated child, with a synthetic MP4 and sandboxed LOCALAPPDATA.
  $oldAppData=$env:LOCALAPPDATA

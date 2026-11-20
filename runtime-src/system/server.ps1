@@ -210,6 +210,22 @@ function Invoke-TTYoutubeProcess([string]$Exe,[string[]]$Argv,[string]$JobDir,[s
  }
  return $out
 }
+# Titles are display data only; never use them as filesystem paths or commands.
+function ConvertTo-TTYoutubeTitle($Value){
+ if($Value -isnot [string]){return ''}
+ $v=[regex]::Replace($Value,'[\p{Cc}\p{Zl}\p{Zp}]',' ').Trim()
+ if($v.Length -gt 180){$v=$v.Substring(0,180);if([char]::IsHighSurrogate($v[$v.Length-1])){$v=$v.Substring(0,$v.Length-1)}}
+ return $v.Trim()
+}
+function Get-TTYoutubeOriginalTitle([string]$JobDir){
+ try{
+  $p=Get-Item -LiteralPath (Join-Path $JobDir 'title.json') -ErrorAction Stop
+  if($p.PSIsContainer -or $p.Length -gt 65536 -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint)){return ''}
+  $raw=[IO.File]::ReadAllText($p.FullName,[Text.Encoding]::UTF8).Trim()
+  $v=('{"title":'+$raw+'}'|ConvertFrom-Json).title
+  return (ConvertTo-TTYoutubeTitle $v)
+ }catch{return ''}
+}
 function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$EngineDir,[hashtable]$Request){
  $file=Join-Path $JobDir 'video.mp4'
  if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'missing MP4'}
@@ -227,7 +243,7 @@ function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$E
  $stage=Join-Path $JobDir 'completed'
  [void][IO.Directory]::CreateDirectory($stage)
  [IO.File]::Move($file,(Join-Path $stage 'video.mp4'))
- $info=@{id=$Request.id;quality=$Request.quality;height=[int]$video[0].height;bytes=(Get-Item -LiteralPath (Join-Path $stage 'video.mp4')).Length;created=[DateTime]::UtcNow.ToString('o')}
+ $info=@{id=$Request.id;quality=$Request.quality;height=[int]$video[0].height;bytes=(Get-Item -LiteralPath (Join-Path $stage 'video.mp4')).Length;created=[DateTime]::UtcNow.ToString('o');originalTitle=(Get-TTYoutubeOriginalTitle $JobDir);customTitle=''}
  [IO.File]::WriteAllText((Join-Path $stage 'metadata.json'),($info|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
  [IO.Directory]::Move($stage,$target)
@@ -269,7 +285,7 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   $dir=$engine.directory
   $h=$request.quality
   $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
-  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $argv=@('--ignore-config','--compat-options','no-certifi','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--print-to-file','after_move:%(title)j','title.json','--no-simulate','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
   $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
   $phase='verify';Write-TTYoutubeState $job 'running' 'verify'
   Complete-TTYoutubeVideo $job $library $dir $request
@@ -339,9 +355,39 @@ function Get-TTYoutubeLibrary([string]$Root){
    $p=Get-Item -LiteralPath (Join-Path $dir.FullName 'video.mp4')
    $m=Get-Content -LiteralPath (Join-Path $dir.FullName 'metadata.json') -Raw -Encoding UTF8|ConvertFrom-Json
    if($p.PSIsContainer -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $p.Length -le 0 -or $m.id -cne $id -or $m.quality -cne $q -or $m.bytes -ne $p.Length){continue}
-   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created}
+   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created;originalTitle=(ConvertTo-TTYoutubeTitle $m.originalTitle);customTitle=(ConvertTo-TTYoutubeTitle $m.customTitle)}
   }catch{}
  }
+}
+function Get-TTYoutubeLibraryDirectory([string]$Root){
+ $lib=Join-Path $Root 'library'
+ [void][IO.Directory]::CreateDirectory($Root)
+ $item=Get-Item -LiteralPath $Root
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media root'}
+ [void][IO.Directory]::CreateDirectory($lib)
+ $item=Get-Item -LiteralPath $lib
+ if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid library root'}
+ return $item.FullName
+}
+function Open-TTYoutubeLibrary([string]$Root){
+ $dir=Get-TTYoutubeLibraryDirectory $Root
+ # Fixed executable and fixed application-owned directory. No request-supplied path.
+ Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList ('"'+$dir+'"')
+ return @{ok=$true}
+}
+function Set-TTYoutubeLibraryTitle([string]$Root,$InputData){
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.title -isnot [string] -or $InputData.title.Length -gt 180){throw 'invalid title'}
+ $video=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
+ $path=Join-Path (Split-Path -Parent $video) 'metadata.json'
+ $m=Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json
+ $title=ConvertTo-TTYoutubeTitle $InputData.title
+ $m|Add-Member -NotePropertyName customTitle -NotePropertyValue $title -Force
+ $tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+ try{
+  [IO.File]::WriteAllText($tmp,($m|ConvertTo-Json -Compress -Depth 6),[Text.UTF8Encoding]::new($false))
+  [IO.File]::Replace($tmp,$path,[NullString]::Value)
+ }finally{if([IO.File]::Exists($tmp)){[IO.File]::Delete($tmp)}}
+ return @{ok=$true}
 }
 function Start-TTYoutubeBoardJob([string]$Root,[string]$ServerScript,$InputData){
  if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.authorized -isnot [bool] -or !$InputData.authorized){throw 'invalid request'}
@@ -379,12 +425,14 @@ function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigi
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
   return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
  }
- if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop','/api/youtube/open-library','/api/youtube/rename') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
  try{
   $x=ConvertFrom-Json $Body
   if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
+  elseif($Path -eq '/api/youtube/open-library'){if($null -eq $x -or @($x.PSObject.Properties).Count -ne 0){throw 'unexpected folder request'};$answer=Open-TTYoutubeLibrary $Root}
+  elseif($Path -eq '/api/youtube/rename'){$answer=Set-TTYoutubeLibraryTitle $Root $x}
   elseif($Path -eq '/api/youtube/cancel'){$answer=Stop-TTYoutubeBoardJob $Root $x.job}
   elseif($Path -eq '/api/youtube/play-start'){$answer=Start-TTYoutubeBoardPlayback $Root $ServerScript $x $BoardPort}
   elseif($x.session -isnot [string] -or $x.session -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid session'}
