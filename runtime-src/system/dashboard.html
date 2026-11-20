@@ -10769,7 +10769,7 @@ function wrapper(cls){const e=document.createElement('div');e.className=cls;stag
 const appIconPaths=Object.freeze({
  meeting:'<rect x="3" y="3" width="18" height="11" rx="2"/><path d="M8 7h8M8 10h5M8 14l-2 3h12l-2-3"/><circle cx="8" cy="21" r="1"/><circle cx="16" cy="21" r="1"/>',
  books:'<path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1zM12 5v15"/>',
- download:'<rect x="2.5" y="3" width="19" height="12" rx="3"/><path d="m10 6 5 3-5 3zM12 15v7m-4-4 4 4 4-4"/>',
+ download:'<path fill="currentColor" stroke="none" fill-rule="evenodd" d="M22 7.1c-.23-1.4-.9-2.25-2.35-2.5C17.8 4.25 14.6 4.2 12 4.2s-5.8.05-7.65.4C2.9 4.85 2.23 5.7 2 7.1 1.75 8.6 1.75 10.3 1.75 12s0 3.4.25 4.9c.23 1.4.9 2.25 2.35 2.5 1.85.35 5.05.4 7.65.4s5.8-.05 7.65-.4c1.45-.25 2.12-1.1 2.35-2.5.25-1.5.25-3.2.25-4.9s0-3.4-.25-4.9ZM9.5 8.1l6.5 3.9-6.5 3.9z"/>',
  film:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 8 6 4-6 4z"/>',
  edit:'<path d="m14 5 5 5M4 20l5-1L21 7l-5-5L4 14z"/>',
  plus:'<path d="M12 5v14M5 12h14"/>'
@@ -10891,11 +10891,16 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   async function libraryAction(action,data){if(pending||!token||!active())return;pending=true;updateButtons();try{if(!await teacher()||!active())return;await api(action,data);if(active())report(action==='rename'?'영상 이름 저장 완료':'영상 보관함 폴더를 열었습니다.')}catch{if(active())report('보관함 작업에 실패했습니다.')}finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}}
   async function registerLibrary(entry){if(pending||!active()||!personalReady)return;if(personal.some(x=>x.kind==='library'&&x.id===entry.id&&x.quality===entry.quality)){report('이미 등록된 개인 영상입니다.');return}pending=true;updateButtons();try{if(!await teacher()||!active())return;await addPersonal({kind:'library',id:entry.id,quality:entry.quality,name:personalName(entry.customTitle||entry.originalTitle||entry.id)});if(active())report('멀티미디어 개인 영상에 등록했습니다.')}catch{if(active())report('개인 영상 등록 실패 · 등록 수 또는 저장 공간을 확인하세요.')}finally{pending=false;if(active())updateButtons()}}
   function rename(entry){const value=prompt('영상 표시 이름을 입력하세요. 비워 두면 원래 이름으로 돌아갑니다.',entry.customTitle||entry.originalTitle||entry.id);if(value===null)return;if(value.length>180){report('영상 이름은 180자까지 입력할 수 있습니다.');return}void libraryAction('rename',{id:entry.id,quality:entry.quality,title:value.trim()})}
+  function clearTerminal(){
+   if(!token||!job||!['complete','cancelled','failed'].includes(job.state))return;
+   ignoredJob=job.job||'';job={state:'idle',phase:'',percent:-1};info.textContent='다운로드 준비 완료';report('');updateButtons();
+  }
+  url.addEventListener('input',clearTerminal);
   async function start(){
    const id=youtube(url.value);if(!id){report('올바른 유튜브 단일 영상 주소를 입력하세요.');return}
    if(pending||!token||job?.state==='running')return;
    if(!confirm('다운로드 권한이 있는 영상인가요? 최초 이용 시 외부 엔진을 설치합니다.'))return;
-   pending=true;updateButtons();
+   clearTerminal();pending=true;updateButtons();
    try{if(!await teacher()||!active())return;const result=await api('start',{id,quality:quality.value,authorized:true});if(active()){expectedJob=result.job;ignoredJob='';job={job:result.job,state:'running',phase:'starting',percent:-1};info.textContent='작업 준비 중';report('')}}
    catch{if(active())report('다운로드 요청에 실패했습니다. 중복 영상 또는 작업 상태를 확인하세요.')}
    finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
@@ -10906,7 +10911,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    catch{if(active())report('취소할 수 없습니다. 작업 상태를 확인하세요.')}
    finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
   }
-  form.onsubmit=e=>{e.preventDefault();if(!active())return;const id=youtube(url.value);report(id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.')};
+  form.onsubmit=e=>{e.preventDefault();if(!active())return;clearTerminal();const id=youtube(url.value);report(id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.')};
   list.append(note,form,message,stateBox,cancel,library,button('← 멀티미디어',()=>home()));renderActivity();refresh();
  }
  
