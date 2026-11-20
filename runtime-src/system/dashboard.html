@@ -10626,6 +10626,22 @@ body{
 <style id="tt-media-style">
 #ttMediaDialog.mm-books{width:min(650px,94vw)!important;max-height:85vh!important}
 #ttMediaDialog .mm-book-list{display:grid;gap:10px;padding:4px}
+#ttMediaDialog.mm-downloader{width:min(710px,92vw)!important;max-height:88vh!important}
+#ttMediaDialog.mm-downloader .mm-book-list,#ttMediaDialog.mm-downloader .mm-book-form{min-width:0;grid-template-columns:minmax(0,1fr)}
+#ttMediaDialog.mm-downloader .mm-book-form input,#ttMediaDialog.mm-downloader .mm-book-form select{min-width:0;max-width:100%;width:100%;box-sizing:border-box;font:inherit}
+#ttMediaDialog.mm-downloader .mm-book-form select{min-height:44px;padding:8px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text-primary)}
+#ttMediaDialog.mm-downloader .mm-book-list>p{margin:0;overflow-wrap:anywhere}
+#ttMediaDialog.mm-downloader .mm-book-list>p:empty,#ttMediaDialog.mm-downloader>.mm-status{display:none}
+#ttMediaDialog .mm-download-state{display:grid;gap:9px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);min-width:0}
+#ttMediaDialog .mm-download-state p{margin:0;overflow-wrap:anywhere}
+#ttMediaDialog .mm-download-activity{display:flex;align-items:center;gap:10px;min-width:0}
+#ttMediaDialog .mm-download-activity progress{appearance:none;-webkit-appearance:none;flex:1;min-width:0;width:100%;height:12px;overflow:hidden;border:0;border-radius:99px;background:var(--border);accent-color:var(--accent)}
+#ttMediaDialog .mm-download-activity progress::-webkit-progress-bar{background:var(--border);border-radius:99px}
+#ttMediaDialog .mm-download-activity progress::-webkit-progress-value{background:var(--accent);border-radius:99px;transition:width .2s linear}
+#ttMediaDialog .mm-download-activity progress::-moz-progress-bar{background:var(--accent);border-radius:99px}
+#ttMediaDialog .mm-download-spinner{width:22px;height:22px;box-sizing:border-box;flex:none;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:mmDownloadSpin .85s linear infinite}
+@keyframes mmDownloadSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#ttMediaDialog .mm-download-spinner{animation:none}#ttMediaDialog .mm-download-activity progress::-webkit-progress-value{transition:none}}
 #ttMediaDialog .mm-book-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px}
 #ttMediaDialog .mm-book-info{flex:1;min-width:120px;display:grid;gap:4px}
 #ttMediaDialog .mm-book-info small{color:var(--text-secondary)}
@@ -10724,7 +10740,7 @@ const stage=$('ttMediaStage'),foot=$('ttMediaFoot'),actions=$('ttMediaActions'),
 let cfg=empty(),epoch=0,view='',frame=null,video=null,blobUrl='',receiver=null,readyTimer=0,listenTimer=0,ytPlay=null,draft=null,opening=false,dirty=false,saving=false,bookStop=null,offlineStop=null;
 const button=(name,fn,primary=false)=>{const b=document.createElement('button');b.type='button';b.textContent=name;if(primary)b.className='accent';b.onclick=fn;return b};
 function cleanup(){epoch++;if(offlineStop){const stop=offlineStop;offlineStop=null;stop()}if(bookStop){const stop=bookStop;bookStop=null;stop()}clearTimeout(readyTimer);clearInterval(listenTimer);ytPlay=null;if(receiver)window.removeEventListener('message',receiver);receiver=null;if(video){video.pause();video.removeAttribute('src');video.load();video=null}if(frame){frame.remove();frame=null}if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=''}}
-function reset(v,title,bar=false){cleanup();view=v;dialog.classList.toggle('mm-book-active',v==='book');heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');dialog.classList.toggle('mm-books',v==='books');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
+function reset(v,title,bar=false){cleanup();view=v;dialog.classList.toggle('mm-book-active',v==='book');heading.textContent=title;$('ttMediaFooterTitle').textContent=title;dialog.classList.toggle('mm-playing',bar);dialog.classList.toggle('mm-config',v==='settings');dialog.classList.toggle('mm-books',v==='books');dialog.classList.toggle('mm-downloader',v==='youtube-downloader');if(!bar){dialog.classList.remove('mm-full');if(dialog.dataset.ownsFull==='1'&&document.fullscreenElement===document.documentElement)document.exitFullscreen().catch(()=>{});delete dialog.dataset.ownsFull;syncFull()}stage.replaceChildren();actions.replaceChildren();foot.hidden=!bar;status.textContent=''}
 function wrapper(cls){const e=document.createElement('div');e.className=cls;stage.append(e);return e}
 const mediaTools=Object.freeze([{id:'meeting',name:'학급어린이회의',icon:'▣',run:()=>showCanva('A'),customize:settings}]);
 function home(selected=''){dirty=false;reset('home','멀티미디어');const w=wrapper('mm-home'),cards=[];dialog.style.setProperty('--mm-launch-width',Math.min(1060,(mediaTools.length+2)*340+20)+'px');
@@ -10752,11 +10768,23 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const message=document.createElement('p');message.setAttribute('aria-live','polite');
   function report(text){status.textContent=text;message.textContent=text}
   const info=document.createElement('p');info.setAttribute('role','status');info.dataset.youtubeState='';info.textContent='로컬 연결 확인 중…';
+  const stateBox=document.createElement('div');stateBox.className='mm-download-state';
+  const activity=document.createElement('div');activity.className='mm-download-activity';
+  const spinner=document.createElement('span');spinner.className='mm-download-spinner';spinner.setAttribute('aria-hidden','true');
+  const progress=document.createElement('progress');progress.max=100;progress.setAttribute('aria-label','다운로드 진행률');progress.hidden=true;
+  const busyLabel=document.createElement('span');busyLabel.textContent='처리 중…';
+  activity.append(spinner,progress,busyLabel);stateBox.append(info,activity);
   const library=document.createElement('div');library.dataset.youtubeLibrary='';
   const cancel=button('다운로드 취소',stop);cancel.hidden=true;
   let token='',job=null,pending=false,timer=0,libraryKey=null,refreshing=false;
   const active=()=>epoch===current&&dialog.open;
-  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting';for(const b of library.querySelectorAll('button'))b.disabled=pending||!token}
+  function renderActivity(){
+   const running=!!token&&job?.state==='running',busy=pending||running||(!token&&job===null);
+   const known=running&&!pending&&Number.isFinite(job.percent)&&job.percent>=0&&job.percent<=100&&(job.phase==='download'||(job.phase==='install'&&job.install?.step==='transfer'));
+   activity.hidden=!busy;spinner.hidden=!busy||known;progress.hidden=!known;busyLabel.hidden=!busy||known;
+   if(known)progress.value=job.percent;else progress.removeAttribute('value');
+  }
+  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting'||!token;for(const b of library.querySelectorAll('button'))b.disabled=pending||!token;renderActivity()}
   async function api(action,data){
    const opts={cache:'no-store'};
    if(data){opts.method='POST';opts.headers={'Content-Type':'application/json','X-TT-Youtube-Token':token};opts.body=JSON.stringify(data)}
@@ -10788,7 +10816,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     const h=document.createElement('strong');h.textContent='영상 보관함 ('+entries.length+')';library.append(h);
     for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('span');name.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';row.append(name,button('재생',async()=>{if(pending||!token||!active())return;pending=true;updateButtons();try{if(await teacher()&&active())showOfflineVideo(entry,token)}catch{if(active())report('재생 권한을 확인할 수 없습니다.')}finally{pending=false;if(active())updateButtons()}},true));library.append(row)}
     }
-   }catch{if(active()){token='';info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
+   }catch{if(active()){token='';job=job||{state:'unavailable'};info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
    finally{refreshing=false;if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
   }
   async function teacher(){if(!window.ttPodo?.requestTeacherAccess)return false;return Boolean(await window.ttPodo.requestTeacherAccess())}
@@ -10808,7 +10836,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
   }
   form.onsubmit=e=>{e.preventDefault();if(!active())return;const id=youtube(url.value);report(id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.')};
-  list.append(note,form,message,info,cancel,library,button('← 멀티미디어',()=>home()));refresh();
+  list.append(note,form,message,stateBox,cancel,library,button('← 멀티미디어',()=>home()));renderActivity();refresh();
  }
  
 

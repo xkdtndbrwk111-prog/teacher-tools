@@ -40,6 +40,13 @@ const dlConfirm=async d=>{if(d.type()==='confirm'&&d.message().includes('다운�
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();
 await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
 const dlURL=dlg.locator('input[type=url]');
+for(const size of [{width:1920,height:1080},{width:1280,height:720},{width:390,height:844}]){
+ await page.setViewportSize(size);
+ const g=await dlg.evaluate(d=>({w:d.getBoundingClientRect().width,stage:d.querySelector('.mm-stage').clientWidth,scroll:d.querySelector('.mm-stage').scrollWidth,input:d.querySelector('input[type=url]').getBoundingClientRect().width}));
+ assert.ok(g.w<=Math.min(710,size.width*.92)+1&&g.w>=Math.min(710,size.width*.92)-2,JSON.stringify(g));assert.ok(g.scroll<=g.stage+1&&g.input<=g.stage,JSON.stringify(g));
+}
+await page.setViewportSize({width:1280,height:720});
+console.log('PASS downloader dialog two-thirds width, narrow viewport and no horizontal overflow');
 for(const [url,expected] of [['https://www.youtube.com/watch?v=sVoh_DAt9is',true],['https://youtu.be/sVoh_DAt9is',true],['https://m.youtube.com/watch?v=sVoh_DAt9is',true],['https://www.youtube.com/shorts/sVoh_DAt9is',true],['https://youtube.com.evil.test/watch?v=sVoh_DAt9is',false],['https://youtu.be/abc',false],['https://www.youtube.com/playlist?list=PL123',false],['http://youtube.com/watch?v=sVoh_DAt9is',false]]){
  await dlURL.fill(url);await dlg.getByRole('button',{name:'주소 확인',exact:true}).click();
  assert.equal((await dlg.locator('#ttMediaStatus').textContent()).includes('단일 영상 주소 확인 완료'),expected,url);
@@ -54,15 +61,23 @@ await page.evaluate(()=>{window.__downloadFixtureAuth=true});
 await dlg.getByRole('button',{name:'다운로드',exact:true}).click();
 await dlg.locator('[data-youtube-state]').getByText('영상 다운로드 중 · 45%',{exact:true}).waitFor();
 assert.equal(dlCalls.length,1);
+const bar=dlg.getByRole('progressbar',{name:'다운로드 진행률'});
+await bar.waitFor();assert.equal(await bar.evaluate(e=>e.value),45);
+dlJob={job:dlJobId,state:'running',phase:'install',percent:-1,install:{component:'FFmpeg',index:3,step:'verify',bytes:0,total:-1}};
+await dlg.locator('.mm-download-spinner').waitFor();assert.equal(await bar.isVisible(),false);
 dlJob={job:dlJobId,state:'running',phase:'install',percent:50,age:12,install:{component:'FFmpeg',index:3,step:'transfer',bytes:52428800,total:104857600}};
 await dlg.locator('[data-youtube-state]').getByText('엔진 설치 3/3 · FFmpeg 받는 중 · 50.0 MB / 100.0 MB (50%) · 마지막 상태 갱신 12초 전',{exact:true}).waitFor();
+await bar.waitFor();assert.equal(await bar.evaluate(e=>e.value),50);assert.equal(await dlg.locator('.mm-download-spinner').isVisible(),false);
 assert.equal(await dlg.getByRole('button',{name:'다운로드 취소',exact:true}).isEnabled(),true);
 await dlg.getByRole('button',{name:'다운로드 취소',exact:true}).click();
 await dlg.locator('[data-youtube-state]').getByText('취소됨',{exact:true}).waitFor();
 assert.equal(dlCalls.length,2);
+assert.equal(await dlg.locator('.mm-download-activity').isVisible(),false);
 dlJob={job:dlJobId,state:'failed',phase:'error',percent:-1,errorCode:'tls_certificate'};
 await dlg.locator('[data-youtube-state]').getByText('SSL 인증서 검증 실패 · Windows 신뢰 인증서 및 학교 네트워크 확인 필요',{exact:true}).waitFor();
 assert.equal(await dlg.locator('#ttMediaStatus').textContent(),'');
+assert.equal(await dlg.locator('.mm-download-activity').isVisible(),false);
+console.log('PASS determinate transfer bar, indeterminate spinner, cancel/error cleanup and accessible state');
 dlLibrary=[{id:'sVoh_DAt9is',quality:'720',height:360,bytes:1048576}];
 await dlg.locator('[data-youtube-library]').getByText('sVoh_DAt9is · 360p · 1 MB',{exact:true}).waitFor();
 assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,video').count(),0);
