@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "version": "1.66.25",
+  "previous_version": "1.66.24",
+  "previous_payload_sha": "b37353fe017ff32f97a6ad6cc851d845b0bfe336dbb38c37e9788230e94f4f03",
+  "source_sha": "275c750be3f6e8f6c35e2dcffc45fc211a24bcfd",
+  "review_sha": "05b4291b5ff9cb8b3c552100a1adbbc948f542dc",
+  "artifact_id": 14606530286,
+  "archive_sha": "dd3f691c64a3404e000ecf11b6afa1ca556016256da0e4b98ca3d72dd7904dba",
+  "payload_sha": "598b0d3271b26b81ef2caff2c354a010c236347693856a28504cdd2f9e4e25e5",
+  "main_runs": {
+    "V1.66.7 theme font shadow and icon regressions": 44684784729,
+    "Tournament host bridge review": 44684784649,
+    "QR square widget and integer fit checks": 44684784709,
+    "R8 native Windows verification": 44684784698,
+    "R8 native R7 integration checks": 44684784694,
+    "V1.66.8 education activities browser regression": 44684784594,
+    "V1.66.9 common badge browser regression": 44684784877,
+    "V1.66.6 browser text contrast": 44684784724,
+    "R8 source-driven build": 44684784656
+  },
+  "review_runs": {
+    "V1.66.8 education activities browser regression": 44683811763,
+    "R8 native R7 integration checks": 44683811783,
+    "QR square widget and integer fit checks": 44683811768,
+    "R8 source-driven build": 44683811740,
+    "R8 native Windows verification": 44683811595,
+    "V1.66.6 browser text contrast": 44683811323,
+    "V1.66.7 theme font shadow and icon regressions": 44683811318,
+    "V1.66.9 common badge browser regression": 44683811508,
+    "Tournament host bridge review": 44683811330,
+    "Classroom UI2 home and HUD candidate": 44683811556,
+    "Routine integer coin candidate checks": 44683811357,
+    "Daily lesson alert mute checks": 44683811370,
+    "YouTube engine isolated Windows smoke": 44683811388,
+    "Multimedia candidate browser review": 44683811369
+  },
+  "authorization": "Owner explicitly requested V1.66.25 deployment after passing 14 review workflows. Windows system CA option resolved metadata retrieval on classroom PC; real authorized video download and complete physical playback remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16625_owner_field_test_only"
+}
