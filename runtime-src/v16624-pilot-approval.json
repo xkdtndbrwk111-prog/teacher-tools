@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "version": "1.66.24",
+  "previous_version": "1.66.23",
+  "previous_payload_sha": "4bd5cd0f2b1d8938d3ce30eb29e1811d73594a596ab2dc216708d772b1d85ec0",
+  "source_sha": "938bead0d1b2bafd795f46243c4e368a05aa9d40",
+  "review_sha": "d0b73ac2a9d8676c89a5d2413e209cf02d1428dc",
+  "artifact_id": 14602767870,
+  "archive_sha": "8b99ba5d4ac667717b1d2da803168257c6f4ce0d02f9ae5713f16b51b46f3778",
+  "payload_sha": "b37353fe017ff32f97a6ad6cc851d845b0bfe336dbb38c37e9788230e94f4f03",
+  "main_runs": {
+    "R8 native Windows verification": 44678520622,
+    "V1.66.9 common badge browser regression": 44678520679,
+    "Tournament host bridge review": 44678520676,
+    "R8 source-driven build": 44678520740,
+    "V1.66.6 browser text contrast": 44678520625,
+    "QR square widget and integer fit checks": 44678520645,
+    "R8 native R7 integration checks": 44678520859,
+    "V1.66.8 education activities browser regression": 44678520791,
+    "V1.66.7 theme font shadow and icon regressions": 44678520649
+  },
+  "review_runs": {
+    "V1.66.9 common badge browser regression": 44676365758,
+    "Routine integer coin candidate checks": 44676365664,
+    "V1.66.8 education activities browser regression": 44676365641,
+    "R8 native R7 integration checks": 44676365503,
+    "QR square widget and integer fit checks": 44676365520,
+    "R8 source-driven build": 44676365504,
+    "V1.66.7 theme font shadow and icon regressions": 44676365500,
+    "Tournament host bridge review": 44676365528,
+    "Daily lesson alert mute checks": 44676365555,
+    "Classroom UI2 home and HUD candidate": 44676365546,
+    "V1.66.6 browser text contrast": 44676365496,
+    "YouTube engine isolated Windows smoke": 44676365596,
+    "Multimedia candidate browser review": 44676365560,
+    "R8 native Windows verification": 44676365548
+  },
+  "authorization": "Owner explicitly requested deployment of tested V1.66.24 YouTube downloader candidate for actual classroom field testing; physical school PC verification and real YouTube download remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16624_owner_field_test_only"
+}
