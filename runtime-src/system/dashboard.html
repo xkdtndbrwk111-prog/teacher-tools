@@ -10085,7 +10085,7 @@ function openWin(){if(winOpen)return;winOpen=true;win.hidden=false;$('podoWinRew
 draw();renderHistory();maybeConfigure();
 async function requestCoinAccess(){const old=teacherPin();if(!await requestPin(old?'coin':'coin-create'))return null;const expected=teacherPin();if(!expected||(old&&old!==expected))return null;return ()=>teacherPin()===expected}
 async function changeTeacherPin(){const expected=teacherPin();if(!expected||!await requestPin('coin')||teacherPin()!==expected)return false;return requestPin('coin-change',expected)}
-window.ttPodo={openSetup,syncForm,redraw:draw,changeTeacherPin,hasTeacherPin:()=>Boolean(teacherPin()),requestCoinAccess,info:()=>state&&{goal:state.goal,count:state.stamps.length,type:state.type}};
+window.ttPodo={openSetup,syncForm,redraw:draw,changeTeacherPin,hasTeacherPin:()=>Boolean(teacherPin()),requestCoinAccess,requestTeacherAccess:async()=>{const expected=teacherPin();if(!await requestPin(expected?'settings':'coin-create'))return false;return Boolean(teacherPin()&&(!expected||expected===teacherPin()))},info:()=>state&&{goal:state.goal,count:state.stamps.length,type:state.type}};
 })();
 </script><script id="tt-v1621-version-badge">(()=>{const b=document.getElementById('ttVersionHud');if(b)b.textContent='V1.66.24 YOUTUBE DOWNLOADER CANDIDATE';const a=document.getElementById('dashboardBuild');if(a)a.textContent='호자보드 빌드: 2026-11-19 V1.66.24 YOUTUBE DOWNLOADER CANDIDATE';})();</script><script src="/update-ui.js"></script>
 <style id="tt-v163-photo-frame-editor-style">
@@ -10735,19 +10735,65 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  select(selected);
 }
 
- // Downloader candidate: separate from meeting and book state. No executable
- // invocation or file download until the verified Windows worker is integrated.
+ // Downloader: local worker only; no third-party script or playback request.
  function showDownloader(){
   dirty=false;reset('youtube-downloader','유튜브 다운로더');
   const current=epoch,list=wrapper('mm-book-list'),form=document.createElement('form');
   form.className='mm-book-form';
-  const note=document.createElement('p');note.textContent='개발 후보 · 영상 엔진 설치 및 실제 다운로드는 아직 연결되지 않았습니다.';
+  const note=document.createElement('p');note.textContent='다운로드 권한이 있는 영상만 저장하세요. 최초 사용 시 별도 엔진이 설치됩니다.';
   const label=document.createElement('label');label.textContent='유튜브 영상 주소';
   const url=document.createElement('input');url.type='url';url.placeholder='https://www.youtube.com/watch?v=…';url.required=true;url.maxLength=2048;label.append(url);
+  const qlabel=document.createElement('label');qlabel.textContent='최대 화질';
+  const quality=document.createElement('select');quality.setAttribute('aria-label','최대 화질');
+  for(const q of ['1080','720']){const o=document.createElement('option');o.value=q;o.textContent=q+'p';quality.append(o)}qlabel.append(quality);
   const check=button('주소 확인',()=>{},true);check.type='submit';
-  form.append(label,check);
-  form.onsubmit=e=>{e.preventDefault();if(epoch!==current)return;const id=youtube(url.value);status.textContent=id?'단일 영상 주소 확인 완료 · 다운로드 기능 연결 전입니다.':'올바른 유튜브 단일 영상 주소를 입력하세요.'};
-  list.append(note,form,button('← 멀티미디어',()=>home()));
+  const download=button('다운로드',start,true);download.type='button';download.disabled=true;
+  form.append(label,qlabel,check,download);
+  const info=document.createElement('p');info.setAttribute('role','status');info.dataset.youtubeState='';info.textContent='로컬 연결 확인 중…';
+  const library=document.createElement('div');library.dataset.youtubeLibrary='';
+  const cancel=button('다운로드 취소',stop);cancel.hidden=true;
+  let token='',job=null,pending=false,timer=0;
+  const active=()=>epoch===current&&dialog.open;
+  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting'||job?.phase==='install'}
+  async function api(action,data){
+   const opts={cache:'no-store'};
+   if(data){opts.method='POST';opts.headers={'Content-Type':'application/json','X-TT-Youtube-Token':token};opts.body=JSON.stringify(data)}
+   const r=await fetch('/api/youtube/'+action,opts);if(!r.ok)throw Error('local request failed');
+   const x=await r.json();if(!x.ok)throw Error('invalid response');return x;
+  }
+  async function refresh(){
+   if(!active())return;
+   try{
+    const x=await api('status');if(!active())return;
+    if(!/^[a-f0-9]{32}$/.test(x.token))throw Error('token');
+    token=x.token;job=x.job||{state:'idle'};
+    const phases={starting:'작업 준비 중',install:'엔진 설치 중',download:'영상 다운로드 중',verify:'영상 확인 중',saved:'저장 완료',stopped:'취소됨',error:'작업 실패'};
+    info.textContent=job.state==='idle'?'다운로드 준비 완료':(phases[job.phase]||'작업 상태 확인 중')+(job.state==='running'&&job.percent>=0?' · '+job.percent+'%':'');
+    const entries=Array.isArray(x.library)?x.library:[];
+    library.replaceChildren();
+    const h=document.createElement('strong');h.textContent='영상 보관함 ('+entries.length+')';library.append(h);
+    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';row.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';library.append(row)}
+   }catch{if(active()){token='';info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
+   finally{if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
+  }
+  async function teacher(){if(!window.ttPodo?.requestTeacherAccess)return false;return Boolean(await window.ttPodo.requestTeacherAccess())}
+  async function start(){
+   const id=youtube(url.value);if(!id){status.textContent='올바른 유튜브 단일 영상 주소를 입력하세요.';return}
+   if(pending||!token||job?.state==='running')return;
+   if(!confirm('다운로드 권한이 있는 영상인가요? 최초 이용 시 외부 엔진을 설치합니다.'))return;
+   pending=true;updateButtons();
+   try{if(!await teacher()||!active())return;await api('start',{id,quality:quality.value,authorized:true});if(active()){job={state:'running',phase:'starting',percent:-1};info.textContent='작업 준비 중';status.textContent='다운로드 요청 완료'}}
+   catch{if(active())status.textContent='다운로드 요청에 실패했습니다. 중복 영상 또는 작업 상태를 확인하세요.'}
+   finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
+  }
+  async function stop(){
+   if(pending||job?.state!=='running')return;const id=job.job;pending=true;updateButtons();
+   try{if(!await teacher()||!active())return;await api('cancel',{job:id});if(active())status.textContent='취소 요청 완료'}
+   catch{if(active())status.textContent='취소할 수 없습니다. 작업 상태를 확인하세요.'}
+   finally{pending=false;if(active()){updateButtons();clearTimeout(timer);refresh()}}
+  }
+  form.onsubmit=e=>{e.preventDefault();if(!active())return;const id=youtube(url.value);status.textContent=id?'단일 영상 주소 확인 완료':'올바른 유튜브 단일 영상 주소를 입력하세요.'};
+  list.append(note,form,info,cancel,library,button('← 멀티미디어',()=>home()));refresh();
  }
  
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
