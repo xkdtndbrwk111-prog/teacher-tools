@@ -30,7 +30,7 @@ function Get-TTYoutubeEngineState([string]$Root){
 function Assert-TTEngineNotCancelled([string]$JobDir){
  if($JobDir -and (Test-Path -LiteralPath (Join-Path $JobDir 'cancel'))){throw 'cancelled'}
 }
-function Receive-TTEngineAsset([string]$Url,[string]$Path,[long]$Max,[string]$JobDir,[scriptblock]$Progress){
+function Receive-TTEngineAsset([string]$Url,[string]$Path,[long]$Max,[string]$JobDir,[scriptblock]$ByteProgress){
  $request=[Net.HttpWebRequest]::Create($Url)
  $request.AllowAutoRedirect=$true;$request.MaximumAutomaticRedirections=5
  $request.UserAgent='TeacherToolsMedia/1.66.25'
@@ -49,7 +49,7 @@ function Receive-TTEngineAsset([string]$Url,[string]$Path,[long]$Max,[string]$Jo
   $stream=$response.GetResponseStream()
   $file=[IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
   $buffer=New-Object byte[] 65536;$count=[long]0;$reported=[DateTime]::MinValue
-  if($Progress){& $Progress $count $total}
+  if($ByteProgress){& $ByteProgress $count $total}
   while($true){
    Assert-TTEngineNotCancelled $JobDir
    $limit=[DateTime]::UtcNow.AddSeconds(45)
@@ -63,10 +63,10 @@ function Receive-TTEngineAsset([string]$Url,[string]$Path,[long]$Max,[string]$Jo
    $count+=$n
    if($count -gt $Max -or [DateTime]::UtcNow -gt $deadline){throw 'engine archive limit'}
    $file.Write($buffer,0,$n)
-   if($Progress -and ([DateTime]::UtcNow-$reported).TotalSeconds -ge 1){& $Progress $count $total;$reported=[DateTime]::UtcNow}
+   if($ByteProgress -and ([DateTime]::UtcNow-$reported).TotalSeconds -ge 1){& $ByteProgress $count $total;$reported=[DateTime]::UtcNow}
   }
   if($count -le 0 -or ($total -ge 0 -and $count -ne $total)){throw 'engine archive incomplete'}
-  if($Progress){& $Progress $count $total}
+  if($ByteProgress){& $ByteProgress $count $total}
  }finally{
   $request.Abort()
   if($file){$file.Dispose()};if($stream){$stream.Dispose()};if($response){$response.Dispose()}
