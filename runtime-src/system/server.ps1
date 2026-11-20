@@ -1,4 +1,4 @@
-﻿param([int]$Port=17439,[string]$YoutubeJob='', [string]$YoutubeVideoId='', [string]$YoutubeQuality='')
+﻿param([int]$Port=17439,[string]$YoutubeJob='', [string]$YoutubeVideoId='', [string]$YoutubeQuality='', [string]$YoutubePlayback='', [int]$YoutubeParentPid=0)
 # BEGIN GENERATED youtube-engine-install.ps1
 # Candidate installer: Windows PowerShell 5.1 compatible. No admin, PATH or registry changes.
 # Pins were verified by the isolated Windows smoke run 44527013450.
@@ -288,22 +288,220 @@ function Stop-TTYoutubeBoardJob([string]$Root,[string]$Job){
  [IO.File]::WriteAllText((Join-Path $dir 'cancel'),'1')
  return @{ok=$true}
 }
-function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript){
+function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript,[int]$BoardPort=17439){
  if(!$SameOrigin){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
   return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
  }
- if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
  try{
   $x=ConvertFrom-Json $Body
   if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
-  else{$answer=Stop-TTYoutubeBoardJob $Root $x.job}
+  elseif($Path -eq '/api/youtube/cancel'){$answer=Stop-TTYoutubeBoardJob $Root $x.job}
+  elseif($Path -eq '/api/youtube/play-start'){$answer=Start-TTYoutubeBoardPlayback $Root $ServerScript $x $BoardPort}
+  elseif($x.session -isnot [string] -or $x.session -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid session'}
+  elseif($Path -eq '/api/youtube/play-status'){$answer=Get-TTYoutubePlaybackState $x.session}
+  else{$answer=Stop-TTYoutubeBoardPlayback $x.session}
   return @{status='200 OK';body=(ConvertTo-Json -Compress $answer)}
  }catch{return @{status='409 Conflict';body='{"error":"request rejected or worker busy"}'}}
 }
+# One isolated playback process per board; never wait for media or compilation in the HTTP loop.
+$script:ttYoutubePlayback=$null
+function Resolve-TTYoutubePlaybackFile([string]$Root,[string]$Id,[string]$Quality){
+ $req=ConvertTo-TTYoutubeRequest $Id $Quality
+ $library=Join-Path $Root 'library'
+ $dir=Join-Path $library ($req.id+'-'+$req.quality)
+ foreach($path in @($Root,$library,$dir)){
+  $item=Get-Item -LiteralPath $path -ErrorAction Stop
+  if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid library directory'}
+ }
+ $file=Get-Item -LiteralPath (Join-Path $dir 'video.mp4') -ErrorAction Stop
+ $meta=Get-Item -LiteralPath (Join-Path $dir 'metadata.json') -ErrorAction Stop
+ if($file.PSIsContainer -or $meta.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($meta.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $meta.Length -gt 65536 -or $file.Length -le 0){throw 'invalid library file'}
+ $record=Get-Content -LiteralPath $meta.FullName -Raw -Encoding UTF8|ConvertFrom-Json
+ if($record.id -cne $Id -or $record.quality -cne $Quality -or $record.bytes -ne $file.Length){throw 'invalid library metadata'}
+ return $file.FullName
+}
+function Clear-TTYoutubePlayback {
+ $p=$script:ttYoutubePlayback
+ if(!$p){return}
+ if(!$p.process.HasExited){return}
+ $p.process.Dispose()
+ # Remove only the freshly created, private session directory.
+ try{Remove-Item -LiteralPath $p.directory -Recurse -Force -ErrorAction Stop}catch{}
+ $script:ttYoutubePlayback=$null
+}
+function Start-TTYoutubeBoardPlayback([string]$Root,[string]$ServerScript,$InputData,[int]$BoardPort){
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string]){throw 'invalid playback'}
+ Clear-TTYoutubePlayback
+ if($script:ttYoutubePlayback){throw 'playback busy'}
+ $null=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
+ $playRoot=Join-Path $Root 'playback'
+ [void][IO.Directory]::CreateDirectory($playRoot)
+ if((Get-Item -LiteralPath $playRoot).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid playback directory'}
+ $session=[guid]::NewGuid().ToString('N');$dir=Join-Path $playRoot $session
+ [void][IO.Directory]::CreateDirectory($dir)
+ $psi=[Diagnostics.ProcessStartInfo]::new()
+ $psi.FileName=Join-Path $PSHOME 'powershell.exe'
+ $psi.Arguments=Join-TTYoutubeArgs @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ServerScript,'-Port',"$BoardPort",'-YoutubePlayback',$session,'-YoutubeVideoId',$InputData.id,'-YoutubeQuality',$InputData.quality,'-YoutubeParentPid',"$PID")
+ $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.WorkingDirectory=$Root
+ try{
+  $process=[Diagnostics.Process]::Start($psi)
+  if(!$process){throw 'playback launch failed'}
+  $script:ttYoutubePlayback=@{session=$session;directory=$dir;process=$process;created=[datetime]::UtcNow;stopping=$false}
+  return @{ok=$true;session=$session;state='starting'}
+ }catch{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue;throw}
+}
+function Stop-TTYoutubeBoardPlayback([string]$Session){
+ $p=$script:ttYoutubePlayback
+ if(!$p -or $Session -cne $p.session){return @{ok=$true}}
+ $p.stopping=$true
+ [IO.File]::WriteAllText((Join-Path $p.directory 'stop'),'1')
+ Clear-TTYoutubePlayback
+ return @{ok=$true}
+}
+function Get-TTYoutubePlaybackState([string]$Session){
+ $p=$script:ttYoutubePlayback
+ if(!$p -or $Session -cne $p.session){return @{ok=$true;state='ended'}}
+ if($p.process.HasExited){Clear-TTYoutubePlayback;return @{ok=$true;state='ended'}}
+ if($p.stopping){return @{ok=$true;state='ended'}}
+ $portFile=Join-Path $p.directory 'port'
+ if(Test-Path -LiteralPath $portFile -PathType Leaf){
+  $port=0
+  if([int]::TryParse((Get-Content -LiteralPath $portFile -Raw -Encoding ASCII).Trim(),[ref]$port) -and $port -gt 0 -and $port -le 65535){return @{ok=$true;state='ready';url="http://127.0.0.1:$port/$Session/video.mp4"}}
+ }
+ if(([datetime]::UtcNow-$p.created).TotalSeconds -gt 25){$null=Stop-TTYoutubeBoardPlayback $Session;return @{ok=$true;state='ended'}}
+ return @{ok=$true;state='starting'}
+}
 # END GENERATED youtube-board-bridge.ps1
+
+# BEGIN GENERATED youtube-offline-media.ps1
+# Offline media server candidate. Windows PowerShell 5.1 / .NET Framework.
+# Isolated process only: never serve media from the board's synchronous HTTP loop.
+function Start-TTYoutubeMediaServer([string]$MediaPath,[string]$SessionDir,[string]$Token,[int]$BoardPort=17439,[int]$MaxSeconds=14400,[int]$ParentPid=0){
+ if($Token -cnotmatch '^[a-f0-9]{32}$' -or $BoardPort -lt 1 -or $BoardPort -gt 65535 -or $MaxSeconds -lt 1 -or $MaxSeconds -gt 14400){throw 'media server parameters'}
+ $item=Get-Item -LiteralPath $MediaPath -ErrorAction Stop
+ if($item.PSIsContainer -or $item.Name -cne 'video.mp4' -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
+ if(!(Test-Path -LiteralPath $SessionDir -PathType Container)){throw 'missing session directory'}
+ if(-not ('TTOfflineMediaServer' -as [type])){
+  Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Globalization;
+using System.Collections.Generic;
+using System.Threading;
+using System.Diagnostics;
+
+public static class TTOfflineMediaServer {
+ static string ReadLine(Stream s, ref int total) {
+  var line = new StringBuilder();
+  while (true) {
+   int b = s.ReadByte();
+   if (b < 0) throw new EndOfStreamException();
+   if (++total > 8192 || line.Length > 4096) throw new IOException("header limit");
+   if (b == 10) return line.ToString().TrimEnd('\r');
+   if (b > 127 || (b < 32 && b != 13 && b != 9)) throw new IOException("invalid header");
+   line.Append((char)b);
+  }
+ }
+ static void Header(Stream s, string status, long length, string extra) {
+  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: video/mp4\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
+  s.Write(bytes,0,bytes.Length);
+ }
+ static bool ByteRange(string value, long size, out long first, out long last) {
+  first=0;last=size-1;
+  if(String.IsNullOrEmpty(value))return true;
+  if(!value.StartsWith("bytes=",StringComparison.Ordinal)||value.IndexOf(',')>=0)return false;
+  string[] p=value.Substring(6).Split('-');
+  if(p.Length!=2)return false;
+  long a,b;
+  if(p[0].Length==0) {
+   if(!Int64.TryParse(p[1],NumberStyles.None,CultureInfo.InvariantCulture,out b)||b<=0)return false;
+   first=Math.Max(0,size-b);return true;
+  }
+  if(!Int64.TryParse(p[0],NumberStyles.None,CultureInfo.InvariantCulture,out a)||a<0||a>=size)return false;
+  first=a;
+  if(p[1].Length!=0){
+   if(!Int64.TryParse(p[1],NumberStyles.None,CultureInfo.InvariantCulture,out b)||b<a)return false;
+   last=Math.Min(last,b);
+  }
+  return true;
+ }
+ static void Serve(TcpClient client, string path, string token, int port, int boardPort, string stop, DateTime end, Process parent) {
+  client.ReceiveTimeout=5000;client.SendTimeout=5000;
+  using(client)using(var s=client.GetStream()) {
+   int total=0;string[] req=ReadLine(s,ref total).Split(' ');
+   var h=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+   while(true){
+    string line=ReadLine(s,ref total);if(line.Length==0)break;
+    int colon=line.IndexOf(':');if(colon<1)throw new IOException("invalid header");
+    string key=line.Substring(0,colon);
+    if(h.ContainsKey(key))throw new IOException("duplicate header");
+    h.Add(key,line.Substring(colon+1).Trim());
+   }
+   string host, origin, referer, site, range, mode;
+   h.TryGetValue("Host",out host);h.TryGetValue("Origin",out origin);h.TryGetValue("Referer",out referer);h.TryGetValue("Sec-Fetch-Site",out site);h.TryGetValue("Range",out range);h.TryGetValue("Sec-Fetch-Mode",out mode);
+   string board="http://127.0.0.1:"+boardPort.ToString(CultureInfo.InvariantCulture);
+   string local="http://localhost:"+boardPort.ToString(CultureInfo.InvariantCulture);
+   bool boardRef=referer==board+"/" || referer==local+"/" || referer==board+"/index.html" || referer==local+"/index.html";
+   bool boardOrigin=origin==board || origin==local;
+   if(req.Length!=3 || req[2]!="HTTP/1.1" || host!="127.0.0.1:"+port.ToString(CultureInfo.InvariantCulture) || req[1]!="/"+token+"/video.mp4" || site=="cross-site" || (origin!=null&&!boardOrigin) || (!boardRef&&!boardOrigin) || mode=="navigate"){
+    Header(s,"403 Forbidden",0,"");return;
+   }
+   if(req[0]!="GET"&&req[0]!="HEAD"){Header(s,"405 Method Not Allowed",0,"Allow: GET, HEAD\r\n");return;}
+   using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+    long first,last,size=f.Length;
+    if(size<=0||!ByteRange(range,size,out first,out last)){Header(s,"416 Range Not Satisfiable",0,"Content-Range: bytes */"+size.ToString(CultureInfo.InvariantCulture)+"\r\n");return;}
+    long length=last-first+1;
+    string extra=String.IsNullOrEmpty(range)?"":"Content-Range: bytes "+first.ToString(CultureInfo.InvariantCulture)+"-"+last.ToString(CultureInfo.InvariantCulture)+"/"+size.ToString(CultureInfo.InvariantCulture)+"\r\n";
+    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra);
+    if(req[0]=="HEAD")return;
+    f.Position=first;byte[] buffer=new byte[65536];
+    while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end&&(parent==null||!parent.HasExited)){
+     int n=f.Read(buffer,0,(int)Math.Min(buffer.Length,length));
+     if(n==0)break;s.Write(buffer,0,n);length-=n;
+    }
+   }
+  }
+ }
+ public static void Run(string path,string session,string token,int boardPort,int maxSeconds,int parentPid) {
+  string stop=Path.Combine(session,"stop");
+  var listener=new TcpListener(IPAddress.Loopback,0);
+  Process parent=parentPid==0?null:Process.GetProcessById(parentPid);
+  try {
+   listener.Start(8);
+   int port=((IPEndPoint)listener.LocalEndpoint).Port;
+   DateTime end=DateTime.UtcNow.AddSeconds(maxSeconds);
+   File.WriteAllText(Path.Combine(session,"port.tmp"),port.ToString(CultureInfo.InvariantCulture),Encoding.ASCII);
+   File.Move(Path.Combine(session,"port.tmp"),Path.Combine(session,"port"));
+   while(DateTime.UtcNow<end&&!File.Exists(stop)&&(parent==null||!parent.HasExited)) {
+    if(!listener.Pending()){Thread.Sleep(100);continue;}
+    try{Serve(listener.AcceptTcpClient(),path,token,port,boardPort,stop,end,parent);}
+    catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}
+   }
+  } finally{listener.Stop();if(parent!=null)parent.Dispose();}
+ }
+}
+'@
+ }
+ [TTOfflineMediaServer]::Run($item.FullName,[IO.Path]::GetFullPath($SessionDir),$Token,$BoardPort,$MaxSeconds,$ParentPid)
+}
+# END GENERATED youtube-offline-media.ps1
+if($YoutubePlayback){
+ try{
+  if($YoutubePlayback -cnotmatch '^[a-f0-9]{32}$' -or $YoutubeParentPid -le 0){throw 'playback session'}
+  $root=Get-TTYoutubeRoot
+  $file=Resolve-TTYoutubePlaybackFile $root $YoutubeVideoId $YoutubeQuality
+  $session=Join-Path (Join-Path $root 'playback') $YoutubePlayback
+  foreach($path in @((Split-Path $session -Parent),$session)){if((Get-Item -LiteralPath $path -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'playback directory'}}
+  Start-TTYoutubeMediaServer $file $session $YoutubePlayback $Port 14400 $YoutubeParentPid;exit 0
+ }catch{exit 1}
+}
 if($YoutubeJob){
  try{Start-TTYoutubeJob (Get-TTYoutubeRoot) $YoutubeVideoId $YoutubeQuality $YoutubeJob;exit 0}catch{exit 1}
 }
@@ -1104,7 +1302,7 @@ try {
    elseif($path -like '/api/youtube/*'){
     $same=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
     $postSame=$origin -in @("http://127.0.0.1:$Port","http://localhost:$Port")
-    $answer=Invoke-TTYoutubeBoardApi $path $parts[0] $same $postSame $youtubeToken $bodyText (Get-TTYoutubeRoot) $PSCommandPath
+    $answer=Invoke-TTYoutubeBoardApi $path $parts[0] $same $postSame $youtubeToken $bodyText (Get-TTYoutubeRoot) $PSCommandPath $Port
     $status=$answer.status;$body=$answer.body
    }
    elseif($path -eq '/api/theme/publish'){
@@ -1666,4 +1864,4 @@ $script:updateApproveToken=[guid]::NewGuid().ToString('N')
   if($presentCors){$corsHeaders="Access-Control-Allow-Origin: $origin`r`nAccess-Control-Allow-Methods: GET, POST, OPTIONS`r`nAccess-Control-Allow-Headers: Content-Type`r`nAccess-Control-Allow-Private-Network: true`r`nVary: Origin, Access-Control-Request-Private-Network`r`n"}
   $headers="HTTP/1.1 $status`r`nContent-Type: $ctype`r`nContent-Length: $($bytes.Length)`r`nCache-Control: no-store`r`nConnection: close`r`nX-Content-Type-Options: nosniff`r`n$corsHeaders$extraHeaders`r`n";$headerBytes=[Text.Encoding]::ASCII.GetBytes($headers);$stream.Write($headerBytes,0,$headerBytes.Length);$stream.Write($bytes,0,$bytes.Length);$stream.Flush()
  } catch {} finally {if($reader){try{$reader.Dispose()}catch{}};if($stream){try{$stream.Dispose()}catch{}};$client.Close()}
-} } finally {$listener.Stop()}
+} } finally {try{if($script:ttYoutubePlayback){$null=Stop-TTYoutubeBoardPlayback $script:ttYoutubePlayback.session}}finally{$listener.Stop()}}

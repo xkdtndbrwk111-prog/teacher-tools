@@ -75,18 +75,90 @@ function Stop-TTYoutubeBoardJob([string]$Root,[string]$Job){
  [IO.File]::WriteAllText((Join-Path $dir 'cancel'),'1')
  return @{ok=$true}
 }
-function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript){
+function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript,[int]$BoardPort=17439){
  if(!$SameOrigin){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
   return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
  }
- if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel','/api/youtube/play-start','/api/youtube/play-status','/api/youtube/play-stop') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
  if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
  if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
  try{
   $x=ConvertFrom-Json $Body
   if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
-  else{$answer=Stop-TTYoutubeBoardJob $Root $x.job}
+  elseif($Path -eq '/api/youtube/cancel'){$answer=Stop-TTYoutubeBoardJob $Root $x.job}
+  elseif($Path -eq '/api/youtube/play-start'){$answer=Start-TTYoutubeBoardPlayback $Root $ServerScript $x $BoardPort}
+  elseif($x.session -isnot [string] -or $x.session -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid session'}
+  elseif($Path -eq '/api/youtube/play-status'){$answer=Get-TTYoutubePlaybackState $x.session}
+  else{$answer=Stop-TTYoutubeBoardPlayback $x.session}
   return @{status='200 OK';body=(ConvertTo-Json -Compress $answer)}
  }catch{return @{status='409 Conflict';body='{"error":"request rejected or worker busy"}'}}
+}
+# One isolated playback process per board; never wait for media or compilation in the HTTP loop.
+$script:ttYoutubePlayback=$null
+function Resolve-TTYoutubePlaybackFile([string]$Root,[string]$Id,[string]$Quality){
+ $req=ConvertTo-TTYoutubeRequest $Id $Quality
+ $library=Join-Path $Root 'library'
+ $dir=Join-Path $library ($req.id+'-'+$req.quality)
+ foreach($path in @($Root,$library,$dir)){
+  $item=Get-Item -LiteralPath $path -ErrorAction Stop
+  if(!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid library directory'}
+ }
+ $file=Get-Item -LiteralPath (Join-Path $dir 'video.mp4') -ErrorAction Stop
+ $meta=Get-Item -LiteralPath (Join-Path $dir 'metadata.json') -ErrorAction Stop
+ if($file.PSIsContainer -or $meta.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($meta.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $meta.Length -gt 65536 -or $file.Length -le 0){throw 'invalid library file'}
+ $record=Get-Content -LiteralPath $meta.FullName -Raw -Encoding UTF8|ConvertFrom-Json
+ if($record.id -cne $Id -or $record.quality -cne $Quality -or $record.bytes -ne $file.Length){throw 'invalid library metadata'}
+ return $file.FullName
+}
+function Clear-TTYoutubePlayback {
+ $p=$script:ttYoutubePlayback
+ if(!$p){return}
+ if(!$p.process.HasExited){return}
+ $p.process.Dispose()
+ # Remove only the freshly created, private session directory.
+ try{Remove-Item -LiteralPath $p.directory -Recurse -Force -ErrorAction Stop}catch{}
+ $script:ttYoutubePlayback=$null
+}
+function Start-TTYoutubeBoardPlayback([string]$Root,[string]$ServerScript,$InputData,[int]$BoardPort){
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string]){throw 'invalid playback'}
+ Clear-TTYoutubePlayback
+ if($script:ttYoutubePlayback){throw 'playback busy'}
+ $null=Resolve-TTYoutubePlaybackFile $Root $InputData.id $InputData.quality
+ $playRoot=Join-Path $Root 'playback'
+ [void][IO.Directory]::CreateDirectory($playRoot)
+ if((Get-Item -LiteralPath $playRoot).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'invalid playback directory'}
+ $session=[guid]::NewGuid().ToString('N');$dir=Join-Path $playRoot $session
+ [void][IO.Directory]::CreateDirectory($dir)
+ $psi=[Diagnostics.ProcessStartInfo]::new()
+ $psi.FileName=Join-Path $PSHOME 'powershell.exe'
+ $psi.Arguments=Join-TTYoutubeArgs @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ServerScript,'-Port',"$BoardPort",'-YoutubePlayback',$session,'-YoutubeVideoId',$InputData.id,'-YoutubeQuality',$InputData.quality,'-YoutubeParentPid',"$PID")
+ $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.WorkingDirectory=$Root
+ try{
+  $process=[Diagnostics.Process]::Start($psi)
+  if(!$process){throw 'playback launch failed'}
+  $script:ttYoutubePlayback=@{session=$session;directory=$dir;process=$process;created=[datetime]::UtcNow;stopping=$false}
+  return @{ok=$true;session=$session;state='starting'}
+ }catch{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue;throw}
+}
+function Stop-TTYoutubeBoardPlayback([string]$Session){
+ $p=$script:ttYoutubePlayback
+ if(!$p -or $Session -cne $p.session){return @{ok=$true}}
+ $p.stopping=$true
+ [IO.File]::WriteAllText((Join-Path $p.directory 'stop'),'1')
+ Clear-TTYoutubePlayback
+ return @{ok=$true}
+}
+function Get-TTYoutubePlaybackState([string]$Session){
+ $p=$script:ttYoutubePlayback
+ if(!$p -or $Session -cne $p.session){return @{ok=$true;state='ended'}}
+ if($p.process.HasExited){Clear-TTYoutubePlayback;return @{ok=$true;state='ended'}}
+ if($p.stopping){return @{ok=$true;state='ended'}}
+ $portFile=Join-Path $p.directory 'port'
+ if(Test-Path -LiteralPath $portFile -PathType Leaf){
+  $port=0
+  if([int]::TryParse((Get-Content -LiteralPath $portFile -Raw -Encoding ASCII).Trim(),[ref]$port) -and $port -gt 0 -and $port -le 65535){return @{ok=$true;state='ready';url="http://127.0.0.1:$port/$Session/video.mp4"}}
+ }
+ if(([datetime]::UtcNow-$p.created).TotalSeconds -gt 25){$null=Stop-TTYoutubeBoardPlayback $Session;return @{ok=$true;state='ended'}}
+ return @{ok=$true;state='starting'}
 }

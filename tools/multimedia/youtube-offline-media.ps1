@@ -1,6 +1,6 @@
 # Offline media server candidate. Windows PowerShell 5.1 / .NET Framework.
 # Isolated process only: never serve media from the board's synchronous HTTP loop.
-function Start-TTYoutubeMediaServer([string]$MediaPath,[string]$SessionDir,[string]$Token,[int]$BoardPort=17439,[int]$MaxSeconds=14400){
+function Start-TTYoutubeMediaServer([string]$MediaPath,[string]$SessionDir,[string]$Token,[int]$BoardPort=17439,[int]$MaxSeconds=14400,[int]$ParentPid=0){
  if($Token -cnotmatch '^[a-f0-9]{32}$' -or $BoardPort -lt 1 -or $BoardPort -gt 65535 -or $MaxSeconds -lt 1 -or $MaxSeconds -gt 14400){throw 'media server parameters'}
  $item=Get-Item -LiteralPath $MediaPath -ErrorAction Stop
  if($item.PSIsContainer -or $item.Name -cne 'video.mp4' -or $item.Length -le 0 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'invalid media file'}
@@ -15,6 +15,7 @@ using System.Text;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Threading;
+using System.Diagnostics;
 
 public static class TTOfflineMediaServer {
  static string ReadLine(Stream s, ref int total) {
@@ -51,7 +52,7 @@ public static class TTOfflineMediaServer {
   }
   return true;
  }
- static void Serve(TcpClient client, string path, string token, int port, int boardPort, string stop, DateTime end) {
+ static void Serve(TcpClient client, string path, string token, int port, int boardPort, string stop, DateTime end, Process parent) {
   client.ReceiveTimeout=5000;client.SendTimeout=5000;
   using(client)using(var s=client.GetStream()) {
    int total=0;string[] req=ReadLine(s,ref total).Split(' ');
@@ -81,31 +82,32 @@ public static class TTOfflineMediaServer {
     Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra);
     if(req[0]=="HEAD")return;
     f.Position=first;byte[] buffer=new byte[65536];
-    while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end){
+    while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end&&(parent==null||!parent.HasExited)){
      int n=f.Read(buffer,0,(int)Math.Min(buffer.Length,length));
      if(n==0)break;s.Write(buffer,0,n);length-=n;
     }
    }
   }
  }
- public static void Run(string path,string session,string token,int boardPort,int maxSeconds) {
+ public static void Run(string path,string session,string token,int boardPort,int maxSeconds,int parentPid) {
   string stop=Path.Combine(session,"stop");
   var listener=new TcpListener(IPAddress.Loopback,0);
-  listener.Start(8);
+  Process parent=parentPid==0?null:Process.GetProcessById(parentPid);
   try {
+   listener.Start(8);
    int port=((IPEndPoint)listener.LocalEndpoint).Port;
    DateTime end=DateTime.UtcNow.AddSeconds(maxSeconds);
    File.WriteAllText(Path.Combine(session,"port.tmp"),port.ToString(CultureInfo.InvariantCulture),Encoding.ASCII);
    File.Move(Path.Combine(session,"port.tmp"),Path.Combine(session,"port"));
-   while(DateTime.UtcNow<end&&!File.Exists(stop)) {
+   while(DateTime.UtcNow<end&&!File.Exists(stop)&&(parent==null||!parent.HasExited)) {
     if(!listener.Pending()){Thread.Sleep(100);continue;}
-    try{Serve(listener.AcceptTcpClient(),path,token,port,boardPort,stop,end);}
+    try{Serve(listener.AcceptTcpClient(),path,token,port,boardPort,stop,end,parent);}
     catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}
    }
-  } finally{listener.Stop();}
+  } finally{listener.Stop();if(parent!=null)parent.Dispose();}
  }
 }
 '@
  }
- [TTOfflineMediaServer]::Run($item.FullName,[IO.Path]::GetFullPath($SessionDir),$Token,$BoardPort,$MaxSeconds)
+ [TTOfflineMediaServer]::Run($item.FullName,[IO.Path]::GetFullPath($SessionDir),$Token,$BoardPort,$MaxSeconds,$ParentPid)
 }

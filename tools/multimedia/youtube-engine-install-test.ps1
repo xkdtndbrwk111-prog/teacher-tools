@@ -30,7 +30,7 @@ try{
  Test-TTYoutubeMedia $root
  # Keep signed server's generated sections synchronized with tested canonical source.
  $server=Get-Content -LiteralPath (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path 'runtime-src/system/server.ps1') -Raw -Encoding UTF8
- foreach($name in @('youtube-engine-install.ps1','youtube-download-worker.ps1','youtube-board-bridge.ps1')){
+ foreach($name in @('youtube-engine-install.ps1','youtube-download-worker.ps1','youtube-board-bridge.ps1','youtube-offline-media.ps1')){
   $expected=(Get-Content -LiteralPath (Join-Path $PSScriptRoot $name) -Raw -Encoding UTF8).Replace("`r`n","`n").TrimEnd()
   if($name -eq 'youtube-download-worker.ps1'){$expected=$expected.Replace('. (Join-Path $PSScriptRoot ''youtube-engine-install.ps1'')'+"`n",'')}
   $pattern='(?s)# BEGIN GENERATED '+[regex]::Escape($name)+"`n"+'(.*?)'+"`n"+'# END GENERATED '+[regex]::Escape($name)

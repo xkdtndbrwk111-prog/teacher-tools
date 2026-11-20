@@ -54,4 +54,13 @@ try{
  $lib=@(Get-TTYoutubeLibrary (Join-Path $Root 'worker fixture with spaces'))
  if($lib.Count -ne 1 -or $lib[0].id -cne 'DAHbOpoUrrg' -or $lib[0].height -ne 360){throw 'library listing contract'}
  Write-Host 'PASS validated library listing without absolute paths'
+ $libraryRoot=Join-Path $Root 'worker fixture with spaces'
+ $resolved=Resolve-TTYoutubePlaybackFile $libraryRoot 'DAHbOpoUrrg' '720'
+ if(!(Test-Path -LiteralPath $resolved -PathType Leaf)){throw 'playback library resolution'}
+ foreach($bad in @('../unsafe','AAAAAAAAAAA')){
+  $denied=$false;try{$null=Resolve-TTYoutubePlaybackFile $libraryRoot $bad '720'}catch{$denied=$true};if(!$denied){throw 'invalid playback resolution accepted'}
+ }
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true 'wrong' $body $libraryRoot $fake).status -ne '403 Forbidden'){throw 'playback token accepted'}
+ if((Invoke-TTYoutubeBoardApi '/api/youtube/play-start' 'POST' $true $true $token '{"id":"../unsafe","quality":"720"}' $libraryRoot $fake).status -ne '409 Conflict'){throw 'playback invalid path accepted'}
+ Write-Host 'PASS playback library validation and API authorization'
 }
