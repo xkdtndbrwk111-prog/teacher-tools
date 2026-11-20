@@ -10754,9 +10754,9 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const info=document.createElement('p');info.setAttribute('role','status');info.dataset.youtubeState='';info.textContent='로컬 연결 확인 중…';
   const library=document.createElement('div');library.dataset.youtubeLibrary='';
   const cancel=button('다운로드 취소',stop);cancel.hidden=true;
-  let token='',job=null,pending=false,timer=0;
+  let token='',job=null,pending=false,timer=0,libraryKey=null,refreshing=false;
   const active=()=>epoch===current&&dialog.open;
-  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting'||job?.phase==='install'}
+  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting'||job?.phase==='install';for(const b of library.querySelectorAll('button'))b.disabled=pending||!token}
   async function api(action,data){
    const opts={cache:'no-store'};
    if(data){opts.method='POST';opts.headers={'Content-Type':'application/json','X-TT-Youtube-Token':token};opts.body=JSON.stringify(data)}
@@ -10764,19 +10764,23 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    const x=await r.json();if(!x.ok)throw Error('invalid response');return x;
   }
   async function refresh(){
-   if(!active())return;
+   if(!active()||refreshing)return;
+   refreshing=true;
    try{
     const x=await api('status');if(!active())return;
     if(!/^[a-f0-9]{32}$/.test(x.token))throw Error('token');
     token=x.token;job=x.job||{state:'idle'};
     const phases={starting:'작업 준비 중',install:'엔진 설치 중',download:'영상 다운로드 중',verify:'영상 확인 중',saved:'저장 완료',stopped:'취소됨',error:'작업 실패'};
     info.textContent=job.state==='idle'?'다운로드 준비 완료':(phases[job.phase]||'작업 상태 확인 중')+(job.state==='running'&&job.percent>=0?' · '+job.percent+'%':'');
-    const entries=Array.isArray(x.library)?x.library:[];
+    const entries=(Array.isArray(x.library)?x.library:[]).filter(entry=>entry&&/^[A-Za-z0-9_-]{11}$/.test(entry.id)&&['720','1080'].includes(entry.quality));
+    const key=JSON.stringify(entries.map(e=>[e.id,e.quality,e.height,e.bytes]));
+    if(key!==libraryKey){libraryKey=key;
     library.replaceChildren();
     const h=document.createElement('strong');h.textContent='영상 보관함 ('+entries.length+')';library.append(h);
-    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('span');name.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';row.append(name,button('재생',async()=>{if(pending||!token||!active())return;pending=true;try{if(await teacher()&&active())showOfflineVideo(entry,token)}finally{pending=false;if(active())updateButtons()}},true));library.append(row)}
+    for(const entry of entries){if(!/^[A-Za-z0-9_-]{11}$/.test(entry.id)||!['720','1080'].includes(entry.quality))continue;const row=document.createElement('div');row.className='mm-book-row';const name=document.createElement('span');name.textContent=entry.id+' · '+entry.height+'p · '+Math.round(entry.bytes/1048576)+' MB';row.append(name,button('재생',async()=>{if(pending||!token||!active())return;pending=true;updateButtons();try{if(await teacher()&&active())showOfflineVideo(entry,token)}catch{if(active())report('재생 권한을 확인할 수 없습니다.')}finally{pending=false;if(active())updateButtons()}},true));library.append(row)}
+    }
    }catch{if(active()){token='';info.textContent='로컬 다운로드 서비스에 연결할 수 없습니다.'}}
-   finally{if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
+   finally{refreshing=false;if(active()){updateButtons();clearTimeout(timer);timer=setTimeout(refresh,1000)}}
   }
   async function teacher(){if(!window.ttPodo?.requestTeacherAccess)return false;return Boolean(await window.ttPodo.requestTeacherAccess())}
   async function start(){
