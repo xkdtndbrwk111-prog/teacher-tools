@@ -1,4 +1,313 @@
-﻿param([int]$Port=17439)
+﻿param([int]$Port=17439,[string]$YoutubeJob='', [string]$YoutubeVideoId='', [string]$YoutubeQuality='')
+# BEGIN GENERATED youtube-engine-install.ps1
+# Candidate installer: Windows PowerShell 5.1 compatible. No admin, PATH or registry changes.
+# Pins were verified by the isolated Windows smoke run 44527013450.
+# Only a caller-controlled, local engine root is supported. No arbitrary download URLs.
+$ErrorActionPreference='Stop'
+function Get-TTYoutubePin {
+ @(
+  @{repo='yt-dlp/yt-dlp';tag='2026.10.26';name='yt-dlp.exe';sha='f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d';max=80MB;exe=@('yt-dlp.exe')},
+  @{repo='denoland/deno';tag='v2.9.4';name='deno-x86_64-pc-windows-msvc.zip';sha='68ed08b05c56cf887e9aa509947dc3f468f7e12f47a13e5c1abd51d46d1453ef';max=150MB;exe=@('deno.exe')},
+  @{repo='FFmpeg-Builds/FFmpeg-Builds';tag='autobuild-2026-11-12-15-40';name='ffmpeg-n9.0.2-57-gd838f9f9ae-win64-gpl-9.0.zip';sha='cf43d18e45a1b79a4d74f0e6f94206fe23d82f38de11352e5db9496058dc9c48';max=400MB;exe=@('ffmpeg.exe','ffprobe.exe')}
+ )
+}
+function Get-TTYoutubeEngineId { 'yt2026.10.26-deno2.9.4-ffmpeg20261112' }
+function Get-TTYoutubeEngineState([string]$Root){
+ $id=Get-TTYoutubeEngineId
+ $dir=Join-Path $Root $id
+ if(!(Test-Path -LiteralPath $dir)){return @{state='missing';id=$id}}
+ try{
+  $m=Get-Content -LiteralPath (Join-Path $dir 'manifest.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($m.id -cne $id){throw 'manifest identity'}
+  foreach($name in @('yt-dlp.exe','deno.exe','ffmpeg.exe','ffprobe.exe')){
+   $p=Join-Path $dir $name
+   if(!(Test-Path -LiteralPath $p -PathType Leaf)){throw 'missing binary'}
+   $entry=@($m.files|Where-Object {$_.name -ceq $name})
+   if($entry.Count -ne 1 -or $entry[0].sha -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry[0].sha){throw 'binary integrity'}
+  }
+  return @{state='ready';id=$id;directory=$dir}
+ }catch{return @{state='invalid';id=$id}}
+}
+function Install-TTYoutubeEngine([string]$Root){
+ if($env:OS -ne 'Windows_NT' -or ![Environment]::Is64BitOperatingSystem){throw 'Windows x64 required'}
+ $Root=[IO.Path]::GetFullPath($Root)
+ [void][IO.Directory]::CreateDirectory($Root)
+ $lock=[IO.File]::Open((Join-Path $Root '.install.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ $stage=$null
+ try{
+  $state=Get-TTYoutubeEngineState $Root
+  if($state.state -eq 'ready'){return $state}
+  if($state.state -eq 'invalid'){throw 'Existing engine failed integrity; leave untouched for explicit recovery'}
+  $stage=Join-Path $Root ('stage-'+[guid]::NewGuid().ToString('N'))
+  [void][IO.Directory]::CreateDirectory($stage)
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+  foreach($pin in (Get-TTYoutubePin)){
+   $src='https://github.com/'+$pin.repo+'/releases/download/'+$pin.tag+'/'+$pin.name
+   $archive=Join-Path $stage $pin.name
+   Invoke-WebRequest -UseBasicParsing -Uri $src -OutFile $archive -TimeoutSec 240 -ErrorAction Stop
+   $size=(Get-Item -LiteralPath $archive).Length
+   if($size -le 0 -or $size -gt $pin.max -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin.sha){throw 'upstream asset integrity'}
+   if($pin.name.EndsWith('.zip')){
+    $zip=[IO.Compression.ZipFile]::OpenRead($archive)
+    try{
+     foreach($name in $pin.exe){
+      $e=@($zip.Entries|Where-Object {$_.Name -ceq $name})
+      if($e.Count -ne 1 -or $e[0].Length -le 0 -or $e[0].Length -gt 500MB){throw 'invalid archive entry'}
+      [IO.Compression.ZipFileExtensions]::ExtractToFile($e[0],(Join-Path $stage $name),$false)
+     }
+    }finally{$zip.Dispose()}
+    Remove-Item -LiteralPath $archive -Force
+   }
+  }
+  $files=@(foreach($name in @('yt-dlp.exe','deno.exe','ffmpeg.exe','ffprobe.exe')){
+   @{name=$name;sha=(Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant()}
+  })
+  $id=Get-TTYoutubeEngineId
+  @{id=$id;files=$files}|ConvertTo-Json -Depth 4 -Compress|Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding UTF8
+  [IO.Directory]::Move($stage,(Join-Path $Root $id))
+  $stage=$null
+  $state=Get-TTYoutubeEngineState $Root
+  if($state.state -ne 'ready'){throw 'installed engine integrity'}
+  return $state
+ }finally{
+  if($stage -and (Test-Path -LiteralPath $stage)){Remove-Item -LiteralPath $stage -Recurse -Force}
+  $lock.Dispose()
+ }
+}
+# END GENERATED youtube-engine-install.ps1
+
+# BEGIN GENERATED youtube-download-worker.ps1
+# Candidate worker library, Windows PowerShell 5.1. Not exposed to HTTP yet.
+# Only an authorized board-side launcher may invoke Start-TTYoutubeJob.
+function ConvertTo-TTYoutubeRequest([string]$VideoId,[string]$Quality){
+ if($VideoId -cnotmatch '^[A-Za-z0-9_-]{11}$'){throw 'invalid video ID'}
+ if($Quality -cnotin @('720','1080')){throw 'invalid quality'}
+ return @{id=$VideoId;quality=$Quality;url=('https://www.youtube.com/watch?v='+$VideoId)}
+}
+# Windows CRT quoting: double trailing backslashes, escape backslashes before quotes.
+function Join-TTYoutubeArgs([string[]]$Items){
+ $quoted=foreach($item in $Items){
+  '"'+ [regex]::Replace([regex]::Replace($item,'(\\*)"','$1$1\"'),'(\\+)$','$1$1') + '"'
+ }
+ return ($quoted -join ' ')
+}
+function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int]$Percent=-1){
+ $file=Join-Path $JobDir 'state.json'
+ $temp=Join-Path $JobDir ('state-'+[guid]::NewGuid().ToString('N')+'.tmp')
+ try{
+  $json=@{state=$State;phase=$Phase;percent=$Percent;updated=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
+  if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,[NullString]::Value)}else{[IO.File]::Move($temp,$file)}
+ }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
+}
+# Internal process function; never accept an executable path or argv from an HTTP request.
+function Stop-TTYoutubeProcess($Process){
+ if($Process.HasExited){return}
+ $taskkill=Join-Path $env:SystemRoot 'System32\taskkill.exe'
+ $null=& $taskkill /PID $Process.Id /T /F 2>&1
+ if(!$Process.WaitForExit(5000)){throw 'process tree shutdown failed'}
+}
+function Invoke-TTYoutubeProcess([string]$Exe,[string[]]$Argv,[string]$JobDir,[string]$Phase,[int]$TimeoutSec=1800){
+ $out=Join-Path $JobDir ($Phase+'.out');$err=Join-Path $JobDir ($Phase+'.err')
+ if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
+ $psi=[Diagnostics.ProcessStartInfo]::new()
+ $psi.FileName=$Exe;$psi.Arguments=Join-TTYoutubeArgs $Argv
+ $psi.WorkingDirectory=$JobDir;$psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
+ $psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+ # Bound captured logs via asynchronous stream copies, with cancellation and length limits.
+ $p=[Diagnostics.Process]::new();$p.StartInfo=$psi
+ $os=$null;$es=$null;$started=$false
+ try{
+  $os=[IO.File]::Open($out,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+  $es=[IO.File]::Open($err,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+  if(!$p.Start()){throw 'process start failed'};$started=$true
+  $ot=$p.StandardOutput.BaseStream.CopyToAsync($os);$et=$p.StandardError.BaseStream.CopyToAsync($es)
+  $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSec)
+  $last=-2
+  while(!$p.WaitForExit(400)){
+   if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
+   if([DateTime]::UtcNow -gt $deadline){throw 'timeout'}
+   if($os.Length -gt 4MB -or $es.Length -gt 4MB){throw 'log limit'}
+   if($Phase -eq 'download'){
+    $pct=-1
+    try{
+     $lines=@(Get-Content -LiteralPath $out -Tail 12 -ErrorAction Stop)
+     foreach($line in $lines){if($line -match '^TT_PROGRESS:\s*(\d{1,3})(?:\.\d+)?%'){$pct=[Math]::Min(100,[int]$Matches[1])}}
+    }catch{}
+    if($pct -ne $last){Write-TTYoutubeState $JobDir 'running' $Phase $pct;$last=$pct}
+   }
+  }
+  if(!$ot.Wait(5000) -or !$et.Wait(5000)){throw 'log drain timeout'}
+  if($p.ExitCode -ne 0){throw 'engine failed'}
+  if($os.Length -gt 4MB -or $es.Length -gt 4MB){throw 'log limit'}
+  if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
+ }finally{
+  try{if($started -and !$p.HasExited){Stop-TTYoutubeProcess $p}}finally{
+   if($os){$os.Dispose()};if($es){$es.Dispose()};$p.Dispose()
+  }
+ }
+ return $out
+}
+function Complete-TTYoutubeVideo([string]$JobDir,[string]$LibraryRoot,[string]$EngineDir,[hashtable]$Request){
+ $file=Join-Path $JobDir 'video.mp4'
+ if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'missing MP4'}
+ $probe=Invoke-TTYoutubeProcess (Join-Path $EngineDir 'ffprobe.exe') @('-v','error','-show_streams','-show_format','-of','json',$file) $JobDir 'verify' 60
+ $meta=Get-Content -LiteralPath $probe -Raw -Encoding UTF8|ConvertFrom-Json
+ $video=@($meta.streams|Where-Object {$_.codec_type -eq 'video'})
+ $audio=@($meta.streams|Where-Object {$_.codec_type -eq 'audio'})
+ if($video.Count -ne 1 -or $audio.Count -ne 1 -or $video[0].codec_name -ne 'h264' -or $audio[0].codec_name -ne 'aac' -or $video[0].height -le 0 -or $video[0].height -gt [int]$Request.quality -or $meta.format.format_name -notmatch '(^|,)mp4(,|$)'){throw 'media validation'}
+ if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
+ [void][IO.Directory]::CreateDirectory($LibraryRoot)
+ $key=$Request.id+'-'+$Request.quality
+ $target=Join-Path $LibraryRoot $key
+ if(Test-Path -LiteralPath $target){throw 'video already stored'}
+ # Same-volume atomic directory move: staging and library must share the per-user root.
+ $stage=Join-Path $JobDir 'completed'
+ [void][IO.Directory]::CreateDirectory($stage)
+ [IO.File]::Move($file,(Join-Path $stage 'video.mp4'))
+ $info=@{id=$Request.id;quality=$Request.quality;height=[int]$video[0].height;bytes=(Get-Item -LiteralPath (Join-Path $stage 'video.mp4')).Length;created=[DateTime]::UtcNow.ToString('o')}
+ [IO.File]::WriteAllText((Join-Path $stage 'metadata.json'),($info|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+ if(Test-Path -LiteralPath (Join-Path $JobDir 'cancel')){throw 'cancelled'}
+ [IO.Directory]::Move($stage,$target)
+}
+function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[string]$JobId){
+ $request=ConvertTo-TTYoutubeRequest $VideoId $Quality
+ if($JobId -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid job ID'}
+ $root=[IO.Path]::GetFullPath($Root)
+ [void][IO.Directory]::CreateDirectory($root)
+ $lock=[IO.File]::Open((Join-Path $root '.download.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ $job=$null
+ try{
+  $jobs=Join-Path $root 'jobs';[void][IO.Directory]::CreateDirectory($jobs)
+  $job=Join-Path $jobs $JobId
+  if(Test-Path -LiteralPath $job){$job=$null;throw 'job already exists'}
+  [void][IO.Directory]::CreateDirectory($job)
+  Write-TTYoutubeState $job 'running' 'install'
+  $engine=Install-TTYoutubeEngine (Join-Path $root 'engines')
+  $library=Join-Path $root 'library'
+  if(Test-Path -LiteralPath (Join-Path $library ($request.id+'-'+$request.quality))){throw 'video already stored'}
+  Write-TTYoutubeState $job 'running' 'download'
+  $dir=$engine.directory
+  $h=$request.quality
+  $format="bv[height<=$h][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<=$h][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
+  $argv=@('--ignore-config','--no-playlist','--no-cache-dir','--no-cookies','--no-cookies-from-browser','--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $dir 'deno.exe')),'--ffmpeg-location',$dir,'--socket-timeout','20','--retries','3','--fragment-retries','3','--max-filesize','2G','--newline','--progress','--progress-template','download:TT_PROGRESS:%(progress._percent_str)s','--format',$format,'--merge-output-format','mp4','--no-mtime','-o',(Join-Path $job 'video.%(ext)s'),'--',$request.url)
+  $null=Invoke-TTYoutubeProcess (Join-Path $dir 'yt-dlp.exe') $argv $job 'download' 3600
+  Write-TTYoutubeState $job 'running' 'verify'
+  Complete-TTYoutubeVideo $job $library $dir $request
+  Write-TTYoutubeState $job 'complete' 'saved' 100
+ }catch{
+  if($job -and (Test-Path -LiteralPath $job)){
+   if(Test-Path -LiteralPath (Join-Path $job 'cancel')){Write-TTYoutubeState $job 'cancelled' 'stopped'}else{Write-TTYoutubeState $job 'failed' 'error'}
+  }
+  throw
+ }finally{
+  try{if($job -and (Test-Path -LiteralPath $job)){
+   # Retain status and bounded logs only; never touch completed library entries.
+   Get-ChildItem -LiteralPath $job -Force|Where-Object {$_.Name -notin @('state.json','cancel','download.out','download.err','verify.out','verify.err')}|Remove-Item -Recurse -Force
+  }}finally{$lock.Dispose()}
+ }
+}
+# END GENERATED youtube-download-worker.ps1
+
+# BEGIN GENERATED youtube-board-bridge.ps1
+# Board API bridge. The caller must enforce same-origin and POST token checks.
+$script:ttYoutubeToken=[guid]::NewGuid().ToString('N')
+$script:ttYoutubeProcess=$null
+function Get-TTYoutubeRoot { Join-Path $env:LOCALAPPDATA 'TeacherToolsMedia' }
+function Get-TTYoutubeLast([string]$Root){
+ try{
+  $x=Get-Content -LiteralPath (Join-Path $Root 'last-job.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($x.job -cnotmatch '^[a-f0-9]{32}$'){return $null}
+  return $x
+ }catch{return $null}
+}
+function Get-TTYoutubeJobState([string]$Root){
+ $last=Get-TTYoutubeLast $Root
+ if(!$last){return @{state='idle';phase='';percent=-1}}
+ $dir=Join-Path (Join-Path $Root 'jobs') $last.job
+ $state=@{job=$last.job;id=$last.id;quality=$last.quality;state='running';phase='starting';percent=-1}
+ try{
+  $s=Get-Content -LiteralPath (Join-Path $dir 'state.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($s.state -cin @('running','complete','cancelled','failed') -and $s.phase -cin @('install','download','verify','saved','stopped','error')){
+   $state.state=$s.state;$state.phase=$s.phase;$state.percent=[Math]::Max(-1,[Math]::Min(100,[int]$s.percent))
+  }
+ }catch{}
+ if($state.state -eq 'running'){
+  # The worker holds the exclusive file handle until exit; tolerate launch handshake.
+  $busy=$false;$lock=$null
+  try{$lock=[IO.File]::Open((Join-Path $Root '.download.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{$busy=$true}finally{if($lock){$lock.Dispose()}}
+  $recent=$false
+  try{$recent=([DateTime]::UtcNow-[DateTime]::Parse($last.created).ToUniversalTime()).TotalSeconds -lt 20}catch{}
+  if(!$busy -and !$recent){$state.state='failed';$state.phase='error'}
+ }
+ return $state
+}
+function Get-TTYoutubeLibrary([string]$Root){
+ $lib=Join-Path $Root 'library'
+ if(!(Test-Path -LiteralPath $lib -PathType Container)){return}
+ foreach($dir in @(Get-ChildItem -LiteralPath $lib -Directory|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 200)){
+  if($dir.Name -cnotmatch '^([A-Za-z0-9_-]{11})-(720|1080)$' -or ($dir.Attributes -band [IO.FileAttributes]::ReparsePoint)){continue}
+  $id=$Matches[1];$q=$Matches[2]
+  try{
+   $p=Get-Item -LiteralPath (Join-Path $dir.FullName 'video.mp4')
+   $m=Get-Content -LiteralPath (Join-Path $dir.FullName 'metadata.json') -Raw -Encoding UTF8|ConvertFrom-Json
+   if($p.PSIsContainer -or ($p.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $p.Length -le 0 -or $m.id -cne $id -or $m.quality -cne $q -or $m.bytes -ne $p.Length){continue}
+   @{id=$id;quality=$q;height=[int]$m.height;bytes=$p.Length;created=[string]$m.created}
+  }catch{}
+ }
+}
+function Start-TTYoutubeBoardJob([string]$Root,[string]$ServerScript,$InputData){
+ if($InputData.id -isnot [string] -or $InputData.quality -isnot [string] -or $InputData.authorized -isnot [bool] -or !$InputData.authorized){throw 'invalid request'}
+ $request=ConvertTo-TTYoutubeRequest $InputData.id $InputData.quality
+ [void][IO.Directory]::CreateDirectory($Root)
+ if((Get-TTYoutubeJobState $Root).state -eq 'running'){throw 'busy'}
+ if(Test-Path -LiteralPath (Join-Path (Join-Path $Root 'library') ($request.id+'-'+$request.quality))){throw 'already saved'}
+ $job=[guid]::NewGuid().ToString('N')
+ $record=@{job=$job;id=$request.id;quality=$request.quality;created=[DateTime]::UtcNow.ToString('o')}
+ $last=Join-Path $Root 'last-job.json';$temp=$last+'.'+$job+'.tmp'
+ try{
+  [IO.File]::WriteAllText($temp,($record|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+  if([IO.File]::Exists($last)){[IO.File]::Replace($temp,$last,[NullString]::Value)}else{[IO.File]::Move($temp,$last)}
+ }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
+ $psi=[Diagnostics.ProcessStartInfo]::new()
+ $psi.FileName=Join-Path $PSHOME 'powershell.exe'
+ $psi.Arguments=Join-TTYoutubeArgs @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ServerScript,'-YoutubeJob',$job,'-YoutubeVideoId',$request.id,'-YoutubeQuality',$request.quality)
+ $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.WorkingDirectory=$Root
+ if($script:ttYoutubeProcess){$script:ttYoutubeProcess.Dispose();$script:ttYoutubeProcess=$null}
+ $script:ttYoutubeProcess=[Diagnostics.Process]::Start($psi)
+ if(!$script:ttYoutubeProcess){throw 'start failed'}
+ return @{ok=$true;job=$job}
+}
+function Stop-TTYoutubeBoardJob([string]$Root,[string]$Job){
+ if($Job -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid job'}
+ $state=Get-TTYoutubeJobState $Root
+ if($state.job -cne $Job -or $state.state -ne 'running'){throw 'job not running'}
+ $dir=Join-Path (Join-Path $Root 'jobs') $Job
+ if(!(Test-Path -LiteralPath $dir -PathType Container)){throw 'job starting'}
+ [IO.File]::WriteAllText((Join-Path $dir 'cancel'),'1')
+ return @{ok=$true}
+}
+function Invoke-TTYoutubeBoardApi([string]$Path,[string]$Method,[bool]$SameOrigin,[bool]$PostOrigin,[string]$Token,[string]$Body,[string]$Root,[string]$ServerScript){
+ if(!$SameOrigin){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
+ if($Path -eq '/api/youtube/status' -and $Method -eq 'GET'){
+  return @{status='200 OK';body=(ConvertTo-Json -Compress -Depth 6 @{ok=$true;token=$script:ttYoutubeToken;job=(Get-TTYoutubeJobState $Root);library=@(Get-TTYoutubeLibrary $Root)})}
+ }
+ if($Path -cnotin @('/api/youtube/start','/api/youtube/cancel') -or $Method -ne 'POST'){return @{status='405 Method Not Allowed';body='{"error":"method"}'}}
+ if(!$PostOrigin -or $Token -cne $script:ttYoutubeToken){return @{status='403 Forbidden';body='{"error":"forbidden"}'}}
+ if($Body.Length -gt 1024){return @{status='400 Bad Request';body='{"error":"size"}'}}
+ try{
+  $x=ConvertFrom-Json $Body
+  if($Path -eq '/api/youtube/start'){$answer=Start-TTYoutubeBoardJob $Root $ServerScript $x}
+  else{$answer=Stop-TTYoutubeBoardJob $Root $x.job}
+  return @{status='200 OK';body=(ConvertTo-Json -Compress $answer)}
+ }catch{return @{status='409 Conflict';body='{"error":"request rejected or worker busy"}'}}
+}
+# END GENERATED youtube-board-bridge.ps1
+if($YoutubeJob){
+ try{Start-TTYoutubeJob (Get-TTYoutubeRoot) $YoutubeVideoId $YoutubeQuality $YoutubeJob;exit 0}catch{exit 1}
+}
+
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 . (Join-Path $PSScriptRoot 'presentation-server.ps1')
@@ -757,7 +1066,7 @@ try {
  try {
   [TTSocketHandleGuard]::MakeNonInheritable($client.Client.Handle)
   $stream=$client.GetStream();$reader=New-Object IO.StreamReader($stream,[Text.Encoding]::ASCII,$false,1024,$true)
-  $request=$reader.ReadLine();if(-not $request){continue};$fetchSite='';$hostName='';$origin='';$resetToken='';$backupToken='';$updateToken='';$coinRevision='';$seatRevision='';$extraHeaders='';$contentLength=0
+  $request=$reader.ReadLine();if(-not $request){continue};$fetchSite='';$hostName='';$origin='';$resetToken='';$backupToken='';$updateToken='';$youtubeToken='';$coinRevision='';$seatRevision='';$extraHeaders='';$contentLength=0
   do {
    $line=$reader.ReadLine()
    if($line -match '^Sec-Fetch-Site:\s*(.+)$'){$fetchSite=$Matches[1].Trim()}
@@ -765,6 +1074,7 @@ try {
    elseif($line -match '^Origin:\s*(.+)$'){$origin=$Matches[1].Trim()}
    elseif($line -match '^X-TT-Reset-Token:\s*([a-fA-F0-9]{32})\s*$'){$resetToken=$Matches[1].ToLowerInvariant()}
    elseif($line -match '^X-TT-Backup-Token:\s*([a-fA-F0-9]{32})\s*$'){$backupToken=$Matches[1].ToLowerInvariant()}
+   elseif($line -match '^X-TT-Youtube-Token:\s*([a-f0-9]{32})\s*$'){$youtubeToken=$Matches[1]}
    elseif($line -match '^X-TT-Update-Token:\s*([a-fA-F0-9]{32})\s*$'){$updateToken=$Matches[1].ToLowerInvariant()}
    elseif($line -match '^X-TT-Coin-Revision:\s*([a-f0-9]{64})\s*$'){$coinRevision=$Matches[1].ToLowerInvariant()}
    elseif($line -match '^X-TT-Seating-Revision:\s*([a-f0-9]{64})\s*$'){$seatRevision=$Matches[1].ToLowerInvariant()}
@@ -789,6 +1099,12 @@ try {
    if($path -like '/api/presentation/*'){
     $boardOrigin=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
     $answer=Invoke-TTPresent $path $parts[0] $localHost $managerOrigin $boardOrigin $bodyText $uri
+    $status=$answer.status;$body=$answer.body
+   }
+   elseif($path -like '/api/youtube/*'){
+    $same=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
+    $postSame=$origin -in @("http://127.0.0.1:$Port","http://localhost:$Port")
+    $answer=Invoke-TTYoutubeBoardApi $path $parts[0] $same $postSame $youtubeToken $bodyText (Get-TTYoutubeRoot) $PSCommandPath
     $status=$answer.status;$body=$answer.body
    }
    elseif($path -eq '/api/theme/publish'){
