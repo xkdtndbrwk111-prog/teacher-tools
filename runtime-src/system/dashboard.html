@@ -10756,7 +10756,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   const cancel=button('다운로드 취소',stop);cancel.hidden=true;
   let token='',job=null,pending=false,timer=0,libraryKey=null,refreshing=false;
   const active=()=>epoch===current&&dialog.open;
-  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting'||job?.phase==='install';for(const b of library.querySelectorAll('button'))b.disabled=pending||!token}
+  function updateButtons(){download.disabled=pending||!token||job?.state==='running';cancel.hidden=job?.state!=='running';cancel.disabled=pending||job?.phase==='starting';for(const b of library.querySelectorAll('button'))b.disabled=pending||!token}
   async function api(action,data){
    const opts={cache:'no-store'};
    if(data){opts.method='POST';opts.headers={'Content-Type':'application/json','X-TT-Youtube-Token':token};opts.body=JSON.stringify(data)}
@@ -10772,6 +10772,11 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     token=x.token;job=x.job||{state:'idle'};
     const phases={starting:'작업 준비 중',install:'엔진 설치 중',download:'영상 다운로드 중',verify:'영상 확인 중',saved:'저장 완료',stopped:'취소됨',error:'작업 실패'};
     info.textContent=job.state==='idle'?'다운로드 준비 완료':(phases[job.phase]||'작업 상태 확인 중')+(job.state==='running'&&job.percent>=0?' · '+job.percent+'%':'');
+    if(job.state==='running'&&job.phase==='install'){
+     const v=job.install,mb=n=>(n/1048576).toFixed(1)+' MB';
+     if(v){const labels={connect:'연결 중',transfer:'받는 중',verify:'무결성 검사',extract:'압축 해제',finalize:'설치 마무리'};info.textContent='엔진 설치 '+v.index+'/3 · '+v.component+' '+(labels[v.step]||'준비 중')+(v.step==='transfer'?' · '+mb(v.bytes)+(v.total>0?' / '+mb(v.total)+' ('+job.percent+'%)':''):'')}
+     if(job.age>=10)info.textContent+=' · 마지막 상태 갱신 '+job.age+'초 전';
+    }
     const entries=(Array.isArray(x.library)?x.library:[]).filter(entry=>entry&&/^[A-Za-z0-9_-]{11}$/.test(entry.id)&&['720','1080'].includes(entry.quality));
     const key=JSON.stringify(entries.map(e=>[e.id,e.quality,e.height,e.bytes]));
     if(key!==libraryKey){libraryKey=key;

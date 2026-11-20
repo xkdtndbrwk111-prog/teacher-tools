@@ -4,7 +4,11 @@ $ErrorActionPreference='Stop'
 $root=Join-Path $env:RUNNER_TEMP ('tt-engine-install-'+[guid]::NewGuid().ToString('N'))
 try{
  if((Get-TTYoutubeEngineState $root).state -ne 'missing'){throw 'fresh state'}
- $first=Install-TTYoutubeEngine $root
+ $events=[Collections.Generic.List[object]]::new()
+ $first=Install-TTYoutubeEngine $root '' {param($component,$index,$step,$bytes,$total) $events.Add(@{component=$component;index=$index;step=$step;bytes=$bytes;total=$total})}
+ foreach($name in @('yt-dlp','Deno','FFmpeg')){if(!@($events|Where-Object {$_.component -eq $name -and $_.step -eq 'transfer' -and $_.bytes -gt 0}).Count){throw 'missing installer progress'}}
+ if(!@($events|Where-Object {$_.step -eq 'extract'}).Count){throw 'missing extract progress'}
+ Write-Host 'PASS engine-specific transfer and unpack progress'
  if($first.state -ne 'ready'){throw 'install failed'}
  Write-Host 'PASS verified installation in fresh per-user directory'
  $dir=$first.directory

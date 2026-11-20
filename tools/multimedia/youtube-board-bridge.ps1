@@ -18,6 +18,9 @@ function Get-TTYoutubeJobState([string]$Root){
   $s=Get-Content -LiteralPath (Join-Path $dir 'state.json') -Raw -Encoding UTF8|ConvertFrom-Json
   if($s.state -cin @('running','complete','cancelled','failed') -and $s.phase -cin @('install','download','verify','saved','stopped','error')){
    $state.state=$s.state;$state.phase=$s.phase;$state.percent=[Math]::Max(-1,[Math]::Min(100,[int]$s.percent))
+   try{$state.age=[int][Math]::Max(0,([DateTime]::UtcNow-[DateTime]::Parse($s.updated).ToUniversalTime()).TotalSeconds)}catch{}
+   $v=$s.install
+   if($s.phase -eq 'install' -and $v.component -cin @('yt-dlp','Deno','FFmpeg') -and $v.step -cin @('connect','transfer','verify','extract','finalize') -and $v.index -ge 1 -and $v.index -le 3 -and $v.bytes -ge 0 -and $v.bytes -le 400MB -and $v.total -ge -1 -and $v.total -le 400MB){$state.install=@{component=$v.component;index=[int]$v.index;step=$v.step;bytes=[long]$v.bytes;total=[long]$v.total}}
   }
  }catch{}
  if($state.state -eq 'running'){

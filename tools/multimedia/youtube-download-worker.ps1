@@ -13,11 +13,13 @@ function Join-TTYoutubeArgs([string[]]$Items){
  }
  return ($quoted -join ' ')
 }
-function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int]$Percent=-1){
+function Write-TTYoutubeState([string]$JobDir,[string]$State,[string]$Phase,[int]$Percent=-1,[hashtable]$Install=$null){
  $file=Join-Path $JobDir 'state.json'
  $temp=Join-Path $JobDir ('state-'+[guid]::NewGuid().ToString('N')+'.tmp')
  try{
-  $json=@{state=$State;phase=$Phase;percent=$Percent;updated=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Compress
+  $record=@{state=$State;phase=$Phase;percent=$Percent;updated=[DateTime]::UtcNow.ToString('o')}
+  if($Install){$record.install=$Install}
+  $json=$record|ConvertTo-Json -Compress -Depth 4
   [IO.File]::WriteAllText($temp,$json,[Text.UTF8Encoding]::new($false))
   if([IO.File]::Exists($file)){[IO.File]::Replace($temp,$file,[NullString]::Value)}else{[IO.File]::Move($temp,$file)}
  }finally{if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
@@ -105,7 +107,12 @@ function Start-TTYoutubeJob([string]$Root,[string]$VideoId,[string]$Quality,[str
   if(Test-Path -LiteralPath $job){$job=$null;throw 'job already exists'}
   [void][IO.Directory]::CreateDirectory($job)
   Write-TTYoutubeState $job 'running' 'install'
-  $engine=Install-TTYoutubeEngine (Join-Path $root 'engines')
+  $progress={param($component,$index,$step,$bytes,$total)
+   $pct=if($total -gt 0){[int][Math]::Floor(100.0*$bytes/$total)}else{-1}
+   Write-TTYoutubeState $job 'running' 'install' $pct @{component=$component;index=$index;step=$step;bytes=$bytes;total=$total}
+  }
+  $engine=Install-TTYoutubeEngine (Join-Path $root 'engines') $job $progress
+  Assert-TTEngineNotCancelled $job
   $library=Join-Path $root 'library'
   if(Test-Path -LiteralPath (Join-Path $library ($request.id+'-'+$request.quality))){throw 'video already stored'}
   Write-TTYoutubeState $job 'running' 'download'
