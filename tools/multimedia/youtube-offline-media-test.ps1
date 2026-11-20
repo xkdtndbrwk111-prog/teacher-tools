@@ -61,7 +61,7 @@ function Test-TTYoutubeMedia([string]$Root){
   if((Request-TTMediaFixture 'POST' $path $ref).header -notmatch '^HTTP/1.1 405'){throw 'method allowed'}
   Write-Host 'PASS private playback token, host, origin and method policy'
   if($env:TT_TEST_REAL_MEDIA_BROWSER -eq '1'){
-   & node (Join-Path $PSScriptRoot 'youtube-offline-media-browser.cjs') "$port" $token
+   & node (Join-Path $PSScriptRoot 'youtube-offline-media-browser.cjs') "$port" $token $file
    if($LASTEXITCODE -ne 0){throw 'real Chrome offline media playback failed'}
   }
   [IO.File]::WriteAllText((Join-Path $session 'stop'),'1')
