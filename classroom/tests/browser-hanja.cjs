@@ -120,15 +120,23 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   assert.equal(await house.getAttribute('href'),'../');
   assert.equal(await house.getAttribute('aria-label'),'역사보리꼬리 공작소로 이동');
   assert.deepEqual(await house.locator('svg path').evaluateAll(nodes=>nodes.map(x=>x.getAttribute('d'))),['m3 10 9-7 9 7v10H3z','M9 20v-7h6v7']);
+  assert.equal(await page.locator('#manager #saveStatus').count(),1,'Storage warning node remains intact');
+  assert.equal(await page.locator('#manager #saveStatus').textContent(),'','Decorative subtitle removed');
   for(const width of [390,720,1280,1600]){
     await page.setViewportSize({width,height:900});
     const layout=await page.evaluate(()=>{
       const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
-      return{house:box('#hanja-workshop-home-link'),mode:box('.hanja-header-modes'),action:box('#start'),screenWidth:innerWidth};
+      const icon=document.querySelector('#hanja-workshop-home-link svg');
+      return{house:box('#hanja-workshop-home-link'),mode:box('.hanja-header-modes'),action:box('#start'),
+       svgWidth:icon.getBoundingClientRect().width,
+       brandFont:parseFloat(getComputedStyle(document.querySelector('.hanja-brand-line>strong')).fontSize),
+       screenWidth:innerWidth};
     });
     assert.ok(layout.house.left>=0&&layout.action.right<=layout.screenWidth,'Header controls fit '+width);
     assert.ok(layout.mode.left>=0&&layout.mode.right<=layout.screenWidth,'Category navigation visible '+width);
     assert.ok(layout.house.right<=layout.action.left,'Header buttons do not overlap '+width);
+    assert.ok(layout.svgWidth>=23.5,'House icon matches Classroom Manager 24px: '+width);
+    assert.ok(layout.brandFont>=15.5,'Brand title matches Classroom Manager 16px: '+width);
   }
   const savedRoster=await page.evaluate(key=>localStorage.getItem(key),rosterKey);
   const savedHanja=await page.evaluate(key=>localStorage.getItem(key),dataKey);
