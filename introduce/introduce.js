@@ -135,7 +135,7 @@
       g.dataset.edge = e.id;
       g.innerHTML =
         `<path class="edge-glow" d="${d}" stroke="url(#${gid})"/>` +
-        `<path class="edge kind-${e.kind}" d="${d}" stroke="url(#${gid})" ${e.kind === "theme" ? "" : `marker-end="url(#m-${gid})"`}/>` +
+        `<path class="edge kind-${e.kind}" d="${d}" stroke="url(#${gid})" marker-end="url(#m-${gid})"/>` +
         (reduceMotion ? "" : `<path class="edge-flow" d="${d}" stroke="#fff"/>`);
       svg.appendChild(g);
 
@@ -162,7 +162,7 @@
       bd.style.top = my + "px";
       bd.style.setProperty("--accent", e.kind === "theme" ? cb : ca);
       const icon = e.kind === "coin" ? "🪙" : e.kind === "theme" ? "🎨" : "👥";
-      bd.innerHTML = `${icon} ${esc(e.label)}<span class="arrow">${e.kind === "theme" ? "⇠ 가져오기" : "→"}</span>`;
+      bd.innerHTML = `${icon} ${esc(e.label)}<span class="arrow">${aRight ? "→" : "←"}</span>`;
       bd.title = e.description;
       bd.setAttribute("aria-label", `${e.description}. 눌러서 연결된 기능으로 이동`);
       nodesLayer.appendChild(bd);
@@ -381,8 +381,10 @@
       const other = e.from === n.id ? e.to : e.from;
       const o = nodeById[other];
       const dir = e.kind === "theme"
-        ? (e.to === n.id ? "테마를 가져옴 ←" : "테마를 제공 →")
-        : (e.from === n.id ? "보내기 →" : "받기 ←");
+        ? (e.to === n.id ? "호자보드 테마 가져오기" : "테마 원본")
+        : e.kind === "coin"
+          ? (e.from === n.id ? "코인 관리" : "코인 활용")
+          : (e.from === n.id ? "명단 전달" : "명단 받기");
       return `<button type="button" data-go="${other}" style="--accent:${productById[o.product].color}">${esc(productById[o.product].name)} · ${esc(o.title)} <small>(${dir})</small></button>`;
     }).join("");
     const launch = n.launch || p.launch;
@@ -455,7 +457,8 @@
   track.addEventListener("scroll", () => {
     clearTimeout(scrollT);
     scrollT = setTimeout(() => {
-      const i = Math.round(track.scrollLeft / track.clientWidth);
+      if (detail.hidden || !dPages.length || !track.clientWidth) return;
+      const i = clamp(Math.round(track.scrollLeft / track.clientWidth), 0, dPages.length - 1);
       if (i !== dIndex || location.hash !== "#/node/" + dPages[i].id) {
         dIndex = i;
         updatePager();
