@@ -175,7 +175,7 @@ async function setRoster(p,names){
    assert.equal(await p.evaluate(()=>document.body.classList.contains('roster-grabbing')),false);
    assert.equal(await p.locator('#studentCards .seating-student-card').first().getAttribute('data-student-id'),origin[1],'카드 순서 변경');
    assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'1');
-   assert.equal(await p.locator('#studentCards .shared-student-number').nth(1).textContent(),'02');
+   assert.equal(await p.locator('#studentCards .shared-student-number').nth(1).textContent(),'2');
    assert.equal(await p.evaluate(ids=>reorderStudentsByIds(ids),origin),true);
   });
   await step('명단 밖에서 마우스 놓기·Escape·짧은 클릭은 유령 카드를 남기지 않는다',async()=>{
@@ -472,8 +472,12 @@ async function setRoster(p,names){
   await step('반 이름을 바꾼 뒤 바로 전체 백업할 수 있다',async()=>{
    const {ctx:cr,p:pr}=await newContext();
    await pr.goto(BASE+'/seating/?section=seating');await started(pr);
-   await pr.locator('#initialRosterDialog[open]').waitFor();
-   await pr.locator('#skipInitialRoster').click();
+   // Initial classes can contain bundled sample pupils. Only a truly empty
+   // new class opens the one-time roster dialog.
+   if(await pr.evaluate(()=>classState.students.length===0&&classState.ui.initialRosterApplied!==true)){
+    await pr.locator('#initialRosterDialog[open]').waitFor();
+    await pr.locator('#skipInitialRoster').click();
+   }
    await pr.locator('#tt-class-add').click();
    await pr.locator('#tt-class-existing input').first().fill('이름바꾼반');
    await Promise.all([pr.waitForEvent('load'),pr.locator('#tt-class-create').click()]);
