@@ -1529,3 +1529,20 @@ body.roster-drag-selecting .hanja-student{
   #manager>.studio-topbar #start{min-width:94px;padding:0 8px;font-size:12px}
   #manager .hanja-header-modes>.toolbtn{min-width:88px;padding:0 10px;font-size:12px}
 }
+
+
+/* Match Classroom Manager house/title sizing without a decorative subheading.
+   Retain #saveStatus for live storage errors and screen-reader announcements. */
+#manager>.studio-topbar>.brand-block{
+ display:flex;align-items:center;justify-content:flex-start;min-width:0
+}
+#manager .hanja-brand-line{gap:7px;align-items:center;min-height:40px}
+#manager .hanja-brand-line>strong{font-size:16px;font-weight:850;line-height:1.2}
+#hanja-workshop-home-link{flex:0 0 38px;width:38px;height:40px}
+#hanja-workshop-home-link>.tt-ui2-icon{width:24px;height:24px}
+#manager>.studio-topbar #saveStatus{
+ position:absolute!important;width:1px!important;height:1px!important;padding:0!important;
+ margin:0!important;overflow:hidden!important;clip-path:inset(50%)!important;
+ white-space:nowrap!important
+}
+@media(max-width:360px){#manager .hanja-brand-line>strong{font-size:14px}}
