@@ -54,6 +54,8 @@ test("new SQL initializes zero and denies anonymous writes before release",()=>{
  assert.doesNotMatch(sql,/^grant execute on function public.record_public_launch_v2\(text\) to anon,authenticated;/im);
  assert.ok(sql.includes("Asia/Seoul"));
  assert.ok(sql.includes("receipt_id uuid primary key"));
+ const privacy=read("docs/usage-migrations/20261121_launch_metrics_v2_public_read_lock.sql");
+ assert.match(privacy,/revoke execute on function public.get_launch_metrics_v2\(\) from public, anon, authenticated;/i);
 });
 
 test("official Hoja download is not linked before launch",()=>{
