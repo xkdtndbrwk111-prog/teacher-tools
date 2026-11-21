@@ -11,7 +11,7 @@
 
 ## 잠금 장치 (공개 이전 유지)
 
-1. launch-metrics-config.js: enabled=false. 기존 usage-stats.js의 v1 수집 기능을 대체하며, 비활성 상태에서는 RPC 호출 및 통계 UI 표시를 하지 않습니다.
+1. launch-metrics-config.js: enabled=false이며 **사이트 HTML에는 아직 불러오지 않음**. V2 usage-stats.js는 이 설정이 없거나 비활성이면 즉시 종료하므로 공개 전 RPC 호출/집계/UI가 없습니다.
 2. Supabase launch_metrics_control_v2.enabled=false (준비용 스키마). record_public_launch_v2는 anon/authenticated에 실행 권한을 부여하지 않았습니다.
 3. 호자보드 공식 다운로드 카드: 대시보드 URL null, download=false로 유지합니다.
 4. 서명된 Windows 업데이트 프로그램은 이번 준비 작업에서 수정하지 않습니다. 성공 보고용 서버 RPC 계약만 준비합니다.
@@ -35,6 +35,6 @@
 2. 호자보드 정상 업데이트 완료·재시작 성공 시점에만 별도 신뢰 서버에서 record_verified_hoja_update_v2(uuid)를 호출하도록 연결합니다. 무작위 작업별 영수증 ID로 중복 성공 보고를 차단하며, 서비스 역할 키를 브라우저나 Windows 클라이언트에 넣지 않습니다.
 3. 보리꼬리 공작소의 호자보드 공식 설치 파일 URL을 검증한 후 공개하고 download 플래그를 켭니다.
 4. 서버 launch_metrics_control_v2.enabled=true로 전환하고 record_public_launch_v2(text)의 anon/authenticated EXECUTE 권한을 공개합니다.
-5. 공개 승인을 받은 변경에서만 launch-metrics-config.js의 enabled:true를 적용합니다. 오늘 기준을 Asia/Seoul로 확인합니다.
+5. 공개 승인을 받은 변경에서만 launch-metrics-config.js의 enabled:true를 적용하고, 공식 허브·교실매니저 HTML에서 이 설정을 V2 추적기보다 앞서 불러옵니다. 오늘 기준을 Asia/Seoul로 확인합니다.
 
 본 작업은 통계 코드/초기 스키마의 **준비**이지 배포 승인 또는 통계 수집 시작이 아닙니다.
