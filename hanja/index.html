@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261010-roster-unified1">
-<link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
+<link rel="stylesheet" href="styles.css?v=20261121-modern-hanja-roster">
+<link rel="stylesheet" href="../shared/student-roster.css?v=20261121-modern-hanja-roster">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -73,7 +73,7 @@
                 </div>
                 <div class="frequency-scale"><span>사용 안 함</span><span>매우 높음</span></div>
               </label>
-              <p class="frequency-help">0은 출제하지 않습니다. 빈도가 높을수록 카드도 밝게 표시됩니다.</p>
+              <p class="frequency-help">0은 출제하지 않습니다. 빈도가 높을수록 카드도 밝게 표시됩니다. 저장한 출제 빈도는 다음 새 항목에도 유지됩니다.</p>
               <button class="primary full" type="submit">저장</button>
               <button id="cancelEdit" class="ghost full" type="button">새 항목으로 전환</button>
             </form>
@@ -129,10 +129,15 @@
     <section class="student-strip">
       <div class="student-strip-head">
         <div class="student-strip-titleline"><strong>이번 수업 학생</strong><span id="rosterSummary"></span></div>
-        <span class="strip-help">학생 카드 우클릭: 이번 수업에서 제외/다시 포함 · 테두리 색: 남/여/미지정</span>
+        <span class="strip-help">학생 카드 또는 참가·제외 버튼 클릭: 이번 수업 참가 변경 · 번호와 학생 정보는 교실매니저와 공유 · 자리배치 기능 없음</span>
         <div class="strip-actions"><button id="includeAllStudents" class="strip-action" type="button">전체 참가</button><button id="excludeAllStudents" class="strip-action" type="button">전체 해제</button><a class="strip-action strip-link" href="../seating/">명단 관리 ↗</a><button id="refreshRoster" class="strip-action" type="button">명단 새로 읽기</button></div>
       </div>
-      <div id="studentCards" class="student-cards"></div>
+      <div id="studentCards" class="student-cards" tabindex="0" role="region" aria-label="한자 수업 학생 목록 · 가로 스크롤"></div>
+      <div id="studentScrollTrack" class="student-scroll-track" role="scrollbar" tabindex="0"
+           aria-label="학생 목록 가로 스크롤" aria-controls="studentCards"
+           aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+        <div id="studentScrollThumb" class="student-scroll-thumb"></div>
+      </div>
     </section>
   </div>
 </section>
@@ -217,7 +222,7 @@
 </section>
 
 <div id="notice" role="status" aria-live="polite" class="hidden"></div>
-<script type="module" src="app.js?v=20261010-roster-unified1"></script>
+<script type="module" src="app.js?v=20261121-modern-hanja-roster"></script>
 <script src="../usage-stats.js?v=usage-1" data-usage-app="HANJA"></script>
 </body>
 </html>

@@ -150,7 +150,7 @@ async function setRoster(p,names){
    });
    assert.ok(geometry.leftover<22,'남는 하단 공간이 과도함: '+JSON.stringify(geometry));
   });
-  await step('아바타 길게 누르기: 포인터 이동·번호 교환·놓으면 즉시 종료',async()=>{
+  await step('학생 카드 즉시 드래그: 이동·번호 교환·놓으면 즉시 종료',async()=>{
    await openSeating(p);
    const origin=await p.evaluate(()=>classState.students.map(s=>s.id));
    const first=p.locator('#studentCards .seating-student-card').nth(0);
@@ -159,8 +159,8 @@ async function setRoster(p,names){
    const target=await p.locator('#studentCards .seating-student-card').nth(1).boundingBox();
    assert.ok(source&&target,'학생 카드가 화면에 있어야 함');
    await p.mouse.move(source.x+source.width/2,source.y+source.height/2);
-   await p.mouse.down();await wait(480);
-   assert.equal(await p.locator('.roster-ghost').count(),1,'길게 누르면 드래그 프리뷰 등장');
+   await p.mouse.down();await p.mouse.move(source.x+source.width/2+14,source.y+source.height/2,{steps:3});
+   assert.equal(await p.locator('.roster-ghost').count(),1,'길게 누르지 않고 이동하면 드래그 프리뷰 등장');
    assert.equal(await p.locator('.roster-ghost .shared-student-sprite').count(),0,'이동 프리뷰에는 아바타가 없어야 한다');
    assert.equal(await p.locator('.roster-ghost .roster-ghost-number').textContent(),'1');
    assert.equal(await p.locator('.roster-ghost .roster-ghost-name').textContent(),await first.locator('.shared-student-name').textContent());
@@ -178,28 +178,28 @@ async function setRoster(p,names){
    assert.equal(await p.locator('#studentCards .shared-student-number').nth(1).textContent(),'2');
    assert.equal(await p.evaluate(ids=>reorderStudentsByIds(ids),origin),true);
   });
-  await step('명단 밖에서 마우스 놓기·Escape·짧은 클릭은 유령 카드를 남기지 않는다',async()=>{
+  await step('즉시 드래그의 명단 밖 놓기·Escape·단순 클릭은 유령 카드를 남기지 않는다',async()=>{
    await openSeating(p);
    const origin=await p.evaluate(()=>classState.students.map(s=>s.id));
    const sprite=p.locator('#studentCards .seating-student-card').nth(0).locator('.shared-student-sprite');
    let box=await sprite.boundingBox();
    const x=box.x+box.width/2,y=box.y+box.height/2;
-   await p.mouse.move(x,y);await p.mouse.down();await wait(470);
-   await p.mouse.move(x+45,y-120,{steps:5});
+   await p.mouse.move(x,y);await p.mouse.down();
+   await p.mouse.move(8,25,{steps:5});
    assert.equal(await p.locator('.roster-ghost').count(),1,'명단 밖에서도 프리뷰가 존재');
    await p.mouse.up();
    assert.equal(await p.locator('.roster-ghost').count(),0,'명단 밖 놓기 후 종료');
    assert.deepEqual(await p.evaluate(()=>classState.students.map(s=>s.id)),origin);
    box=await sprite.boundingBox();
    await p.mouse.move(box.x+box.width/2,box.y+box.height/2);
-   await p.mouse.down();await wait(440);await p.keyboard.press('Escape');
+   await p.mouse.down();await p.mouse.move(box.x+25,box.y-70,{steps:4});await p.keyboard.press('Escape');
    assert.equal(await p.locator('.roster-ghost').count(),0,'Escape 취소');
    await p.mouse.up();
    box=await sprite.boundingBox();
    await p.mouse.move(box.x+box.width/2,box.y+box.height/2);
    await p.mouse.down();await wait(60);await p.mouse.up();
    assert.equal(await p.locator('.roster-ghost').count(),0,'짧은 클릭은 정렬 시작하지 않음');
-   assert.equal(await p.locator('#studentCards .seating-student-card').first().getAttribute('draggable'),'true','기존 지정석 드래그 복원');
+   assert.notEqual(await p.locator('#studentCards .seating-student-card').first().getAttribute('draggable'),'true','오래된 native 드래그가 제거되었음');
    assert.deepEqual(await p.evaluate(()=>classState.students.map(s=>s.id)),origin);
   });
   await step('성적을 입력하면 명단과 연결된다',async()=>{
