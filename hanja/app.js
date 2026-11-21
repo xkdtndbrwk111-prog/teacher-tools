@@ -1,5 +1,5 @@
 import {readStudents,isStudentStorageKey} from '../shared/student-registry.js';
-import {renderHanjaRoster,bindHanjaRosterScrollbar,syncHanjaRosterScrollbar} from './roster-view.js';
+import {renderHanjaRoster,bindHanjaRosterScrollbar,syncHanjaRosterScrollbar} from './roster-view.js?v=20261121-wheel1';
 "use strict";
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";

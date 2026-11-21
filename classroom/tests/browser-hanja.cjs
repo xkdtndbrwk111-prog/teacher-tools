@@ -101,6 +101,18 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   await page.keyboard.press('End');
   await page.waitForFunction(()=>document.querySelector('#studentCards').scrollLeft>0);
   pass('Dedicated visible scrollbar works with keyboard and preserves card row');
+  await page.locator('#studentCards .hanja-student').first().hover();
+  await page.evaluate(()=>{document.querySelector('#studentCards').scrollLeft=0});
+  await page.mouse.wheel(0,120);
+  await page.waitForFunction(()=>document.querySelector('#studentCards').scrollLeft>0);
+  const wheelPosition=await page.locator('#studentCards').evaluate(el=>el.scrollLeft);
+  assert.ok(wheelPosition>0,'Mouse wheel vertically should move Hanja roster horizontally');
+  await page.mouse.wheel(0,-120);
+  await page.waitForFunction(()=>document.querySelector('#studentCards').scrollLeft===0);
+  await page.mouse.wheel(120,0);
+  await page.waitForFunction(()=>document.querySelector('#studentCards').scrollLeft>0);
+  assert.equal(await page.evaluate(key=>localStorage.getItem(key),rosterKey),reordered,'Wheel must not change shared student information');
+  pass('Mouse vertical wheel and horizontal trackpad gestures move roster left-right without changing roster data');
   assert.deepEqual(errors,[],'No application page errors');
   await second.close();
  }catch(error){console.error('FAIL Hanja browser regression:',error.stack||error);process.exitCode=1}
