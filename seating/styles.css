@@ -822,3 +822,19 @@ html.tt-manager-theme #teacherScreen .student-scroll-thumb{
 .roster-onboarding-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:16px}
 .roster-onboarding-actions button{min-height:42px;padding:9px 18px;font-weight:850;border-radius:9px}
 @media(max-width:620px){.roster-onboarding{padding:18px}.roster-onboarding textarea{min-height:190px}}
+
+
+/* Immediate card drag works for mouse and touchscreen; number and name stay visible. */
+#teacherScreen .seating-student-card{cursor:grab!important;touch-action:none;user-select:none;-webkit-user-select:none}
+#teacherScreen .seating-student-card.roster-moving{cursor:grabbing!important}
+#teacherScreen .layout-cell .seat-unpin{
+ display:inline-flex;align-items:center;justify-content:center;
+ min-height:22px;max-width:100%;padding:2px 7px;
+ border:1px solid #d97706;border-radius:7px;
+ background:#fef3c7;color:#92400e;font-size:10px;line-height:1.1;
+ font-weight:900;white-space:nowrap;cursor:pointer;touch-action:manipulation;z-index:8
+}
+#teacherScreen .layout-cell .seat-unpin:hover,
+#teacherScreen .layout-cell .seat-unpin:focus-visible{
+ background:#fde68a;outline:2px solid #b45309;outline-offset:1px
+}

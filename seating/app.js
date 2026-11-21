@@ -430,7 +430,7 @@ function loadState(){
 let classState=loadState();
 let paintTool="seat";
 let selectedStudentId=classState.students[0]?.id||null;
-let activeDockTab="settings";
+let activeDockTab="student";
 let previewAssignments=classState.assignments.map(a=>({...a}));
 let previewRevision=classState.assignments.length?0:null;
 let confirmedRevision=classState.assignments.length?0:null;
@@ -716,11 +716,13 @@ function renderLayout(){
       const occupantAttrs=student&&!ctx.readonly&&!groupEdit.active
         ?` data-assigned-student-id="${escapeHtml(student.id)}"`
         :"";
-      el.innerHTML=`<span class="idx">${cell.row+1}-${cell.col+1}</span><div class="seat-info"><strong class="seat-occupant ${student||fixedStudent?"":"empty"}${studentFixed?" fixed-occupant":""}"${occupantAttrs}>${escapeHtml(name)}</strong><span class="seat-type">${typeLabel}</span>${fixedStudent?'<span class="seat-fixed">📌 고정석</span>':""}</div>${group?`<span class="group-chip">${escapeHtml(group.name)}</span>`:""}`;
+      el.innerHTML=`<span class="idx">${cell.row+1}-${cell.col+1}</span><div class="seat-info"><strong class="seat-occupant ${student||fixedStudent?"":"empty"}${studentFixed?" fixed-occupant":""}"${occupantAttrs}>${escapeHtml(name)}</strong><span class="seat-type">${typeLabel}</span>${fixedStudent&&!ctx.readonly&&!groupEdit.active?'<button type="button" class="seat-unpin" title="좌석 고정 해제">📌 고정 해제</button>':fixedStudent?'<span class="seat-fixed">📌 고정석</span>':""}</div>${group?`<span class="group-chip">${escapeHtml(group.name)}</span>`:""}`;
       if(!ctx.readonly){
+        const unpin=el.querySelector(".seat-unpin");
+        if(unpin)unpin.onclick=event=>{event.preventDefault();event.stopPropagation();clearFixedSeat(fixedStudent)};
         const assignedNode=el.querySelector("[data-assigned-student-id]");
         if(assignedNode){
-          el.title=studentFixed?"우클릭하면 고정석을 해제합니다.":"학생이 배치된 칸 어디든 드래그해 자리를 바꾸고, 우클릭하면 이 자리에 고정합니다.";
+          el.title=studentFixed?"고정 해제 버튼으로 고정을 풀 수 있습니다.":"배치된 학생을 드래그해 자리를 바꾸거나 우클릭해 고정할 수 있습니다.";
           if(!studentFixed){
             el.draggable=true;
             el.classList.add("assignment-draggable");
@@ -852,137 +854,113 @@ function reorderStudentsByIds(ids){
 // Card order editing is pointer-based and intentionally separate from the
 // native HTML drag used to assign a student to a seat. Capture the pointer on
 // DOWN, not after the hold timer: native dragging otherwise steals pointerup.
-function bindRosterLongPress(card){
+function bindRosterDrag(card){
  if(historyView||document.body.classList.contains("tt-grade-active")||document.body.classList.contains("pe-mode"))return;
- const sprite=card.querySelector(".shared-student-sprite"),container=$("studentCards");
- if(!sprite||!container)return;
- let press=null,timer=null,ghost=null,active=false;
+ const container=$("studentCards");if(!container)return;
+ let press=null,ghost=null,active=false,highlighted=null,ignoreClick=false;
  const order=()=>[...container.querySelectorAll(".seating-student-card")];
- const positionGhost=(x,y)=>{
-  if(!ghost)return;
-  const rect=ghost.getBoundingClientRect();
-  ghost.style.left=(x-rect.width/2)+"px";
-  ghost.style.top=(y-rect.height/2)+"px";
+ const inRoster=(x,y)=>{const r=container.getBoundingClientRect();return x>=r.left-8&&x<=r.right+8&&y>=r.top-16&&y<=r.bottom+20};
+ const seatAt=(x,y)=>{
+  const seat=document.elementFromPoint(x,y)?.closest(".layout-cell");
+  return seat&&$("layoutGrid").contains(seat)&&!historyView&&!groupEdit.active&&usableCells().some(c=>c.id===seat.dataset.seatId)?seat:null;
+ };
+ const highlight=seat=>{
+  if(highlighted===seat)return;
+  highlighted?.classList.remove("drop-target");highlighted=seat;highlighted?.classList.add("drop-target");
+ };
+ const position=(x,y)=>{
+  if(!ghost)return;const r=ghost.getBoundingClientRect();
+  ghost.style.left=(x-r.width/2)+"px";ghost.style.top=(y-r.height/2)+"px";
  };
  const removeListeners=()=>{
   window.removeEventListener("pointermove",onMove,true);
   window.removeEventListener("pointerup",onUp,true);
   window.removeEventListener("pointercancel",onCancel,true);
   window.removeEventListener("mouseup",onMouseUp,true);
-  window.removeEventListener("blur",onBlur,true);
+  window.removeEventListener("blur",cancel,true);
   window.removeEventListener("keydown",onKeydown,true);
   document.removeEventListener("visibilitychange",onVisibility);
  };
  const clear=()=>{
-  const pointerId=press?.id,wasDraggable=press?.wasDraggable;
-  clearTimeout(timer);timer=null;removeListeners();
-  if(pointerId!==undefined){
-   try{if(sprite.hasPointerCapture(pointerId))sprite.releasePointerCapture(pointerId)}catch{}
-  }
-  ghost?.remove();ghost=null;
-  card.classList.remove("roster-moving");
-  document.body.classList.remove("roster-grabbing");
-  if(wasDraggable!==undefined&&card.isConnected)card.draggable=wasDraggable;
-  active=false;press=null;
+  const id=press?.id;removeListeners();highlight(null);
+  if(id!==undefined){try{if(card.hasPointerCapture(id))card.releasePointerCapture(id)}catch{}}
+  ghost?.remove();ghost=null;card.classList.remove("roster-moving");
+  document.body.classList.remove("roster-grabbing");active=false;press=null;
  };
- const cancel=()=>{
-  const wasActive=active;
-  clear();
-  // While dragging, DOM order is only a visual preview. The persistent
-  // student IDs and roster order remain unchanged until pointerup.
-  if(wasActive)renderStudentStrip();
- };
+ const cancel=()=>{const restore=active;clear();if(restore)renderStudentStrip()};
  const onUp=e=>{
   if(!press||e.pointerId!==press.id)return;
-  const ids=active?order().map(el=>el.dataset.studentId):null;
-  clear();
-  if(ids){
-   e.preventDefault();
-   // Also restores the original DOM when no move occurred or confirm was cancelled.
+  const x=Number.isFinite(e.clientX)?e.clientX:press.x,y=Number.isFinite(e.clientY)?e.clientY:press.y;
+  const dragged=active,seat=dragged?seatAt(x,y):null,reorder=dragged&&!seat&&inRoster(x,y);
+  const ids=reorder?order().map(c=>c.dataset.studentId):null,studentId=card.dataset.studentId;
+  const excluded=card.classList.contains("assignment-excluded");
+  clear();if(!dragged)return;
+  e.preventDefault();ignoreClick=true;setTimeout(()=>{ignoreClick=false},0);
+  if(seat){
+   if(excluded){renderStudentStrip();setAssignmentStatus("배치 제외 학생입니다. 먼저 참가 버튼을 눌러 주세요.")}
+   else assignFixedSeat(studentId,seat.dataset.seatId);
+  }else if(reorder){
    if(!reorderStudentsByIds(ids))renderStudentStrip();
-  }
+  }else renderStudentStrip();
  };
  const onMouseUp=e=>{
-  // Fallback for browsers that suppress pointerup after a native drag attempt.
-  if(!press||press.pointerType!=="mouse"||e.button!==0)return;
-  onUp({pointerId:press.id,preventDefault:()=>e.preventDefault()});
+  if(press&&press.pointerType==="mouse"&&e.button===0)
+   onUp({pointerId:press.id,clientX:e.clientX,clientY:e.clientY,preventDefault:()=>e.preventDefault()});
  };
  const onCancel=e=>{if(press&&e.pointerId===press.id)cancel()};
- const onBlur=()=>cancel();
  const onVisibility=()=>{if(document.hidden)cancel()};
  const onKeydown=e=>{if(press&&e.key==="Escape"){e.preventDefault();cancel()}};
  const onMove=e=>{
   if(!press||e.pointerId!==press.id)return;
-  // Missed release (for example, crossing an embedded frame)? Never leave a
-  // suspended card behind when the next mousemove has no pressed buttons.
+  if(!card.isConnected){cancel();return}
   if(press.pointerType==="mouse"&&(e.buttons&1)===0){
-   onUp({pointerId:press.id,preventDefault:()=>{}});
-   return;
+   onUp({pointerId:press.id,clientX:e.clientX,clientY:e.clientY,preventDefault:()=>{}});return;
   }
   press.x=e.clientX;press.y=e.clientY;
   if(!active){
-   if(Math.hypot(e.clientX-press.startX,e.clientY-press.startY)>9)cancel();
-   return;
+   if(Math.hypot(e.clientX-press.startX,e.clientY-press.startY)<7)return;
+   active=true;card.classList.add("roster-moving");document.body.classList.add("roster-grabbing");
+   ghost=document.createElement("div");ghost.className="roster-ghost";
+   const n=document.createElement("span");n.className="roster-ghost-number";
+   n.textContent=card.querySelector(".shared-student-number")?.textContent||"";
+   const name=document.createElement("strong");name.className="roster-ghost-name";
+   name.textContent=card.querySelector(".shared-student-name")?.textContent||"";
+   ghost.append(n,name);ghost.setAttribute("aria-hidden","true");document.body.append(ghost);
   }
-  e.preventDefault();
-  positionGhost(e.clientX,e.clientY);
-  const bounds=container.getBoundingClientRect();
-  if(e.clientX<bounds.left+36)container.scrollLeft-=20;
-  else if(e.clientX>bounds.right-36)container.scrollLeft+=20;
-  // Only reorder while near the card row, but keep the ghost following the
-  // pointer everywhere else.
-  if(e.clientY<bounds.top-12||e.clientY>bounds.bottom+20)return;
-  const others=order().filter(item=>item!==card);
-  const before=others.find(item=>e.clientX<item.getBoundingClientRect().left+item.getBoundingClientRect().width/2);
-  const target=before?others.indexOf(before):others.length;
-  const desired=[...others];desired.splice(target,0,card);
-  // Keep the pressed card itself in the DOM. Moving that element via
-  // insertBefore drops pointer capture in several browsers. Reposition its
-  // neighbours instead and commit IDs only on release.
+  e.preventDefault();position(e.clientX,e.clientY);
+  const seat=seatAt(e.clientX,e.clientY);highlight(seat);
+  if(seat||!inRoster(e.clientX,e.clientY))return;
+  const b=container.getBoundingClientRect();
+  if(e.clientX<b.left+36)container.scrollLeft-=20;
+  else if(e.clientX>b.right-36)container.scrollLeft+=20;
+  const others=order().filter(c=>c!==card);
+  const before=others.find(c=>e.clientX<c.getBoundingClientRect().left+c.getBoundingClientRect().width/2);
+  const desired=[...others];desired.splice(before?others.indexOf(before):others.length,0,card);
+  // Move neighbours, never the captured card, so pointerup keeps working.
   for(let i=desired.length-1;i>=0;i--){
-   const item=desired[i];
-   if(item===card)continue;
+   const item=desired[i];if(item===card)continue;
    const next=desired[i+1]||null;
    if(item.nextSibling!==next)container.insertBefore(item,next);
   }
  };
- sprite.addEventListener("pointerdown",e=>{
+ card.addEventListener("pointerdown",e=>{
   if(press||(e.pointerType==="mouse"&&e.button!==0)||e.isPrimary===false)return;
-  press={id:e.pointerId,pointerType:e.pointerType,
-   startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,
-   wasDraggable:card.draggable};
-  // Disable native seat dragging for a press *on the avatar* only.
-  // Dragging the card by its name or background still assigns a fixed seat.
-  card.draggable=false;
+  if(e.target.closest("button,input,select,textarea"))return;
+  press={id:e.pointerId,pointerType:e.pointerType,startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY};
   e.preventDefault();
-  e.stopPropagation();
-  try{sprite.setPointerCapture(e.pointerId)}catch{}
+  try{card.setPointerCapture(e.pointerId)}catch{}
   window.addEventListener("pointermove",onMove,true);
   window.addEventListener("pointerup",onUp,true);
   window.addEventListener("pointercancel",onCancel,true);
   window.addEventListener("mouseup",onMouseUp,true);
-  window.addEventListener("blur",onBlur,true);
+  window.addEventListener("blur",cancel,true);
   window.addEventListener("keydown",onKeydown,true);
   document.addEventListener("visibilitychange",onVisibility);
-  timer=setTimeout(()=>{
-   if(!press||!card.isConnected)return cancel();
-   active=true;
-   card.classList.add("roster-moving");
-   document.body.classList.add("roster-grabbing");
-   // Text-only drag preview: never clip the name beneath a sprite.
-   ghost=document.createElement("div");ghost.className="roster-ghost";
-   const badge=document.createElement("span");badge.className="roster-ghost-number";
-   badge.textContent=card.querySelector(".shared-student-number")?.textContent||"";
-   const name=document.createElement("strong");name.className="roster-ghost-name";
-   name.textContent=card.querySelector(".shared-student-name")?.textContent||"";
-   ghost.append(badge,name);ghost.setAttribute("aria-hidden","true");
-   document.body.append(ghost);
-   positionGhost(press.x,press.y);
-  },390);
  });
- // Browser dragstart is a last-resort fallback; normal fixed-seat drag from
- // the rest of the card is still allowed.
- card.addEventListener("dragstart",e=>{if(press)e.preventDefault()},true);
+ card.addEventListener("dragstart",e=>e.preventDefault(),true);
+ card.addEventListener("click",e=>{
+  if(!ignoreClick)return;e.preventDefault();e.stopImmediatePropagation();ignoreClick=false;
+ },true);
 }
 /* Same name keeps its student ID. A changed name never does unless the teacher links it here. */
 function rosterChangePlan(oldStudents,names){
@@ -1105,7 +1083,8 @@ function removeSelectedStudent(){
 function assignFixedSeat(studentId,fixedSeatId){
   if(historyView)return;
   const student=studentById(studentId);if(!student||!usableCells().some(c=>c.id===fixedSeatId))return;
-  classState.students.forEach(s=>{if(s.id!==studentId&&s.fixedSeatId===fixedSeatId)s.fixedSeatId=null});
+  const owner=classState.students.find(s=>s.id!==studentId&&s.fixedSeatId===fixedSeatId);
+   if(owner){setAssignmentStatus(owner.name+" 학생의 고정석입니다. 먼저 고정 해제 버튼을 눌러 주세요.");renderStudentStrip();return}
   student.fixedSeatId=fixedSeatId;invalidatePreview(`${student.name} 학생의 고정석을 설정했습니다.`);applyRuleGating();saveState();renderStudentStrip();renderStudentInspector();
 }
 function clearFixedSeat(student){
@@ -1297,7 +1276,7 @@ function renderStudentStrip(){
     card.role="button";card.tabIndex=0;
     card.dataset.studentId=student.id;
     card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
-    if(!historyView&&!excluded)card.draggable=true;
+    // Pointer-based drag handles both roster ordering and fixed seats.
     const badgeNumber=String(index+1);
     const numberTitle=classState.ui.numberMode==="ordered"?"출석번호":"명단 순서 · 성적관리의 기존 출석번호 확인 필요";
     const statusMarkup=historyView
@@ -1315,14 +1294,11 @@ function renderStudentStrip(){
        if(reorderStudentsByIds(ids))document.querySelector(`#studentCards [data-student-id="${CSS.escape(student.id)}"]`)?.focus();
       }else if(event.key==="Enter"||event.key===" "){event.preventDefault();card.click()}
     };
-    if(!historyView)bindRosterLongPress(card);
+    if(!historyView)bindRosterDrag(card);
     if(!historyView)card.querySelector("button.shared-student-status").onclick=event=>{event.stopPropagation();toggleAssignmentParticipation(student)};
     if(!historyView)card.querySelector("button.shared-student-status").onclick=event=>{event.stopPropagation();toggleAssignmentParticipation(student)};
     if(!historyView){
       card.oncontextmenu=event=>{event.preventDefault();toggleAssignmentParticipation(student)};
-      if(!excluded){
-        card.ondragstart=event=>{if(event.target?.closest(".shared-student-status")){event.preventDefault();return}event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("application/x-student-id",student.id);event.dataTransfer.setData("text/plain",student.id)};
-      }
     }
     root.appendChild(card);
   });
