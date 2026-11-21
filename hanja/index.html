@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261121-unified-hanja-header">
+<link rel="stylesheet" href="styles.css?v=20261121-brand-size-align">
 <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-modern-hanja-roster">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -19,7 +19,7 @@
         </a>
         <strong>한자매니저</strong>
       </div>
-      <span id="saveStatus">한자와 한자어로 만드는 우리 반 수업</span>
+      <span id="saveStatus" role="status" aria-live="polite"></span>
     </div>
     <nav class="hanja-header-modes" aria-label="한자 데이터 종류">
       <button class="toolbtn on" type="button" data-type="single">단일 한자</button>
