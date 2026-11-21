@@ -85,6 +85,48 @@ async function setRoster(p,names){
   await p.click('#rosterChangeApply');
   await wait(200);
   let frame;
+  await step('학생 목록 스크롤바는 넘칠 때만 보이고 카드를 덮지 않으며 키보드로도 움직인다',async()=>{
+   await openSeating(p);
+   const scroller=p.locator('#studentCards'),track=p.locator('#studentScrollTrack');
+   await p.waitForFunction(()=>document.querySelector('#studentCards').clientWidth>0);
+   assert.equal(await track.isVisible(),false,'명단이 화면에 들어가면 스크롤바 숨김');
+   await p.evaluate(()=>{
+     document.querySelector('#studentCards').style.width='250px';
+     document.querySelector('#studentScrollTrack').style.width='250px';
+   });
+   try{
+     await p.waitForFunction(()=>!document.getElementById('studentScrollTrack').hidden);
+     const geo=await p.evaluate(()=>{
+       const cards=document.getElementById('studentCards'),track=document.getElementById('studentScrollTrack');
+       return{overflow:cards.scrollWidth>cards.clientWidth+10,
+         cardBottom:cards.querySelector('.student-card').getBoundingClientRect().bottom,
+         trackTop:track.getBoundingClientRect().top,
+         trackBottom:track.getBoundingClientRect().bottom,
+         stripBottom:document.querySelector('#teacherScreen .student-strip').getBoundingClientRect().bottom};
+     });
+     assert.ok(geo.overflow,'스크롤이 실제 필요함');
+     assert.ok(geo.trackTop>=geo.cardBottom,'스크롤바가 학생 카드를 덮지 않음');
+     assert.ok(geo.stripBottom>=geo.trackBottom,'트랙이 패널 아래로 튀어나오지 않음');
+     await track.click({position:{x:225,y:9}});
+     await p.waitForFunction(()=>document.getElementById('studentCards').scrollLeft>0);
+     await track.focus();
+     await p.keyboard.press('Home');
+     assert.equal(await scroller.evaluate(e=>e.scrollLeft),0);
+     await p.keyboard.press('End');
+     assert.ok(await scroller.evaluate(e=>e.scrollLeft)>0,'키보드 End 작동');
+   }finally{
+     await p.evaluate(()=>{
+       document.querySelector('#studentCards').style.removeProperty('width');
+       document.querySelector('#studentScrollTrack').style.removeProperty('width');
+     });
+   }
+   await p.waitForFunction(()=>document.getElementById('studentScrollTrack').hidden);
+   const leftover=await p.evaluate(()=>{
+     const strip=document.querySelector('#teacherScreen .student-strip'),cards=document.querySelector('#studentCards');
+     return strip.getBoundingClientRect().bottom-cards.getBoundingClientRect().bottom;
+   });
+   assert.ok(leftover<22,'남는 하단 공간이 과도함: '+leftover);
+  });
   await step('성적을 입력하면 명단과 연결된다',async()=>{
    frame=await openGrades(p);
    await frame.locator('.nav[data-page="assessments"]').click();

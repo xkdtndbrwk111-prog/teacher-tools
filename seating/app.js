@@ -1003,6 +1003,74 @@ function bindStudentStripWheel(){
     if(scroller.scrollLeft!==before)event.preventDefault();
   },{passive:false});
 }
+// A permanent scrollbar independent of platform overlay-scrollbar preferences.
+// The native card list remains scrollable by wheel, trackpad, touch and keyboard.
+function bindStudentStripScrollbar(){
+  const scroller=$("studentCards"),track=$("studentScrollTrack"),thumb=$("studentScrollThumb");
+  if(!scroller||!track||!thumb||track.dataset.bound==="1")return;
+  track.dataset.bound="1";
+  let pointer=null,offset=0,formerBehavior="",pending=false;
+  const maxScroll=()=>Math.max(0,scroller.scrollWidth-scroller.clientWidth);
+  const sync=()=>{
+    const max=maxScroll(),overflow=max>1&&scroller.clientWidth>0;
+    track.hidden=!overflow;
+    if(!overflow){
+      track.setAttribute("aria-valuenow","0");
+      thumb.style.width="100%";thumb.style.transform="translateX(0px)";return;
+    }
+    const width=track.clientWidth||scroller.clientWidth;
+    const thumbWidth=Math.max(52,Math.min(width,width*scroller.clientWidth/scroller.scrollWidth));
+    const fraction=Math.max(0,Math.min(1,scroller.scrollLeft/max));
+    thumb.style.width=thumbWidth+"px";
+    thumb.style.transform="translateX("+fraction*(width-thumbWidth)+"px)";
+    track.setAttribute("aria-valuenow",String(Math.round(fraction*100)));
+    track.setAttribute("aria-valuetext",Math.round(fraction*100)+"퍼센트 이동");
+  };
+  const schedule=()=>{if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;sync()})};
+  const setAt=x=>{
+    if(track.hidden)return;
+    const rect=track.getBoundingClientRect(),thumbWidth=thumb.offsetWidth;
+    const travel=Math.max(1,rect.width-thumbWidth);
+    const ratio=Math.min(1,Math.max(0,(x-rect.left-offset)/travel));
+    scroller.scrollLeft=ratio*maxScroll();sync();
+  };
+  track.addEventListener("pointerdown",event=>{
+    if((event.pointerType==="mouse"&&event.button!==0)||track.hidden)return;
+    event.preventDefault();
+    const rect=thumb.getBoundingClientRect();
+    offset=thumb.contains(event.target)?event.clientX-rect.left:rect.width/2;
+    formerBehavior=scroller.style.scrollBehavior;
+    scroller.style.scrollBehavior="auto";
+    pointer=event.pointerId;
+    track.setPointerCapture?.(event.pointerId);
+    setAt(event.clientX);
+  });
+  track.addEventListener("pointermove",event=>{if(pointer===event.pointerId)setAt(event.clientX)});
+  const end=event=>{if(pointer!==event.pointerId)return;pointer=null;scroller.style.scrollBehavior=formerBehavior;sync()};
+  track.addEventListener("pointerup",end);track.addEventListener("pointercancel",end);
+  track.addEventListener("lostpointercapture",()=>{
+    if(pointer!==null){pointer=null;scroller.style.scrollBehavior=formerBehavior;sync()}
+  });
+  track.addEventListener("keydown",event=>{
+    const max=maxScroll();if(!max)return;
+    let next=scroller.scrollLeft;
+    switch(event.key){
+      case "ArrowLeft":next-=Math.max(45,scroller.clientWidth*.12);break;
+      case "ArrowRight":next+=Math.max(45,scroller.clientWidth*.12);break;
+      case "PageUp":next-=scroller.clientWidth*.85;break;
+      case "PageDown":next+=scroller.clientWidth*.85;break;
+      case "Home":next=0;break;
+      case "End":next=max;break;
+      default:return;
+    }
+    event.preventDefault();scroller.scrollLeft=Math.max(0,Math.min(max,next));sync();
+  });
+  scroller.addEventListener("scroll",sync,{passive:true});
+  if(window.ResizeObserver){const resize=new ResizeObserver(schedule);resize.observe(scroller);resize.observe(track)}
+  window.addEventListener("resize",schedule);
+  scroller.addEventListener("student-roster-rendered",schedule);
+  schedule();
+}
 function toggleAssignmentParticipation(student){
   if(historyView||!student)return;
   student.assignmentExcluded=student.assignmentExcluded!==true;
@@ -1051,6 +1119,8 @@ function renderStudentStrip(){
   if(!historyView&&$("targetStudentCount"))$("targetStudentCount").value=classState.students.length;
 
   bindStudentStripWheel();
+  bindStudentStripScrollbar();
+  root.dispatchEvent(new Event("student-roster-rendered"));
   ensureStudentGlassesAssets();refreshStudentPreviewLayers();
 }
 function renderStudentInspector(){

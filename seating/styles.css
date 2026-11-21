@@ -749,3 +749,40 @@ html.tt-manager-theme #teacherScreen .seating-student-card.assignment-excluded .
  #teacherScreen .seating-student-card .shared-student-sprite::after{animation:none!important;background-position:0 0}
  #teacherScreen .seating-student-card .shared-student-sprite::after{background-position:0 3px}
 }
+
+/* V6.26: content-sized roster and a separate scrollbar immune to OS auto-hide. */
+@media (min-width:1001px){
+ #teacherScreen .studio{grid-template-rows:minmax(0,1fr) auto!important}
+ #teacherScreen .studio.student-collapsed{grid-template-rows:minmax(0,1fr) 42px!important}
+}
+@media (max-width:1000px){
+ #teacherScreen .studio{grid-template-rows:minmax(560px,70vh) auto auto!important}
+ #teacherScreen .studio.student-collapsed{grid-template-rows:minmax(560px,70vh) auto 42px!important}
+}
+#teacherScreen .student-strip{height:auto!important;min-height:0!important;padding:4px 10px 5px!important}
+#teacherScreen .student-strip-head{margin-bottom:3px!important}
+#teacherScreen .student-cards{
+ padding:0 1px!important;scrollbar-width:none!important;
+ scroll-behavior:auto!important;min-height:0!important
+}
+#teacherScreen .student-cards::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+#teacherScreen .student-scroll-track{
+ position:relative;display:block;width:100%;height:18px;box-sizing:border-box;
+ margin-top:4px;padding:2px;border:1px solid #61738e;border-radius:9px;
+ background:#111c2f;touch-action:none;cursor:pointer
+}
+#teacherScreen .student-scroll-track[hidden],
+#teacherScreen .studio.student-collapsed .student-scroll-track{display:none!important}
+#teacherScreen .student-scroll-thumb{
+ position:relative;display:block;height:12px;max-width:100%;box-sizing:border-box;
+ border-radius:7px;background:#99afce;border:1px solid #c3d2e9;
+ box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:grab
+}
+#teacherScreen .student-scroll-track:active .student-scroll-thumb{cursor:grabbing}
+#teacherScreen .student-scroll-track:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+html.tt-manager-theme #teacherScreen .student-scroll-track{
+ background:var(--cm-panel)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen .student-scroll-thumb{
+ background:var(--cm-panel-emphasis,#99afce)!important;border-color:var(--cm-border)!important
+}

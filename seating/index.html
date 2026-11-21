@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>교실 매니저</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=20261121-group-status-1">
+  <link rel="stylesheet" href="styles.css?v=20261121-roster-scroll-2">
   <link rel="stylesheet" href="pe-v1.css?v=20261115-step10-menu">
   <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css">
@@ -235,7 +235,12 @@
             <button id="fillStudentCount" class="strip-add target-fill" type="button">총원 맞추기</button>
           </div>
         </div>
-        <div id="studentCards" class="student-cards"></div>
+        <div id="studentCards" class="student-cards" tabindex="0" role="region" aria-label="학생 카드 목록 · 가로 스크롤"></div>
+        <div id="studentScrollTrack" class="student-scroll-track" role="scrollbar" tabindex="0"
+          aria-label="학생 카드 가로 스크롤바" aria-controls="studentCards"
+          aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <div id="studentScrollThumb" class="student-scroll-thumb"></div>
+        </div>
       </section>
     </div>
   </section>
