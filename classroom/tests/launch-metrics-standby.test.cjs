@@ -34,11 +34,11 @@ test("standby tracker performs ZERO network requests",()=>{
  assert.equal(ctx.window.TTLaunchMetrics,undefined);
 });
 
-test("each website entrypoint loads the inactive switch before the tracker",()=>{
+test("website uses V2 tracker while refusing to load launch switch before release",()=>{
  for(const p of ["index.html","seating/index.html","hanja/index.html"]){
-  const html=read(p),conf=html.indexOf("launch-metrics-config.js?");
-  const tracker=html.indexOf("usage-stats.js?v=launch-v2-standby");
-  assert.ok(conf>=0&&tracker>conf,p);
+  const html=read(p);
+  assert.ok(html.includes("usage-stats.js?v=launch-v2-standby"),p);
+  assert.ok(!html.includes("launch-metrics-config.js?"),p);
   assert.ok(!html.includes("usage-stats.js?v=usage-1"),p);
  }
 });
