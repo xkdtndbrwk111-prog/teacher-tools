@@ -502,6 +502,13 @@ function createAppCard(app) {
 
     if (app.download) {
       card.setAttribute("download", "");
+      // This card has no published URL until the official Hoja Board release.
+      // The helper itself is disabled until launch day; no prelaunch counts.
+      if (app.id === "dashboard") {
+        card.addEventListener("click", () => {
+          window.TTLaunchMetrics?.recordOfficialDownload?.();
+        });
+      }
     }
   }
 
