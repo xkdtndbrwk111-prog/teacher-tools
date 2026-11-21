@@ -1,0 +1,28 @@
+name: Launch metrics standby guard
+on:
+  pull_request:
+    paths:
+      - 'launch-metrics-config.js'
+      - 'usage-stats.js'
+      - 'index.html'
+      - 'hub.js'
+      - 'seating/index.html'
+      - 'hanja/index.html'
+      - 'docs/usage-migrations/**'
+      - 'classroom/tests/launch-metrics-standby.test.cjs'
+      - '.github/workflows/launch-metrics-standby.yml'
+permissions:
+  contents: read
+jobs:
+  standby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node --check launch-metrics-config.js
+          node --check usage-stats.js
+          node --check hub.js
+          node --test classroom/tests/launch-metrics-standby.test.cjs
