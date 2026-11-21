@@ -20,7 +20,7 @@
   const draft=await store.read(`TT_STAGE03_${cfg.installId}_${schoolYear()}`);
   const numbers=new Map((draft?.memberships||[]).filter(m=>m.active&&m.stage03SeatingId).map(m=>[m.stage03SeatingId,m.number]));
   let next=Math.max(0,...numbers.values());
-  return classState.students.map(s=>({id:s.id,name:s.name,gender:s.gender,excluded:Boolean(s.assignmentExcluded),number:numbers.get(s.id)??++next}));
+  return classState.students.map((s,index)=>({id:s.id,name:s.name,gender:s.gender,excluded:Boolean(s.assignmentExcluded),number:classState.ui?.numberMode==="ordered"?index+1:(numbers.get(s.id)??++next)}));
  }
  let sending=false;
  // Must start directly inside a click, or the browser blocks the window.

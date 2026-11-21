@@ -16,7 +16,7 @@
   // Read live seating state first; only project strict ID-based view, never names as keys.
   const s=classState;
   if(!s||!Array.isArray(s.students))throw Error('자리배치 학생명단을 찾을 수 없습니다.');
-  return {type:'TT_STAGE03_ROSTER',installId:TEST_INSTALL_ID,sourceInstanceId:TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId,className:s.className||'우리 반',students:s.students.map(x=>({id:x.id,name:x.name,gender:x.gender,visual:x.visual})),traits:window.__TT_PE_TRAITS?.snapshot()||null};
+  return {type:'TT_STAGE03_ROSTER',installId:TEST_INSTALL_ID,sourceInstanceId:TEST_INSTALL_ID+'-'+window.__TT_STAGE031_CLASS.activeId,className:s.className||'우리 반',numberMode:s.ui?.numberMode==="ordered"?"ordered":"legacy",students:s.students.map((x,index)=>({id:x.id,name:x.name,gender:x.gender,visual:x.visual,number:index+1})),traits:window.__TT_PE_TRAITS?.snapshot()||null};
  }
  function sendRoster(){if(!frame||!bridgeReady)return;try{frame.contentWindow.postMessage(snapshot(),location.origin)}catch(e){setStatus('⚠ 명단 전달 실패: '+e.message,true)}}
  function setStatus(s,error=false){const el=document.getElementById('tt-stage03-status');if(el){el.textContent=s;el.classList.toggle('is-error',error)}}

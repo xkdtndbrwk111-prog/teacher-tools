@@ -215,3 +215,17 @@
   }
   .shared-student-sprite::after{background-position:0 3px}
 }
+
+/* Card number and participation take the left corner, leaving sprite space free. */
+#teacherScreen .seating-student-card .shared-student-number{
+ position:absolute;left:4px;top:4px;z-index:6;min-width:28px;max-width:38px;
+ padding:3px 4px;border:1px solid #738dce;border-radius:6px;background:#5266ad;
+ color:#fff;font-size:11px;font-weight:900;line-height:1.3;box-sizing:border-box;pointer-events:none
+}
+#teacherScreen .seating-student-card .shared-student-status{top:29px!important;z-index:6}
+#teacherScreen .seating-student-card .shared-student-sprite{margin-left:10px;touch-action:none}
+#teacherScreen .seating-student-card.roster-moving{opacity:.4!important}
+.roster-grabbing{cursor:grabbing!important}
+.roster-ghost{position:fixed!important;z-index:9999!important;opacity:.85!important;pointer-events:none!important;transform:scale(1.04);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#teacherScreen .seating-student-card:focus-visible{outline:2px solid #facc15;outline-offset:1px}
+#teacherScreen .inspector-attendance-number{display:inline-block;margin:0 0 6px;padding:2px 7px;border-radius:6px;background:#dbeafe;color:#1e3a8a;font-size:12px;font-weight:900}

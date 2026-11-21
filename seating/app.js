@@ -140,7 +140,7 @@ function defaultState(){
     teacherAvatar:{gender:"female",skin:0,eyes:0,hair:0,hairColor:0,glasses:0,beard:0,outfit:2},
     assignments:[],
     history:[],
-    ui:{dockCollapsed:false,studentStripCollapsed:false}
+    ui:{dockCollapsed:false,studentStripCollapsed:false,initialRosterApplied:false,numberMode:"legacy"}
   };
 }
 function normalizeLayout(layout,base){
@@ -189,7 +189,10 @@ function migrateState(saved){
     seatIds.forEach(id=>usedGroupSeats.add(id));
     return{id:g.id||nowId("group"),name:String(g.name||`${index+1}모둠`).slice(0,20),color:/^#[0-9a-fA-F]{6}$/.test(g.color||"")?g.color:GROUP_COLORS[index%GROUP_COLORS.length],seatIds};
   }).filter(g=>g.seatIds.length);
-  state.ui={...base.ui,...(saved?.ui||{})};
+  state.ui={...base.ui,...(saved?.ui||{}),
+ initialRosterApplied:typeof saved?.ui?.initialRosterApplied==="boolean"?saved.ui.initialRosterApplied:state.students.length>0,
+ numberMode:saved?.ui?.numberMode==="ordered"?"ordered":"legacy"
+};
   const rawHistory=Array.isArray(saved?.history)?saved.history:[];
   state.history=rawHistory.map((h,index)=>{
     const legacyCommon={id:h.id||`legacy-${index}-${h.createdAt||index}`,round:Number(h.round)||index+1,createdAt:h.createdAt||new Date().toISOString(),assignments:deepCopy(h.assignments)};
@@ -790,7 +793,83 @@ function resetLayout(){
   const rows=4,cols=8;classState.layout={rows,cols,cells:defaultPairedCells(rows,cols)};classState.groups=[];pruneFixedSeats();invalidateConfirmed("기본 4×8 · 2인 짝 레이아웃으로 초기화했습니다.");saveState();renderGroups();applyRuleGating();
 }
 
-function renderStudentsInput(){$("studentInput").value=classState.students.map(s=>s.name).join("\n")}
+function renderStudentsInput(){
+ $("studentInput").value=classState.students.map(s=>s.name).join("\n");
+ const isNew=classState.ui.initialRosterApplied!==true;
+ $("initialRosterBlock").classList.toggle("hidden",!isNew);
+ $("registeredRosterHint").classList.toggle("hidden",isNew);
+ $("legacyNumberHint").classList.toggle("hidden",isNew||classState.ui.numberMode==="ordered");
+}
+function enableRosterNumbers(){
+ if(historyView||classState.ui.numberMode==="ordered"||!classState.students.length)return;
+ if(!confirm("현재 학생 카드 순서를 출석번호 1번부터 적용할까요?\n기존 성적·코인과 학생 ID는 보존되지만 기존 출석번호는 변경될 수 있습니다."))return;
+ classState.ui.numberMode="ordered";
+ saveState();renderStudentsInput();renderStudentStrip();renderStudentInspector();
+ setAssignmentStatus("학생 카드 순서를 출석번호로 연결했습니다.",true);
+ window.__TT_STAGE031_SEND_ROSTER?.();
+}
+function reorderStudentsByIds(ids){
+ if(historyView||document.body.classList.contains("pe-mode"))return false;
+ const previous=classState.students,oldIds=previous.map(s=>s.id);
+ if(ids.length!==oldIds.length||new Set(ids).size!==oldIds.length||ids.some(id=>!oldIds.includes(id)))return false;
+ if(ids.every((id,i)=>id===oldIds[i]))return false;
+ if(classState.ui.numberMode!=="ordered"){
+  if(!confirm("처음 학생 번호 순서를 변경합니다.\n현재 카드 순서가 출석번호로 확정되며, 성적관리의 기존 번호가 변경될 수 있습니다.\n학생 ID·성적·코인은 그대로 유지됩니다. 계속할까요?"))return false;
+  classState.ui.numberMode="ordered";
+ }
+ const byId=new Map(previous.map(st=>[st.id,st]));
+ classState.students=ids.map(id=>byId.get(id));
+ saveState();renderStudentsInput();renderStudentStrip();renderStudentInspector();
+ setAssignmentStatus("학생 순서와 출석번호를 변경했습니다. 기존 기록과 확정 자리배치는 유지됩니다.",true);
+ window.__TT_STAGE031_SEND_ROSTER?.();
+ return true;
+}
+function bindRosterLongPress(card){
+ if(historyView||document.body.classList.contains("pe-mode"))return;
+ const sprite=card.querySelector(".shared-student-sprite"),container=$("studentCards");
+ if(!sprite)return;
+ let down=null,timer=null,active=false,ghost=null;
+ const order=()=>[...container.querySelectorAll(".seating-student-card")];
+ const cleanup=()=>{
+  clearTimeout(timer);timer=null;down=null;
+  if(ghost)ghost.remove();ghost=null;card.classList.remove("roster-moving");
+  document.body.classList.remove("roster-grabbing");active=false;
+  if(card.isConnected)card.draggable=true;
+ };
+ sprite.addEventListener("pointerdown",e=>{
+  if(e.button!==0||down)return;
+  down={id:e.pointerId,x:e.clientX,y:e.clientY};
+  timer=setTimeout(()=>{
+   if(!down||!card.isConnected)return;
+   active=true;card.draggable=false;card.classList.add("roster-moving");document.body.classList.add("roster-grabbing");
+   const box=card.getBoundingClientRect();ghost=card.cloneNode(true);ghost.classList.add("roster-ghost");
+   ghost.querySelector(".shared-student-status")?.remove();ghost.setAttribute("aria-hidden","true");
+   ghost.style.width=box.width+"px";ghost.style.height=box.height+"px";
+   ghost.style.left=(down.x-box.width/2)+"px";ghost.style.top=(down.y-box.height/2)+"px";
+   document.body.append(ghost);
+   try{sprite.setPointerCapture(e.pointerId)}catch{}
+  },390);
+ });
+ sprite.addEventListener("pointermove",e=>{
+  if(!down||e.pointerId!==down.id)return;
+  if(!active){if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>9){clearTimeout(timer);timer=null;down=null}return}
+  e.preventDefault();
+  if(ghost){const b=ghost.getBoundingClientRect();ghost.style.left=(e.clientX-b.width/2)+"px";ghost.style.top=(e.clientY-b.height/2)+"px"}
+  const bounds=container.getBoundingClientRect();
+  if(e.clientX<bounds.left+35)container.scrollLeft-=18;
+  else if(e.clientX>bounds.right-35)container.scrollLeft+=18;
+  const next=order().filter(item=>item!==card).find(item=>e.clientX<item.getBoundingClientRect().left+item.getBoundingClientRect().width/2);
+  if(next)container.insertBefore(card,next);else container.append(card);
+ });
+ sprite.addEventListener("pointerup",e=>{
+  if(!down||e.pointerId!==down.id)return;
+  const ids=active?order().map(item=>item.dataset.studentId):null;cleanup();
+  if(ids&&!reorderStudentsByIds(ids))renderStudentStrip();
+ });
+ sprite.addEventListener("pointercancel",e=>{
+  if(!down||e.pointerId!==down.id)return;const was=active;cleanup();if(was)renderStudentStrip();
+ });
+}
 /* Same name keeps its student ID. A changed name never does unless the teacher links it here. */
 function rosterChangePlan(oldStudents,names){
   const rest=[...oldStudents];
@@ -846,6 +925,7 @@ function askRosterLinks(plan,oldStudents){
 async function applyStudentNames(){
   if(historyView)return;
   const names=$("studentInput").value.split("\n").map(s=>s.trim()).filter(Boolean),old=[...classState.students];
+  if(classState.ui.initialRosterApplied!==true&&!names.length){alert("첫 등록에는 학생 이름을 한 명 이상 입력하세요.");return}
   const plan=rosterChangePlan(old,names);
   const duplicated=new Set(old.map(s=>s.name).filter((name,index,all)=>all.indexOf(name)!==index));
   if([...duplicated].some(name=>old.filter(s=>s.name===name).length!==names.filter(n=>n===name).length)){
@@ -863,6 +943,8 @@ async function applyStudentNames(){
   const ids=new Set(classState.students.map(s=>s.id)),validSeats=new Set(usableCells().map(c=>c.id));
   classState.students.forEach(s=>{s.apartFrom=[...new Set((s.apartFrom||[]).filter(id=>ids.has(id)&&id!==s.id))].slice(0,3);if(s.fixedSeatId&&!validSeats.has(s.fixedSeatId))s.fixedSeatId=null;if(!["A","B","C"].includes(s.balanceLevel))s.balanceLevel="none"});
   if(!classState.students.some(s=>s.id===selectedStudentId))selectedStudentId=classState.students[0]?.id||null;
+  if(classState.ui.initialRosterApplied!==true){classState.ui.numberMode="ordered"}
+  classState.ui.initialRosterApplied=true;
   if(reorderedOnly)setAssignmentStatus("학생 표시 순서만 변경했습니다. 기존 학생 ID·출석번호·확정 자리배치는 유지됩니다.");
   else invalidateConfirmed("명단이 바뀌어 기존 확정 배치를 해제했습니다.");
   saveState();renderStudentsInput();renderStudentStrip();renderStudentInspector();renderHistory();
@@ -879,6 +961,7 @@ function makeBlankStudent(name=nextPlaceholderStudentName()){
 function addStudentFromStrip(){
   if(historyView)return;
   const student=makeBlankStudent();classState.students.push(student);selectedStudentId=student.id;
+  if(classState.ui.initialRosterApplied!==true){classState.ui.initialRosterApplied=true;classState.ui.numberMode="ordered"}
   invalidateConfirmed(`${student.name}을 추가했습니다. 오른쪽 학생 속성에서 이름을 수정하세요.`);
   saveState();renderStudentsInput();renderStudentStrip();renderStudentInspector();activateDock("student");
   requestAnimationFrame(()=>{const input=$("studentNameEdit");if(input){input.focus();input.select()}});
@@ -895,6 +978,7 @@ function fillStudentsToTarget(){
   beginUndoBatch();
   for(let i=0;i<addCount;i++){const student=makeBlankStudent();classState.students.push(student);added.push(student)}
   selectedStudentId=added[0]?.id||selectedStudentId;
+  if(classState.ui.initialRosterApplied!==true){classState.ui.initialRosterApplied=true;classState.ui.numberMode="ordered"}
   invalidateConfirmed(`총원 ${target}명에 맞춰 ${addCount}명을 추가했습니다.`);
   persistStateOnly();endUndoBatch();
   renderStudentsInput();renderStudentStrip();renderStudentInspector();activateDock("student");
@@ -1100,12 +1184,25 @@ function renderStudentStrip(){
     card.dataset.studentId=student.id;
     card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
     if(!historyView&&!excluded)card.draggable=true;
+    const badgeNumber=String(index+1).padStart(2,"0");
+    const numberTitle=classState.ui.numberMode==="ordered"?"출석번호":"명단 순서 · 성적관리의 기존 출석번호 확인 필요";
     const statusMarkup=historyView
       ?`<small class="shared-student-status">${status}</small>`
       :`<button class="shared-student-status" type="button" aria-label="${escapeHtml(student.name)} ${excluded?"배치에 다시 포함":"배치에서 제외"}" title="클릭하면 ${excluded?"참가":"제외"}로 전환">${status}</button>`;
-    card.innerHTML=`<span class="shared-student-sprite" aria-hidden="true" data-student-roster-glasses="${visual.glasses}" style="background-image:url('${studentVisualFor(student,index)}');--student-glasses-image:${glassesSrc?`url('${glassesSrc}')`:"none"}"></span><span class="shared-student-name">${escapeHtml(student.name)}</span>${statusMarkup}`;
+    card.innerHTML=`<span class="shared-student-number" title="${numberTitle}">${badgeNumber}</span><span class="shared-student-sprite" aria-hidden="true" data-student-roster-glasses="${visual.glasses}" style="background-image:url('${studentVisualFor(student,index)}');--student-glasses-image:${glassesSrc?`url('${glassesSrc}')`:"none"}"></span><span class="shared-student-name">${escapeHtml(student.name)}</span>${statusMarkup}`;
     card.onclick=()=>{selectedStudentId=student.id;activateDock("student");renderStudentStrip();renderStudentInspector()};
-    card.onkeydown=event=>{if(event.target!==card)return;if(event.key==="Enter"||event.key===" "){event.preventDefault();card.click()}};
+    card.onkeydown=event=>{
+      if(event.target!==card)return;
+      if(event.altKey&&["ArrowLeft","ArrowRight"].includes(event.key)&&!historyView){
+       event.preventDefault();const ids=classState.students.map(s=>s.id),from=ids.indexOf(student.id);
+       const to=from+(event.key==="ArrowLeft"?-1:1);
+       if(from<0||to<0||to>=ids.length)return;
+       ids.splice(from,1);ids.splice(to,0,student.id);
+       if(reorderStudentsByIds(ids))document.querySelector(`#studentCards [data-student-id="${CSS.escape(student.id)}"]`)?.focus();
+      }else if(event.key==="Enter"||event.key===" "){event.preventDefault();card.click()}
+    };
+    if(!historyView)bindRosterLongPress(card);
+    if(!historyView)card.querySelector("button.shared-student-status").onclick=event=>{event.stopPropagation();toggleAssignmentParticipation(student)};
     if(!historyView)card.querySelector("button.shared-student-status").onclick=event=>{event.stopPropagation();toggleAssignmentParticipation(student)};
     if(!historyView){
       card.oncontextmenu=event=>{event.preventDefault();toggleAssignmentParticipation(student)};
@@ -1147,7 +1244,7 @@ function renderStudentInspector(){
   const glassesOptions=STUDENT_GLASSES.map(v=>`<option value="${v.id}" ${visual.glasses===v.id?"selected":""}>${v.label}</option>`).join("");
   const others=classState.students.filter(s=>s.id!==student.id);
   const apartSlots=Array.from({length:3},(_,slot)=>`<select data-apart-slot="${slot}" aria-label="떨어뜨릴 학생 ${slot+1}"><option value="">${slot+1}번 없음</option>${others.map(s=>`<option value="${s.id}" ${student.apartFrom[slot]===s.id?"selected":""}>${escapeHtml(s.name)}</option>`).join("")}</select>`).join("");
-  nameRoot.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>`;
+  nameRoot.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><span class="inspector-attendance-number">${String(studentIndex+1).padStart(2,"0")}번</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>`;
   root.innerHTML=`<div class="inspector-section student-visual-editor"><span class="inspector-label">외형 커스터마이즈</span><div class="student-visual-preview">${studentPreviewMarkup(student,studentIndex)}</div><div class="student-visual-grid"><label>캐릭터<select id="studentCharacter">${characterOptions}</select></label><label>머리색<select id="studentHair">${hairOptions}</select></label><label>옷 색상<select id="studentOutfit">${outfitOptions}</select></label><label>안경<select id="studentGlasses">${glassesOptions}</select></label></div></div>
     <div class="inspector-section"><span class="inspector-label">성별</span><div class="segmented"><button type="button" data-g="none" class="${student.gender==="none"?"on":""}">미지정</button><button type="button" data-g="male" class="${student.gender==="male"?"on":""}">남</button><button type="button" data-g="female" class="${student.gender==="female"?"on":""}">여</button></div></div>
     <div class="inspector-section"><span class="inspector-label">배치 균형 속성 · 비공개</span><div class="level-segment"><button type="button" data-level="A" class="${student.balanceLevel==="A"?"on":""}">빼어남</button><button type="button" data-level="B" class="${student.balanceLevel==="B"?"on":""}">우수함</button><button type="button" data-level="C" class="${student.balanceLevel==="C"?"on":""}">아름다움</button></div><button id="clearLevel" class="ghost full" type="button" style="margin-top:6px">평가 미지정</button></div>
@@ -3188,7 +3285,7 @@ function bindUI(){
   document.addEventListener("mouseup",endGroupPaint);document.addEventListener("mouseleave",endGroupPaint);
   document.querySelectorAll(".toolbtn").forEach(button=>button.onclick=()=>{if(historyView||groupEdit.active)return;paintTool=button.dataset.tool;document.querySelectorAll(".toolbtn").forEach(b=>b.classList.toggle("on",b===button))});
   document.querySelectorAll(".dock-tab").forEach(button=>button.onclick=()=>activateDock(button.dataset.tab));
-  $("resetLayout").onclick=resetLayout;$("applyStudents").onclick=applyStudentNames;
+  $("resetLayout").onclick=resetLayout;$("applyStudents").onclick=applyStudentNames;$("enableRosterNumbers").onclick=enableRosterNumbers;
   $("rowMinus").onclick=()=>changeGridDimension("rows",-1);$("rowPlus").onclick=()=>changeGridDimension("rows",1);$("colMinus").onclick=()=>changeGridDimension("cols",-1);$("colPlus").onclick=()=>changeGridDimension("cols",1);
   $("addStudent").onclick=addStudentFromStrip;$("fillStudentCount").onclick=fillStudentsToTarget;
   $("targetStudentCount").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();fillStudentsToTarget()}};

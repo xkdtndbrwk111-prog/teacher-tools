@@ -75,6 +75,15 @@ async function setRoster(p,names){
    assert.deepEqual(first.names,['기존학생']);assert.equal(first.registry.classes[0].name,'기존반');
    assert.equal(JSON.parse(await p.evaluate(k=>localStorage.getItem(k),LEGACY_SEAT)).className,'기존반');
   });
+  await step('기존 학급은 줄바꿈 명단 입력을 숨기고 학생 번호를 표시한다',async()=>{
+   await openSeating(p);
+   assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),true);
+   assert.equal(await p.locator('#registeredRosterHint').evaluate(el=>el.classList.contains('hidden')),false);
+   assert.equal(await p.locator('#legacyNumberHint').evaluate(el=>el.classList.contains('hidden')),false);
+   assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'01');
+   await p.locator('#studentCards .seating-student-card').first().click();
+   assert.match(await p.locator('#studentNameSlot').textContent(),/01번/);
+  });
   await step('다시 열어도 설치 ID와 자료가 유지된다',async()=>{
    await p.reload();await started(p);const again=await classInfo(p);
    assert.equal(again.installId,first.installId);assert.equal(again.activeId,first.activeId);assert.deepEqual(again.names,['기존학생']);
@@ -165,6 +174,20 @@ async function setRoster(p,names){
    await card.click({button:'right'});
    assert.equal(await excluded(),false);
   });
+  await step('카드 순서를 바꿔도 성적·학생 ID는 보존되고 번호만 변경된다',async()=>{
+   await openSeating(p);
+   const before=await p.evaluate(()=>classState.students.map(s=>s.id)),reverse=[...before].reverse();
+   assert.equal(await p.evaluate(ids=>reorderStudentsByIds(ids),reverse),true);
+   assert.deepEqual(await p.evaluate(()=>classState.students.map(s=>s.id)),reverse);
+   assert.equal(await p.evaluate(()=>classState.ui.numberMode),'ordered');
+   assert.equal(await p.locator('#legacyNumberHint').evaluate(el=>el.classList.contains('hidden')),true);
+   frame=await openGrades(p);await wait(500);
+   assert.deepEqual(await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value)),['60','70','80','90']);
+   await openSeating(p);
+   assert.equal(await p.evaluate(ids=>reorderStudentsByIds(ids),before),true);
+   frame=await openGrades(p);await wait(500);
+   assert.deepEqual(await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value)),['90','80','70','60']);
+  });
   await step('이름 수정과 추가를 함께 해도 같은 줄이면 성적이 이어진다',async()=>{
    await openSeating(p);await wait(300);
    await setRoster(p,['가온','나래2','다온','라온','전학생']);
@@ -220,11 +243,12 @@ async function setRoster(p,names){
    await p.click('#rosterChangeApply');await wait(300);
    frame=await openGrades(p);await wait(400);
    const hidden=await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value));
-   assert.deepEqual(hidden,['90','70','60','','']);
+   // Card-order numbering places the new student at their visible position.
+   assert.deepEqual(hidden,['90','','70','60','']);
    await frame.locator('.nav[data-page="classes"]').click();
    const row=frame.locator('.inactive-student-row');
    await row.waitFor();assert.match(await row.textContent(),/나래2.*성적 1건/);
-   await row.locator('select').selectOption({label:'6. 새학생'});
+   await row.locator('select').selectOption({label:'2. 새학생'});
    await row.locator('button').click();await wait(400);
    assert.equal(await frame.locator('.inactive-student-row').count(),0);
    await frame.locator('.nav[data-page="grades"]').click();await wait(300);
@@ -263,10 +287,14 @@ async function setRoster(p,names){
    await p.selectOption('#tt-class-select',secondId);await nav2;await started(p);
    const two=await classInfo(p);
    assert.equal(two.activeId,secondId);assert.notEqual(two.seatingKey,info.seatingKey);assert.deepEqual(two.names,[]);
+   assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),false);
+   assert.equal(await p.evaluate(()=>classState.ui.numberMode),'legacy');
    assert.equal(await p.evaluate(k=>Object.keys(JSON.parse(window.__TT_STORE.getItem(k)||'{}')).filter(x=>x!=='teamCount').length,two.peKey),0);
   });
   await step('모둠 균형 계산은 선택한 반의 능력치를 읽는다',async()=>{
    await setRoster(p,['하나','두리','세찬','네온']);await wait(200);
+   assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),true);
+   assert.equal(await p.evaluate(()=>classState.ui.numberMode),'ordered');
    const read=await p.evaluate(()=>{
     const c=window.__TT_STAGE031_CLASS,pe={},keys=[];
     const seats=classState.layout.cells.filter(x=>x.type!=='aisle'&&x.type!=='unused').slice(0,4).map(x=>x.id);
@@ -621,10 +649,12 @@ async function setRoster(p,names){
    assert.equal(await f.locator('#class-checks input').first().isChecked(),true);
    await c9.close();
   });
-  await step('번호를 고치면 성적표 순서가 따라가고 명단 순서는 번호를 바꾸지 않는다',async()=>{
+  await step('기존 레거시 학급은 수동 번호 편집을 유지하고 명단 정렬과 분리한다',async()=>{
    const {ctx:c10,p:p11}=await newContext();
    await p11.goto(BASE+'/seating/?section=seating');await started(p11);
    await setRoster(p11,['가온','나래','다온']);await p11.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p11.click('#rosterChangeApply');await wait(200);
+   // Explicit legacy class: grade numbers were independently set before card-order mode.
+   await p11.evaluate(()=>{classState.ui.numberMode='legacy';saveState()});
    let f=await openGrades(p11);
    await f.locator('.nav[data-page="classes"]').click();
    await f.locator('#edit-numbers').click();
@@ -808,7 +838,7 @@ async function setRoster(p,names){
    assert.equal(await f2.locator('input.grade-input').count(),0);
    await f2.locator('.nav[data-page="classes"]').click();
    assert.match(await f2.locator('.class-stage-student').first().textContent(),/올해학생/);
-   assert.equal(await f2.locator('#edit-numbers').isVisible(),true);
+   assert.equal(await f2.locator('#edit-numbers').isVisible(),false,'새 학급은 카드 순서가 출석번호의 기준');
    await c16.close();
   });
   await step('학생 화면 버튼은 칠판 위쪽 34% 아래에 있다',async()=>{
