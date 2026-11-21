@@ -147,7 +147,10 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    const data=fileValues('TT_DATA').slice(1).map(r=>r[1]).join('');
    const saved=JSON.parse(data);
    assert.deepEqual(saved.classes[0].seating.students.map(s=>s.name),['가온','나래','다온']);
-   assert.equal(Object.values(saved.classes[0].pe).find(x=>x?.traits)?.traits.leadership,4);
+   // The PE store can retain inactive student records. Verify the saved value by
+   // this class's current stable student ID, not by the first property in the map.
+   const activeStudentId=saved.classes[0].seating.students[0].id;
+   assert.equal(saved.classes[0].pe[activeStudentId]?.traits?.leadership,4);
   });
   await step('브라우저 저장은 바로, 구글 저장은 마지막 변경 5분 뒤에 된다',async()=>{
    google.files.clear();
