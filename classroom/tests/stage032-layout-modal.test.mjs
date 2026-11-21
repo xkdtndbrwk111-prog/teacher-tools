@@ -24,11 +24,11 @@ test('중복 이름 및 30개 제한·반 삭제 시 성적/좌석 삭제 경고
  assert.match(js,/classStore\.commit/);
  assert.match(js,/guardSnapshot\(\)/);
 });
-test('공통 작업공간·우측 패널·하단 학생목록은 화면 내용이 적어도 고정 격자',async()=>{
+test('공통 작업공간·우측 패널·하단 학생목록은 내용에 맞춘 높이',async()=>{
  const host=await read('host/grade-mount.css'),grade=await read('grades/mount-guard.css');
  assert.match(host,/#teacherScreen>\.studio\{display:grid!important;flex:1 1 auto!important;height:auto!important/);
- assert.match(host,/grid-template-columns:minmax\(0,1fr\) 340px!important;grid-template-rows:minmax\(0,1fr\) 158px!important/);
- assert.match(host,/\.student-strip\{grid-column:1\/-1!important;grid-row:2!important;height:158px!important/);
+ assert.match(host,/grid-template-columns:minmax\(0,1fr\) 340px!important;grid-template-rows:minmax\(0,1fr\) max-content!important/);
+ assert.match(host,/\.student-strip\{grid-column:1\/-1!important;grid-row:2!important;height:max-content!important;min-height:0!important;max-height:none!important/);
  assert.match(host,/\.student-collapsed>\.student-strip\{height:42px!important/);
  assert.match(grade,/#app\.teacher-screen\{display:flex!important;flex-direction:column!important;height:100%!important/);
  assert.match(grade,/#app>\.studio>\.workspace-column>\.workspace\{flex:1 1 auto!important;height:0!important/);
