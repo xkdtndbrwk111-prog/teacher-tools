@@ -8,6 +8,16 @@ const path=require('path');
 const repo=path.resolve(__dirname,'../..');
 const PORT=4197,BASE=`http://127.0.0.1:${PORT}`,CLIENT='123456-faketestclient.apps.googleusercontent.com';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function clickPrimary(p,id){
+ const button=p.locator('#'+id);
+ if(!await button.isVisible()){
+  const work=p.locator('#tt-hud-work-toggle');
+  if(!await work.isVisible())throw Error('작업 버튼에 접근할 수 없습니다: '+id);
+  await work.click();
+ }
+ await button.click();
+}
 const results=[];
 async function step(name,fn){
  try{await fn();results.push(true);console.log('PASS',name)}
@@ -179,9 +189,9 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    const {ctx,p}=await newPC({clock:true});
    await connect(p);await chipIs(p,/구글 \d/);await closeSettings(p);
    const before=google.writes;
-   await p.click('#generateAssignment');await p.clock.fastForward(200);
+   await clickPrimary(p,'generateAssignment');await p.clock.fastForward(200);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await p.clock.fastForward(200);await p.click('#confirmAssignment');
+   await p.clock.fastForward(200);await clickPrimary(p,'confirmAssignment');
    await p.clock.fastForward('00:20');
    await chipIs(p,/구글 \d/);
    assert.ok(google.writes>before);
@@ -298,9 +308,9 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await setRoster(other.p,['칠판중변경']);
    await other.p.click('#tt-cloud-chip');await other.p.click('#tt-cloud-save');await chipIs(other.p,/구글 \d/);
    await other.ctx.close();
-   await p.click('#generateAssignment');await wait(100);
+   await clickPrimary(p,'generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);const student=await openStudent(p);
+   await wait(100);await clickPrimary(p,'confirmAssignment');await wait(100);const student=await openStudent(p);
    await chipIs(p,/자료 차이/);
    assert.equal(await p.locator('#tt-diff-text').isVisible(),false);
    await student.close();
