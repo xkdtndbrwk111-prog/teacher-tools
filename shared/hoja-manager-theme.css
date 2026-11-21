@@ -340,8 +340,8 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud
  font:700 10px/12px var(--cm-font)!important;
  color:var(--cm-panel-sub)!important;text-align:center
 }
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.error{color:#fca5a5!important}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.warning{color:#fde68a!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.error{color:var(--cm-panel-alert)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.warning{color:var(--cm-panel-emphasis)!important}
 @media(max-width:1250px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:96px!important;max-width:96px!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:64px!important;max-width:72px!important;font-size:13px!important}
