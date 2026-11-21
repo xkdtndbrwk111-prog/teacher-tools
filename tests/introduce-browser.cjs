@@ -37,7 +37,7 @@ const { chromium } = require("playwright");
     await page.locator("#detail.is-open").waitFor({ timeout: 10000 });
     assert.ok((await page.locator("#detail").innerText()).includes("호자보드의 테마를 가져오고"));
     await page.keyboard.press("Escape");
-    await page.locator("#detail[hidden]").waitFor({ timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("detail").hidden, { timeout: 10000 });
     await page.goto(base + "#/product/board", { waitUntil: "domcontentloaded" });
     await page.locator("#product-board").waitFor();
     assert.equal(await page.locator(".topnav-list a[data-nav='board']").getAttribute("aria-current"), "true");
