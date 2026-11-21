@@ -28,7 +28,7 @@
  const home=document.createElement('section');home.id='tt-manager-home';home.className='tt-ui2-page';home.hidden=true;
  home.innerHTML='<div class="tt-ui2-home-content"><h1>교실매니저</h1><p>원하는 메뉴를 선택하세요.</p><div class="tt-ui2-grid">'+tabs.map(([key,label,description])=>'<button type="button" data-tt-ui2-open="'+key+'" class="tt-ui2-tile">'+icon(key)+'<strong>'+(key==='board'?'호자보드 연동':label)+'</strong><span>'+description+'</span></button>').join('')+'</div></div>';
  const link=document.createElement('section');link.id='tt-manager-board';link.className='tt-ui2-page';link.hidden=true;
- link.innerHTML='<div class="tt-ui2-board-content"><h1>호자보드 연동</h1><p>현재 학급의 학생 명단과 확정 자리·모둠을 전자칠판에 전달합니다.</p><div class="tt-ui2-card"><h2>연결 상태</h2><p id="tt-ui2-board-status" role="status">연결 확인 중…</p><p>호자보드를 실행한 뒤 다시 확인하세요. 최신 버전은 일반 창과 배경화면 모드 모두 연결할 수 있습니다.</p><div class="tt-ui2-actions"><button type="button" id="tt-ui2-recheck">연결 다시 확인</button><a href="../">호자보드 다운로드 안내 · 도구 홈</a></div><small>연결되지 않았다는 사실만으로 설치 여부를 판단할 수 없습니다. 공식 설치판 공개 여부는 도구 홈에서 확인하세요.</small></div><div class="tt-ui2-card"><h2>학생 명단 및 자리·모둠 보내기</h2><p>학생 명단만 보내거나, 확정된 자리·모둠까지 함께 보낼 수 있습니다. 명단만 보내면 같은 학급의 유효한 확정 자리는 유지됩니다.</p><div class="tt-ui2-actions"><button class="tt-ui2-primary" type="button" id="tt-ui2-send-roster">학생 명단만 보내기</button><button type="button" id="tt-ui2-send">자리·모둠까지 보내기</button><button type="button" id="tt-ui2-open-seating">자리배치 열기</button></div><p id="tt-ui2-send-result" role="status"></p></div><div class="tt-ui2-card"><h2>학생 발표 화면</h2><p>자리배치·체육 모둠·학급생활 QR 발표는 각 메뉴의 학생 화면에서 실행할 수 있습니다.</p><div id="tt-ui2-placement"></div></div></div>';
+ link.innerHTML='<div class="tt-ui2-board-content"><h1>호자보드 연동</h1><p id="tt-ui2-active-class" role="status">전송 대상 학급 확인 중…</p><p>위에 표시된 학급 한 개의 학생 명단과 확정 자리·모둠을 보냅니다. 다른 학급은 상단 학급 선택에서 전환하세요.</p><div class="tt-ui2-card"><h2>연결 상태</h2><p id="tt-ui2-board-status" role="status">연결 확인 중…</p><p>호자보드를 실행한 뒤 다시 확인하세요. 최신 버전은 일반 창과 배경화면 모드 모두 연결할 수 있습니다.</p><div class="tt-ui2-actions"><button type="button" id="tt-ui2-recheck">연결 다시 확인</button><a href="../">호자보드 다운로드 안내 · 도구 홈</a></div><small>연결되지 않았다는 사실만으로 설치 여부를 판단할 수 없습니다. 공식 설치판 공개 여부는 도구 홈에서 확인하세요.</small></div><div class="tt-ui2-card"><h2>학생 명단 및 자리·모둠 보내기</h2><p>학생 명단만 보내거나, 확정된 자리·모둠까지 함께 보낼 수 있습니다. 명단만 보내면 같은 학급의 유효한 확정 자리는 유지됩니다.</p><div class="tt-ui2-actions"><button class="tt-ui2-primary" type="button" id="tt-ui2-send-roster">학생 명단만 보내기</button><button type="button" id="tt-ui2-send">자리·모둠까지 보내기</button><button type="button" id="tt-ui2-open-seating">자리배치 열기</button></div><p id="tt-ui2-send-result" role="status"></p></div><div class="tt-ui2-card"><h2>학생 발표 화면</h2><p>자리배치·체육 모둠·학급생활 QR 발표는 각 메뉴의 학생 화면에서 실행할 수 있습니다.</p><div id="tt-ui2-placement"></div></div></div>';
  root.append(home,link);
  const header=root.querySelector(':scope>.studio-topbar'),right=$('tt-hud-right'),actions=right.querySelector(':scope>.top-actions');
  const work=document.createElement('button');work.type='button';work.id='tt-hud-work-toggle';work.textContent='작업';work.setAttribute('aria-label','현재 메뉴 작업');work.setAttribute('aria-expanded','false');work.setAttribute('aria-controls','tt-ui2-work-actions');
@@ -42,6 +42,7 @@
  let current='seat';
  function show(next){
   current=next;
+  if(next==='board')reflect();
   const special=next==='home'||next==='board';
   home.hidden=next!=='home';link.hidden=next!=='board';document.body.classList.toggle('tt-manager-special',special);
   root.dataset.ttUi2Page=next;
@@ -99,6 +100,10 @@
  $('tt-ui2-send').onclick=()=>send.click();
  $('tt-ui2-send-roster').onclick=()=>window.__TT_SEND_ROSTER?.();
  function reflect(){
+  const cfg=window.__TT_STAGE031_CLASS;
+  const label=String(classState.className||'').trim()||'이름 없는 학급';
+  const count=Array.isArray(classState.students)?classState.students.length:0;
+  $('tt-ui2-active-class').textContent=`현재 선택 학급 · ${label} (${count}명) · 이 반만 전송`;
   $('tt-ui2-board-status').textContent=status.textContent.trim()||'연결 확인 중…';
   $('tt-ui2-send').disabled=send.disabled;
   $('tt-ui2-send').title=send.title;

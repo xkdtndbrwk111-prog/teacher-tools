@@ -103,13 +103,27 @@ async function setRoster(p,names){
    await openSeating(p);await wait(300);
    await setRoster(p,['가온','나래2','다온','라온','전학생']);
    await p.locator('#rosterChangeDialog:not(.hidden)').waitFor();
-   assert.equal(await p.locator('#rosterChangeRows select').inputValue(),'1');
+   assert.equal(await p.locator('#rosterChangeRows select').inputValue(),'');
    assert.match(await p.locator('#rosterChangeAdded').textContent(),/전학생/);
+   await p.locator('#rosterChangeRows select').selectOption({label:'이름 변경: 나래2'});
    await p.click('#rosterChangeApply');await wait(300);
    frame=await openGrades(p);await wait(400);
    const values=await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value));
    assert.deepEqual(values,['90','80','70','60','']);
    assert.equal(await p.evaluate(()=>classState.students[1].name),'나래2');
+  });
+  await step('이름을 잘라 붙여 순서만 바꿔도 동일 학생 ID와 성적을 유지한다',async()=>{
+   await openSeating(p);await wait(200);
+   const before=await p.evaluate(()=>classState.students.map(s=>({id:s.id,name:s.name})));
+   const names=[...before].reverse().map(s=>s.name);
+   await setRoster(p,names);await wait(300);
+   assert.deepEqual(await p.evaluate(()=>classState.students.map(s=>s.name)),names);
+   const after=await p.evaluate(()=>classState.students.map(s=>({id:s.id,name:s.name})));
+   assert.deepEqual(after.map(s=>s.id),[...before].reverse().map(s=>s.id));
+   assert.equal(await p.locator('#rosterChangeDialog:not(.hidden)').count(),0);
+   await setRoster(p,before.map(s=>s.name));await wait(300);
+   frame=await openGrades(p);await wait(400);
+   assert.deepEqual(await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value)),['90','80','70','60','']);
   });
   await step('확인 창에서 취소하면 명단이 그대로다',async()=>{
    await openSeating(p);await wait(300);

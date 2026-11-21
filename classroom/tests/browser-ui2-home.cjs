@@ -21,6 +21,7 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   await p.locator('#tt-manager-home-button').click();assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
   await p.locator('[data-tt-ui2-open="board"]').click();assert.equal(await p.locator('#tt-manager-board').isVisible(),true);
   await p.waitForFunction(()=>document.getElementById('tt-ui2-board-status').textContent.includes('연결'));
+  assert.match(await p.locator('#tt-ui2-active-class').textContent(),/현재 선택 학급 · .* \(\d+명\) · 이 반만 전송/);
   assert.equal(await p.locator('#tt-ui2-send').isDisabled(),true);
   assert.equal(await p.locator('#tt-ui2-send-roster').isDisabled(),true);
   assert.equal(await p.locator('#tt-ui2-placement .tt-student-placement-settings').isVisible(),true);
