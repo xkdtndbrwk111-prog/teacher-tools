@@ -24,7 +24,7 @@
       color: "#d9792b",
       tint: "#fff1e4",
       launch: { url: "https://xkdtndbrwk111-prog.github.io/hoja-minigames/", label: "미니게임 실행" },
-      media: { poster: CARD + "hoja-minigames-poster-v1.webp" },
+      media: { poster: "assets/minigames/minigames-menu.png" },
       linked: true
     },
     {
@@ -47,7 +47,7 @@
       color: "#2e7a4f",
       tint: "#e6f3ea",
       launch: { url: "../seating/", label: "교실매니저 실행" },
-      media: { poster: CARD + "seating-hover-poster-v1.webp", video: CARD + "seating-hover-preview-v1.mp4" },
+      media: { poster: "assets/classroom/classroom-roster.png" },
       linked: true
     },
     {
@@ -58,7 +58,7 @@
       color: "#a87a1e",
       tint: "#fbf2dc",
       launch: { url: "../hanja/", label: "한자매니저 실행" },
-      media: { poster: CARD + "hanja-manager-hover-poster-v1.webp", video: CARD + "hanja-manager-hover-preview-v1.mp4" },
+      media: { poster: "assets/hanja/hanja-characters.png" },
       linked: true
     },
     {
@@ -72,7 +72,7 @@
         url: "https://script.google.com/macros/s/AKfycbzoonnEeV0UPcaEFM843Ij4t2-1Qk_tl3lGdHwkJM8uIaDeEaLJly5zeLnwHxAX28AeRQ/exec",
         label: "호자게임 실행"
       },
-      media: { poster: CARD + "hoja-game-hover-poster-v1.webp", video: CARD + "hoja-game-hover-preview-v1.mp4" },
+      media: { poster: "assets/hoja-quiz/hoja-quiz-intro.png" },
       linked: false, // 독립 프로그램: 데이터 연동선 없음
       island: true
     }
@@ -107,22 +107,28 @@
       }, { size: "hero" }),
     n("mini.hockey", "mini", 0, 1, 0, "에어하키",
       "두 사람이 마주 보고 즐기는 터치 대전",
-      { situation: "전자칠판 양쪽에서 두 학생이 동시에 겨룰 때.", usage: ["화면 양쪽을 각각 터치해 퍽을 쳐냅니다."] }),
+      { situation: "전자칠판 양쪽에서 두 학생이 동시에 겨룰 때.", usage: ["화면 양쪽을 각각 터치해 퍽을 쳐냅니다."] },
+      { media: { poster: "assets/minigames/minigames-hockey-play.png", video: "assets/minigames/minigames-hockey.mp4" } }),
     n("mini.stairs", "mini", 0, 2, 0, "무한의 계단",
       "리듬감 있게 계단을 오르는 순발력 게임",
-      { situation: "짧은 시간에 집중력을 끌어올리고 싶을 때.", usage: ["방향을 바꾸며 계단을 끝없이 올라갑니다."] }),
+      { situation: "짧은 시간에 집중력을 끌어올리고 싶을 때.", usage: ["방향을 바꾸며 계단을 끝없이 올라갑니다."] },
+      { media: { poster: "assets/minigames/minigames-stairs.png" } }),
     n("mini.bungeo", "mini", 0, 3, 0, "붕어빵 가게",
       "주문에 맞춰 붕어빵을 굽는 경영 놀이",
-      { situation: "협동과 순서 감각을 기르는 활동으로.", usage: ["손님 주문에 맞춰 반죽·속·굽기를 진행합니다."] }),
+      { situation: "협동과 순서 감각을 기르는 활동으로.", usage: ["손님 주문에 맞춰 반죽·속·굽기를 진행합니다."] },
+      { media: { poster: "assets/minigames/minigames-bakery.png" } }),
     n("mini.board", "mini", 0, 4, 0, "보드게임",
       "칠판 앞에서 함께 두는 보드게임 장르",
-      { situation: "모둠끼리 차례를 정해 겨룰 때.", usage: ["개별 게임은 미니게임 안의 보드게임 장르에서 고릅니다."] }),
+      { situation: "모둠끼리 차례를 정해 겨룰 때.", usage: ["개별 게임은 미니게임 안의 보드게임 장르에서 고릅니다."] },
+      { media: { poster: "assets/minigames/minigames-boardgames.png" } }),
     n("mini.party", "mini", 0, 5, 0, "파티게임",
       "여러 명이 한 화면에서 즐기는 파티 장르",
-      { situation: "반 전체가 함께 웃으며 즐기는 시간에.", usage: ["개별 게임은 미니게임 안의 파티게임 장르에서 고릅니다."] }),
+      { situation: "반 전체가 함께 웃으며 즐기는 시간에.", usage: ["개별 게임은 미니게임 안의 파티게임 장르에서 고릅니다."] },
+      { media: { poster: "assets/minigames/minigames-party.png" } }),
     n("mini.rhythm", "mini", 0, 6, 0, "리듬게임",
       "박자에 맞춰 터치하는 리듬 장르",
-      { situation: "음악과 함께 분위기를 바꾸고 싶을 때.", usage: ["박자에 맞춰 화면을 터치합니다."] }),
+      { situation: "음악과 함께 분위기를 바꾸고 싶을 때.", usage: ["박자에 맞춰 화면을 터치합니다."] },
+      { media: { poster: "assets/minigames/minigames-rhythm.png" } }),
     n("mini.coins", "mini", 0, 7, 1, "명예의 전당과 코인",
       "기록을 남기고 학생 코인을 활용",
       {
@@ -186,28 +192,34 @@
       { situation: "자리를 바꾸는 날, 반 전체가 화면을 보며 결과를 확인할 때.", usage: ["교실 배치를 정하고 자리를 섞습니다."] }),
     n("class.rules", "class", 2, 2, 0, "자리배치 규칙",
       "함께 앉거나 떨어져야 할 조건을 지정",
-      { situation: "학생 사이의 배려가 필요한 자리배치에.", usage: ["규칙을 지정하면 배치에 반영됩니다."] }),
+      { situation: "학생 사이의 배려가 필요한 자리배치에.", usage: ["규칙을 지정하면 배치에 반영됩니다."] },
+      { media: { poster: "assets/classroom/classroom-rules.png" } }),
     n("class.pe", "class", 2, 3, 0, "체육 모둠",
       "균형 잡힌 체육 모둠 편성",
-      { situation: "체육 시간에 고르게 팀을 나눌 때.", usage: ["학생 명단으로 모둠을 편성합니다."] }),
+      { situation: "체육 시간에 고르게 팀을 나눌 때.", usage: ["학생 명단으로 모둠을 편성합니다."] },
+      { media: { poster: "assets/classroom/classroom-pe.png", video: "assets/classroom/classroom-pe.mp4" } }),
     n("class.grades", "class", 2, 4, 0, "성적·평가 관리",
       "평가 기록을 학생별로 정리",
-      { situation: "수행평가 결과를 기록하고 정리할 때.", usage: ["학생별 평가를 입력·확인합니다."] }),
+      { situation: "수행평가 결과를 기록하고 정리할 때.", usage: ["학생별 평가를 입력·확인합니다."] },
+      { media: { poster: "assets/classroom/classroom-grades.png" } }),
     n("class.life", "class", 2, 5, 0, "학급생활·설문",
-      "학급생활 기록과 간단한 설문",
-      { situation: "학생 의견을 모으거나 생활 기록을 남길 때.", usage: ["설문을 만들고 결과를 확인합니다."] }),
+      "Google 통합 로그인 후 사용하는 학급생활 기록과 설문",
+      {
+        situation: "학생 의견을 모으거나 생활 기록을 남길 때.",
+        usage: ["NORMAL 모드에서 Google 통합 로그인 후 설문을 만들고 결과를 확인합니다.", "이번 격리 촬영 환경에서는 인증하지 않아 별도 화면 미디어를 추가하지 않았습니다."]
+      }),
     n("class.roster", "class", 2, 8, -1, "학생 명단 관리",
       "모든 연동의 출발점이 되는 학생 명단",
       {
         situation: "학기 초 명단을 한 번 정리해 두고 여러 곳에서 쓰고 싶을 때.",
         usage: ["학생 명단을 등록·수정합니다.", "호자보드와 한자매니저에서 이 명단을 활용할 수 있습니다(선택)."]
-      }, { ports: ["left", "right"] }),
+      }, { ports: ["left", "right"], media: { poster: "assets/classroom/classroom-roster.png" } }),
     n("class.theme", "class", 2, 9, -1, "저장·백업·테마",
       "브라우저 저장과 백업, 화면 테마",
       {
         situation: "기기를 바꾸거나 데이터를 안전하게 보관할 때.",
         usage: ["전체 백업·복원 기능으로 학급 자료를 보관합니다.", "테마 자동 연동을 켜면 호자보드의 테마를 가져오고, 끄면 독립적으로 설정합니다."]
-      }),
+      }, { media: { poster: "assets/classroom/classroom-board-link.png" } }),
 
     /* ── 제4열: 한자매니저 ───────────────────────────── */
     n("hanja.hero", "hanja", 3, 0, 0, "우리 반 한자 학습",
@@ -218,22 +230,26 @@
       }, { size: "hero" }),
     n("hanja.chars", "hanja", 3, 1, 0, "단일 한자 등록·관리",
       "수업에 쓸 한자를 등록하고 관리",
-      { situation: "단원별 학습 한자를 준비할 때.", usage: ["한자를 직접 등록하거나 엑셀 양식으로 가져옵니다."] }),
+      { situation: "단원별 학습 한자를 준비할 때.", usage: ["한자를 직접 등록하거나 엑셀 양식으로 가져옵니다."] },
+      { media: { poster: "assets/hanja/hanja-characters.png" } }),
     n("hanja.words", "hanja", 3, 2, 0, "한자어 등록·관리",
       "한자어를 등록하고 관리",
-      { situation: "한자어 중심 수업을 준비할 때.", usage: ["한자어를 등록·수정합니다."] }),
+      { situation: "한자어 중심 수업을 준비할 때.", usage: ["한자어를 등록·수정합니다."] },
+      { media: { poster: "assets/hanja/hanja-words.png" } }),
     n("hanja.quiz", "hanja", 3, 3, 0, "문제 매니저",
       "등록한 한자·한자어로 출제 조건 설정",
-      { situation: "수업에 맞는 출제 방식을 준비할 때.", usage: ["출제 대상, 문제 방향, 유형, 학생당 문제 수를 정합니다."] }),
+      { situation: "수업에 맞는 출제 방식을 준비할 때.", usage: ["출제 대상, 문제 방향, 유형, 학생당 문제 수를 정합니다."] },
+      { media: { poster: "assets/hanja/hanja-question-manager.png" } }),
     n("hanja.perStudent", "hanja", 3, 4, 0, "학생별 문제 출제",
       "학생 한 명 한 명에게 문제를 출제",
-      { situation: "돌아가며 한 명씩 문제를 풀게 할 때.", usage: ["학생을 선택해 문제를 출제합니다."] }),
+      { situation: "돌아가며 한 명씩 문제를 풀게 할 때.", usage: ["학생을 선택해 문제를 출제합니다."] },
+      { media: { poster: "assets/hanja/hanja-question-play.png" } }),
     n("hanja.roster", "hanja", 3, 8, -1, "수업 진행과 학생 명단",
       "교실매니저 명단으로 수업 진행",
       {
         situation: "교실매니저에 저장된 명단으로 바로 수업을 시작하고 싶을 때.",
         usage: ["같은 사이트에 저장된 교실매니저 명단을 읽어 옵니다(읽기 전용).", "수업 진행 상태는 세션 동안만 유지됩니다."]
-      }),
+      }, { media: { poster: "assets/hanja/hanja-question-manager.png" } }),
 
     /* ── 제5열: 호자게임 2.0 (독립 섬) ────────────────── */
     n("quiz.arcade", "quiz", 4, 0, 0, "달리고 점프하며 퀴즈를 푸는 아케이드",
@@ -241,7 +257,7 @@
       {
         situation: "게임처럼 즐기며 복습하고 싶을 때.",
         usage: ["브라우저에서 바로 실행하는 독립 프로그램입니다.", "다른 공작소 프로그램과 데이터를 주고받지 않습니다."]
-      }, { size: "hero" }),
+      }, { size: "hero", media: { poster: "assets/hoja-quiz/hoja-quiz-intro.png" } }),
     n("quiz.cartridge", "quiz", 4, 1, 0, "카트리지 선택",
       "문제 묶음(카트리지)을 골라 시작",
       { situation: "단원에 맞는 문제 묶음으로 플레이할 때.", usage: ["카트리지를 선택해 게임을 시작합니다."] }),
