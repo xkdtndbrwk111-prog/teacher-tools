@@ -46,3 +46,20 @@
 - 전시관 계약 검사: `node tests/introduce-contract.test.cjs`
 - 전시관 브라우저 검사: `node tests/introduce-browser.cjs`
 - 결과: 계약 4/4 PASS, 브라우저 스모크 PASS (데스크톱·모바일·직접 링크·상세·감소된 모션)
+
+## 플레이 영상 재촬영 기록 (2026-11-22)
+
+이번 재촬영은 `/private/tmp/hoja-minigames-capture` 로컬 복제본에서만 수행했다. 게임 소스·운영 기록·코인·명예의 전당은 변경하지 않았다.
+
+| 노드 | 결과 | 영상 | 실제 변화 확인 |
+|---|---|---|---|
+| `mini.hockey` | PASS | `minigames-hockey.mp4` | 양쪽 말렛 이동, 퍽 왕복, 경기 점수 HUD가 실제로 렌더링됨 |
+| `mini.stairs` | PASS | `minigames-stairs.mp4` | 키보드 좌·우 조작 후 캐릭터가 3층까지 상승, 층수 표시 변화 |
+| `mini.bungeo` | NOT RUN | 촬영본 보류 | 주문 손님은 확인했지만 굽기·판매 조작까지 명확히 담기지 않아 대표 영상으로 승격하지 않음 |
+| `mini.board` | PASS | `minigames-boardgames.mp4` | 오셀로 판에 양쪽 돌이 놓이고 점수 2:2에서 6:3으로 변화 |
+| `mini.party` | NOT RUN | 기존 포스터 유지 | 파티 런타임이 자동화 세션에서 비정상 종료되어, 가짜 영상으로 대체하지 않음 |
+| `mini.rhythm` | NOT RUN | 기존 포스터 유지 | 리듬 런타임이 자동화 세션에서 비정상 종료되어, 가짜 영상으로 대체하지 않음 |
+
+모든 PASS 영상은 무음 H.264 MP4, 1920×1080, 16:9, 6–12초 구간으로 인코딩했다. 오셀로는 `mini.board` 대표 게임으로 연결했다. 붕어빵·파티·리듬은 촬영 실패를 숨기지 않고 보류 상태로 남겼다.
+
+체육 모둠의 실제 배치 변화는 기존 `classroom/classroom-pe.mp4`에 유지되어 있다. 해당 클립은 실제 교실매니저 화면에서 2팀에서 4팀으로 편성을 바꾸는 장면이며, `class.pe` 상세 미디어로 연결되어 있다.
