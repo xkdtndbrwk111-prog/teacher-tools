@@ -1,0 +1,24 @@
+name: Hanja roster and frequency regression
+on:
+  pull_request:
+    paths:
+      - 'hanja/**'
+      - 'shared/student-registry.js'
+      - 'classroom/host/class-store.js'
+      - 'classroom/tests/browser-hanja.cjs'
+      - '.github/workflows/hanja-roster-frequency-review.yml'
+permissions:
+  contents: read
+jobs:
+  hanja-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node --input-type=module --check < hanja/app.js
+          node --input-type=module --check < hanja/roster-view.js
+      - run: npm install --prefix /tmp/tt-hanja-regression --no-audit --no-fund --no-package-lock playwright@1.55.0
+      - run: NODE_PATH=/tmp/tt-hanja-regression/node_modules node classroom/tests/browser-hanja.cjs
