@@ -132,6 +132,11 @@ async function setRoster(p,names){
   });
   await step('성적을 입력하면 명단과 연결된다',async()=>{
    frame=await openGrades(p);
+   const gradeBottomGap=await p.evaluate(()=>{
+     const strip=document.querySelector('#teacherScreen .student-strip'),cards=document.getElementById('studentCards');
+     return strip.getBoundingClientRect().bottom-cards.getBoundingClientRect().bottom;
+   });
+   assert.ok(gradeBottomGap<22,'성적관리 공용 셸도 여백 없이 학생 명단을 표시: '+gradeBottomGap);
    await frame.locator('.nav[data-page="assessments"]').click();
    await frame.locator('input[name="subject"]').fill('수학');
    await frame.locator('input[name="title"]').fill('1단원');
