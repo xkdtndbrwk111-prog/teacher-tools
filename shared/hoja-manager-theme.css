@@ -231,7 +231,7 @@ html.tt-manager-theme #tt-ui2-placement .tt-student-placement-settings :is(label
 html.tt-manager-theme #tt-ui2-placement input{accent-color:var(--cm-action-fill)}
 html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] a{color:var(--cm-panel-emphasis);text-decoration:underline;text-underline-offset:3px}
 html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] .tt-settings-card p{line-height:1.65;margin:7px 0}
-@media(max-width:1400px){
+@media(max-width:1680px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-right>.top-actions{display:none!important}
  html.tt-manager-theme body:not(.tt-manager-special):not(.tt-grade-active):not(.tt-life-active) #tt-hud-work-toggle{
   display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 9px;border:1px solid var(--cm-border);border-radius:var(--cm-button-radius);background:var(--cm-control);color:var(--cm-control-ink);font-weight:800
@@ -243,7 +243,6 @@ html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] .tt-setting
 @media(max-width:1100px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{--tt-hud-tab-width:34px;--tt-hud-seat-width:71px;column-gap:4px!important;padding:0 5px!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{display:flex!important;gap:7px!important}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button span,
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button span{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{width:34px;padding:0!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:84px!important;max-width:84px!important}
@@ -359,4 +358,91 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud
 }
 @media(max-width:540px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{display:none!important}
+}
+
+
+/* 2026-11-21: larger, readable brand; move the class selector right rather than
+   shrinking the manager title. Tabs stay centered in their own grid track. */
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button{
+ font-size:20px!important;font-weight:900!important;line-height:1.2!important;min-height:42px!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{gap:14px!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{
+ margin-left:4px!important;gap:6px!important
+}
+/* Both storage types occupy one horizontally-aligned segmented pill.
+   The real cloud button remains clickable and retains its module-provided status. */
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+ box-sizing:border-box!important;position:relative!important;
+ flex:0 0 252px!important;width:252px!important;min-width:252px!important;max-width:252px!important;
+ height:44px!important;display:grid!important;grid-template-columns:1fr 1fr!important;
+ align-items:stretch!important;justify-content:stretch!important;gap:0!important;
+ border:1px solid var(--cm-border)!important;border-radius:999px!important;
+ overflow:hidden!important;background:var(--cm-control)!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus{
+ position:absolute!important;display:block!important;width:1px!important;height:1px!important;
+ min-width:0!important;max-width:1px!important;margin:0!important;padding:0!important;
+ overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-browser-save{
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;
+ min-height:0!important;height:100%!important;width:100%!important;min-width:0!important;
+ padding:0 5px!important;margin:0!important;
+ background:var(--cm-surface)!important;color:var(--cm-surface-ink)!important;
+ border:0!important;border-right:1px solid var(--cm-border)!important;border-radius:0!important;
+ font-size:13px!important;font-weight:850!important;line-height:1.1!important;white-space:nowrap!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip{
+ box-sizing:border-box!important;display:flex!important;flex-direction:column!important;
+ justify-content:center!important;align-items:center!important;gap:2px!important;
+ width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;
+ padding:2px 4px!important;margin:0!important;
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;
+ border:0!important;border-radius:0!important;
+ font-size:10px!important;font-weight:750!important;line-height:1.1!important;
+ overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip::before{
+ content:"클라우드 저장";display:block;font-size:13px;font-weight:850;line-height:1.1
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip[data-tt-hud-mode="easy"]{
+ color:var(--cm-control-sub)!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>:is(button):hover{
+ filter:brightness(1.08)
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>:is(button):focus-visible{
+ outline:2px solid var(--cm-accent);outline-offset:-3px
+}
+@media(max-width:1450px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{gap:8px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{margin-left:0!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+  flex-basis:230px!important;width:230px!important;min-width:230px!important;max-width:230px!important
+ }
+}
+@media(max-width:1250px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+  flex-basis:212px!important;width:212px!important;min-width:212px!important;max-width:212px!important
+ }
+}
+@media(max-width:1100px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{gap:5px!important}
+}
+@media(max-width:950px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+  flex-basis:172px!important;width:172px!important;min-width:172px!important;max-width:172px!important
+ }
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-browser-save{font-size:11px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip::before{font-size:11px}
+}
+@media(max-width:900px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button span{
+  position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;
+  clip-path:inset(50%)!important;white-space:nowrap!important
+ }
+}
+@media(max-width:720px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{display:none!important}
 }
