@@ -1537,7 +1537,7 @@ body.roster-drag-selecting .hanja-student{
  display:flex;align-items:center;justify-content:flex-start;min-width:0
 }
 #manager .hanja-brand-line{gap:7px;align-items:center;min-height:40px}
-#manager .hanja-brand-line>strong{font-size:16px;font-weight:850;line-height:1.2}
+#manager .hanja-brand-line>strong{font-size:22px;font-weight:900;line-height:1.15}
 #hanja-workshop-home-link{flex:0 0 38px;width:38px;height:40px}
 #hanja-workshop-home-link>.tt-ui2-icon{width:24px;height:24px}
 #manager>.studio-topbar #saveStatus{
@@ -1545,4 +1545,5 @@ body.roster-drag-selecting .hanja-student{
  margin:0!important;overflow:hidden!important;clip-path:inset(50%)!important;
  white-space:nowrap!important
 }
-@media(max-width:360px){#manager .hanja-brand-line>strong{font-size:14px}}
+/* Keep the title at the same 22px as Classroom Manager even on narrow screens. */
+@media(max-width:360px){#manager .hanja-brand-line>strong{font-size:22px;font-weight:900}}
