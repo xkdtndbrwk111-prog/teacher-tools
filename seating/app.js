@@ -824,51 +824,140 @@ function reorderStudentsByIds(ids){
  window.__TT_STAGE031_SEND_ROSTER?.();
  return true;
 }
+// Card order editing is pointer-based and intentionally separate from the
+// native HTML drag used to assign a student to a seat. Capture the pointer on
+// DOWN, not after the hold timer: native dragging otherwise steals pointerup.
 function bindRosterLongPress(card){
- if(historyView||document.body.classList.contains("pe-mode"))return;
+ if(historyView||document.body.classList.contains("tt-grade-active")||document.body.classList.contains("pe-mode"))return;
  const sprite=card.querySelector(".shared-student-sprite"),container=$("studentCards");
- if(!sprite)return;
- let down=null,timer=null,active=false,ghost=null;
+ if(!sprite||!container)return;
+ let press=null,timer=null,ghost=null,active=false;
  const order=()=>[...container.querySelectorAll(".seating-student-card")];
- const cleanup=()=>{
-  clearTimeout(timer);timer=null;down=null;
-  if(ghost)ghost.remove();ghost=null;card.classList.remove("roster-moving");
-  document.body.classList.remove("roster-grabbing");active=false;
-  if(card.isConnected)card.draggable=true;
+ const positionGhost=(x,y)=>{
+  if(!ghost)return;
+  const rect=ghost.getBoundingClientRect();
+  ghost.style.left=(x-rect.width/2)+"px";
+  ghost.style.top=(y-rect.height/2)+"px";
+ };
+ const removeListeners=()=>{
+  window.removeEventListener("pointermove",onMove,true);
+  window.removeEventListener("pointerup",onUp,true);
+  window.removeEventListener("pointercancel",onCancel,true);
+  window.removeEventListener("mouseup",onMouseUp,true);
+  window.removeEventListener("blur",onBlur,true);
+  window.removeEventListener("keydown",onKeydown,true);
+  document.removeEventListener("visibilitychange",onVisibility);
+ };
+ const clear=()=>{
+  const pointerId=press?.id,wasDraggable=press?.wasDraggable;
+  clearTimeout(timer);timer=null;removeListeners();
+  if(pointerId!==undefined){
+   try{if(sprite.hasPointerCapture(pointerId))sprite.releasePointerCapture(pointerId)}catch{}
+  }
+  ghost?.remove();ghost=null;
+  card.classList.remove("roster-moving");
+  document.body.classList.remove("roster-grabbing");
+  if(wasDraggable!==undefined&&card.isConnected)card.draggable=wasDraggable;
+  active=false;press=null;
+ };
+ const cancel=()=>{
+  const wasActive=active;
+  clear();
+  // While dragging, DOM order is only a visual preview. The persistent
+  // student IDs and roster order remain unchanged until pointerup.
+  if(wasActive)renderStudentStrip();
+ };
+ const onUp=e=>{
+  if(!press||e.pointerId!==press.id)return;
+  const ids=active?order().map(el=>el.dataset.studentId):null;
+  clear();
+  if(ids){
+   e.preventDefault();
+   // Also restores the original DOM when no move occurred or confirm was cancelled.
+   if(!reorderStudentsByIds(ids))renderStudentStrip();
+  }
+ };
+ const onMouseUp=e=>{
+  // Fallback for browsers that suppress pointerup after a native drag attempt.
+  if(!press||press.pointerType!=="mouse"||e.button!==0)return;
+  onUp({pointerId:press.id,preventDefault:()=>e.preventDefault()});
+ };
+ const onCancel=e=>{if(press&&e.pointerId===press.id)cancel()};
+ const onBlur=()=>cancel();
+ const onVisibility=()=>{if(document.hidden)cancel()};
+ const onKeydown=e=>{if(press&&e.key==="Escape"){e.preventDefault();cancel()}};
+ const onMove=e=>{
+  if(!press||e.pointerId!==press.id)return;
+  // Missed release (for example, crossing an embedded frame)? Never leave a
+  // suspended card behind when the next mousemove has no pressed buttons.
+  if(press.pointerType==="mouse"&&(e.buttons&1)===0){
+   onUp({pointerId:press.id,preventDefault:()=>{}});
+   return;
+  }
+  press.x=e.clientX;press.y=e.clientY;
+  if(!active){
+   if(Math.hypot(e.clientX-press.startX,e.clientY-press.startY)>9)cancel();
+   return;
+  }
+  e.preventDefault();
+  positionGhost(e.clientX,e.clientY);
+  const bounds=container.getBoundingClientRect();
+  if(e.clientX<bounds.left+36)container.scrollLeft-=20;
+  else if(e.clientX>bounds.right-36)container.scrollLeft+=20;
+  // Only reorder while near the card row, but keep the ghost following the
+  // pointer everywhere else.
+  if(e.clientY<bounds.top-12||e.clientY>bounds.bottom+20)return;
+  const others=order().filter(item=>item!==card);
+  const before=others.find(item=>e.clientX<item.getBoundingClientRect().left+item.getBoundingClientRect().width/2);
+  const target=before?others.indexOf(before):others.length;
+  const desired=[...others];desired.splice(target,0,card);
+  // Keep the pressed card itself in the DOM. Moving that element via
+  // insertBefore drops pointer capture in several browsers. Reposition its
+  // neighbours instead and commit IDs only on release.
+  for(let i=desired.length-1;i>=0;i--){
+   const item=desired[i];
+   if(item===card)continue;
+   const next=desired[i+1]||null;
+   if(item.nextSibling!==next)container.insertBefore(item,next);
+  }
  };
  sprite.addEventListener("pointerdown",e=>{
-  if(e.button!==0||down)return;
-  down={id:e.pointerId,x:e.clientX,y:e.clientY};
+  if(press||(e.pointerType==="mouse"&&e.button!==0)||e.isPrimary===false)return;
+  press={id:e.pointerId,pointerType:e.pointerType,
+   startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,
+   wasDraggable:card.draggable};
+  // Disable native seat dragging for a press *on the avatar* only.
+  // Dragging the card by its name or background still assigns a fixed seat.
+  card.draggable=false;
+  e.preventDefault();
+  e.stopPropagation();
+  try{sprite.setPointerCapture(e.pointerId)}catch{}
+  window.addEventListener("pointermove",onMove,true);
+  window.addEventListener("pointerup",onUp,true);
+  window.addEventListener("pointercancel",onCancel,true);
+  window.addEventListener("mouseup",onMouseUp,true);
+  window.addEventListener("blur",onBlur,true);
+  window.addEventListener("keydown",onKeydown,true);
+  document.addEventListener("visibilitychange",onVisibility);
   timer=setTimeout(()=>{
-   if(!down||!card.isConnected)return;
-   active=true;card.draggable=false;card.classList.add("roster-moving");document.body.classList.add("roster-grabbing");
-   const box=card.getBoundingClientRect();ghost=card.cloneNode(true);ghost.classList.add("roster-ghost");
-   ghost.querySelector(".shared-student-status")?.remove();ghost.setAttribute("aria-hidden","true");
-   ghost.style.width=box.width+"px";ghost.style.height=box.height+"px";
-   ghost.style.left=(down.x-box.width/2)+"px";ghost.style.top=(down.y-box.height/2)+"px";
+   if(!press||!card.isConnected)return cancel();
+   active=true;
+   card.classList.add("roster-moving");
+   document.body.classList.add("roster-grabbing");
+   const box=card.getBoundingClientRect();
+   ghost=card.cloneNode(true);
+   ghost.classList.add("roster-ghost");
+   ghost.querySelector(".shared-student-status")?.remove();
+   ghost.setAttribute("aria-hidden","true");
+   ghost.style.width=box.width+"px";
+   ghost.style.height=box.height+"px";
    document.body.append(ghost);
-   try{sprite.setPointerCapture(e.pointerId)}catch{}
+   positionGhost(press.x,press.y);
   },390);
  });
- sprite.addEventListener("pointermove",e=>{
-  if(!down||e.pointerId!==down.id)return;
-  if(!active){if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>9){clearTimeout(timer);timer=null;down=null}return}
-  e.preventDefault();
-  if(ghost){const b=ghost.getBoundingClientRect();ghost.style.left=(e.clientX-b.width/2)+"px";ghost.style.top=(e.clientY-b.height/2)+"px"}
-  const bounds=container.getBoundingClientRect();
-  if(e.clientX<bounds.left+35)container.scrollLeft-=18;
-  else if(e.clientX>bounds.right-35)container.scrollLeft+=18;
-  const next=order().filter(item=>item!==card).find(item=>e.clientX<item.getBoundingClientRect().left+item.getBoundingClientRect().width/2);
-  if(next)container.insertBefore(card,next);else container.append(card);
- });
- sprite.addEventListener("pointerup",e=>{
-  if(!down||e.pointerId!==down.id)return;
-  const ids=active?order().map(item=>item.dataset.studentId):null;cleanup();
-  if(ids&&!reorderStudentsByIds(ids))renderStudentStrip();
- });
- sprite.addEventListener("pointercancel",e=>{
-  if(!down||e.pointerId!==down.id)return;const was=active;cleanup();if(was)renderStudentStrip();
- });
+ // Browser dragstart is a last-resort fallback; normal fixed-seat drag from
+ // the rest of the card is still allowed.
+ card.addEventListener("dragstart",e=>{if(press)e.preventDefault()},true);
 }
 /* Same name keeps its student ID. A changed name never does unless the teacher links it here. */
 function rosterChangePlan(oldStudents,names){
