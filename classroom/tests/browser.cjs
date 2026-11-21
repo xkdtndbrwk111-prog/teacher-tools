@@ -243,11 +243,12 @@ async function setRoster(p,names){
    await p.click('#rosterChangeApply');await wait(300);
    frame=await openGrades(p);await wait(400);
    const hidden=await frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>e.value));
-   assert.deepEqual(hidden,['90','70','60','','']);
+   // Card-order numbering places the new student at their visible position.
+   assert.deepEqual(hidden,['90','','70','60','']);
    await frame.locator('.nav[data-page="classes"]').click();
    const row=frame.locator('.inactive-student-row');
    await row.waitFor();assert.match(await row.textContent(),/나래2.*성적 1건/);
-   await row.locator('select').selectOption({label:'6. 새학생'});
+   await row.locator('select').selectOption({label:'2. 새학생'});
    await row.locator('button').click();await wait(400);
    assert.equal(await frame.locator('.inactive-student-row').count(),0);
    await frame.locator('.nav[data-page="grades"]').click();await wait(300);
@@ -648,10 +649,12 @@ async function setRoster(p,names){
    assert.equal(await f.locator('#class-checks input').first().isChecked(),true);
    await c9.close();
   });
-  await step('번호를 고치면 성적표 순서가 따라가고 명단 순서는 번호를 바꾸지 않는다',async()=>{
+  await step('기존 레거시 학급은 수동 번호 편집을 유지하고 명단 정렬과 분리한다',async()=>{
    const {ctx:c10,p:p11}=await newContext();
    await p11.goto(BASE+'/seating/?section=seating');await started(p11);
    await setRoster(p11,['가온','나래','다온']);await p11.locator('#rosterChangeDialog:not(.hidden)').waitFor();await p11.click('#rosterChangeApply');await wait(200);
+   // Explicit legacy class: grade numbers were independently set before card-order mode.
+   await p11.evaluate(()=>{classState.ui.numberMode='legacy';saveState()});
    let f=await openGrades(p11);
    await f.locator('.nav[data-page="classes"]').click();
    await f.locator('#edit-numbers').click();
@@ -835,7 +838,7 @@ async function setRoster(p,names){
    assert.equal(await f2.locator('input.grade-input').count(),0);
    await f2.locator('.nav[data-page="classes"]').click();
    assert.match(await f2.locator('.class-stage-student').first().textContent(),/올해학생/);
-   assert.equal(await f2.locator('#edit-numbers').isVisible(),true);
+   assert.equal(await f2.locator('#edit-numbers').isVisible(),false,'새 학급은 카드 순서가 출석번호의 기준');
    await c16.close();
   });
   await step('학생 화면 버튼은 칠판 위쪽 34% 아래에 있다',async()=>{
