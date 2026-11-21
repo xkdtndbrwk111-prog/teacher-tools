@@ -108,7 +108,8 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
    const visual=await p.evaluate(()=>{
     const rect=selector=>{const b=document.querySelector(selector).getBoundingClientRect();return{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}};
     return{house:rect('#tt-workshop-home-link .tt-ui2-icon'),
-      homeText:parseFloat(getComputedStyle(document.querySelector('#tt-manager-home-button')).fontSize),
+      homeText:parseFloat(getComputedStyle(document.querySelector('#tt-manager-home-button>span')).fontSize),
+      homeTextColor:getComputedStyle(document.querySelector('#tt-manager-home-button>span')).color,
       brand:rect('.studio-topbar>.brand-block'),nav:rect('.prototype-mode-switch'),
       right:rect('#tt-hud-right'),cloud:rect('.tt-hud-cloud'),
       status:rect('#saveStatus'),select:rect('#tt-class-select'),manage:rect('#tt-class-add')};
@@ -116,10 +117,11 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
    assert.ok(visual.house.width>=23.5,'24px house icon at '+width);
    assert.ok(visual.brand.left>=0&&visual.right.right<=width+1,'Header bounds at '+width);
    if(width>=1280){
-    assert.ok(visual.homeText>=19.5,'20px title at '+width);
+    assert.ok(visual.homeText>=21.5,'22px actual text span, not only button, at '+width);
     assert.ok(visual.select.height>=39&&visual.manage.height>=39,'Larger class controls at '+width);
     assert.ok(visual.status.height<=1.1,'Old floating save caption is hidden at '+width);
-    assert.ok(visual.cloud.height>=43&&visual.cloud.width>=220,'Storage pill is longer, on one row at '+width);
+    assert.ok(Math.abs(visual.cloud.height-visual.manage.height)<=1.1,'Storage pill height matches class management button at '+width);
+    assert.ok(visual.cloud.width>=220,'Storage control remains wide at '+width);
     assert.ok(visual.brand.right<=visual.nav.left+2,'No left/nav overlap at '+width);
     assert.ok(visual.nav.right<=visual.right.left+2,'No nav/right overlap at '+width);
    }
@@ -133,12 +135,15 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
     box=parent.getBoundingClientRect();
    return{left:a.left,leftRight:a.right,rightLeft:b.left,right:b.right,
     parentLeft:box.left,parentRight:box.right,rightLabel:getComputedStyle(right,'::before').content,
-    caption:getComputedStyle(document.querySelector('#saveStatus')).clipPath};
+    caption:getComputedStyle(document.querySelector('#saveStatus')).clipPath,
+    pillRadius:getComputedStyle(parent).borderTopLeftRadius,
+    classRadius:getComputedStyle(document.querySelector('#tt-class-add')).borderTopLeftRadius};
   });
   assert.ok(Math.abs(segment.leftRight-segment.rightLeft)<1,'The storage pill has no gap between its two cells');
   assert.ok(Math.abs(segment.parentLeft-segment.left)<2&&Math.abs(segment.parentRight-segment.right)<2,'The storage pill fills both sides');
   assert.match(segment.rightLabel,/클라우드 저장/);
   assert.ok(segment.caption.includes('inset'),'Live save status is hidden visually but retained');
+  assert.equal(segment.pillRadius,segment.classRadius,'Storage pill radius matches other top buttons');
   await p.locator('#tt-hud-browser-save').click();
   assert.equal(await p.locator('#tt-cloud-title').isVisible(),true,'Browser segment opens actual storage settings');
   await p.locator('#tt-cloud-close').click();
