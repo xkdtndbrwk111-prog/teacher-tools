@@ -1,4 +1,5 @@
 import {readStudents,isStudentStorageKey} from '../shared/student-registry.js';
+import {renderHanjaRoster,bindHanjaRosterScrollbar,syncHanjaRosterScrollbar} from './roster-view.js';
 "use strict";
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";
@@ -313,63 +314,42 @@ function refreshRoster(){
   const validIds=new Set(students.map(s=>s.id));
   excluded=new Set([...excluded].filter(id=>validIds.has(id)));
   saveExcludedStudents();
-  $("start").disabled=false;
+  $("start").disabled=students.length===0;
   renderStudents();
  }catch(e){
   students=[];$("start").disabled=true;renderStudents();notify(`학생명단을 읽을 수 없습니다. ${e.message}`);
  }
 }
 function updateRosterSummary(){
- $("rosterSummary").textContent=`참가 ${students.filter(s=>!excluded.has(s.id)).length} / ${students.length}명 · 제외 ${students.filter(s=>excluded.has(s.id)).length}명`;
+ const joined=students.filter(student=>!excluded.has(student.id)).length;
+ $("rosterSummary").textContent="전체 "+students.length+"명 · 참가 "+joined+"명 · 제외 "+(students.length-joined)+"명";
 }
 function setStudentParticipation(id,included,card=null){
+ if(!students.some(student=>student.id===id))return;
  if(included)excluded.delete(id);else excluded.add(id);
  saveExcludedStudents();
- const el=card||document.querySelector(`#studentCards .hanja-student[data-student-id="${CSS.escape(id)}"]`);
+ const el=card||[...$("studentCards").querySelectorAll(".hanja-student")].find(node=>node.dataset.studentId===id);
  if(el){
   el.setAttribute("aria-pressed",String(included));
   el.classList.toggle("assignment-excluded",!included);
-  const status=el.querySelector(".shared-student-status");if(status)status.textContent=included?"참가":"제외";
-  el.setAttribute("aria-label",included?`${el.dataset.studentName} · 참가 · 우클릭하면 제외`:`${el.dataset.studentName} · 제외 · 우클릭하면 다시 포함`);
+  const status=el.querySelector(".shared-student-status");
+  if(status){
+   status.textContent=included?"참가":"제외";
+   status.setAttribute("aria-label",el.dataset.studentName+(included?" 수업에서 제외":" 수업에 다시 참가"));
+   status.title=included?"클릭하면 이번 한자 수업에서 제외":"클릭하면 이번 한자 수업에 참가";
+  }
+  el.setAttribute("aria-label",el.dataset.studentNumber+"번 "+el.dataset.studentName+(included?" · 이번 수업 참가":" · 이번 수업 제외")+". 클릭하면 참가 여부 변경");
  }
  updateRosterSummary();
 }
 function renderStudents(){
- $("studentCards").replaceChildren();updateRosterSummary();
- if(!students.length){const p=document.createElement("p");p.textContent="자리배치 매니저에서 학생명단을 먼저 저장해 주세요.";$("studentCards").append(p);return}
- for(const s of students){
-  const isExcluded=excluded.has(s.id),gender=["male","female"].includes(s.gender)?s.gender:"none";
-  const b=document.createElement("button");
-  b.type="button";
-  b.className=`hanja-student shared-student-card gender-${gender}${isExcluded?" assignment-excluded":""}`;
-  b.dataset.studentId=s.id;
-  b.dataset.studentName=s.name;
-  b.setAttribute("aria-pressed",String(!isExcluded));
-  b.setAttribute("aria-label",isExcluded?`${s.name} · 제외 · 우클릭하면 다시 포함`:`${s.name} · 참가 · 우클릭하면 제외`);
-
-  const sprite=document.createElement("span");
-  sprite.className="hanja-sprite shared-student-sprite";
-  sprite.style.backgroundImage=`url("${s.sprite}")`;
-  sprite.dataset.hanjaGlasses=s.visual?.glasses||"none";
-  const glassesSrc=hanjaGlassesSrc(sprite.dataset.hanjaGlasses);
-  sprite.style.setProperty("--student-glasses-image",glassesSrc?`url("${glassesSrc}")`:"none");
-
-  const name=document.createElement("span");
-  name.className="shared-student-name";
-  name.textContent=s.name;
-
-  const st=document.createElement("small");
-  st.className="shared-student-status";
-  st.textContent=isExcluded?"제외":"참가";
-
-  b.append(sprite,name,st);
-  b.oncontextmenu=ev=>{
-   ev.preventDefault();
-   setStudentParticipation(s.id,excluded.has(s.id),b);
-  };
-  $("studentCards").append(b);
- }
+ updateRosterSummary();
+ renderHanjaRoster({
+  root:$("studentCards"),students,excluded,glassesSrc:hanjaGlassesSrc,
+  onToggle:(id,card)=>setStudentParticipation(id,excluded.has(id),card)
+ });
  refreshHanjaGlassesLayers();
+ requestAnimationFrame(()=>syncHanjaRosterScrollbar($("studentCards"),$("studentScrollTrack"),$("studentScrollThumb")));
 }
 function readSettings(){return validateSettings({target:$("target").value,direction:$("direction").value,mode:$("mode").value,gameMode:$("gameMode").value,perStudent:Number($("perStudent").value),choices:Number($("choices").value)})}
 function answerFor(e,d){if(d==="reverse")return e.text;return e.type==="single"?`${e.meaning} ${e.reading}`:e.reading}
@@ -842,7 +822,7 @@ $("exportXlsx").onclick=()=>{try{
  XLSX.utils.book_append_sheet(wb,makeExportSheet(wordHeaders,words,[16,20,28,16]),"한자어");
  XLSX.writeFile(wb,"한자_학습_데이터.xlsx");
 }catch(e){notify(e.message)}};
-load();resetForm();renderDb();ensureHanjaGlassesAssets();refreshRoster();
+load();resetForm();renderDb();ensureHanjaGlassesAssets();refreshRoster();bindHanjaRosterScrollbar($("studentCards"),$("studentScrollTrack"),$("studentScrollThumb"));
 window.addEventListener("storage",e=>{if(isStudentStorageKey(e.key)){if(!session)refreshRoster();else notify("학생명단이 변경되었습니다. 현재 수업은 시작할 때의 명단으로 계속합니다.")}if(e.key===KEY||e.key===null){storageBlocked=true;$("saveStatus").textContent="다른 탭에서 변경됨 · 새로고침 필요";notify("다른 탭의 한자 데이터가 변경되었습니다. 새로고침해 주세요.")}});
 const refreshRosterIfIdle=()=>{if(!session)refreshRoster()};
 window.addEventListener("pageshow",refreshRosterIfIdle);
