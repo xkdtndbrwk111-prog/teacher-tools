@@ -27,7 +27,7 @@ test("nodes have unique IDs, valid ownership, positions and real local media", (
     assert.ok(products.has(n.product), n.id);
     assert.equal(n.grid.col, PRODUCTS.findIndex((p) => p.id === n.product), n.id);
     assert.ok(Number.isFinite(n.grid.row) && n.grid.row >= 0, n.id);
-    assert.ok(n.usage instanceof Array || Array.isArray(n.usage), n.id);
+    assert.ok(Array.isArray(n.usage), n.id);
   }
   for (const p of PRODUCTS) {
     assert.ok(nodes.has(p.id === "quiz" ? "quiz.arcade" : p.id + ".hero"), p.id);
@@ -47,7 +47,7 @@ test("link directions agree with runtime; each connection has real endpoints", (
     "e.theme.board": ["board.theme", "class.theme"],
     "e.roster.hanja": ["class.roster", "hanja.roster"]
   };
-  assert.deepEqual(EDGES.map((e) => e.id).sort(), Object.keys(expected).sort());
+  assert.deepEqual(Array.from(EDGES, (e) => e.id).sort(), Object.keys(expected).sort());
   for (const e of EDGES) {
     assert.ok(nodes.has(e.from) && nodes.has(e.to), e.id);
     assert.deepEqual([e.from, e.to], expected[e.id], e.id);
