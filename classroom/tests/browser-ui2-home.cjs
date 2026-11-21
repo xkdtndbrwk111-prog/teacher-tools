@@ -101,6 +101,29 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   assert.equal(await workshopLink.getAttribute('href'),'../');
   assert.equal(await workshopLink.locator('svg').count(),1,'집 모양 아이콘만 상위 허브로 이동해야 함');
   assert.equal(await p.locator('#tt-manager-home-button svg').count(),0,'교실매니저 이름 버튼은 내부 홈으로 유지');
+  assert.equal(await p.locator('#saveStatus').evaluate(el=>el.parentElement?.classList.contains('tt-hud-cloud')),true,'실제 저장 상태 문구가 클라우드 바로 위로 이동해야 함');
+  assert.equal(await p.locator('.brand-block #saveStatus').count(),0,'집 아이콘 아래 이중 문구 제거');
+  for(const width of [390,768,1024,1280,1600,1920]){
+   await p.setViewportSize({width,height:820});
+   const visual=await p.evaluate(()=>{
+    const rect=selector=>{const b=document.querySelector(selector).getBoundingClientRect();return{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}};
+    return{house:rect('#tt-workshop-home-link .tt-ui2-icon'),
+      homeText:parseFloat(getComputedStyle(document.querySelector('#tt-manager-home-button')).fontSize),
+      brand:rect('.studio-topbar>.brand-block'),nav:rect('.prototype-mode-switch'),
+      right:rect('#tt-hud-right'),cloud:rect('.tt-hud-cloud'),
+      status:rect('#saveStatus'),select:rect('#tt-class-select'),manage:rect('#tt-class-add')};
+   });
+   assert.ok(visual.house.width>=23.5,'24px house icon at '+width);
+   assert.ok(visual.brand.left>=0&&visual.right.right<=width+1,'Header bounds at '+width);
+   if(width>=1280){
+    assert.ok(visual.homeText>=15.5,'16px title at '+width);
+    assert.ok(visual.select.height>=39&&visual.manage.height>=39,'Larger class controls at '+width);
+    assert.ok(visual.status.height>=10&&visual.status.top<visual.cloud.bottom,'Save caption near cloud at '+width);
+    assert.ok(visual.brand.right<=visual.nav.left+2,'No left/nav overlap at '+width);
+    assert.ok(visual.nav.right<=visual.right.left+2,'No nav/right overlap at '+width);
+   }
+  }
+  await p.setViewportSize({width:1920,height:820});
   const savedRoster=await p.evaluate(()=>localStorage.getItem('tt.classroom.active-roster'));
   await workshopLink.click();
   await p.waitForURL(origin+'/');
