@@ -200,6 +200,7 @@
               <button id="reloadStorage" class="hidden" type="button">최신 데이터 다시 불러오기</button>
             </div>
             <label class="field">학생 명단 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
+            <p class="settings-hint">순서만 바꾸면 학생 ID·성적·코인·확정 자리배치는 유지됩니다. 출석번호는 별도로 관리합니다. 이름을 바꾼 학생은 확인창에서 직접 연결해야 기존 기록이 이어집니다.</p>
             <button id="applyStudents" class="primary full" type="button">명단 적용</button>
             <hr>
             <label class="field">학급 이름<input id="className" maxlength="30" placeholder="우리 반"></label>
@@ -256,7 +257,7 @@
     <div class="seat-count-dialog-card roster-change-card" role="dialog" aria-modal="true" aria-labelledby="rosterChangeTitle" aria-describedby="rosterChangeHelp">
       <span class="seat-count-dialog-kicker">명단 변경 확인</span>
       <h2 id="rosterChangeTitle">명단에서 빠지는 학생이 있습니다</h2>
-      <p id="rosterChangeHelp">이름만 바뀐 학생은 새 이름을 골라 주세요. 자리 규칙과 성적이 그대로 이어집니다. 제외한 학생의 성적은 지워지지 않고, 성적 관리의 학급·학생 화면에서 다시 연결할 수 있습니다.</p>
+      <p id="rosterChangeHelp">기존 학생의 이름을 바꾼 경우에만 새 이름을 직접 선택해 주세요. 줄 위치로 자동 연결하지 않습니다. 잘못 연결하면 다른 학생의 기록과 혼동될 수 있습니다. 명단 제외 시 성적은 보존되며 성적관리에서 다시 연결할 수 있습니다.</p>
       <div id="rosterChangeRows" class="roster-change-rows"></div>
       <p id="rosterChangeAdded" class="roster-change-added"></p>
       <p id="rosterChangeError" class="roster-change-error" role="alert"></p>

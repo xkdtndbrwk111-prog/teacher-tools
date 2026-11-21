@@ -118,7 +118,27 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
   await step('NORMAL: 연결하면 전체 자료가 시트에 저장되고 칸 제한을 넘지 않는다',async()=>{
    pc1=await newPC();const {p}=pc1;
    await setRoster(p,['가온','나래','다온']);
-   await p.evaluate(()=>{for(let i=0;i<1500;i++)classState.history.push({round:i+1,note:'가'.repeat(60),assignments:[],studentsSnapshot:[],layoutSnapshot:null});classState.history=[];const c=window.__TT_STAGE031_CLASS;const pe=JSON.parse(window.__TT_STORE.getItem(c.peKey)||'{}');pe[classState.students[0].id]={traits:{leadership:4,intelligence:3,stamina:2,charm:1,initiative:4},fixedTeam:0};window.__TT_STORE.setItem(c.peKey,JSON.stringify(pe));persistStateOnly()});
+   // Exercise the actual PE editor, not an out-of-band store write: the module
+   // keeps its own in-memory state and would otherwise overwrite the fixture.
+   await p.evaluate(()=>{
+    const first=classState.students[0];
+    if(!first)throw Error('expected first student');
+    selectedStudentId=first.id;renderStudentInspector();
+    const targets={leadership:4,intelligence:3,stamina:2,charm:1,initiative:4};
+    for(const [trait,value] of Object.entries(targets)){
+     const button=document.querySelector(`#studentInspector [data-trait="${trait}"][data-value="${value}"]`);
+     if(!button)throw Error('PE editor not available: '+trait);
+     button.click();
+    }
+    for(let i=0;i<1500;i++)classState.history.push({round:i+1,note:'가'.repeat(60),assignments:[],studentsSnapshot:[],layoutSnapshot:null});
+    classState.history=[];
+    persistStateOnly();
+   });
+   await p.evaluate(async()=>{
+    await window.__TT_STORE.flush();
+    const c=window.__TT_STAGE031_CLASS,pe=JSON.parse(window.__TT_STORE.getItem(c.peKey)||'{}');
+    if(pe[classState.students[0].id]?.traits?.leadership!==4)throw Error('PE state did not persist before Google sync');
+   });
    await connect(p);
    await chipIs(p,/구글 \d/);
    await closeSettings(p);
@@ -127,7 +147,10 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    const data=fileValues('TT_DATA').slice(1).map(r=>r[1]).join('');
    const saved=JSON.parse(data);
    assert.deepEqual(saved.classes[0].seating.students.map(s=>s.name),['가온','나래','다온']);
-   assert.equal(Object.values(saved.classes[0].pe).find(x=>x?.traits)?.traits.leadership,4);
+   // The PE store can retain inactive student records. Verify the saved value by
+   // this class's current stable student ID, not by the first property in the map.
+   const activeStudentId=saved.classes[0].seating.students[0].id;
+   assert.equal(saved.classes[0].pe[activeStudentId]?.traits?.leadership,4);
   });
   await step('브라우저 저장은 바로, 구글 저장은 마지막 변경 5분 뒤에 된다',async()=>{
    google.files.clear();

@@ -808,9 +808,8 @@ function askRosterLinks(plan,oldStudents){
     const select=document.createElement("select");select.setAttribute("aria-label",`${student.name} 처리 방법`);
     select.add(new Option("명단에서 제외",""));
     newLines.forEach(line=>select.add(new Option(`이름 변경: ${line.name}`,String(line.index))));
-    // A new name on the same line as the old one is most likely a rename.
-    const sameLine=oldStudents.indexOf(student);
-    if(newLines.some(line=>line.index===sameLine))select.value=String(sameLine);
+    // Never connect identities based on the edited line number. A reorder is not a rename.
+    // Default to no link; the teacher must explicitly choose any changed name.
     row.append(name,select);rows.append(row);
     return{student,select};
   });
@@ -847,6 +846,12 @@ async function applyStudentNames(){
   if(historyView)return;
   const names=$("studentInput").value.split("\n").map(s=>s.trim()).filter(Boolean),old=[...classState.students];
   const plan=rosterChangePlan(old,names);
+  const duplicated=new Set(old.map(s=>s.name).filter((name,index,all)=>all.indexOf(name)!==index));
+  if([...duplicated].some(name=>old.filter(s=>s.name===name).length!==names.filter(n=>n===name).length)){
+    alert("동명이인의 명단 추가·삭제·이름 변경은 이름만으로 학생 ID를 구별할 수 없습니다. 개별 학생 편집에서 처리해 주세요.");
+    return;
+  }
+  const reorderedOnly=plan.removed.length===0&&names.length===old.length&&plan.lines.every(line=>line.student);
   const links=plan.removed.length?await askRosterLinks(plan,old):new Map();
   if(!links)return;
   classState.students=plan.lines.map((line,index)=>{
@@ -857,7 +862,8 @@ async function applyStudentNames(){
   const ids=new Set(classState.students.map(s=>s.id)),validSeats=new Set(usableCells().map(c=>c.id));
   classState.students.forEach(s=>{s.apartFrom=[...new Set((s.apartFrom||[]).filter(id=>ids.has(id)&&id!==s.id))].slice(0,3);if(s.fixedSeatId&&!validSeats.has(s.fixedSeatId))s.fixedSeatId=null;if(!["A","B","C"].includes(s.balanceLevel))s.balanceLevel="none"});
   if(!classState.students.some(s=>s.id===selectedStudentId))selectedStudentId=classState.students[0]?.id||null;
-  invalidateConfirmed("명단이 바뀌어 기존 확정 배치를 해제했습니다.");
+  if(reorderedOnly)setAssignmentStatus("학생 표시 순서만 변경했습니다. 기존 학생 ID·출석번호·확정 자리배치는 유지됩니다.");
+  else invalidateConfirmed("명단이 바뀌어 기존 확정 배치를 해제했습니다.");
   saveState();renderStudentsInput();renderStudentStrip();renderStudentInspector();renderHistory();
 }
 function nextPlaceholderStudentName(){
