@@ -68,12 +68,14 @@ function renderClasses(){
  list.innerHTML=m.classes.length?m.classes.map(c=>`<button type="button" class="class-item ${c.id===selectedClass?'active':''}" data-class-id="${h(c.id)}"><span>${h(c.name)}</span><small>${roster(m,c.id).length}명</small></button>`).join(''):'<div class="dock-empty">아직 등록된 학급이 없습니다.</div>';
  const c=m.classes.find(x=>x.id===selectedClass),rows=c?roster(m,c.id):[];
  $('selected-class-title').textContent=c?`${c.name} · 학생 명단`:'학급 · 학생 명단';
- $('class-count').textContent=c?`등록 학생 ${rows.length}명 · 연결 평가 ${m.assessments.filter(a=>a.classIds.includes(c.id)).length}개`:'';
+ $('class-count').textContent=c?`등록 학생 ${rows.length}명 · 연결 평가 ${m.assessments.filter(a=>a.classIds.includes(c.id)).length}개${c.stage03NumberMode==='ordered'?' · 번호는 자리배치 카드 순서에서 변경':''}`:'';
  $('dock-roster-heading').textContent=c?`${c.name} · 학생 등록`:'학생 등록';
 
  $('class-stage-roster').innerHTML=rows.length?rows.map(r=>`<button type="button" class="class-stage-student" data-person="${h(r.id)}"><span class="number">${r.number}</span><span class="stage-student-name">${h(r.name)}</span><span class="stage-student-meta">개인 평가 보기</span></button>`).join(''):c?'<div class="empty-state">오른쪽 도구창에서 학생을 등록하세요.</div>':'';
  $('class-stage-roster').querySelectorAll('[data-person]').forEach(b=>b.onclick=()=>showStudent(b.dataset.person));
- $('edit-numbers').classList.toggle('hidden',!rows.length||numberEditing);
+ const orderLocked=c?.stage03NumberMode==='ordered';
+ if(orderLocked)numberEditing=false;
+ $('edit-numbers').classList.toggle('hidden',!rows.length||numberEditing||orderLocked);
  $('edit-numbers').onclick=()=>{numberEditing=true;renderClasses()};
  if(numberEditing&&rows.length){
   $('class-stage-roster').innerHTML=`<div class="number-edit-list">${rows.map(r=>`<label class="number-edit-row"><input type="number" min="1" max="999" value="${r.number}" data-number-for="${h(r.id)}" aria-label="${h(r.name)} 번호"><span>${h(r.name)}</span></label>`).join('')}</div><div class="number-edit-actions"><button type="button" class="primary" id="save-numbers">번호 저장</button><button type="button" class="ghost" id="cancel-numbers">취소</button></div>`;

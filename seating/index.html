@@ -7,7 +7,7 @@
   <link rel="icon" href="../assets/hub/favicon.svg">
   <link rel="stylesheet" href="styles.css?v=20261121-roster-scroll-2">
   <link rel="stylesheet" href="pe-v1.css?v=20261115-step10-menu">
-  <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
+  <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-attendance-v1">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css?v=20261121-roster-fit">
   <link rel="stylesheet" href="../classroom/host/life-mount.css?v=20261116-life-guided">
   <link rel="stylesheet" href="../classroom/host/class-ui.css?v=ui2-lock-center">
@@ -200,9 +200,16 @@
               <span id="storageAlertText"></span>
               <button id="reloadStorage" class="hidden" type="button">최신 데이터 다시 불러오기</button>
             </div>
-            <label class="field">학생 명단 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
-            <p class="settings-hint">순서만 바꾸면 학생 ID·성적·코인·확정 자리배치는 유지됩니다. 출석번호는 별도로 관리합니다. 이름을 바꾼 학생은 확인창에서 직접 연결해야 기존 기록이 이어집니다.</p>
-            <button id="applyStudents" class="primary full" type="button">명단 적용</button>
+            <div id="initialRosterBlock">
+              <label class="field">최초 학생 명단 등록 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
+              <p class="settings-hint">처음 생성한 학급에만 여러 명을 한꺼번에 입력합니다. 이후에는 아래 학생 카드와 오른쪽 학생 상세 설정으로 관리합니다.</p>
+              <button id="applyStudents" class="primary full" type="button">명단 적용</button>
+            </div>
+            <div id="registeredRosterHint" class="settings-hint hidden">등록된 학생은 아래 학생 카드에서 선택하고 이름을 수정하세요. 학생 아바타를 길게 눌러 순서를 변경할 수 있습니다. 학생 추가는 아래 '+ 학생 추가'를 사용합니다.</div>
+            <div id="legacyNumberHint" class="settings-hint hidden">
+              <p>기존 학급의 출석번호는 성적관리와 다를 수 있어 자동 변경하지 않았습니다. 현재 카드 순서를 확인한 뒤 번호를 통일할 수 있습니다.</p>
+              <button id="enableRosterNumbers" class="ghost full" type="button">현재 카드 순서를 출석번호로 연결</button>
+            </div>
             <hr>
             <label class="field">학급 이름<input id="className" maxlength="30" placeholder="우리 반"></label>
             <button id="resetLayout" class="danger full" type="button">레이아웃 초기화</button>

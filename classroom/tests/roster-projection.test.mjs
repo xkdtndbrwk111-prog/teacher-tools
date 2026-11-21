@@ -37,3 +37,22 @@ test('같은 설치의 다른 학급 이름 변경은 기존 학급과 연결을
  w=projectRoster(w,{...second,className:'6학년 3반'}).workspace;
  assert.equal(w.classes[1].id,cId);assert.equal(w.classes[1].name,'6학년 3반');
 });
+
+test('번호 연결 이전의 성적관리 번호는 보존하고, 승인한 카드 순서만 번호로 변경한다',()=>{
+ const first=make([{id:'s1',name:'A'},{id:'s2',name:'B'}]);
+ let w=projectRoster(fresh(2026),first).workspace;
+ const c=w.classes[0].id,mem=w.memberships.find(m=>m.stage03SeatingId==='s1').id;
+ const a=addAssessment(w,{title:'1단원',subject:'수학',criterion:'점수',maxScore:100,classIds:[c]});
+ setGrade(w,a.id,mem,'92');
+ w.memberships.find(m=>m.stage03SeatingId==='s1').number=15;
+ const reversed=[...first.students].reverse();
+ const legacy=projectRoster(w,{...first,students:reversed});
+ assert.equal(legacy.workspace.memberships.find(m=>m.stage03SeatingId==='s1').number,15);
+ const ordered=projectRoster(legacy.workspace,{...first,students:reversed,numberMode:'ordered'});
+ assert.equal(ordered.workspace.memberships.find(m=>m.stage03SeatingId==='s1').number,2);
+ assert.equal(ordered.workspace.memberships.find(m=>m.stage03SeatingId==='s2').number,1);
+ assert.equal(ordered.workspace.memberships.find(m=>m.stage03SeatingId==='s1').id,mem);
+ assert.equal(getGrade(ordered.workspace,a.id,mem),92);
+ assert.equal(projectRoster(ordered.workspace,{...first,students:reversed,numberMode:'ordered'}).changed,false);
+ assert.throws(()=>validateHostRoster({...first,numberMode:'random'}),/동기화 모드/);
+});

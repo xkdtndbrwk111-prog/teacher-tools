@@ -4,6 +4,7 @@ import {addClass,addStudent,validateWorkspace} from './model.mjs';
 const AXIS_VISUAL={character:['boy1','boy2','girl','trav','prin'],hair:['brown','black'],outfit:['green','blue','red','yellow','purple','orange'],glasses:['none','red','black','brown','navy','pink','gray']};
 export function validateHostRoster(roster){
  if(!roster||typeof roster!=='object'||typeof roster.sourceInstanceId!=='string'||!/^[-a-zA-Z0-9]{8,100}$/.test(roster.sourceInstanceId)||typeof roster.className!=='string'||!roster.className.trim()||roster.className.length>50||!Array.isArray(roster.students)||roster.students.length>200)throw Error('자리배치 학급 원본 형식 오류');
+ if(roster.numberMode!==undefined&&!["legacy","ordered"].includes(roster.numberMode))throw Error("학급 번호 동기화 모드가 올바르지 않습니다.");
  const ids=new Set();
  const students=roster.students.map((s,index)=>{
   if(!s||typeof s.id!=='string'||!s.id||s.id.length>100||ids.has(s.id)||typeof s.name!=='string'||!s.name.trim()||s.name.length>50)throw Error('중복/누락 학생 ID: 자동 연결을 중단했습니다.');
@@ -12,9 +13,10 @@ export function validateHostRoster(roster){
   const safeVisual=Object.keys(visual).every(k=>AXIS_VISUAL[k].includes(visual[k]))?visual:null;
   return {id:s.id,name:s.name.trim(),gender:['male','female'].includes(s.gender)?s.gender:'none',visual:safeVisual,number:index+1};
  });
- return {sourceInstanceId:roster.sourceInstanceId,className:roster.className.trim(),students};
+ return {sourceInstanceId:roster.sourceInstanceId,className:roster.className.trim(),numberMode:roster.numberMode==="ordered"?"ordered":"legacy",students};
 }
-// Numbers belong to the teacher: a new student goes last and list order never renumbers anyone.
+// Legacy memberships keep teacher-assigned numbers. Explicitly ordered host rosters
+// may change numbers, but never membership/student IDs or grade values.
 const nextNumber=(w,classId)=>w.memberships.filter(x=>x.active&&x.classId===classId).reduce((n,x)=>Math.max(n,x.number),0)+1;
 export function projectRoster(workspace,host){
  const roster=validateHostRoster(host);
@@ -26,6 +28,7 @@ export function projectRoster(workspace,host){
  let cls=out.classes.find(c=>c.stage03SourceId===roster.sourceInstanceId);
  if(!cls){cls=addClass(out,roster.className);cls.stage03SourceId=roster.sourceInstanceId;changed=true;}
  if(cls.name!==roster.className){cls.name=roster.className;changed=true;}
+ if(cls.stage03NumberMode!==roster.numberMode){cls.stage03NumberMode=roster.numberMode;changed=true;}
  const seen=new Set();const current=out.memberships.filter(x=>x.classId===cls.id);
  const linkBySeatId=new Map();
  for(const mem of current){if(!mem.stage03SeatingId)continue;
@@ -56,6 +59,11 @@ export function projectRoster(workspace,host){
   seen.add(pupil.id);
  }
  for(const mem of current){if(mem.stage03SeatingId&&!seen.has(mem.stage03SeatingId)&&mem.active){mem.active=false;deactivated++;changed=true;}}
+ if(roster.numberMode==="ordered")for(const [index,pupil] of roster.students.entries()){
+  const mem=out.memberships.find(x=>x.classId===cls.id&&x.active&&x.stage03SeatingId===pupil.id);
+  if(!mem)throw Error("출석번호 적용 중 학생 ID를 찾지 못했습니다.");
+  if(mem.number!==index+1){mem.number=index+1;changed=true}
+ }
  validateWorkspace(out);
  return {workspace:out,changed,stats:{added,renamed,deactivated,active:roster.students.length,previousUnlinked:deactivated}};
 }
