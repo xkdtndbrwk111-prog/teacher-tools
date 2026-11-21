@@ -119,9 +119,9 @@ body.tt-grade-active #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-menu .
    screen readers but is no longer positioned above the cloud button. */
 #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
  box-sizing:border-box;position:relative;
- flex:0 0 252px;min-width:252px;max-width:252px;width:252px;height:44px;
+ flex:0 0 252px;min-width:252px;max-width:252px;width:252px;height:40px;
  display:grid;grid-template-columns:1fr 1fr;align-items:stretch;gap:0;
- overflow:hidden;border:1px solid var(--cm-border,#547296);border-radius:999px;
+ overflow:hidden;border:1px solid var(--cm-border,#547296);border-radius:var(--cm-button-radius,10px);
  background:var(--cm-control,#233a5c)
 }
 #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud .tt-hud-save-label{
