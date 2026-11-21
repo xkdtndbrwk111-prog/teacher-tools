@@ -80,7 +80,7 @@
  // Only its visible label is shortened to avoid pushing other controls.
  if(cloud){
   function shortStatus(raw){
-   if(/EASY/i.test(raw))return '미사용';
+   if(/EASY/i.test(raw))return 'EASY · 미사용';
    if(/자료 차이|충돌/.test(raw))return '자료 확인';
    if(/연결 필요|로그인/.test(raw))return '연결 필요';
    if(/저장 멈춤|저장 중단|오류/.test(raw))return '저장 중단';
