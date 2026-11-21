@@ -364,7 +364,11 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud
 /* 2026-11-21: larger, readable brand; move the class selector right rather than
    shrinking the manager title. Tabs stay centered in their own grid track. */
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button{
- font-size:20px!important;font-weight:900!important;line-height:1.2!important;min-height:42px!important
+ font-size:22px!important;font-weight:900!important;line-height:1.15!important;min-height:40px!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button>span{
+ display:inline-block!important;margin:0!important;color:var(--cm-panel-ink)!important;
+ font-size:22px!important;font-weight:900!important;line-height:1.15!important
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{gap:14px!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{
@@ -375,9 +379,9 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
  box-sizing:border-box!important;position:relative!important;
  flex:0 0 252px!important;width:252px!important;min-width:252px!important;max-width:252px!important;
- height:44px!important;display:grid!important;grid-template-columns:1fr 1fr!important;
+ height:40px!important;display:grid!important;grid-template-columns:1fr 1fr!important;
  align-items:stretch!important;justify-content:stretch!important;gap:0!important;
- border:1px solid var(--cm-border)!important;border-radius:999px!important;
+ border:1px solid var(--cm-border)!important;border-radius:var(--cm-button-radius)!important;
  overflow:hidden!important;background:var(--cm-control)!important
 }
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus{
