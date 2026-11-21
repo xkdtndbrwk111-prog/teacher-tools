@@ -215,3 +215,29 @@
   }
   .shared-student-sprite::after{background-position:0 3px}
 }
+
+/* Always-present, manually draggable track when the class roster overflows.
+   macOS overlay scrollbars are invisible until scrolling; this track is not OS-dependent. */
+.student-strip{height:134px!important;max-height:134px!important;box-sizing:border-box!important;align-self:stretch!important}
+.student-cards{scrollbar-width:none!important;scroll-behavior:auto!important;padding-bottom:0!important;flex:0 0 auto}
+.student-cards::-webkit-scrollbar{display:none!important}
+.student-roster-scrollbar{
+  position:relative;display:block;width:100%;height:14px;min-height:14px;
+  box-sizing:border-box;margin:2px 0 0;padding:0;border:1px solid #4f6482;
+  border-radius:8px;background:#182840;touch-action:none;cursor:pointer;user-select:none
+}
+.student-roster-scrollbar.hidden{display:none!important}
+.student-roster-thumb{
+  position:absolute;inset:1px auto 1px 0;border-radius:6px;
+  background:#91a8cb;min-width:24px;box-shadow:inset 0 0 0 1px #c2d3ed;
+  cursor:grab;touch-action:none
+}
+.student-roster-thumb:active{cursor:grabbing;background:#c3d8f8}
+.student-roster-scrollbar:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+.studio.student-collapsed .student-roster-scrollbar{display:none!important}
+@media (min-width:761px){
+  .studio:not(.student-collapsed){grid-template-rows:minmax(0,1fr) 134px!important}
+}
+@media (max-width:760px){
+ .student-strip{height:auto!important;max-height:none!important}
+}

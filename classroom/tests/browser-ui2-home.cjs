@@ -18,6 +18,29 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   assert.equal(await p.locator('.prototype-mode-switch button:visible').count(),4);
   assert.equal(await p.locator('#teacherScreen>.studio').isVisible(),false);
   await p.locator('[data-tt-ui2-open="seat"]').click();assert.equal(await p.locator('#teacherScreen>.studio').isVisible(),true);
+  // A custom scrollbar must remain visible for an overflowing roster, including
+  // when the OS uses invisible overlay scrollbars.
+  await p.evaluate(()=>{
+    const names=Array.from({length:25},(_,i)=>"스크롤학생"+(i+1));
+    const old=classState.students;
+    classState.students=names.map((name,i)=>({id:"scroll-test-"+i,name,gender:"none",balanceLevel:"none",apartFrom:[],fixedSeatId:null,assignmentExcluded:false}));
+    renderStudentStrip();
+    classState.students=old;
+  });
+  await p.waitForFunction(()=>!document.getElementById('studentRosterScrollbar').classList.contains('hidden'));
+  const scroll=await p.evaluate(()=>{
+    const track=document.getElementById('studentRosterScrollbar'),list=document.getElementById('studentCards'),
+      card=list.querySelector('.shared-student-card'),thumb=document.getElementById('studentRosterThumb');
+    return {track:track.getBoundingClientRect().toJSON(),card:card.getBoundingClientRect().toJSON(),thumb:thumb.getBoundingClientRect().toJSON(),max:list.scrollWidth-list.clientWidth}
+  });
+  assert.ok(scroll.max>0,'must overflow');
+  assert.ok(scroll.track.top>=scroll.card.bottom,'track must be below cards, not overlapping');
+  await p.locator('#studentRosterScrollbar').focus();
+  await p.keyboard.press('End');
+  assert.ok(await p.locator('#studentCards').evaluate(el=>el.scrollLeft>0),'End key scrolls to the last card');
+  await p.keyboard.press('Home');
+  assert.equal(await p.locator('#studentCards').evaluate(el=>el.scrollLeft),0);
+  await p.evaluate(()=>renderStudentStrip());
   await p.locator('#tt-manager-home-button').click();assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
   await p.locator('[data-tt-ui2-open="board"]').click();assert.equal(await p.locator('#tt-manager-board').isVisible(),true);
   await p.waitForFunction(()=>document.getElementById('tt-ui2-board-status').textContent.includes('연결'));

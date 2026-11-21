@@ -986,6 +986,72 @@ function toggleFixedSeatFromAssignment(studentId,seatId){
 }
 function inspectorStudents(){return historyView&&!historyView.legacy?(historyView.studentsSnapshot||[]):classState.students}
 function inspectorStudentById(id){return inspectorStudents().find(s=>s.id===id)}
+
+// User-visible horizontal scrollbar separate from the roster cards. Works even when
+// the host OS hides native scrollbars (macOS overlay scrollbar preference).
+function initRosterScrollbar(){
+  const list=$("studentCards"),track=$("studentRosterScrollbar"),thumb=$("studentRosterThumb");
+  if(!list||!track||!thumb||track.dataset.ready==="1")return;
+  track.dataset.ready="1";
+  const sync=()=>{
+    const width=track.clientWidth-2,range=Math.max(0,list.scrollWidth-list.clientWidth);
+    const visible=width>0&&list.clientWidth>0&&range>2&&!document.querySelector(".studio")?.classList.contains("student-collapsed");
+    track.classList.toggle("hidden",!visible);
+    if(!visible)return;
+    const trackW=Math.max(0,track.clientWidth-2);
+    const size=Math.max(34,Math.min(trackW,trackW*list.clientWidth/list.scrollWidth));
+    const travel=Math.max(0,trackW-size);
+    thumb.style.width=size+"px";
+    thumb.style.left=(range?travel*list.scrollLeft/range:0)+"px";
+    track.setAttribute("aria-valuemax",String(Math.round(range)));
+    track.setAttribute("aria-valuenow",String(Math.round(list.scrollLeft)));
+  };
+  let dragging=null;
+  track.addEventListener("pointerdown",event=>{
+    if(event.button!==0&&event.pointerType==="mouse")return;
+    const rect=track.getBoundingClientRect(),thumbW=thumb.getBoundingClientRect().width;
+    const currentLeft=thumb.offsetLeft;
+    const offset=event.target===thumb?event.clientX-(rect.left+currentLeft):thumbW/2;
+    dragging={id:event.pointerId,offset};
+    track.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    const move=clientX=>{
+      if(!dragging)return;
+      const w=Math.max(0,track.clientWidth-2),travel=Math.max(1,w-thumbW);
+      const left=Math.max(0,Math.min(travel,clientX-rect.left-dragging.offset));
+      list.scrollLeft=left/travel*Math.max(0,list.scrollWidth-list.clientWidth);
+      sync();
+    };
+    move(event.clientX);
+  });
+  track.addEventListener("pointermove",event=>{if(!dragging||event.pointerId!==dragging.id)return;
+    const rect=track.getBoundingClientRect(),w=Math.max(0,track.clientWidth-2),thumbW=thumb.getBoundingClientRect().width;
+    const travel=Math.max(1,w-thumbW);
+    list.scrollLeft=Math.max(0,Math.min(travel,event.clientX-rect.left-dragging.offset))/travel*Math.max(0,list.scrollWidth-list.clientWidth);
+    sync();
+  });
+  const release=event=>{if(!dragging||dragging.id!==event.pointerId)return;dragging=null;
+    if(track.hasPointerCapture(event.pointerId))track.releasePointerCapture(event.pointerId)};
+  track.addEventListener("pointerup",release);
+  track.addEventListener("pointercancel",release);
+  track.addEventListener("lostpointercapture",()=>{dragging=null});
+  track.addEventListener("keydown",event=>{
+    const range=Math.max(0,list.scrollWidth-list.clientWidth);
+    const actions={ArrowLeft:-45,ArrowRight:45,PageUp:-list.clientWidth*.75,PageDown:list.clientWidth*.75,Home:-range,End:range};
+    if(!(event.key in actions))return;
+    event.preventDefault();
+    if(event.key==="Home")list.scrollLeft=0;
+    else if(event.key==="End")list.scrollLeft=range;
+    else list.scrollLeft+=actions[event.key];
+    sync();
+  });
+  list.addEventListener("scroll",sync,{passive:true});
+  if(window.ResizeObserver){new ResizeObserver(sync).observe(list);new ResizeObserver(sync).observe(track)}
+  window.addEventListener("resize",sync);
+  window.__TT_ROSTER_SCROLL_SYNC=sync;
+  requestAnimationFrame(sync);
+}
+
 function bindStudentStripWheel(){
   const scroller=$("studentCards");
   if(!scroller||scroller.dataset.wheelBound==="1")return;
@@ -1018,7 +1084,7 @@ function toggleAssignmentParticipation(student){
 function renderStudentStrip(){
   const students=inspectorStudents();
   if(!students.some(s=>s.id===selectedStudentId))selectedStudentId=students[0]?.id||null;
-  const root=$("studentCards");root.innerHTML="";
+  const root=$("studentCards"),oldScroll=root.scrollLeft;root.innerHTML="";
   students.forEach((student,index)=>{
     const excluded=!historyView&&student.assignmentExcluded===true;
     const gender=["male","female"].includes(student.gender)?student.gender:"none";
@@ -1050,7 +1116,8 @@ function renderStudentStrip(){
   renderRosterSummary(students);
   if(!historyView&&$("targetStudentCount"))$("targetStudentCount").value=classState.students.length;
 
-  bindStudentStripWheel();
+  root.scrollLeft=oldScroll;
+  bindStudentStripWheel();initRosterScrollbar();requestAnimationFrame(()=>window.__TT_ROSTER_SCROLL_SYNC?.());
   ensureStudentGlassesAssets();refreshStudentPreviewLayers();
 }
 function renderStudentInspector(){

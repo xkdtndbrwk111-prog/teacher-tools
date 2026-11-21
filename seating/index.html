@@ -7,7 +7,7 @@
   <link rel="icon" href="../assets/hub/favicon.svg">
   <link rel="stylesheet" href="styles.css?v=20261121-group-status-1">
   <link rel="stylesheet" href="pe-v1.css?v=20261115-step10-menu">
-  <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
+  <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-visible-scroll-1">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css">
   <link rel="stylesheet" href="../classroom/host/life-mount.css?v=20261116-life-guided">
   <link rel="stylesheet" href="../classroom/host/class-ui.css?v=ui2-lock-center">
@@ -235,7 +235,10 @@
             <button id="fillStudentCount" class="strip-add target-fill" type="button">총원 맞추기</button>
           </div>
         </div>
-        <div id="studentCards" class="student-cards"></div>
+        <div id="studentCards" class="student-cards" aria-label="학생 명단 · 가로로 이동 가능"></div>
+        <div id="studentRosterScrollbar" class="student-roster-scrollbar hidden" role="scrollbar" aria-label="학생 명단 가로 스크롤" aria-controls="studentCards" aria-orientation="horizontal" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100" tabindex="0">
+          <div id="studentRosterThumb" class="student-roster-thumb"></div>
+        </div>
       </section>
     </div>
   </section>
