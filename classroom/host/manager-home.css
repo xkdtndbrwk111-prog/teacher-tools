@@ -5,6 +5,12 @@
 #tt-workshop-home-link:hover{background:var(--cm-surface,#ffffff18)}
 #tt-manager-home-button{display:inline-flex;align-items:center;min-height:40px;min-width:0;padding:5px 2px;border:0;border-radius:var(--cm-button-radius);color:inherit;background:transparent;font:inherit;font-size:16px;font-weight:850;line-height:1.2;white-space:nowrap;cursor:pointer}
 #tt-manager-home-button:hover{background:var(--cm-surface,#ffffff18)}
+/* .brand-block span was fixed at 11px. Override the actual text node,
+   not only its parent button, so the larger label really renders. */
+#tt-manager-home-button>span{
+ display:inline-block;margin:0;color:inherit;
+ font-size:22px;font-weight:900;line-height:1.15;white-space:nowrap
+}
 #tt-manager-home-button+.tt-unused{display:none}
 #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>#topClassTitle{display:none!important}
 .tt-ui2-icon{width:20px;height:20px;flex:none;vertical-align:middle}
