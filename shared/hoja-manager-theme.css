@@ -209,12 +209,22 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mo
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button.on{border-color:var(--cm-action-fill)!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls{gap:4px!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls label{display:none}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:94px!important;max-width:94px!important}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:58px;max-width:66px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{
+ width:108px!important;max-width:108px!important;min-width:0!important;
+ height:40px!important;min-height:40px!important;padding:6px 10px!important;
+ font-size:14px!important;font-weight:750!important;border-radius:10px!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{
+ min-width:76px!important;max-width:86px!important;height:40px!important;min-height:40px!important;
+ padding:6px 10px!important;font-size:14px!important;font-weight:850!important;border-radius:10px!important
+}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #generateAssignment{width:82px!important;min-width:82px!important;flex-basis:82px!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #confirmAssignment{width:76px!important;min-width:76px!important;flex-basis:76px!important;background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-action-fill)!important}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .top-actions #openPlayback{width:94px!important;min-width:94px!important;flex-basis:94px!important}
-html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{flex-basis:94px;min-width:94px;max-width:94px}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+ flex-basis:120px;min-width:120px;max-width:120px;
+ display:flex!important;flex-direction:column;align-items:stretch;justify-content:center;gap:1px
+}
 html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-overflow{flex-basis:64px;min-width:64px;max-width:64px}
 html.tt-manager-theme body:is(.tt-manager-special,.tt-grade-active,.tt-life-active) #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-right>.top-actions{display:none!important}
 html.tt-manager-theme #tt-ui2-placement .tt-student-placement-settings :is(label,p){font-family:var(--cm-font)!important;color:var(--cm-panel-ink)!important}
@@ -232,13 +242,12 @@ html.tt-manager-theme #tt-settings-overlay [data-tt-panel="privacy"] .tt-setting
 }
 @media(max-width:1100px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified{--tt-hud-tab-width:34px;--tt-hud-seat-width:71px;column-gap:4px!important;padding:0 5px!important}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{display:flex!important;gap:3px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{display:flex!important;gap:7px!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #tt-manager-home-button span,
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified #saveStatus,
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button span{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap!important}
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .prototype-mode-switch button{width:34px;padding:0!important}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:70px!important;max-width:70px!important}
- html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:46px;max-width:48px}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:84px!important;max-width:84px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:62px!important;max-width:70px!important}
 }
 @media(max-width:540px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls,
@@ -313,4 +322,41 @@ html.tt-manager-theme #teacherScreen .trait-prototype .trait-row>span{
 html.tt-manager-theme #teacherScreen .trait-prototype .trait-linked-tag{
  display:block!important;align-self:flex-start!important;margin:2px 0 0!important;
  transform:none!important;text-align:center
+}
+
+
+/* Brand and save status alignment, Nov 21: keep one-row nav centered. */
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{
+ display:flex!important;align-items:center!important;gap:10px!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{
+ display:flex!important;align-items:center!important;gap:6px!important
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus{
+ position:static!important;display:block!important;box-sizing:border-box!important;
+ width:100%!important;height:12px!important;max-width:100%!important;
+ padding:0!important;margin:0!important;overflow:hidden!important;text-overflow:ellipsis!important;
+ white-space:nowrap!important;clip-path:none!important;
+ font:700 10px/12px var(--cm-font)!important;
+ color:var(--cm-panel-sub)!important;text-align:center
+}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.error{color:#fca5a5!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus.warning{color:#fde68a!important}
+@media(max-width:1250px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:96px!important;max-width:96px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls #tt-class-add{min-width:64px!important;max-width:72px!important;font-size:13px!important}
+}
+@media(max-width:1100px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block{gap:5px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-class-controls select{width:84px!important;max-width:84px!important}
+}
+@media(max-width:900px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{flex-basis:94px!important;min-width:94px!important;max-width:94px!important}
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus{
+  position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;
+  clip-path:inset(50%)!important;white-space:nowrap!important
+ }
+}
+@media(max-width:540px){
+ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>.tt-class-controls{display:none!important}
 }
