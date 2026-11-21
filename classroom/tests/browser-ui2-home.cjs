@@ -20,9 +20,14 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   await p.locator('[data-tt-ui2-open="seat"]').click();assert.equal(await p.locator('#teacherScreen>.studio').isVisible(),true);
   assert.equal(await p.locator('.dock-tab[data-tab="settings"]').count(),0);
   assert.equal(await p.locator('.dock-tab.on').first().getAttribute('data-tab'),'student');
-  await p.locator('#initialRosterDialog[open]').waitFor();
-  assert.equal(await p.locator('#initialRosterBlock').isVisible(),true);
-  await p.locator('#skipInitialRoster').click();
+  if(await p.evaluate(()=>classState.students.length===0&&classState.ui.initialRosterApplied!==true)){
+   await p.locator('#initialRosterDialog[open]').waitFor();
+   assert.equal(await p.locator('#initialRosterBlock').isVisible(),true);
+   await p.locator('#skipInitialRoster').click();
+  }else{
+   // Existing or seeded legacy classes must never be interrupted by onboarding.
+   assert.equal(await p.locator('#initialRosterDialog').evaluate(el=>el.open),false);
+  }
   await p.locator('#tt-manager-home-button').click();assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
   await p.locator('[data-tt-ui2-open="board"]').click();assert.equal(await p.locator('#tt-manager-board').isVisible(),true);
   await p.waitForFunction(()=>document.getElementById('tt-ui2-board-status').textContent.includes('연결'));
