@@ -9,6 +9,18 @@ const repo=path.resolve(__dirname,'../..');
 const PORT=4199,BASE=`http://127.0.0.1:${PORT}`;
 const LEGACY_SEAT='teacher-tools.seating.state.v1',LEGACY_PE='teacher-tools.seating.pe-prototype.v2';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function clickPrimary(p,id){
+ const button=p.locator('#'+id);
+ if(!await button.isVisible()){
+  // The candidate HUD creates the compact Work control after the data modules.
+  await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'));
+  const work=p.locator('#tt-hud-work-toggle');
+  await work.waitFor({state:'visible',timeout:12000});
+  if(await work.getAttribute('aria-expanded')!=='true')await work.click();
+ }
+ await button.click();
+}
 const results=[];
 async function step(name,fn){
  try{await fn();results.push([name,true]);console.log('PASS',name)}
@@ -491,9 +503,9 @@ async function setRoster(p,names){
   });
   await step('학생 화면이 열린다',async()=>{
    await p.evaluate(()=>{classState.rules.completeRandom=true;classState.rules.groupBalance=false;classState.groups=[]});
-   await p.click('#generateAssignment');await wait(200);
+   await clickPrimary(p,'generateAssignment');await wait(200);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(200);await p.click('#confirmAssignment');await wait(200);const student=await openStudent(p);
+   await wait(200);await clickPrimary(p,'confirmAssignment');await wait(200);const student=await openStudent(p);
    await student.click('#instant');await wait(300);
    assert.ok(await student.locator('#seats .seat, #seats > *').count()>0);
    await student.close();
@@ -692,7 +704,7 @@ async function setRoster(p,names){
     await p8.setViewportSize({width,height:800});await wait(120);
     await p8.evaluate(()=>{document.getElementById('tt-cloud-chip').textContent='☁ 자료 차이 확인'});
     const r=await p8.evaluate(()=>{
-     const compact=innerWidth<=1400;
+     const compact=innerWidth<=1680;
      const ids=['tt-manager-home-button',...(compact?['tt-hud-work-toggle']:['generateAssignment','confirmAssignment','openPlayback']),'tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','tt-seat-subtab','modePE','tt-life-tab','tt-board-tab'];
      const out=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return !b||b.top<0||b.left<0||b.right>innerWidth||b.bottom>innerHeight||b.width===0});
      const header=document.querySelector('.studio-topbar'),box=header.getBoundingClientRect();
@@ -701,7 +713,7 @@ async function setRoster(p,names){
      return{out,clipped,scroll:document.documentElement.scrollWidth>innerWidth,bar:box.height,overflow,...(overflow?{detail:{scroll:header.scrollHeight,client:header.clientHeight,rows:getComputedStyle(header).gridTemplateRows,children:[...header.children].filter(e=>e.getClientRects().length).map(e=>[e.id||e.className,Math.round(e.getBoundingClientRect().top-box.top),Math.round(e.getBoundingClientRect().bottom-box.top)])}}:{})};
     });
     if(r.out.length||r.clipped.length||r.scroll||r.overflow||r.bar>61)bad.push([width,r]);
-    if(width<=1400){
+    if(width<=1680){
      await p8.locator('#tt-hud-work-toggle').click();
      for(const id of ['generateAssignment','confirmAssignment','openPlayback']){
       const button=p8.locator('#'+id);assert.ok(await button.isVisible(),'compact work button '+id+' '+width);
@@ -814,9 +826,9 @@ async function setRoster(p,names){
    await p13.reload();await started(p13);
    assert.equal(await locked().count(),1,'다시 열면 잠긴 상태');
    await tap('4826');await p13.waitForFunction(()=>document.querySelector('.tt-lock').hidden,{},{timeout:8000});
-   await p13.click('#generateAssignment');await wait(200);
+   await clickPrimary(p13,'generateAssignment');await wait(200);
    if(await p13.locator('#seatCountProceed:not(.hidden)').count())await p13.click('#seatCountProceed');
-   await wait(200);await p13.click('#confirmAssignment');await wait(200);const student=await openStudent(p13);
+   await wait(200);await clickPrimary(p13,'confirmAssignment');await wait(200);const student=await openStudent(p13);
    assert.equal(await student.locator('#backToTeacher,#simpleBackToTeacher').count(),0,'학생 창에는 교사 복귀 버튼이 없음');
    assert.equal(await student.evaluate(()=>Boolean(window.__TT_LOCK)),false);
    await student.close();
@@ -850,9 +862,9 @@ async function setRoster(p,names){
    await p14.fill('#tt-lock-new','4826');await p14.fill('#tt-lock-new2','4826');await p14.selectOption('#tt-lock-idle','5');await p14.click('#tt-lock-save');
    await p14.locator('#tt-lock-code-box:not([hidden])').waitFor({timeout:8000});
    await p14.click('#tt-lock-cancel');
-   await p14.click('#generateAssignment');await p14.clock.fastForward(300);
+   await clickPrimary(p14,'generateAssignment');await p14.clock.fastForward(300);
    if(await p14.locator('#seatCountProceed:not(.hidden)').count())await p14.click('#seatCountProceed');
-   await p14.clock.fastForward(300);await p14.click('#confirmAssignment');await p14.clock.fastForward(300);const student=await openStudent(p14);
+   await p14.clock.fastForward(300);await clickPrimary(p14,'confirmAssignment');await p14.clock.fastForward(300);const student=await openStudent(p14);
    await p14.clock.fastForward('10:00');
    assert.equal(await p14.locator('.tt-lock').isVisible(),false,'학생 화면 중에는 잠기지 않음');
    await student.close();
@@ -866,9 +878,9 @@ async function setRoster(p,names){
    const rows=await p15.evaluate(()=>classState.layout.rows);
    await p15.click('#rowPlus');await settingsAction(p15,'undoButton','tools');
    assert.equal(await p15.evaluate(()=>classState.layout.rows),rows);
-   await p15.click('#generateAssignment');await wait(200);
+   await clickPrimary(p15,'generateAssignment');await wait(200);
    if(await p15.locator('#seatCountProceed:not(.hidden)').count())await p15.click('#seatCountProceed');
-   await wait(200);await p15.click('#confirmAssignment');await wait(200);const student=await openStudent(p15);
+   await wait(200);await clickPrimary(p15,'confirmAssignment');await wait(200);const student=await openStudent(p15);
    await student.click('#run5');
    await student.waitForFunction(()=>playbackCompleted,{},{timeout:90000});
    assert.equal(await student.evaluate(()=>playbackStudents.length),10);
@@ -927,9 +939,9 @@ async function setRoster(p,names){
    const {ctx:c17,p:p18}=await newContext();
    await p18.setViewportSize({width:1920,height:1080});
    await p18.goto(BASE+'/seating/?section=seating');await started(p18);
-   await p18.click('#generateAssignment');await wait(200);
+   await clickPrimary(p18,'generateAssignment');await wait(200);
    if(await p18.locator('#seatCountProceed:not(.hidden)').count())await p18.click('#seatCountProceed');
-   await wait(200);await p18.click('#confirmAssignment');await wait(200);const student=await openStudent(p18);
+   await wait(200);await clickPrimary(p18,'confirmAssignment');await wait(200);const student=await openStudent(p18);
    const tops=async sel=>student.evaluate(s=>[...document.querySelectorAll(s)].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]),sel);
    for(const [id,top] of await tops('#run1,#run5,#instant,#backToTeacher'))assert.ok(top>=1080*.34,`${id} ${top}`);
    await student.click('#instant');await student.locator('#simpleViewButton:not(.hidden)').waitFor();

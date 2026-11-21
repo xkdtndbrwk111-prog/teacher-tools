@@ -113,3 +113,49 @@ body.tt-grade-active #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-right>
 }
 /* Grade-only view never exposes seating or PE primary commands under More. */
 body.tt-grade-active #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-menu .tt-hud-small-actions{display:none!important}
+
+
+/* A single, two-piece storage pill. The old live status is still announced to
+   screen readers but is no longer positioned above the cloud button. */
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{
+ box-sizing:border-box;position:relative;
+ flex:0 0 252px;min-width:252px;max-width:252px;width:252px;height:44px;
+ display:grid;grid-template-columns:1fr 1fr;align-items:stretch;gap:0;
+ overflow:hidden;border:1px solid var(--cm-border,#547296);border-radius:999px;
+ background:var(--cm-control,#233a5c)
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud .tt-hud-save-label{
+ position:absolute!important;width:1px!important;height:1px!important;max-width:1px!important;
+ padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;
+ clip-path:inset(50%)!important;white-space:nowrap!important
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-browser-save{
+ box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+ min-width:0;width:100%;height:100%;padding:0 5px;margin:0;
+ color:var(--cm-control-ink,#e7f2ff);background:var(--cm-surface,#233a5c);
+ border:0;border-right:1px solid var(--cm-border,#547296);border-radius:0;
+ font-size:13px;line-height:1.1;font-weight:850;white-space:nowrap;cursor:pointer
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip{
+ box-sizing:border-box!important;display:flex!important;flex-direction:column;
+ justify-content:center;align-items:center;gap:2px;
+ width:100%!important;height:100%!important;min-height:0!important;
+ margin:0!important;padding:2px 5px!important;
+ border:0!important;border-radius:0!important;
+ background:var(--cm-control,#233a5c);color:var(--cm-control-ink,#e7f2ff);
+ font-size:10px!important;line-height:1.1!important;font-weight:750;
+ text-overflow:ellipsis!important;overflow:hidden!important;white-space:nowrap!important
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip::before{
+ content:"클라우드 저장";display:block;color:inherit;
+ font-size:13px;font-weight:850;line-height:1.1
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>.tt-hud-cloud-chip[data-tt-hud-mode="easy"]{
+ color:var(--cm-control-sub,#a8bad3)
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>:is(button):hover{
+ background:var(--cm-panel,#314763)
+}
+#teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud>:is(button):focus-visible{
+ outline:2px solid var(--cm-accent,#93c5fd);outline-offset:-3px;z-index:1
+}

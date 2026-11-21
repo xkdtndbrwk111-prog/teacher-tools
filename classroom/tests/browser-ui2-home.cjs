@@ -116,14 +116,35 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
    assert.ok(visual.house.width>=23.5,'24px house icon at '+width);
    assert.ok(visual.brand.left>=0&&visual.right.right<=width+1,'Header bounds at '+width);
    if(width>=1280){
-    assert.ok(visual.homeText>=15.5,'16px title at '+width);
+    assert.ok(visual.homeText>=19.5,'20px title at '+width);
     assert.ok(visual.select.height>=39&&visual.manage.height>=39,'Larger class controls at '+width);
-    assert.ok(visual.status.height>=10&&visual.status.top<visual.cloud.bottom,'Save caption near cloud at '+width);
+    assert.ok(visual.status.height<=1.1,'Old floating save caption is hidden at '+width);
+    assert.ok(visual.cloud.height>=43&&visual.cloud.width>=220,'Storage pill is longer, on one row at '+width);
     assert.ok(visual.brand.right<=visual.nav.left+2,'No left/nav overlap at '+width);
     assert.ok(visual.nav.right<=visual.right.left+2,'No nav/right overlap at '+width);
    }
   }
   await p.setViewportSize({width:1920,height:820});
+  await p.waitForFunction(()=>document.querySelector('#tt-cloud-chip')?.dataset.ttHudShort);
+  assert.equal(await p.locator('#tt-hud-browser-save').innerText(),'브라우저 저장');
+  const segment=await p.evaluate(()=>{
+   const parent=document.querySelector('.tt-hud-cloud'),left=document.querySelector('#tt-hud-browser-save'),
+    right=document.querySelector('#tt-cloud-chip'),a=left.getBoundingClientRect(),b=right.getBoundingClientRect(),
+    box=parent.getBoundingClientRect();
+   return{left:a.left,leftRight:a.right,rightLeft:b.left,right:b.right,
+    parentLeft:box.left,parentRight:box.right,rightLabel:getComputedStyle(right,'::before').content,
+    caption:getComputedStyle(document.querySelector('#saveStatus')).clipPath};
+  });
+  assert.ok(Math.abs(segment.leftRight-segment.rightLeft)<1,'The storage pill has no gap between its two cells');
+  assert.ok(Math.abs(segment.parentLeft-segment.left)<2&&Math.abs(segment.parentRight-segment.right)<2,'The storage pill fills both sides');
+  assert.match(segment.rightLabel,/클라우드 저장/);
+  assert.ok(segment.caption.includes('inset'),'Live save status is hidden visually but retained');
+  await p.locator('#tt-hud-browser-save').click();
+  assert.equal(await p.locator('#tt-cloud-title').isVisible(),true,'Browser segment opens actual storage settings');
+  await p.locator('#tt-cloud-close').click();
+  await p.locator('#tt-cloud-chip').click();
+  assert.equal(await p.locator('#tt-cloud-title').isVisible(),true,'Cloud segment retains original storage settings');
+  await p.locator('#tt-cloud-close').click();
   const savedRoster=await p.evaluate(()=>localStorage.getItem('tt.classroom.active-roster'));
   await workshopLink.click();
   await p.waitForURL(origin+'/');

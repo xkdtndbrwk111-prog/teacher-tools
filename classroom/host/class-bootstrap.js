@@ -48,7 +48,7 @@
   await window.__TT_LOCK.start();
   for(const src of SCRIPTS)await load(src);
   window.__TT_LOCK.mount();
-  await load('../classroom/host/hud-shell.js?v=20261121-save-cloud');
+  await load('../classroom/host/hud-shell.js?v=20261121-segmented-storage');
   await load('../classroom/host/board-status.js?v=ui2-lock-center');
   await load('../classroom/host/presentation-link.js?v=ui2-i');
   await load('../classroom/host/student-popup.js?v=ui2-i');

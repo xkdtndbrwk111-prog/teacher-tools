@@ -24,15 +24,25 @@
  // This script runs after all feature modules in class-bootstrap.js.
  const saveStatus=brand.querySelector('#saveStatus');
  if(saveStatus){
-  // Move the real live status near the cloud; never duplicate the saving state.
+  // Keep the live status for screen readers and warnings, without a floating caption.
   cloudSlot.append(saveStatus);
   saveStatus.classList.add('tt-hud-save-label');
+  saveStatus.setAttribute('role','status');saveStatus.setAttribute('aria-live','polite');
   const updateSaveTitle=()=>{saveStatus.title=saveStatus.textContent.trim()};
   new MutationObserver(updateSaveTitle).observe(saveStatus,{childList:true,characterData:true,subtree:true});
   updateSaveTitle();
  }
  const cloud=document.getElementById('tt-cloud-chip');
- if(cloud){cloudSlot.append(cloud);cloud.classList.add('tt-hud-cloud-chip')}
+ if(cloud){
+  const browserSave=document.createElement('button');
+  browserSave.type='button';browserSave.id='tt-hud-browser-save';browserSave.className='tt-hud-browser-save';
+  browserSave.textContent='브라우저 저장';
+  browserSave.title='브라우저에 자동 저장됩니다 · 저장 방식 설정 열기';
+  browserSave.setAttribute('aria-label','브라우저 저장 · 저장 방식 설정 열기');
+  browserSave.addEventListener('click',()=>window.__TT_NORMAL_AUTH?.openSettings?.());
+  cloudSlot.append(browserSave,cloud);
+  cloud.classList.add('tt-hud-cloud-chip');
+ }
  const move=selector=>{const node=header.querySelector(selector);if(node)menu.append(node);return node};
  move('.hub-home-link');
  move('.undo-actions');
@@ -70,14 +80,14 @@
  // Only its visible label is shortened to avoid pushing other controls.
  if(cloud){
   function shortStatus(raw){
-   if(/EASY/i.test(raw))return '💾 EASY';
-   if(/자료 차이|충돌/.test(raw))return '☁ 확인 필요';
-   if(/연결 필요|로그인/.test(raw))return '☁ 연결 필요';
-   if(/저장 멈춤|저장 중단|오류/.test(raw))return '☁ 저장 중단';
-   if(/저장 중/.test(raw))return '☁ 저장 중';
-   if(/저장 대기/.test(raw))return '☁ 대기 중';
-   if(/구글/.test(raw))return '☁ 저장됨';
-   return raw.slice(0,10)||'☁ 저장 상태';
+   if(/EASY/i.test(raw))return 'EASY · 미사용';
+   if(/자료 차이|충돌/.test(raw))return '자료 확인';
+   if(/연결 필요|로그인/.test(raw))return '연결 필요';
+   if(/저장 멈춤|저장 중단|오류/.test(raw))return '저장 중단';
+   if(/저장 중/.test(raw))return '저장 중';
+   if(/저장 대기/.test(raw))return '대기 중';
+   if(/구글/.test(raw))return '저장됨';
+   return raw.replace(/^[☁💾]\s*/u,'').slice(0,9)||'상태 확인';
   }
   let processing=false;
   function updateChip(){
@@ -89,8 +99,9 @@
    processing=true;
    cloud.dataset.ttHudShort=short;
    cloud.dataset.ttHudFull=raw;
-   cloud.title=raw+' · 클릭하여 저장 설정 열기';
-   cloud.setAttribute('aria-label',raw+' · 저장 설정 열기');
+   cloud.title='클라우드 저장 · '+raw+' · 클릭하여 저장 설정 열기';
+   cloud.setAttribute('aria-label','클라우드 저장 · '+raw+' · 저장 설정 열기');
+   cloud.dataset.ttHudMode=/EASY/i.test(raw)?'easy':'cloud';
    if(raw!==short)cloud.textContent=short;
    processing=false;
   }

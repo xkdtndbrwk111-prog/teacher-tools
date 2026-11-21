@@ -8,6 +8,18 @@ const path=require('path');
 const repo=path.resolve(__dirname,'../..');
 const PORT=4198,BASE=`http://127.0.0.1:${PORT}`;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function clickPrimary(p,id){
+ const button=p.locator('#'+id);
+ if(!await button.isVisible()){
+  // The candidate HUD creates the compact Work control after the data modules.
+  await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'));
+  const work=p.locator('#tt-hud-work-toggle');
+  await work.waitFor({state:'visible',timeout:12000});
+  if(await work.getAttribute('aria-expanded')!=='true')await work.click();
+ }
+ await button.click();
+}
 const results=[];
 async function step(name,fn){
  try{await fn();results.push(true);console.log('PASS',name)}
@@ -60,9 +72,9 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
   });
   await step('뒷자리 반복 방지와 모둠 편성이 작동한다',async()=>{
    const {ctx,p}=await open();
-   await p.click('#generateAssignment');await wait(100);
+   await clickPrimary(p,'generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);
+   await wait(100);await clickPrimary(p,'confirmAssignment');await wait(100);
    const r=await p.evaluate(()=>{
     const back=backRowStudentsFromHistory(latestHistoryRecord());
     classState.rules.completeRandom=false;classState.rules.backRowNoRepeat=true;
@@ -85,14 +97,14 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    await cell.click();await wait(100);
    assert.equal(await p.evaluate(()=>classState.layout.cells.filter(c=>c.type==='male').length),1);
    await p.click('.toolbtn[data-tool="seat"]');await cell.click();
-   await p.click('#generateAssignment');await wait(100);
+   await clickPrimary(p,'generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);
+   await wait(100);await clickPrimary(p,'confirmAssignment');await wait(100);
    const empty=p.locator('.layout-cell.seat:not(.assignment-draggable)').first(),from=p.locator('.layout-cell.assignment-draggable').first();
    const seated=await p.evaluate(()=>JSON.stringify(previewAssignments));
    await from.dragTo(empty);await wait(200);
    assert.notEqual(await p.evaluate(()=>JSON.stringify(previewAssignments)),seated,'끌어 놓으면 자리가 바뀜');
-   await p.click('#confirmAssignment');await wait(100);
+   await clickPrimary(p,'confirmAssignment');await wait(100);
    await p.locator('[data-tab="history"]').click();
    await p.locator('[data-view-history]').first().click();
    assert.equal(await p.locator('#historyBanner').isVisible(),true);
@@ -111,9 +123,9 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
    assert.equal(count,30);
    await p.evaluate(()=>{classState.layout={rows:5,cols:8,cells:classState.layout.cells};});
    await p.click('#rowPlus');await wait(100);
-   await p.click('#generateAssignment');await wait(100);
+   await clickPrimary(p,'generateAssignment');await wait(100);
    if(await p.locator('#seatCountProceed:not(.hidden)').count())await p.click('#seatCountProceed');
-   await wait(100);await p.click('#confirmAssignment');await wait(100);const student=await openStudent(p);
+   await wait(100);await clickPrimary(p,'confirmAssignment');await wait(100);const student=await openStudent(p);
    await student.click('#instant');await wait(500);
    const overlaps=await student.evaluate(()=>{
     const boxes=[...document.querySelectorAll('#seats .name-tag,#seats .seat-name,#seats [class*="name"]')].filter(e=>e.textContent.trim()&&e.offsetParent).map(e=>({t:e.textContent.trim(),r:e.getBoundingClientRect()}));
@@ -126,8 +138,8 @@ const started=p=>p.waitForFunction(()=>typeof classState!=='undefined'&&document
   await step('체육 모둠: 팀 편성, 확정, 운동장 공개, 잠금, 칠판 버튼 위치',async()=>{
    const {ctx,p}=await open({width:1920,height:1080});
    await p.click('#modePE');await wait(200);
-   await p.click('#generateAssignment');await wait(300);
-   await p.click('#confirmAssignment');await wait(300);
+   await clickPrimary(p,'generateAssignment');await wait(300);
+   await clickPrimary(p,'confirmAssignment');await wait(300);
    const student=await openStudent(p,'pe');
    const tops=await student.evaluate(()=>[...document.querySelectorAll('#pePitchRun1,#pePitchRun5,[data-pe-instant],#pePitchBack,#pePitchSimpleOpen')].filter(e=>e.offsetParent).map(e=>[e.id||e.textContent.trim(),Math.round(e.getBoundingClientRect().top)]));
    for(const [id,top] of tops)assert.ok(top>=1080*.34,`${id} ${top}`);

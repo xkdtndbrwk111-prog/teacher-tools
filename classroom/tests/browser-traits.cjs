@@ -7,6 +7,18 @@ const path=require('path');
 const repo=path.resolve(__dirname,'../..');
 const PORT=4196,BASE=`http://127.0.0.1:${PORT}`,SHOTS=process.env.SHOTS;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function clickPrimary(p,id){
+ const button=p.locator('#'+id);
+ if(!await button.isVisible()){
+  // The candidate HUD creates the compact Work control after the data modules.
+  await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'));
+  const work=p.locator('#tt-hud-work-toggle');
+  await work.waitFor({state:'visible',timeout:12000});
+  if(await work.getAttribute('aria-expanded')!=='true')await work.click();
+ }
+ await button.click();
+}
 const results=[];
 async function step(name,fn){
  try{await fn();results.push(true);console.log('PASS',name)}
@@ -135,7 +147,7 @@ async function step(name,fn){
   await step('모둠 배치와 체육 팀 편성이 8단계 값으로 돌아간다',async()=>{
    const r=await p.evaluate(()=>{generateAssignment({allowSurplus:true});return previewAssignments.length});
    assert.ok(r>0);
-   await p.click('#modePE');await wait(200);await p.click('#generateAssignment');await wait(300);
+   await p.click('#modePE');await wait(200);await clickPrimary(p,'generateAssignment');await wait(300);
    assert.ok(await p.locator('.pe-member').count()>=n);
    await p.click('#modeClassroom:visible,#tt-seat-subtab:visible');await wait(200);
   });
