@@ -124,7 +124,7 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   assert.doesNotMatch(await page.locator('#manager #saveStatus').textContent(),/한자와 한자어로 만드는 우리 반 수업/,'Decorative subtitle removed');
   const saveVisual=await page.locator('#manager #saveStatus').evaluate(el=>({width:el.getBoundingClientRect().width,clip:getComputedStyle(el).clipPath}));
   assert.ok(saveVisual.width<=1.1&&saveVisual.clip.includes('inset'),'Live storage announcement remains accessible but not below house icon');
-  for(const width of [390,720,1280,1600]){
+  for(const width of [360,390,720,1280,1600]){
     await page.setViewportSize({width,height:900});
     const layout=await page.evaluate(()=>{
       const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
@@ -138,7 +138,7 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     assert.ok(layout.mode.left>=0&&layout.mode.right<=layout.screenWidth,'Category navigation visible '+width);
     assert.ok(layout.house.right<=layout.action.left,'Header buttons do not overlap '+width);
     assert.ok(layout.svgWidth>=23.5,'House icon matches Classroom Manager 24px: '+width);
-    assert.ok(layout.brandFont>=15.5,'Brand title matches Classroom Manager 16px: '+width);
+    assert.ok(Math.abs(layout.brandFont-22)<0.1,'Hanja title matches Classroom Manager actual 22px: '+width);
   }
   const savedRoster=await page.evaluate(key=>localStorage.getItem(key),rosterKey);
   const savedHanja=await page.evaluate(key=>localStorage.getItem(key),dataKey);
