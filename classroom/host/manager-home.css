@@ -1,5 +1,9 @@
 /* UI2 navigation layout: color and radius come from the common theme contract. */
-#tt-manager-home-button{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:3px 6px;border:0;border-radius:var(--cm-button-radius);color:inherit;background:transparent;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer;grid-column:1;grid-row:1}
+#tt-manager-brand-nav{display:inline-flex;align-items:center;gap:4px;min-width:0;grid-column:1;grid-row:1;white-space:nowrap}
+#tt-workshop-home-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 32px;width:32px;height:34px;border-radius:var(--cm-button-radius);color:inherit;text-decoration:none}
+#tt-workshop-home-link:hover{background:var(--cm-surface,#ffffff18)}
+#tt-manager-home-button{display:inline-flex;align-items:center;min-width:0;padding:3px 2px;border:0;border-radius:var(--cm-button-radius);color:inherit;background:transparent;font:inherit;font-weight:800;white-space:nowrap;cursor:pointer}
+#tt-manager-home-button:hover{background:var(--cm-surface,#ffffff18)}
 #tt-manager-home-button+.tt-unused{display:none}
 #teacherScreen>.studio-topbar.tt-hud-unified>.brand-block>#topClassTitle{display:none!important}
 .tt-ui2-icon{width:20px;height:20px;flex:none;vertical-align:middle}
@@ -27,7 +31,7 @@ body.tt-manager-special #teacherScreen>.studio-topbar .top-actions,body.tt-life-
 .tt-ui2-card :is(button,a){display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;font:inherit;font-weight:700;border:1px solid var(--cm-border);border-radius:var(--cm-button-radius);background:var(--cm-control);color:var(--cm-control-ink);text-decoration:none;cursor:pointer}
 .tt-ui2-card .tt-ui2-primary{background:var(--cm-action-fill)}
 .tt-ui2-card button:disabled{opacity:.45;cursor:not-allowed}
-.tt-ui2-page :is(button,a):focus-visible,#tt-manager-home-button:focus-visible{outline:3px solid var(--cm-body-emphasis);outline-offset:3px}
+.tt-ui2-page :is(button,a):focus-visible,#tt-manager-home-button:focus-visible,#tt-workshop-home-link:focus-visible{outline:3px solid var(--cm-body-emphasis);outline-offset:3px}
 
 @media(max-width:520px){.tt-ui2-page{padding:12px}.tt-ui2-grid{gap:8px;margin-top:16px}.tt-ui2-tile{padding:9px;gap:6px}.tt-ui2-tile span{font-size:11px}}
 /* Seat tab unfolds inside the same navigation slot; no independent third row. */
