@@ -13,9 +13,11 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function clickPrimary(p,id){
  const button=p.locator('#'+id);
  if(!await button.isVisible()){
+  // The candidate HUD creates the compact Work control after the data modules.
+  await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'));
   const work=p.locator('#tt-hud-work-toggle');
-  if(!await work.isVisible())throw Error('작업 버튼에 접근할 수 없습니다: '+id);
-  await work.click();
+  await work.waitFor({state:'visible',timeout:12000});
+  if(await work.getAttribute('aria-expanded')!=='true')await work.click();
  }
  await button.click();
 }
