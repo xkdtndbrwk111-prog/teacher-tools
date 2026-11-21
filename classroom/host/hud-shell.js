@@ -22,6 +22,15 @@
 
  // Moving real nodes preserves original event handlers and their IDs.
  // This script runs after all feature modules in class-bootstrap.js.
+ const saveStatus=brand.querySelector('#saveStatus');
+ if(saveStatus){
+  // Move the real live status near the cloud; never duplicate the saving state.
+  cloudSlot.append(saveStatus);
+  saveStatus.classList.add('tt-hud-save-label');
+  const updateSaveTitle=()=>{saveStatus.title=saveStatus.textContent.trim()};
+  new MutationObserver(updateSaveTitle).observe(saveStatus,{childList:true,characterData:true,subtree:true});
+  updateSaveTitle();
+ }
  const cloud=document.getElementById('tt-cloud-chip');
  if(cloud){cloudSlot.append(cloud);cloud.classList.add('tt-hud-cloud-chip')}
  const move=selector=>{const node=header.querySelector(selector);if(node)menu.append(node);return node};
