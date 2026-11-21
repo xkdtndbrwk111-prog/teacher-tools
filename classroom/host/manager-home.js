@@ -22,8 +22,16 @@
  // The home logo remains outside the mode switch, but its route is inside:
  // the original life exit listener and grade flush gate can therefore still run.
  const homeRoute=document.createElement('button');homeRoute.type='button';homeRoute.id='tt-home-route';homeRoute.hidden=true;homeRoute.textContent='홈';bar.append(homeRoute);
- const homeButton=document.createElement('button');homeButton.id='tt-manager-home-button';homeButton.type='button';homeButton.title='교실매니저 홈';homeButton.setAttribute('aria-label','교실매니저 홈');homeButton.innerHTML=icon('home')+'<span>교실매니저</span>';
- brand.querySelector('#topClassTitle')?.before(homeButton);
+ // The house icon opens the parent workshop, while the title retains the
+ // internal Classroom Manager home route and its grade-exit checks.
+ const brandNav=document.createElement('div');brandNav.id='tt-manager-brand-nav';
+ const workshopLink=document.createElement('a');workshopLink.id='tt-workshop-home-link';
+ workshopLink.href='../';workshopLink.title='역사보리꼬리 공작소로 이동';
+ workshopLink.setAttribute('aria-label','역사보리꼬리 공작소로 이동');
+ workshopLink.innerHTML=icon('home');
+ const homeButton=document.createElement('button');homeButton.id='tt-manager-home-button';homeButton.type='button';homeButton.title='교실매니저 홈';homeButton.setAttribute('aria-label','교실매니저 홈');homeButton.innerHTML='<span>교실매니저</span>';
+ brandNav.append(workshopLink,homeButton);
+ brand.querySelector('#topClassTitle')?.before(brandNav);
  // Preserve the original title node for feature code; the real home button is separate.
  const home=document.createElement('section');home.id='tt-manager-home';home.className='tt-ui2-page';home.hidden=true;
  home.innerHTML='<div class="tt-ui2-home-content"><h1>교실매니저</h1><p>원하는 메뉴를 선택하세요.</p><div class="tt-ui2-grid">'+tabs.map(([key,label,description])=>'<button type="button" data-tt-ui2-open="'+key+'" class="tt-ui2-tile">'+icon(key)+'<strong>'+(key==='board'?'호자보드 연동':label)+'</strong><span>'+description+'</span></button>').join('')+'</div></div>';

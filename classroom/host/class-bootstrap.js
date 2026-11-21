@@ -53,7 +53,7 @@
   await load('../classroom/host/presentation-link.js?v=ui2-i');
   await load('../classroom/host/student-popup.js?v=ui2-i');
   await load('../classroom/host/settings-window.js?v=ui2-l');
-  await load('../classroom/host/manager-home.js?v=20261121-onboarding');
+  await load('../classroom/host/manager-home.js?v=20261121-workshop-link');
   if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
   await load('../shared/hoja-manager-icons.js?v=ui2-l');

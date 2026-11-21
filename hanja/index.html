@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>한자 학습 매니저</title>
 <link rel="icon" href="../assets/hub/favicon.svg">
-<link rel="stylesheet" href="styles.css?v=20261121-modern-hanja-roster">
+<link rel="stylesheet" href="styles.css?v=20261121-unified-hanja-header">
 <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-modern-hanja-roster">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -13,29 +13,29 @@
 <section id="manager" class="screen teacher-screen">
   <header class="studio-topbar">
     <div class="brand-block">
-      <strong>한자 학습 매니저</strong>
+      <div class="hanja-brand-line">
+        <a id="hanja-workshop-home-link" href="../" title="역사보리꼬리 공작소로 이동" aria-label="역사보리꼬리 공작소로 이동">
+          <svg class="tt-ui2-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/></svg>
+        </a>
+        <strong>한자매니저</strong>
+      </div>
       <span id="saveStatus">한자와 한자어로 만드는 우리 반 수업</span>
     </div>
+    <nav class="hanja-header-modes" aria-label="한자 데이터 종류">
+      <button class="toolbtn on" type="button" data-type="single">단일 한자</button>
+      <button class="toolbtn" type="button" data-type="word">한자어</button>
+    </nav>
     <div class="top-actions">
-      <a href="../" class="hub-link">도구 홈</a>
-      <button id="start" class="success">문제 출제 ▶</button>
+      <button id="start" class="success" type="button">문제 출제 ▶</button>
     </div>
   </header>
 
   <div class="studio">
     <main class="workspace-column">
-      <section class="workspace-toolbar">
-        <div class="toolbar-group">
-          <button class="toolbtn on" data-type="single">단일 한자</button>
-          <button class="toolbtn" data-type="word">한자어</button>
-        </div>
-        <span id="dbSummary" class="assignment-status"></span>
-      </section>
-
       <section class="workspace database">
         <div class="db-heading">
-          <div>
-            <h1 id="dbTitle">단일 한자</h1>
+          <div class="db-heading-copy">
+            <div class="db-heading-titleline"><h1 id="dbTitle">단일 한자</h1><span id="dbSummary" class="assignment-status"></span></div>
             <p>등록한 한자·한자어 데이터에서 매 문제를 새로 만듭니다.</p>
           </div>
           <div class="db-actions">

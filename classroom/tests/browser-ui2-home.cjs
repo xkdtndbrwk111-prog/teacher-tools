@@ -96,7 +96,17 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   await p.locator('#tt-manager-home-button').click();
   await p.waitForFunction(()=>window.__TT_MANAGER_HOME.page()==='home'&&!document.body.classList.contains('tt-grade-active'));
   assert.equal(await p.locator('#tt-manager-home').isVisible(),true);
+  const workshopLink=p.locator('#tt-workshop-home-link');
+  assert.equal(await workshopLink.getAttribute('aria-label'),'역사보리꼬리 공작소로 이동');
+  assert.equal(await workshopLink.getAttribute('href'),'../');
+  assert.equal(await workshopLink.locator('svg').count(),1,'집 모양 아이콘만 상위 허브로 이동해야 함');
+  assert.equal(await p.locator('#tt-manager-home-button svg').count(),0,'교실매니저 이름 버튼은 내부 홈으로 유지');
+  const savedRoster=await p.evaluate(()=>localStorage.getItem('tt.classroom.active-roster'));
+  await workshopLink.click();
+  await p.waitForURL(origin+'/');
+  assert.equal(await p.locator('.brand-name').textContent(),'역사보리꼬리 공작소');
+  assert.equal(await p.evaluate(()=>localStorage.getItem('tt.classroom.active-roster')),savedRoster,'상위 허브 이동 중 학생 저장 자료를 변경하지 않는다');
   assert.deepEqual(errs,[]);
-  console.log('PASS UI2 startup gate, 4 tiles/tabs, offline board, settings, grade exit');
+  console.log('PASS UI2 home icon opens workshop, label keeps internal home, student data remains intact');
  }finally{await browser?.close();server.kill()}
 })().catch(e=>{console.error(e);process.exitCode=1});

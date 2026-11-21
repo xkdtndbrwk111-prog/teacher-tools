@@ -113,6 +113,31 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   await page.waitForFunction(()=>document.querySelector('#studentCards').scrollLeft>0);
   assert.equal(await page.evaluate(key=>localStorage.getItem(key),rosterKey),reordered,'Wheel must not change shared student information');
   pass('Mouse vertical wheel and horizontal trackpad gestures move roster left-right without changing roster data');
+  assert.equal(await page.locator('a.hub-link').count(),0,'Old 도구 홈 button must be removed');
+  assert.equal(await page.locator('#manager .workspace-toolbar').count(),0,'Hanja category tabs move to shared header line');
+  assert.deepEqual(await page.locator('.hanja-header-modes [data-type]').evaluateAll(nodes=>nodes.map(x=>x.dataset.type)),['single','word']);
+  const house=page.locator('#hanja-workshop-home-link');
+  assert.equal(await house.getAttribute('href'),'../');
+  assert.equal(await house.getAttribute('aria-label'),'역사보리꼬리 공작소로 이동');
+  assert.deepEqual(await house.locator('svg path').evaluateAll(nodes=>nodes.map(x=>x.getAttribute('d'))),['m3 10 9-7 9 7v10H3z','M9 20v-7h6v7']);
+  for(const width of [390,720,1280,1600]){
+    await page.setViewportSize({width,height:900});
+    const layout=await page.evaluate(()=>{
+      const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
+      return{house:box('#hanja-workshop-home-link'),mode:box('.hanja-header-modes'),action:box('#start'),screenWidth:innerWidth};
+    });
+    assert.ok(layout.house.left>=0&&layout.action.right<=layout.screenWidth,'Header controls fit '+width);
+    assert.ok(layout.mode.left>=0&&layout.mode.right<=layout.screenWidth,'Category navigation visible '+width);
+    assert.ok(layout.house.right<=layout.action.left,'Header buttons do not overlap '+width);
+  }
+  const savedRoster=await page.evaluate(key=>localStorage.getItem(key),rosterKey);
+  const savedHanja=await page.evaluate(key=>localStorage.getItem(key),dataKey);
+  await house.click();
+  await page.waitForURL(BASE+'/');
+  assert.equal(await page.locator('.brand-name').textContent(),'역사보리꼬리 공작소');
+  assert.equal(await page.evaluate(key=>localStorage.getItem(key),rosterKey),savedRoster);
+  assert.equal(await page.evaluate(key=>localStorage.getItem(key),dataKey),savedHanja);
+  pass('Workshop house matches Classroom Manager SVG and preserves roster and Hanja data');
   assert.deepEqual(errors,[],'No application page errors');
   await second.close();
  }catch(error){console.error('FAIL Hanja browser regression:',error.stack||error);process.exitCode=1}
