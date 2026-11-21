@@ -994,8 +994,9 @@ function initRosterScrollbar(){
   if(!list||!track||!thumb||track.dataset.ready==="1")return;
   track.dataset.ready="1";
   const sync=()=>{
-    const width=track.clientWidth-2,range=Math.max(0,list.scrollWidth-list.clientWidth);
-    const visible=width>0&&list.clientWidth>0&&range>2&&!document.querySelector(".studio")?.classList.contains("student-collapsed");
+    const range=Math.max(0,list.scrollWidth-list.clientWidth);
+    // A hidden track has zero clientWidth. Determine visibility from the roster first.
+    const visible=list.clientWidth>0&&range>2&&!document.querySelector(".studio")?.classList.contains("student-collapsed");
     track.classList.toggle("hidden",!visible);
     if(!visible)return;
     const trackW=Math.max(0,track.clientWidth-2);
