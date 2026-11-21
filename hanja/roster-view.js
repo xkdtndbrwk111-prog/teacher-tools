@@ -52,9 +52,24 @@ export function syncHanjaRosterScrollbar(scroller,track,thumb){
  track.setAttribute("aria-valuenow",String(Math.round(fraction*100)));
  track.setAttribute("aria-valuetext",Math.round(fraction*100)+"퍼센트 이동");
 }
+// Mirrors the Classroom Manager roster's mouse-wheel-to-horizontal-scroll behavior.
+// Keep wheel events native when there is no overflow or no horizontal movement.
+export function bindHanjaRosterWheel(scroller){
+ if(!scroller||scroller.dataset.wheelBound==="1")return;
+ scroller.dataset.wheelBound="1";
+ scroller.addEventListener("wheel",event=>{
+  if(scroller.scrollWidth<=scroller.clientWidth)return;
+  const delta=Math.abs(event.deltaX)>Math.abs(event.deltaY)?event.deltaX:event.deltaY;
+  if(!delta)return;
+  const before=scroller.scrollLeft;
+  scroller.scrollLeft+=delta;
+  if(scroller.scrollLeft!==before)event.preventDefault();
+ },{passive:false});
+}
 export function bindHanjaRosterScrollbar(scroller,track,thumb){
  if(!scroller||!track||!thumb||track.dataset.bound==="1")return;
  track.dataset.bound="1";
+ bindHanjaRosterWheel(scroller);
  let pointer=null,offset=0,originalBehavior="",pending=false;
  const maxScroll=()=>Math.max(0,scroller.scrollWidth-scroller.clientWidth);
  const sync=()=>syncHanjaRosterScrollbar(scroller,track,thumb);
