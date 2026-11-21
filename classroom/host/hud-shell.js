@@ -87,7 +87,7 @@
    if(/저장 중/.test(raw))return '저장 중';
    if(/저장 대기/.test(raw))return '대기 중';
    if(/구글/.test(raw))return '저장됨';
-   return raw.replace(/^[☁💾]\\s*/u,'').slice(0,9)||'상태 확인';
+   return raw.replace(/^[☁💾]\s*/u,'').slice(0,9)||'상태 확인';
   }
   let processing=false;
   function updateChip(){
