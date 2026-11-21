@@ -786,3 +786,39 @@ html.tt-manager-theme #teacherScreen .student-scroll-track{
 html.tt-manager-theme #teacherScreen .student-scroll-thumb{
  background:var(--cm-panel-emphasis,#99afce)!important;border-color:var(--cm-border)!important
 }
+
+/* Five dock tabs: 3 in first row, 2 equally wide in second row. */
+#teacherScreen .tool-dock .dock-tabs{grid-template-columns:repeat(6,minmax(0,1fr))}
+#teacherScreen .tool-dock .dock-tab:nth-child(-n+3){grid-column:span 2}
+#teacherScreen .tool-dock .dock-tab:nth-child(n+4){grid-column:span 3}
+.tt-global-storage-alert{
+ position:fixed;z-index:10015;left:50%;top:65px;transform:translateX(-50%);
+ width:min(790px,calc(100vw - 20px));box-sizing:border-box;
+ border:2px solid #f59e0b;border-radius:12px;padding:11px 14px;
+ background:#fffbeb;color:#78350f;box-shadow:0 12px 34px #0004;
+ font-size:13px;font-weight:850;display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.tt-global-storage-alert.error{background:#fff1f2;border-color:#e11d48;color:#9f1239}
+.tt-global-storage-alert.success{background:#ecfdf5;border-color:#10b981;color:#065f46}
+.tt-global-storage-alert button{border:1px solid currentColor;border-radius:8px;padding:6px;background:#fff;color:inherit;flex:none}
+.seating-utility-fields[hidden]{display:none!important}
+#teacherScreen .layout-advanced{margin-top:16px;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;background:#f8fafc}
+#teacherScreen .layout-advanced summary{font-size:12px;font-weight:850;cursor:pointer;color:#475569}
+#teacherScreen .layout-advanced p{font-size:11px;line-height:1.5;color:#64748b}
+.roster-onboarding{
+ box-sizing:border-box;width:min(680px,calc(100vw - 32px));max-height:min(90dvh,820px);
+ border:1px solid #cbd5e1;border-radius:18px;padding:25px 29px;
+ background:#fff;color:#172033;box-shadow:0 24px 64px #0007;
+}
+.roster-onboarding:not([open]){display:none!important}
+.roster-onboarding::backdrop{background:rgba(7,18,35,.74);backdrop-filter:blur(3px)}
+.roster-onboarding-header h2{font-size:23px;margin:0 0 8px}
+.roster-onboarding-header p{font-size:13px;line-height:1.5;margin:0 0 20px;color:#64748b}
+.roster-onboarding .field{font-size:14px;color:#334155}
+.roster-onboarding textarea{box-sizing:border-box;width:100%;min-height:270px;max-height:55dvh;
+ resize:vertical;border:1px solid #9baac1;border-radius:11px;background:#fff;color:#172033;
+ font-size:16px;font-weight:700;line-height:1.75;padding:15px}
+.roster-onboarding-preview{margin:11px 0;color:#64748b;font-size:13px}
+.roster-onboarding-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:16px}
+.roster-onboarding-actions button{min-height:42px;padding:9px 18px;font-weight:850;border-radius:9px}
+@media(max-width:620px){.roster-onboarding{padding:18px}.roster-onboarding textarea{min-height:190px}}

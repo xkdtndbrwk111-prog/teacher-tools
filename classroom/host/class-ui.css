@@ -196,3 +196,9 @@ html.tt-board #teacherScreen,html.tt-board #backToTeacher,html.tt-board #simpleB
 .tt-diff-sides>div{display:grid;gap:4px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;line-height:1.5}
 .tt-lock-settings-actions button[hidden]{display:none}
 #tt-diff-pull,#tt-diff-push{background:#2563eb;border:0;color:#fff}
+
+.tt-class-data-details{margin:13px 0 8px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:11px;background:#f8fafc;color:#172033}
+.tt-class-data-details summary{cursor:pointer;font-size:13px;font-weight:900}
+.tt-class-data-details>p{font-size:11px;line-height:1.5;color:#5b6c81}
+.tt-class-data-details .data-transfer{margin-top:8px;background:#fff}
+.tt-class-data-details .data-transfer p{font-size:11px}

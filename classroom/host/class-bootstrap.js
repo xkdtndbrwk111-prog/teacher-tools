@@ -1,7 +1,7 @@
 // The seating scripts read their data as they load, so they start only after the store is ready.
 (()=>{
  'use strict';
- const SCRIPTS=['app.js?v=20261121-roster-longpress-fix','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-lock-center','../classroom/host/cloud-sync.js?v=ui2-m'];
+ const SCRIPTS=['app.js?v=20261121-roster-onboard-ghost','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js?v=20261121-classdata','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-lock-center','../classroom/host/cloud-sync.js?v=ui2-m'];
  const store=window.__TT_STORE;
  const domReady=()=>new Promise(resolve=>{if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',resolve,{once:true});else resolve()});
  const load=src=>new Promise((resolve,reject)=>{
@@ -33,14 +33,14 @@
   store.setRosterSource(window.__TT_STAGE031_CLASS.seatingKey);
   if(student){
    document.documentElement.classList.add('tt-student-only');
-   await load('app.js?v=20261121-roster-longpress-fix');
+   await load('app.js?v=20261121-roster-onboard-ghost');
    await load('pe-v1.js?v=20261115-step10-menu');
    await load('../classroom/host/student-window.js?v=ui2-j');
    return;
   }
   if(board){
    document.documentElement.classList.add('tt-board');
-   await load('app.js?v=20261121-roster-longpress-fix');
+   await load('app.js?v=20261121-roster-onboard-ghost');
    await load('../classroom/host/board-view.js?v=ui2-f');
    return;
   }
@@ -53,7 +53,7 @@
   await load('../classroom/host/presentation-link.js?v=ui2-i');
   await load('../classroom/host/student-popup.js?v=ui2-i');
   await load('../classroom/host/settings-window.js?v=ui2-l');
-  await load('../classroom/host/manager-home.js?v=ui2-lock-center');
+  await load('../classroom/host/manager-home.js?v=20261121-onboarding');
   if(!window.__TT_MANAGER_THEME?.mount())throw Error('테마 설정을 준비하지 못했습니다.');
   if(!window.__TT_MANAGER_HOME)throw Error('공통 메뉴를 준비하지 못했습니다.');
   await load('../shared/hoja-manager-icons.js?v=ui2-l');
@@ -61,5 +61,6 @@
   await window.__TT_MANAGER_THEME.prepareFirstPaint();
   document.documentElement.classList.remove('tt-manager-starting');
   window.__TT_LOCK.finishStartup();
+  if(window.__TT_MANAGER_HOME?.page()==='seat')window.__TT_OPEN_INITIAL_ROSTER?.();
  }).catch(error=>domReady().then(()=>stop(error)));
 })();

@@ -43,6 +43,10 @@
  function show(next){
   current=next;
   if(next==='board')reflect();
+  if(next==='seat'&&!document.documentElement.classList.contains('tt-manager-starting')){
+    // Open onboarding only on entering an empty class, not over the hub homepage.
+    queueMicrotask(()=>window.__TT_OPEN_INITIAL_ROSTER?.());
+  }
   const special=next==='home'||next==='board';
   home.hidden=next!=='home';link.hidden=next!=='board';document.body.classList.toggle('tt-manager-special',special);
   root.dataset.ttUi2Page=next;
