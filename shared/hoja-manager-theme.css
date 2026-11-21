@@ -305,3 +305,12 @@ html.tt-manager-theme[data-cm-theme="pink"] *{
 html.tt-manager-theme[data-cm-theme="pink"] #teacherScreen .student-strip :is(.student-cards,.student-cards:hover){
  scrollbar-color:var(--cm-action-fill) var(--cm-control)!important
 }
+
+/* Linked trait tags use the same left origin as the ability label. */
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-row>span{
+ align-items:flex-start!important;justify-content:center;text-align:left!important
+}
+html.tt-manager-theme #teacherScreen .trait-prototype .trait-linked-tag{
+ display:block!important;align-self:flex-start!important;margin:2px 0 0!important;
+ transform:none!important;text-align:center
+}

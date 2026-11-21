@@ -694,3 +694,58 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .play-btn:not(:disabled){cursor:pointer}
 .play-btn:focus-visible{outline:3px solid #1c89dd;outline-offset:4px}
 @media(prefers-reduced-motion:reduce){.play-btn.is-rate-active{transform:none}}
+
+/* Quick group editor shortcut beside the seat kinds. */
+#teacherScreen .workspace-toolbar .group-quick-button{
+ min-height:40px;padding:8px 12px;border:1px solid #40516d;border-radius:9px;
+ background:#e7edf6;color:#18233a;font-weight:850;white-space:nowrap;cursor:pointer
+}
+#teacherScreen .workspace-toolbar .group-quick-button.on{background:#ccfbf1;color:#134e4a;border-color:#0f766e}
+#teacherScreen .workspace-toolbar .group-quick-button:disabled{opacity:.5;cursor:default}
+html.tt-manager-theme #teacherScreen .workspace-toolbar .group-quick-button{
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;
+ border-color:var(--cm-border)!important;border-radius:var(--cm-button-radius)!important
+}
+html.tt-manager-theme #teacherScreen .workspace-toolbar .group-quick-button.on{
+ background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-accent)!important
+}
+/* Participation badge overlays the sprite instead of taking a text row. */
+#teacherScreen .seating-student-card{cursor:pointer}
+#teacherScreen .seating-student-card .shared-student-sprite{
+ width:48px!important;height:48px!important;flex:0 0 48px!important;
+ background-size:144px 192px!important;
+ animation:seatingRosterWalkLarge .60s steps(1,end) infinite,sharedRosterBob .96s ease-in-out infinite!important
+}
+#teacherScreen .seating-student-card .shared-student-sprite::after{
+ background-size:144px 192px!important;
+ animation:seatingRosterGlassesWalkLarge .54s steps(1,end) infinite!important
+}
+#teacherScreen .seating-student-card .shared-student-name{margin-top:auto!important}
+#teacherScreen .seating-student-card .shared-student-status{
+ position:absolute;z-index:5;left:4px;top:4px;width:auto;max-width:34px;
+ min-height:21px;padding:3px 4px!important;margin:0!important;
+ overflow:visible;text-overflow:clip;border:1px solid #6f85a6;border-radius:5px;
+ background:#3d5274;color:#fff!important;font-size:10px!important;line-height:1!important;font-weight:850;
+ cursor:pointer;touch-action:manipulation
+}
+#teacherScreen .seating-student-card.assignment-excluded .shared-student-status{
+ background:#603138;color:#ffd4dc!important;border-color:#a45463
+}
+#teacherScreen .seating-student-card .shared-student-status:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+html.tt-manager-theme #teacherScreen .seating-student-card:not(.assignment-excluded) .shared-student-status{
+ background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #teacherScreen .seating-student-card.assignment-excluded .shared-student-status{
+ background:var(--cm-status-danger-bg)!important;color:var(--cm-status-danger)!important
+}
+@keyframes seatingRosterWalkLarge{
+ 0%,32%{background-position:0 0}33%,65%{background-position:-48px 0}66%,100%{background-position:-96px 0}
+}
+@keyframes seatingRosterGlassesWalkLarge{
+ 0%,32%{background-position:0 3px}33%,65%{background-position:-48px 3px}66%,100%{background-position:-96px 3px}
+}
+@media (prefers-reduced-motion:reduce){
+ #teacherScreen .seating-student-card .shared-student-sprite,
+ #teacherScreen .seating-student-card .shared-student-sprite::after{animation:none!important;background-position:0 0}
+ #teacherScreen .seating-student-card .shared-student-sprite::after{background-position:0 3px}
+}

@@ -26,6 +26,15 @@ const repo=path.resolve(__dirname,'../..'),port=18139,origin='http://127.0.0.1:'
   assert.equal(await p.locator('#tt-ui2-send-roster').isDisabled(),true);
   assert.equal(await p.locator('#tt-ui2-placement .tt-student-placement-settings').isVisible(),true);
   await p.locator('#modeClassroom').click();assert.equal(await p.locator('#tt-seat-subtab').isVisible(),true);
+  await p.locator('#quickGroup').click();
+  assert.equal(await p.locator('.dock-panel[data-panel="groups"]').isVisible(),true);
+  assert.equal(await p.locator('#groupEditor').isVisible(),true);
+  await p.locator('#layoutGrid .layout-cell.seat').first().dispatchEvent('mousedown',{button:0,bubbles:true});
+  await p.locator('#quickGroup').click();
+  assert.equal(await p.locator('#groupSelectionCount').textContent(),'선택 1석');
+  assert.equal(await p.locator('#quickGroup').getAttribute('aria-pressed'),'true');
+  await p.locator('#cancelGroup').click();
+  assert.equal(await p.locator('#quickGroup').getAttribute('aria-pressed'),'false');
   assert.deepEqual(await p.locator('.prototype-mode-switch button.on:visible').evaluateAll(e=>e.map(x=>x.id)),['tt-seat-subtab']);
   await p.locator('#modePE').click();assert.deepEqual(await p.locator('.prototype-mode-switch button.on:visible').evaluateAll(e=>e.map(x=>x.id)),['modePE']);
   await p.locator('#tt-board-tab').click();assert.deepEqual(await p.locator('.prototype-mode-switch button.on:visible').evaluateAll(e=>e.map(x=>x.id)),['tt-board-tab']);

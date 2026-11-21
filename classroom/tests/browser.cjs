@@ -99,6 +99,22 @@ async function setRoster(p,names){
    await wait(300);
   });
   const gradeRows=async()=>frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>[e.getAttribute('aria-label').split(' ').slice(-4,-3)[0]||e.getAttribute('aria-label'),e.value]));
+  await step('학생 참가 태그 클릭과 기존 우클릭 모두 배치 참가를 전환한다',async()=>{
+   await openSeating(p);
+   const card=p.locator('#studentCards .seating-student-card').first();
+   const id=await card.getAttribute('data-student-id');
+   const excluded=()=>p.evaluate(id=>classState.students.find(s=>s.id===id)?.assignmentExcluded===true,id);
+   assert.equal(await excluded(),false);
+   await card.locator('button.shared-student-status').click();
+   assert.equal(await excluded(),true);
+   assert.equal(await card.locator('button.shared-student-status').textContent(),'제외');
+   await card.locator('button.shared-student-status').click();
+   assert.equal(await excluded(),false);
+   await card.click({button:'right'});
+   assert.equal(await excluded(),true);
+   await card.click({button:'right'});
+   assert.equal(await excluded(),false);
+  });
   await step('이름 수정과 추가를 함께 해도 같은 줄이면 성적이 이어진다',async()=>{
    await openSeating(p);await wait(300);
    await setRoster(p,['가온','나래2','다온','라온','전학생']);

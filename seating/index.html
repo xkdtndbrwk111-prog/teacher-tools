@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>교실 매니저</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=20261010-seatdrag2">
+  <link rel="stylesheet" href="styles.css?v=20261121-group-status-1">
   <link rel="stylesheet" href="pe-v1.css?v=20261115-step10-menu">
   <link rel="stylesheet" href="../shared/student-roster.css?v=20261010-r2">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css">
@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="../classroom/host/settings-window.css?v=ui2-g">
   <link rel="stylesheet" href="../classroom/host/student-window.css">
   <link rel="stylesheet" href="../classroom/host/manager-home.css?v=ui2-hud-left-expand">
-  <link rel="stylesheet" href="../shared/hoja-manager-theme.css?v=ui2-hud-fold-frame">
+  <link rel="stylesheet" href="../shared/hoja-manager-theme.css?v=ui2-grouplink-1">
   <style>html.tt-manager-starting #teacherScreen{visibility:hidden!important}#tt-manager-loading{display:none}html.tt-manager-starting #tt-manager-loading{display:grid;place-items:center;min-height:100dvh;color:var(--cm-body-ink,#e5edf8);font:600 16px system-ui}html.tt-manager-starting .tt-lock:not([hidden]){background:#222831!important}html.tt-manager-starting .tt-lock:not([hidden])::before{content:'교실매니저 준비 중…';position:absolute;inset:0;display:grid;place-items:center;color:#f4f4f4;font:600 16px system-ui}html.tt-manager-starting .tt-lock-card{visibility:hidden}</style>
   <script>(()=>{const view=new URLSearchParams(location.search).get('view');if(view==='student')document.documentElement.classList.add('tt-student-only');if(view!=='student'&&view!=='board')document.documentElement.classList.add('tt-manager-starting')})();</script>
   <script src="../shared/hoja-theme.js?v=ui2-l"></script>
@@ -58,6 +58,7 @@
             <button class="toolbtn" data-tool="female" type="button">여</button>
             <button class="toolbtn" data-tool="aisle" type="button">통로</button>
             <button class="toolbtn" data-tool="unused" type="button">빈 자리</button>
+            <button id="quickGroup" class="group-quick-button" type="button" aria-controls="groupEditor" aria-pressed="false" title="오른쪽 좌석·모둠 탭에서 모둠을 편집합니다">모둠 묶기</button>
           </div>
           <div class="toolbar-spacer"></div>
           <div id="assignmentStatus" class="assignment-status">새 배치를 만들어 주세요.</div>
