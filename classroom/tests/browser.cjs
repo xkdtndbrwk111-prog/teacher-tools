@@ -121,11 +121,14 @@ async function setRoster(p,names){
      });
    }
    await p.waitForFunction(()=>document.getElementById('studentScrollTrack').hidden);
-   const leftover=await p.evaluate(()=>{
-     const strip=document.querySelector('#teacherScreen .student-strip'),cards=document.querySelector('#studentCards');
-     return strip.getBoundingClientRect().bottom-cards.getBoundingClientRect().bottom;
+   const geometry=await p.evaluate(()=>{
+     const strip=document.querySelector('#teacherScreen .student-strip'),cards=document.querySelector('#studentCards'),studio=document.querySelector('#teacherScreen .studio'),track=document.querySelector('#studentScrollTrack');
+     return{leftover:strip.getBoundingClientRect().bottom-cards.getBoundingClientRect().bottom,
+       stripHeight:strip.getBoundingClientRect().height,cardsHeight:cards.getBoundingClientRect().height,
+       cssRows:getComputedStyle(studio).gridTemplateRows,cssHeight:getComputedStyle(strip).height,
+       trackHidden:track.hidden,trackDisplay:getComputedStyle(track).display};
    });
-   assert.ok(leftover<22,'남는 하단 공간이 과도함: '+leftover);
+   assert.ok(geometry.leftover<22,'남는 하단 공간이 과도함: '+JSON.stringify(geometry));
   });
   await step('성적을 입력하면 명단과 연결된다',async()=>{
    frame=await openGrades(p);

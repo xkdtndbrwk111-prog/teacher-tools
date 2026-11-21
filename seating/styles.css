@@ -752,14 +752,14 @@ html.tt-manager-theme #teacherScreen .seating-student-card.assignment-excluded .
 
 /* V6.26: content-sized roster and a separate scrollbar immune to OS auto-hide. */
 @media (min-width:1001px){
- #teacherScreen .studio{grid-template-rows:minmax(0,1fr) auto!important}
+ #teacherScreen .studio{grid-template-rows:minmax(0,1fr) max-content!important}
  #teacherScreen .studio.student-collapsed{grid-template-rows:minmax(0,1fr) 42px!important}
 }
 @media (max-width:1000px){
- #teacherScreen .studio{grid-template-rows:minmax(560px,70vh) auto auto!important}
+ #teacherScreen .studio{grid-template-rows:minmax(560px,70vh) auto max-content!important}
  #teacherScreen .studio.student-collapsed{grid-template-rows:minmax(560px,70vh) auto 42px!important}
 }
-#teacherScreen .student-strip{height:auto!important;min-height:0!important;padding:4px 10px 5px!important}
+#teacherScreen .student-strip{height:max-content!important;min-height:0!important;align-self:start!important;padding:4px 10px 5px!important}
 #teacherScreen .student-strip-head{margin-bottom:3px!important}
 #teacherScreen .student-cards{
  padding:0 1px!important;scrollbar-width:none!important;
