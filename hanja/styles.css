@@ -1288,3 +1288,126 @@ body.roster-drag-selecting .hanja-student{
     max-width:100%;
   }
 }
+
+
+/* 2026-11-21: Hanja uses the latest compact Classroom Manager roster look.
+   Student numbers and visuals are READ ONLY. Only class participation is editable. */
+@media (min-width:1001px){
+ #manager .studio{grid-template-rows:minmax(0,1fr) max-content!important}
+}
+@media (min-width:761px) and (max-width:1000px){
+ #manager .studio{grid-template-rows:minmax(0,1fr) max-content!important}
+}
+#manager .student-strip{
+ height:max-content!important;min-height:0!important;max-height:none!important;
+ align-self:stretch!important;padding:4px 10px 5px!important;overflow:hidden
+}
+#manager .student-strip-head{min-height:26px!important;margin-bottom:3px!important}
+#manager .student-cards{
+ height:auto!important;min-height:78px!important;max-height:none!important;
+ padding:0 1px!important;scrollbar-width:none!important;
+ overflow-x:auto!important;overflow-y:hidden!important;
+ align-items:flex-start;scroll-behavior:auto!important
+}
+#manager .student-cards::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+#manager .hanja-student.shared-student-card{
+ position:relative!important;min-height:78px!important;
+ padding:4px 6px!important;gap:1px!important;
+ align-items:center!important;justify-content:flex-start!important;
+ cursor:pointer;touch-action:manipulation
+}
+#manager .hanja-student .shared-student-number{
+ position:absolute;z-index:6;left:4px;top:4px;pointer-events:none;
+ min-width:28px;max-width:38px;padding:3px 4px;
+ border:1px solid #738dce;border-radius:6px;background:#5266ad;
+ color:#fff;font-size:11px;font-weight:900;line-height:1.3;text-align:center
+}
+#manager .hanja-student .hanja-sprite.shared-student-sprite{
+ width:48px!important;height:48px!important;flex:0 0 48px!important;
+ margin-left:10px;zoom:1!important;background-size:144px 192px!important;
+ animation:hanjaRosterWalkLarge .60s steps(1,end) infinite,sharedRosterBob .96s ease-in-out infinite!important
+}
+#manager .hanja-student .hanja-sprite.shared-student-sprite::after{
+ background-size:144px 192px!important;
+ animation:hanjaRosterGlassesLarge .54s steps(1,end) infinite!important
+}
+#manager .hanja-student .shared-student-name{
+ margin-top:auto!important;font-size:12px!important;
+ line-height:1.05!important;font-weight:900!important
+}
+#manager .hanja-student .shared-student-status{
+ position:absolute;z-index:7;left:4px;top:29px;
+ width:auto!important;max-width:38px;min-height:21px;
+ padding:3px 4px!important;margin:0!important;
+ overflow:visible;text-overflow:clip;white-space:nowrap;
+ border:1px solid #6f85a6;border-radius:5px;
+ background:#3d5274;color:#fff!important;
+ font-size:10px!important;line-height:1!important;font-weight:850;
+ cursor:pointer;touch-action:manipulation
+}
+#manager .hanja-student.assignment-excluded .shared-student-status{
+ background:#603138!important;color:#ffd4dc!important;border-color:#a45463!important
+}
+#manager .hanja-student:focus-visible,
+#manager .hanja-student .shared-student-status:focus-visible,
+#manager .student-scroll-track:focus-visible{
+ outline:2px solid #facc15;outline-offset:2px
+}
+#manager .strip-actions{
+ gap:5px!important;min-width:0;white-space:nowrap
+}
+#manager .student-strip-head .strip-action{
+ width:auto!important;min-width:0!important;
+ height:26px!important;min-height:26px!important;
+ padding:3px 8px!important;font-size:10px!important;line-height:1!important
+}
+#manager .student-scroll-track{
+ position:relative;display:block;width:100%;height:18px;
+ box-sizing:border-box;margin-top:4px;padding:2px;
+ border:1px solid #61738e;border-radius:9px;background:#111c2f;
+ touch-action:none;cursor:pointer
+}
+#manager .student-scroll-track[hidden]{display:none!important}
+#manager .student-scroll-thumb{
+ position:relative;display:block;height:12px;max-width:100%;
+ box-sizing:border-box;border:1px solid #c3d2e9;border-radius:7px;
+ background:#99afce;box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:grab
+}
+#manager .student-scroll-track:active .student-scroll-thumb{cursor:grabbing}
+#manager .hanja-roster-empty{
+ min-height:78px;width:100%;
+ display:flex;align-items:center;justify-content:center;
+ flex-wrap:wrap;gap:12px;padding:12px;color:#e2e8f0;
+ font-size:12px;font-weight:800;line-height:1.45
+}
+#manager .hanja-roster-empty a{
+ color:#fff;background:#24476d;text-decoration:none;
+ border:1px solid #61738e;border-radius:8px;padding:7px 10px
+}
+@keyframes hanjaRosterWalkLarge{
+ 0%,32%{background-position:0 0}
+ 33%,65%{background-position:-48px 0}
+ 66%,100%{background-position:-96px 0}
+}
+@keyframes hanjaRosterGlassesLarge{
+ 0%,32%{background-position:0 3px}
+ 33%,65%{background-position:-48px 3px}
+ 66%,100%{background-position:-96px 3px}
+}
+@media (prefers-reduced-motion:reduce){
+ #manager .hanja-student .hanja-sprite.shared-student-sprite,
+ #manager .hanja-student .hanja-sprite.shared-student-sprite::after{
+  animation:none!important;background-position:0 0
+ }
+ #manager .hanja-student .hanja-sprite.shared-student-sprite::after{background-position:0 3px}
+}
+@media (max-width:760px){
+ #manager .student-strip{
+  height:auto!important;min-height:0!important;max-height:none!important
+ }
+ #manager .student-strip-head{flex-wrap:wrap!important;gap:5px!important}
+ #manager .student-strip-head .strip-help{
+  order:3;flex-basis:100%;text-align:left!important;white-space:normal!important
+ }
+ #manager .strip-actions{flex-wrap:wrap!important}
+}
