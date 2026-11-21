@@ -80,9 +80,20 @@ async function setRoster(p,names){
    assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),true);
    assert.equal(await p.locator('#registeredRosterHint').evaluate(el=>el.classList.contains('hidden')),false);
    assert.equal(await p.locator('#legacyNumberHint').evaluate(el=>el.classList.contains('hidden')),false);
-   assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'01');
+   assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'1');
    await p.locator('#studentCards .seating-student-card').first().click();
-   assert.match(await p.locator('#studentNameSlot').textContent(),/01번/);
+   assert.match(await p.locator('#studentNameSlot').textContent(),/1번/);
+  });
+  await step('설정 탭 제거 후 학생·좌석 모둠·반 관리 데이터 도구 유지',async()=>{
+   assert.equal(await p.locator('.dock-tab[data-tab="settings"]').count(),0);
+   assert.equal(await p.locator('.dock-tab.on').first().getAttribute('data-tab'),'student');
+   await p.locator('.dock-tab[data-tab="groups"]').click();
+   assert.equal(await p.locator('.dock-panel[data-panel="groups"] #resetLayout').count(),1);
+   await p.locator('#tt-class-add').click();
+   assert.equal(await p.locator('#tt-class-modal #tt-class-data-placement #exportJson').count(),1);
+   assert.equal(await p.locator('#tt-class-modal #tt-class-data-placement #importJson').count(),1);
+   await p.locator('#tt-class-cancel').click();
+   await p.locator('.dock-tab[data-tab="student"]').click();
   });
   await step('다시 열어도 설치 ID와 자료가 유지된다',async()=>{
    await p.reload();await started(p);const again=await classInfo(p);
@@ -150,6 +161,9 @@ async function setRoster(p,names){
    await p.mouse.move(source.x+source.width/2,source.y+source.height/2);
    await p.mouse.down();await wait(480);
    assert.equal(await p.locator('.roster-ghost').count(),1,'길게 누르면 드래그 프리뷰 등장');
+   assert.equal(await p.locator('.roster-ghost .shared-student-sprite').count(),0,'이동 프리뷰에는 아바타가 없어야 한다');
+   assert.equal(await p.locator('.roster-ghost .roster-ghost-number').textContent(),'1');
+   assert.equal(await p.locator('.roster-ghost .roster-ghost-name').textContent(),await first.locator('.shared-student-name').textContent());
    const start=await p.locator('.roster-ghost').boundingBox();
    const targetX=target.x+target.width*.82,targetY=target.y+target.height*.55;
    await p.mouse.move(targetX,targetY,{steps:7});
@@ -160,7 +174,7 @@ async function setRoster(p,names){
    assert.equal(await p.locator('.roster-ghost').count(),0,'버튼을 놓으면 프리뷰 제거');
    assert.equal(await p.evaluate(()=>document.body.classList.contains('roster-grabbing')),false);
    assert.equal(await p.locator('#studentCards .seating-student-card').first().getAttribute('data-student-id'),origin[1],'카드 순서 변경');
-   assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'01');
+   assert.equal(await p.locator('#studentCards .shared-student-number').first().textContent(),'1');
    assert.equal(await p.locator('#studentCards .shared-student-number').nth(1).textContent(),'02');
    assert.equal(await p.evaluate(ids=>reorderStudentsByIds(ids),origin),true);
   });
@@ -338,12 +352,21 @@ async function setRoster(p,names){
    assert.equal(two.activeId,secondId);assert.notEqual(two.seatingKey,info.seatingKey);assert.deepEqual(two.names,[]);
    assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),false);
    assert.equal(await p.evaluate(()=>classState.ui.numberMode),'legacy');
+   await p.locator('#initialRosterDialog[open]').waitFor();
+   assert.equal(await p.locator('#initialRosterBlock').isVisible(),true);
+   await p.locator('#skipInitialRoster').click();
+   assert.equal(await p.locator('#initialRosterDialog').evaluate(el=>el.open),false);
+   assert.equal(await p.locator('#openRosterOnboarding').isVisible(),true);
+   await p.locator('#openRosterOnboarding').click();
+   await p.locator('#initialRosterDialog[open]').waitFor();
    assert.equal(await p.evaluate(k=>Object.keys(JSON.parse(window.__TT_STORE.getItem(k)||'{}')).filter(x=>x!=='teamCount').length,two.peKey),0);
   });
   await step('모둠 균형 계산은 선택한 반의 능력치를 읽는다',async()=>{
    await setRoster(p,['하나','두리','세찬','네온']);await wait(200);
    assert.equal(await p.locator('#initialRosterBlock').evaluate(el=>el.classList.contains('hidden')),true);
    assert.equal(await p.evaluate(()=>classState.ui.numberMode),'ordered');
+   assert.equal(await p.locator('#initialRosterDialog').evaluate(el=>el.open),false);
+   assert.equal(await p.locator('#openRosterOnboarding').isVisible(),false);
    const read=await p.evaluate(()=>{
     const c=window.__TT_STAGE031_CLASS,pe={},keys=[];
     const seats=classState.layout.cells.filter(x=>x.type!=='aisle'&&x.type!=='unused').slice(0,4).map(x=>x.id);
@@ -449,7 +472,13 @@ async function setRoster(p,names){
   await step('반 이름을 바꾼 뒤 바로 전체 백업할 수 있다',async()=>{
    const {ctx:cr,p:pr}=await newContext();
    await pr.goto(BASE+'/seating/?section=seating');await started(pr);
-   await pr.fill('#className','이름바꾼반');await pr.press('#className','Tab');await wait(200);
+   await pr.locator('#initialRosterDialog[open]').waitFor();
+   await pr.locator('#skipInitialRoster').click();
+   await pr.locator('#tt-class-add').click();
+   await pr.locator('#tt-class-existing input').first().fill('이름바꾼반');
+   await Promise.all([pr.waitForEvent('load'),pr.locator('#tt-class-create').click()]);
+   await started(pr);
+   if(await pr.locator('#initialRosterDialog').evaluate(el=>el.open))await pr.locator('#skipInitialRoster').click();
    await settingsAction(pr,'tt-full-backup','backup');await pr.check('#tt-backup-plain');
    const b=await download(pr,()=>pr.click('#tt-backup-export'));
    assert.equal(b.payload.classes[0].name,'이름바꾼반');

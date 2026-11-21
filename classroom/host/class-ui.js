@@ -79,9 +79,19 @@
    <div class="tt-class-danger-actions"><button type="button" id="tt-class-delete-back">돌아가기</button><button type="button" id="tt-class-delete-final" class="tt-class-delete-button" disabled>반 삭제 확인 후 저장</button></div>
   </div>
   <div id="tt-class-recovery" class="tt-class-recovery" hidden><div class="tt-class-modal-label">삭제한 반 · 복구 / 완전 삭제</div><div id="tt-class-recovery-rows"></div></div>
+  <details class="tt-class-data-details">
+   <summary>현재 학급 데이터 · JSON 백업/복원</summary>
+   <p>이 학급의 자리배치·규칙·히스토리를 백업하거나 복원합니다. 모든 학급을 함께 백업하려면 공통 설정 → 백업·복원을 사용하세요.</p>
+   <div id="tt-class-data-placement"></div>
+  </details>
   <div class="tt-class-modal-actions"><button type="button" id="tt-class-cancel">취소</button><button type="button" id="tt-class-create" class="tt-class-primary" disabled>변경사항 저장</button></div>
  </section>`;
  document.body.append(modal);
+ // Reparent the original controls, preserving their existing handlers.
+ const existingTransfer=document.querySelector("#seatingUtilityFields .data-transfer");
+ const placement=modal.querySelector("#tt-class-data-placement");
+ if(!existingTransfer||!placement)throw Error("학급별 백업·복구 항목을 찾지 못했습니다.");
+ placement.append(existingTransfer);
  const namesInput=modal.querySelector('#tt-class-names'),errorBox=modal.querySelector('#tt-class-error');
  const createButton=modal.querySelector('#tt-class-create'),preview=modal.querySelector('#tt-class-preview');
  const rows=modal.querySelector('#tt-class-existing'),danger=modal.querySelector('#tt-class-danger');

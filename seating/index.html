@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>교실 매니저</title>
   <link rel="icon" href="../assets/hub/favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=20261121-roster-scroll-2">
+  <link rel="stylesheet" href="styles.css?v=20261121-onboarding-restructure">
   <link rel="stylesheet" href="pe-v1.css?v=20261115-step10-menu">
-  <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-attendance-v1">
+  <link rel="stylesheet" href="../shared/student-roster.css?v=20261121-ghost-name-number">
   <link rel="stylesheet" href="../classroom/host/grade-mount.css?v=20261121-roster-fit">
   <link rel="stylesheet" href="../classroom/host/life-mount.css?v=20261116-life-guided">
-  <link rel="stylesheet" href="../classroom/host/class-ui.css?v=ui2-lock-center">
+  <link rel="stylesheet" href="../classroom/host/class-ui.css?v=20261121-classdata">
   <link rel="stylesheet" href="../classroom/host/hud-shell.css">
   <link rel="stylesheet" href="../classroom/host/settings-window.css?v=ui2-g">
   <link rel="stylesheet" href="../classroom/host/student-window.css">
@@ -21,7 +21,7 @@
   <script src="../shared/hoja-theme.js?v=ui2-l"></script>
   <script src="../classroom/host/manager-theme.js?v=ui2-lock-center"></script>
   <script src="../classroom/host/class-store.js"></script>
-  <script src="../classroom/host/class-bootstrap.js?v=20261121-roster-longpress-fix"></script>
+  <script src="../classroom/host/class-bootstrap.js?v=20261121-onboarding-restructure"></script>
 </head>
 <body>
   <div id="tt-manager-loading" role="status">교실매니저 준비 중…</div>
@@ -43,6 +43,10 @@
       </div>
     </header>
 
+    <div id="storageAlert" class="storage-alert tt-global-storage-alert hidden" role="alert">
+              <span id="storageAlertText"></span>
+              <button id="reloadStorage" class="hidden" type="button">최신 데이터 다시 불러오기</button>
+            </div>
     <div class="studio">
       <main class="workspace-column">
         <div id="historyBanner" class="history-banner hidden">
@@ -87,8 +91,7 @@
 
       <aside id="toolDock" class="tool-dock">
         <nav class="dock-tabs" aria-label="교사 도구">
-          <button class="dock-tab on" data-tab="settings" type="button">설정</button>
-          <button class="dock-tab" data-tab="student" type="button">학생</button>
+          <button class="dock-tab on" data-tab="student" type="button">학생</button>
           <button class="dock-tab" data-tab="groups" type="button">좌석·모둠</button>
           <button class="dock-tab" data-tab="rules" type="button">규칙</button>
           <button class="dock-tab" data-tab="teacher" type="button">교사</button>
@@ -100,6 +103,10 @@
             <div class="student-inspector-sticky">
               <div class="dock-title student-dock-title"><h2>학생 비공개 속성</h2></div>
               <div id="studentNameSlot"></div>
+              <div id="legacyNumberHint" class="settings-hint hidden">
+                기존 학급의 출석번호는 성적관리와 다를 수 있습니다. 현재 순서를 확인한 뒤에만 번호를 연결해 주세요.
+                <button id="enableRosterNumbers" class="ghost full" type="button">카드 순서를 출석번호로 연결</button>
+              </div>
             </div>
             <div id="studentInspector"></div>
           </section>
@@ -121,6 +128,11 @@
               <p class="help">중앙 좌석을 클릭하거나 드래그해 선택하세요. 통로/빈 자리은 선택할 수 없습니다.</p>
             </div>
             <div id="groupList" class="group-list"></div>
+            <details class="layout-advanced">
+              <summary>배치 관리</summary>
+              <p>현재 학급의 좌석과 모둠만 초기화합니다. 학생 명단, 성적, 코인, 과거 히스토리는 삭제하지 않습니다.</p>
+              <button id="resetLayout" class="danger full" type="button">기본 4×8 좌석으로 초기화</button>
+            </details>
           </section>
 
           <section class="dock-panel hidden" data-panel="rules">
@@ -194,37 +206,7 @@
             <div id="historyList" class="history-list"></div>
           </section>
 
-          <section class="dock-panel" data-panel="settings">
-            <div class="dock-title"><h2>설정</h2><span>학급 명단과 기본 설정을 관리합니다.</span></div>
-            <div id="storageAlert" class="storage-alert hidden" role="alert">
-              <span id="storageAlertText"></span>
-              <button id="reloadStorage" class="hidden" type="button">최신 데이터 다시 불러오기</button>
-            </div>
-            <div id="initialRosterBlock">
-              <label class="field">최초 학생 명단 등록 · 한 줄에 한 명<textarea id="studentInput" aria-label="학생 명단"></textarea></label>
-              <p class="settings-hint">처음 생성한 학급에만 여러 명을 한꺼번에 입력합니다. 이후에는 아래 학생 카드와 오른쪽 학생 상세 설정으로 관리합니다.</p>
-              <button id="applyStudents" class="primary full" type="button">명단 적용</button>
-            </div>
-            <div id="registeredRosterHint" class="settings-hint hidden">등록된 학생은 아래 학생 카드에서 선택하고 이름을 수정하세요. 학생 아바타를 길게 눌러 순서를 변경할 수 있습니다. 학생 추가는 아래 '+ 학생 추가'를 사용합니다.</div>
-            <div id="legacyNumberHint" class="settings-hint hidden">
-              <p>기존 학급의 출석번호는 성적관리와 다를 수 있어 자동 변경하지 않았습니다. 현재 카드 순서를 확인한 뒤 번호를 통일할 수 있습니다.</p>
-              <button id="enableRosterNumbers" class="ghost full" type="button">현재 카드 순서를 출석번호로 연결</button>
-            </div>
-            <hr>
-            <label class="field">학급 이름<input id="className" maxlength="30" placeholder="우리 반"></label>
-            <button id="resetLayout" class="danger full" type="button">레이아웃 초기화</button>
-            <div class="settings-hint">행·열은 중앙 작업영역의 + · − 버튼에서 바로 조절합니다.</div>
-            <hr>
-            <section class="data-transfer" aria-labelledby="dataTransferTitle">
-              <strong id="dataTransferTitle">데이터 백업 · 복구</strong>
-              <p>학생 명단·성별·캐릭터·좌석·모둠·규칙·학급 히스토리와 5축 능력치·체육 팀 고정·팀 수를 함께 JSON으로 백업합니다. 체육 팀 편성 결과·히스토리는 저장하지 않습니다.</p>
-              <div class="data-transfer-actions">
-                <button id="exportJson" class="ghost" type="button">JSON으로 내보내기</button>
-                <button id="importJson" class="ghost" type="button">JSON 불러오기</button>
-                <input id="importJsonFile" class="hidden" type="file" accept="application/json,.json">
-              </div>
-              <div id="dataTransferStatus" class="data-transfer-status" aria-live="polite">불러오기는 파일을 먼저 검사한 뒤 교체 여부를 확인합니다.</div>
-            </section>
+
           </section>
         </div>
       </aside>
@@ -237,6 +219,7 @@
           </div>
           <span class="strip-help">학생 카드 우클릭: 배치 대상 제외/다시 포함 · 테두리 색: 남/여/미지정 · 하단 카드 드래그: 지정석 · 배치 후 학생이 있는 칸 전체를 드래그: 자리 교환</span>
           <div class="student-strip-actions">
+            <button id="openRosterOnboarding" class="strip-add hidden" type="button">학생 명단 등록</button>
             <button id="addStudent" class="strip-add" type="button">＋ 학생 추가</button>
             <label class="target-student-count">총원 <input id="targetStudentCount" type="number" min="0" max="60" inputmode="numeric" aria-label="학급 총원">명</label>
             <button id="fillStudentCount" class="strip-add target-fill" type="button">총원 맞추기</button>
@@ -251,6 +234,36 @@
       </section>
     </div>
   </section>
+
+  <dialog id="initialRosterDialog" class="roster-onboarding" aria-labelledby="initialRosterTitle" aria-describedby="initialRosterHelp">
+    <div class="roster-onboarding-header">
+      <h2 id="initialRosterTitle">새 학급 학생 등록</h2>
+      <p id="initialRosterHelp">학생을 한 줄에 한 명씩 입력하세요. 입력한 순서가 출석번호입니다.</p>
+    </div>
+    <div id="initialRosterBlock">
+      <label class="field">학생 명단<textarea id="studentInput" aria-label="학생 명단" rows="10" placeholder="김민희&#10;권상현&#10;박은진"></textarea></label>
+      <div id="initialRosterPreview" class="roster-onboarding-preview" aria-live="polite">학생 이름을 입력하면 인원을 확인할 수 있습니다.</div>
+      <div class="roster-onboarding-actions">
+        <button id="skipInitialRoster" class="ghost" type="button">나중에 등록</button>
+        <button id="applyStudents" class="primary" type="button">학생 명단 등록</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="seatingUtilityFields" class="seating-utility-fields" hidden>
+    <label>학급 이름<input id="className" maxlength="30" placeholder="우리 반"></label>
+    <div id="registeredRosterHint" class="hidden"></div>
+    <section class="data-transfer" aria-labelledby="dataTransferTitle">
+              <strong id="dataTransferTitle">데이터 백업 · 복구</strong>
+              <p>학생 명단·성별·캐릭터·좌석·모둠·규칙·학급 히스토리와 5축 능력치·체육 팀 고정·팀 수를 함께 JSON으로 백업합니다. 체육 팀 편성 결과·히스토리는 저장하지 않습니다.</p>
+              <div class="data-transfer-actions">
+                <button id="exportJson" class="ghost" type="button">JSON으로 내보내기</button>
+                <button id="importJson" class="ghost" type="button">JSON 불러오기</button>
+                <input id="importJsonFile" class="hidden" type="file" accept="application/json,.json">
+              </div>
+              <div id="dataTransferStatus" class="data-transfer-status" aria-live="polite">불러오기는 파일을 먼저 검사한 뒤 교체 여부를 확인합니다.</div>
+            </section>
+  </div>
 
   <div id="seatCountDialog" class="seat-count-dialog hidden" aria-hidden="true">
     <div class="seat-count-dialog-backdrop"></div>

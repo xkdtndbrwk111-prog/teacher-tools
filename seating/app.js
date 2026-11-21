@@ -789,16 +789,41 @@ function pairedPreset(){
 }
 function resetLayout(){
   if(historyView)return;
-  if(!confirm("현재 레이아웃과 모둠 설정을 모두 초기화할까요?"))return;
+  if(!confirm("현재 학급 좌석을 기본 4×8로 초기화하고 모둠·지정석을 해제할까요?\n학생 명단·성적·코인·과거 히스토리는 삭제되지 않습니다.\n필요하면 실행 취소로 되돌릴 수 있습니다."))return;
   const rows=4,cols=8;classState.layout={rows,cols,cells:defaultPairedCells(rows,cols)};classState.groups=[];pruneFixedSeats();invalidateConfirmed("기본 4×8 · 2인 짝 레이아웃으로 초기화했습니다.");saveState();renderGroups();applyRuleGating();
 }
 
+let rosterOnboardingDeferred=false;
+function updateRosterOnboardingPreview(){
+ const names=($("studentInput")?.value||"").split(/\r?\n/).map(n=>n.trim()).filter(Boolean);
+ const node=$("initialRosterPreview");
+ if(node)node.textContent=names.length
+  ?`등록 예정 ${names.length}명 · 1번 ${names[0]}${names.length>1?` · ${names.length}번 ${names.at(-1)}`:""}`
+  :"학생 이름을 입력하면 인원을 미리 확인할 수 있습니다.";
+}
+function closeRosterOnboarding(){
+ const modal=$("initialRosterDialog");if(modal?.open)modal.close();
+ rosterOnboardingDeferred=true;
+}
+function openRosterOnboarding({force=false}={}){
+ const modal=$("initialRosterDialog");
+ if(!modal||classState.ui.initialRosterApplied===true||classState.students.length||historyView)return;
+ if(!force&&(rosterOnboardingDeferred||document.documentElement.classList.contains("tt-manager-starting")))return;
+ if(document.documentElement.classList.contains("tt-student-only")||document.documentElement.classList.contains("tt-board"))return;
+ if(storageRuntime.saveBlocked)return;
+ if(!modal.open)modal.showModal();
+ updateRosterOnboardingPreview();
+}
+window.__TT_OPEN_INITIAL_ROSTER=()=>openRosterOnboarding();
 function renderStudentsInput(){
- $("studentInput").value=classState.students.map(s=>s.name).join("\n");
- const isNew=classState.ui.initialRosterApplied!==true;
+ $("studentInput").value=classState.students.map(st=>st.name).join("\n");
+ const isNew=classState.ui.initialRosterApplied!==true&&!classState.students.length;
  $("initialRosterBlock").classList.toggle("hidden",!isNew);
- $("registeredRosterHint").classList.toggle("hidden",isNew);
+ $("registeredRosterHint")?.classList.toggle("hidden",isNew);
  $("legacyNumberHint").classList.toggle("hidden",isNew||classState.ui.numberMode==="ordered");
+ $("openRosterOnboarding")?.classList.toggle("hidden",!isNew);
+ if(!isNew&&$("initialRosterDialog")?.open)$("initialRosterDialog").close();
+ updateRosterOnboardingPreview();
 }
 function enableRosterNumbers(){
  if(historyView||classState.ui.numberMode==="ordered"||!classState.students.length)return;
@@ -944,13 +969,13 @@ function bindRosterLongPress(card){
    active=true;
    card.classList.add("roster-moving");
    document.body.classList.add("roster-grabbing");
-   const box=card.getBoundingClientRect();
-   ghost=card.cloneNode(true);
-   ghost.classList.add("roster-ghost");
-   ghost.querySelector(".shared-student-status")?.remove();
-   ghost.setAttribute("aria-hidden","true");
-   ghost.style.width=box.width+"px";
-   ghost.style.height=box.height+"px";
+   // Text-only drag preview: never clip the name beneath a sprite.
+   ghost=document.createElement("div");ghost.className="roster-ghost";
+   const badge=document.createElement("span");badge.className="roster-ghost-number";
+   badge.textContent=card.querySelector(".shared-student-number")?.textContent||"";
+   const name=document.createElement("strong");name.className="roster-ghost-name";
+   name.textContent=card.querySelector(".shared-student-name")?.textContent||"";
+   ghost.append(badge,name);ghost.setAttribute("aria-hidden","true");
    document.body.append(ghost);
    positionGhost(press.x,press.y);
   },390);
@@ -1273,7 +1298,7 @@ function renderStudentStrip(){
     card.dataset.studentId=student.id;
     card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
     if(!historyView&&!excluded)card.draggable=true;
-    const badgeNumber=String(index+1).padStart(2,"0");
+    const badgeNumber=String(index+1);
     const numberTitle=classState.ui.numberMode==="ordered"?"출석번호":"명단 순서 · 성적관리의 기존 출석번호 확인 필요";
     const statusMarkup=historyView
       ?`<small class="shared-student-status">${status}</small>`
@@ -1333,7 +1358,7 @@ function renderStudentInspector(){
   const glassesOptions=STUDENT_GLASSES.map(v=>`<option value="${v.id}" ${visual.glasses===v.id?"selected":""}>${v.label}</option>`).join("");
   const others=classState.students.filter(s=>s.id!==student.id);
   const apartSlots=Array.from({length:3},(_,slot)=>`<select data-apart-slot="${slot}" aria-label="떨어뜨릴 학생 ${slot+1}"><option value="">${slot+1}번 없음</option>${others.map(s=>`<option value="${s.id}" ${student.apartFrom[slot]===s.id?"selected":""}>${escapeHtml(s.name)}</option>`).join("")}</select>`).join("");
-  nameRoot.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><span class="inspector-attendance-number">${String(studentIndex+1).padStart(2,"0")}번</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>`;
+  nameRoot.innerHTML=`<div class="student-name-sticky"><span class="inspector-label">학생 이름</span><span class="inspector-attendance-number">${String(studentIndex+1)}번</span><input id="studentNameEdit" class="field-input" maxlength="30" value="${escapeHtml(student.name)}"></div>`;
   root.innerHTML=`<div class="inspector-section student-visual-editor"><span class="inspector-label">외형 커스터마이즈</span><div class="student-visual-preview">${studentPreviewMarkup(student,studentIndex)}</div><div class="student-visual-grid"><label>캐릭터<select id="studentCharacter">${characterOptions}</select></label><label>머리색<select id="studentHair">${hairOptions}</select></label><label>옷 색상<select id="studentOutfit">${outfitOptions}</select></label><label>안경<select id="studentGlasses">${glassesOptions}</select></label></div></div>
     <div class="inspector-section"><span class="inspector-label">성별</span><div class="segmented"><button type="button" data-g="none" class="${student.gender==="none"?"on":""}">미지정</button><button type="button" data-g="male" class="${student.gender==="male"?"on":""}">남</button><button type="button" data-g="female" class="${student.gender==="female"?"on":""}">여</button></div></div>
     <div class="inspector-section"><span class="inspector-label">배치 균형 속성 · 비공개</span><div class="level-segment"><button type="button" data-level="A" class="${student.balanceLevel==="A"?"on":""}">빼어남</button><button type="button" data-level="B" class="${student.balanceLevel==="B"?"on":""}">우수함</button><button type="button" data-level="C" class="${student.balanceLevel==="C"?"on":""}">아름다움</button></div><button id="clearLevel" class="ghost full" type="button" style="margin-top:6px">평가 미지정</button></div>
@@ -3375,6 +3400,10 @@ function bindUI(){
   document.querySelectorAll(".toolbtn").forEach(button=>button.onclick=()=>{if(historyView||groupEdit.active)return;paintTool=button.dataset.tool;document.querySelectorAll(".toolbtn").forEach(b=>b.classList.toggle("on",b===button))});
   document.querySelectorAll(".dock-tab").forEach(button=>button.onclick=()=>activateDock(button.dataset.tab));
   $("resetLayout").onclick=resetLayout;$("applyStudents").onclick=applyStudentNames;$("enableRosterNumbers").onclick=enableRosterNumbers;
+  $("skipInitialRoster").onclick=closeRosterOnboarding;
+  $("openRosterOnboarding").onclick=()=>{rosterOnboardingDeferred=false;openRosterOnboarding({force:true})};
+  $("studentInput").addEventListener("input",updateRosterOnboardingPreview);
+  $("initialRosterDialog").addEventListener("cancel",event=>{event.preventDefault();closeRosterOnboarding()});
   $("rowMinus").onclick=()=>changeGridDimension("rows",-1);$("rowPlus").onclick=()=>changeGridDimension("rows",1);$("colMinus").onclick=()=>changeGridDimension("cols",-1);$("colPlus").onclick=()=>changeGridDimension("cols",1);
   $("addStudent").onclick=addStudentFromStrip;$("fillStudentCount").onclick=fillStudentsToTarget;
   $("targetStudentCount").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();fillStudentsToTarget()}};
@@ -3401,7 +3430,7 @@ function bindUI(){
 }
 function renderTopTitle(){$("topClassTitle").textContent=`${classState.className||"우리 반"} · 자리배치 Studio V6.24`;$("className").value=classState.className||"우리 반"}
 function init(){
-  bindUI();bindRules();bindAvatar();renderStudentsInput();renderTopTitle();renderLayout();renderStudentStrip();renderStudentInspector();renderGroups();renderHistory();renderGroupPalette();activateDock("settings");ensureStudentGlassesAssets();
+  bindUI();bindRules();bindAvatar();renderStudentsInput();renderTopTitle();renderLayout();renderStudentStrip();renderStudentInspector();renderGroups();renderHistory();renderGroupPalette();activateDock("student");ensureStudentGlassesAssets();
   if(window.ResizeObserver){new ResizeObserver(()=>fitEditorGrid()).observe($("editorWrap"))}
   if(classState.assignments.length)setAssignmentStatus("저장된 확정 배치를 불러왔습니다.",true);
   if(storageRuntime.saveBlocked){setSaveStatus("저장 중지 · 복구 필요","error");showStorageAlert(storageRuntime.loadIssue,"error")}
