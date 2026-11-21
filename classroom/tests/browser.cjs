@@ -692,7 +692,7 @@ async function setRoster(p,names){
     await p8.setViewportSize({width,height:800});await wait(120);
     await p8.evaluate(()=>{document.getElementById('tt-cloud-chip').textContent='☁ 자료 차이 확인'});
     const r=await p8.evaluate(()=>{
-     const compact=innerWidth<=1400;
+     const compact=innerWidth<=1680;
      const ids=['tt-manager-home-button',...(compact?['tt-hud-work-toggle']:['generateAssignment','confirmAssignment','openPlayback']),'tt-cloud-chip','tt-hud-more-trigger','tt-class-add','tt-grade-tab','tt-seat-subtab','modePE','tt-life-tab','tt-board-tab'];
      const out=ids.filter(id=>{const b=document.getElementById(id)?.getBoundingClientRect();return !b||b.top<0||b.left<0||b.right>innerWidth||b.bottom>innerHeight||b.width===0});
      const header=document.querySelector('.studio-topbar'),box=header.getBoundingClientRect();
@@ -701,7 +701,7 @@ async function setRoster(p,names){
      return{out,clipped,scroll:document.documentElement.scrollWidth>innerWidth,bar:box.height,overflow,...(overflow?{detail:{scroll:header.scrollHeight,client:header.clientHeight,rows:getComputedStyle(header).gridTemplateRows,children:[...header.children].filter(e=>e.getClientRects().length).map(e=>[e.id||e.className,Math.round(e.getBoundingClientRect().top-box.top),Math.round(e.getBoundingClientRect().bottom-box.top)])}}:{})};
     });
     if(r.out.length||r.clipped.length||r.scroll||r.overflow||r.bar>61)bad.push([width,r]);
-    if(width<=1400){
+    if(width<=1680){
      await p8.locator('#tt-hud-work-toggle').click();
      for(const id of ['generateAssignment','confirmAssignment','openPlayback']){
       const button=p8.locator('#'+id);assert.ok(await button.isVisible(),'compact work button '+id+' '+width);
