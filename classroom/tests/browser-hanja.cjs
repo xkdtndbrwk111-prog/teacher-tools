@@ -121,7 +121,9 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   assert.equal(await house.getAttribute('aria-label'),'역사보리꼬리 공작소로 이동');
   assert.deepEqual(await house.locator('svg path').evaluateAll(nodes=>nodes.map(x=>x.getAttribute('d'))),['m3 10 9-7 9 7v10H3z','M9 20v-7h6v7']);
   assert.equal(await page.locator('#manager #saveStatus').count(),1,'Storage warning node remains intact');
-  assert.equal(await page.locator('#manager #saveStatus').textContent(),'','Decorative subtitle removed');
+  assert.doesNotMatch(await page.locator('#manager #saveStatus').textContent(),/한자와 한자어로 만드는 우리 반 수업/,'Decorative subtitle removed');
+  const saveVisual=await page.locator('#manager #saveStatus').evaluate(el=>({width:el.getBoundingClientRect().width,clip:getComputedStyle(el).clipPath}));
+  assert.ok(saveVisual.width<=1.1&&saveVisual.clip.includes('inset'),'Live storage announcement remains accessible but not below house icon');
   for(const width of [390,720,1280,1600]){
     await page.setViewportSize({width,height:900});
     const layout=await page.evaluate(()=>{
