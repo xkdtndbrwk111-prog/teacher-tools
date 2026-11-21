@@ -3,6 +3,8 @@ import {readStudents,isStudentStorageKey} from '../shared/student-registry.js';
 const $=id=>document.getElementById(id);
 const KEY="teacher-tools.hanja.data.v1";
 const PARTICIPATION_KEY="teacher-tools.hanja.participation.v1";
+const DEFAULT_ENTRY_WEIGHT=60;
+function validEntryWeight(value){return Number.isInteger(value)&&value>=0&&value<=100}
 const defaults={target:"mixed",direction:"forward",mode:"choice",gameMode:"normal",perStudent:3,choices:4};
 function frequencyLabel(weight){const n=Number(weight);if(n<=0)return "사용 안 함";if(n<=20)return "매우 낮음";if(n<=40)return "낮음";if(n<=60)return "보통";if(n<=80)return "높음";return "매우 높음"}
 function frequencyOutput(weight){
@@ -43,7 +45,7 @@ function loadExcludedStudents(){
 function saveExcludedStudents(){
  try{localStorage.setItem(PARTICIPATION_KEY,JSON.stringify([...excluded]))}catch{}
 }
-let db=[],settings={...defaults},type="single",editId=null,selectedIds=new Set(),lastSelectedId=null,students=[],excluded=loadExcludedStudents(),session=null,advanceTimer=null,noticeTimer=null,audio=null,lastRaw=null,storageBlocked=false;
+let db=[],settings={...defaults},lastEntryWeight=DEFAULT_ENTRY_WEIGHT,type="single",editId=null,selectedIds=new Set(),lastSelectedId=null,students=[],excluded=loadExcludedStudents(),session=null,advanceTimer=null,noticeTimer=null,audio=null,lastRaw=null,storageBlocked=false;
 const HANJA_GLASSES=[
  {id:"none",color:null},{id:"red",color:null},{id:"black",color:[45,48,54]},
  {id:"brown",color:[112,67,42]},{id:"navy",color:[45,70,110]},
@@ -102,14 +104,14 @@ function validateSettings(s){
 function load(){
  try{
   lastRaw=localStorage.getItem(KEY);
-  if(lastRaw){const d=JSON.parse(lastRaw);if(d.version!==1||!Array.isArray(d.entries))throw Error("저장 형식 오류");db=d.entries.map(x=>validateEntry({...x,weight:x.enabled===false?0:Number(x.weight??60)}));settings=validateSettings({...defaults,...d.settings})}
+  if(lastRaw){const d=JSON.parse(lastRaw);if(d.version!==1||!Array.isArray(d.entries))throw Error("저장 형식 오류");db=d.entries.map(x=>validateEntry({...x,weight:x.enabled===false?0:Number(x.weight??60)}));settings=validateSettings({...defaults,...d.settings});lastEntryWeight=validEntryWeight(d.lastEntryWeight)?d.lastEntryWeight:DEFAULT_ENTRY_WEIGHT}
   else db=[];
  }catch{storageBlocked=true;db=[];settings={...defaults};$("saveStatus").textContent="저장 데이터 확인 필요 · 덮어쓰기 중지";notify("한자 데이터를 읽지 못했습니다. 기존 저장 데이터는 덮어쓰지 않습니다.")}
  for(const k of Object.keys(defaults))$(k).value=settings[k];
 }
 function save(){
  if(storageBlocked){notify("저장 데이터 오류 또는 다른 탭 변경으로 저장이 중지되었습니다. 새로고침 후 확인해 주세요.");return false}
- try{if(localStorage.getItem(KEY)!==lastRaw){storageBlocked=true;throw Error("다른 탭에서 데이터가 변경되었습니다. 새로고침해 주세요.")}const raw=JSON.stringify({version:1,entries:db,settings});localStorage.setItem(KEY,raw);if(localStorage.getItem(KEY)!==raw)throw Error("저장 확인 실패");lastRaw=raw;$("saveStatus").textContent="이 브라우저에 저장됨";return true}catch(e){$("saveStatus").textContent="저장 실패 · 변경 내용 확인 필요";notify(e.message);return false}
+ try{if(localStorage.getItem(KEY)!==lastRaw){storageBlocked=true;throw Error("다른 탭에서 데이터가 변경되었습니다. 새로고침해 주세요.")}const raw=JSON.stringify({version:1,entries:db,settings,lastEntryWeight});localStorage.setItem(KEY,raw);if(localStorage.getItem(KEY)!==raw)throw Error("저장 확인 실패");lastRaw=raw;$("saveStatus").textContent="이 브라우저에 저장됨";return true}catch(e){$("saveStatus").textContent="저장 실패 · 변경 내용 확인 필요";notify(e.message);return false}
 }
 function panel(name){$("dataPanel").classList.toggle("hidden",name!=="data");$("questionsPanel").classList.toggle("hidden",name!=="questions");document.querySelectorAll("[data-panel]").forEach(b=>b.classList.toggle("on",b.dataset.panel===name))}
 function resetForm(){
@@ -117,7 +119,7 @@ function resetForm(){
  selectedIds.clear();
  lastSelectedId=null;
  $("entryForm").reset();
- $("weight").value=60;
+ $("weight").value=lastEntryWeight;
  updateWeightLabel();
  $("editTitle").textContent=type==="single"?"한자 등록":"한자어 등록";
  $("textLabel").textContent=type==="single"?"한자":"조합 한자";
@@ -176,7 +178,7 @@ function handleCardClick(ev,e){
   if(selectedIds.size===1)restoreSingleSelection();
   else if(selectedIds.size===0){
    $("entryForm").reset();
-   $("weight").value=60;
+   $("weight").value=lastEntryWeight;
    updateWeightLabel();
    $("editTitle").textContent=type==="single"?"한자 등록":"한자어 등록";
    syncEditorMode();
@@ -199,7 +201,7 @@ function deleteEntries(ids){
  else if(selectedIds.size>1)syncEditorMode();
  else{
   $("entryForm").reset();
-  $("weight").value=60;
+  $("weight").value=lastEntryWeight;
   updateWeightLabel();
   $("editTitle").textContent=type==="single"?"한자 등록":"한자어 등록";
   syncEditorMode();
@@ -775,7 +777,7 @@ $("bulkDelete").onclick=()=>{
  deleteEntries([...selectedIds]);
 };
 $("clearSelection").onclick=resetForm;
-$("entryForm").onsubmit=e=>{e.preventDefault();if(e.isComposing)return;try{const entry=validateEntry({id:editId||crypto.randomUUID(),type,text:$("hanzi").value.trim(),meaning:$("meaning").value.trim(),reading:$("reading").value.trim(),weight:Number($("weight").value),enabled:Number($("weight").value)>0});if(db.some(x=>x.text===entry.text&&x.type===entry.type&&x.id!==entry.id))throw Error("이미 등록된 항목입니다.");const before=db;db=editId?db.map(x=>x.id===editId?entry:x):[...db,entry];if(!save()){db=before;return}resetForm();renderDb()}catch(err){notify(err.message)}};
+$("entryForm").onsubmit=e=>{e.preventDefault();if(e.isComposing)return;try{const entry=validateEntry({id:editId||crypto.randomUUID(),type,text:$("hanzi").value.trim(),meaning:$("meaning").value.trim(),reading:$("reading").value.trim(),weight:Number($("weight").value),enabled:Number($("weight").value)>0});if(db.some(x=>x.text===entry.text&&x.type===entry.type&&x.id!==entry.id))throw Error("이미 등록된 항목입니다.");const before=db;db=editId?db.map(x=>x.id===editId?entry:x):[...db,entry];const previousWeight=lastEntryWeight;lastEntryWeight=entry.weight;if(!save()){db=before;lastEntryWeight=previousWeight;return}resetForm();renderDb()}catch(err){notify(err.message)}};
 $("entryForm").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.isComposing||e.keyCode===229))e.preventDefault()});
 $("settingsForm").onchange=()=>{try{settings=readSettings();save()}catch(e){notify(e.message)}};$("settingsForm").onsubmit=e=>e.preventDefault();
 document.querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{type=b.dataset.type;document.querySelectorAll("[data-type]").forEach(x=>x.classList.toggle("on",x===b));resetForm();panel("data")});
