@@ -307,3 +307,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .omt-line, .product-feats button { opacity: 1; transform: none; }
   .omt-wire { transform: none; }
 }
+
+/* 좁은 화면에서 가로 넘침 방지 */
+.topnav-list, .map-toolbar > *, .map-chips { min-width: 0; max-width: 100%; }
+html, body { overflow-x: clip; }
