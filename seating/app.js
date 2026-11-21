@@ -684,6 +684,7 @@ function updateAxisControls(){
   $("rowMinus").disabled=locked||rows<=2;$("rowPlus").disabled=locked||rows>=12;$("colMinus").disabled=locked||cols<=2;$("colPlus").disabled=locked||cols>=12;
 }
 function renderLayout(){
+  syncQuickGroupButton();
   const ctx=currentRenderContext(),{rows,cols,cells}=ctx.layout,studentMap=new Map(ctx.students.map(s=>[s.id,s])),occupied=new Map(ctx.assignments.map(a=>[a.seatId,a.studentId]));
   const root=$("layoutGrid");
   root.style.gridTemplateColumns=`repeat(${cols},var(--editor-cell-w))`;
@@ -1023,19 +1024,25 @@ function renderStudentStrip(){
     const gender=["male","female"].includes(student.gender)?student.gender:"none";
     const visual=normalizedStudentVisual(student,index);
     const glassesSrc=studentGlassesSrc(visual.glasses);
-    const status=excluded?"제외":(!historyView&&student.fixedSeatId?"고정":"참가");
-    const card=document.createElement("button");
-    card.type="button";
-    card.className=`student-card shared-student-card gender-${gender}${student.id===selectedStudentId?" selected":""}${excluded?" assignment-excluded":""}`;
+    const status=excluded?"제외":"참가";
+    // A focusable card and a separate participation control avoid nested buttons.
+    const card=document.createElement("div");
+    card.className=`student-card shared-student-card seating-student-card gender-${gender}${student.id===selectedStudentId?" selected":""}${excluded?" assignment-excluded":""}`;
+    card.role="button";card.tabIndex=0;
     card.dataset.studentId=student.id;
     card.setAttribute("aria-label",excluded?`${student.name} · 배치 제외 · 우클릭하면 다시 포함`:`${student.name} · 배치 대상 · 우클릭하면 제외`);
-    if(!historyView&&!excluded){card.draggable=true}
-    card.innerHTML=`<span class="shared-student-sprite" aria-hidden="true" data-student-roster-glasses="${visual.glasses}" style="background-image:url('${studentVisualFor(student,index)}');--student-glasses-image:${glassesSrc?`url('${glassesSrc}')`:"none"}"></span><span class="shared-student-name">${escapeHtml(student.name)}</span><small class="shared-student-status">${status}</small>`;
+    if(!historyView&&!excluded)card.draggable=true;
+    const statusMarkup=historyView
+      ?`<small class="shared-student-status">${status}</small>`
+      :`<button class="shared-student-status" type="button" aria-label="${escapeHtml(student.name)} ${excluded?"배치에 다시 포함":"배치에서 제외"}" title="클릭하면 ${excluded?"참가":"제외"}로 전환">${status}</button>`;
+    card.innerHTML=`<span class="shared-student-sprite" aria-hidden="true" data-student-roster-glasses="${visual.glasses}" style="background-image:url('${studentVisualFor(student,index)}');--student-glasses-image:${glassesSrc?`url('${glassesSrc}')`:"none"}"></span><span class="shared-student-name">${escapeHtml(student.name)}</span>${statusMarkup}`;
     card.onclick=()=>{selectedStudentId=student.id;activateDock("student");renderStudentStrip();renderStudentInspector()};
+    card.onkeydown=event=>{if(event.target!==card)return;if(event.key==="Enter"||event.key===" "){event.preventDefault();card.click()}};
+    if(!historyView)card.querySelector("button.shared-student-status").onclick=event=>{event.stopPropagation();toggleAssignmentParticipation(student)};
     if(!historyView){
       card.oncontextmenu=event=>{event.preventDefault();toggleAssignmentParticipation(student)};
       if(!excluded){
-        card.ondragstart=event=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("application/x-student-id",student.id);event.dataTransfer.setData("text/plain",student.id)};
+        card.ondragstart=event=>{if(event.target?.closest(".shared-student-status")){event.preventDefault();return}event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("application/x-student-id",student.id);event.dataTransfer.setData("text/plain",student.id)};
       }
     }
     root.appendChild(card);
@@ -1109,9 +1116,20 @@ function startGroupEdit(id=null){
   if(historyView)return;
   const existing=id?classState.groups.find(g=>g.id===id):null;
   groupEdit={active:true,id:existing?.id||null,name:existing?.name||`${classState.groups.length+1}모둠`,color:existing?.color||GROUP_COLORS[classState.groups.length%GROUP_COLORS.length],seatIds:new Set(existing?.seatIds||[]),painting:false,mode:"add"};
-  $("groupEditor").classList.remove("hidden");$("groupName").value=groupEdit.name;$("groupColor").value=groupEdit.color;renderGroupPalette();updateGroupSelectionCount();activateDock("groups");renderLayout();
+  $("groupEditor").classList.remove("hidden");$("groupName").value=groupEdit.name;$("groupColor").value=groupEdit.color;renderGroupPalette();updateGroupSelectionCount();activateDock("groups");syncQuickGroupButton();renderLayout();
 }
-function cancelGroupEdit(){groupEdit={active:false,id:null,name:"",color:GROUP_COLORS[0],seatIds:new Set(),painting:false,mode:"add"};$("groupEditor").classList.add("hidden");renderLayout()}
+function syncQuickGroupButton(){
+  const button=$("quickGroup");if(!button)return;
+  button.classList.toggle("on",groupEdit.active);
+  button.setAttribute("aria-pressed",String(groupEdit.active));
+  button.disabled=Boolean(historyView);
+}
+function openQuickGroup(){
+  if(historyView)return;
+  if(groupEdit.active){activateDock("groups");return}
+  startGroupEdit();
+}
+function cancelGroupEdit(){groupEdit={active:false,id:null,name:"",color:GROUP_COLORS[0],seatIds:new Set(),painting:false,mode:"add"};$("groupEditor").classList.add("hidden");syncQuickGroupButton();renderLayout()}
 function updateGroupSelectionCount(){$("groupSelectionCount").textContent=`선택 ${groupEdit.seatIds.size}석`}
 function refreshGroupSelectionClasses(){
   document.querySelectorAll(".layout-cell[data-seat-id]").forEach(el=>el.classList.toggle("group-selected",groupEdit.active&&groupEdit.seatIds.has(el.dataset.seatId)));
@@ -1136,7 +1154,7 @@ function saveGroup(){
   const existing=classState.groups.find(g=>g.id===targetId);
   if(existing){existing.name=name;existing.color=color;existing.seatIds=seatIds}else classState.groups.push({id:targetId,name,color,seatIds});
   classState.groups=classState.groups.filter(g=>g.seatIds.length);
-  groupEdit={active:false,id:null,name:"",color:GROUP_COLORS[0],seatIds:new Set(),painting:false,mode:"add"};$("groupEditor").classList.add("hidden");
+  groupEdit={active:false,id:null,name:"",color:GROUP_COLORS[0],seatIds:new Set(),painting:false,mode:"add"};$("groupEditor").classList.add("hidden");syncQuickGroupButton();
   invalidateConfirmed("모둠 구성이 바뀌어 기존 확정 배치를 해제했습니다.");saveState();renderGroups();renderLayout();applyRuleGating();
 }
 function deleteGroup(id){
@@ -3108,6 +3126,7 @@ function bindUI(){
   $("groupColor").oninput=e=>{groupEdit.color=e.target.value;renderGroupPalette();renderLayout()};
   $("generateAssignment").onclick=()=>generateAssignment();$("confirmAssignment").onclick=confirmAssignment;$("openPlayback").onclick=openPlayback;$("exitHistoryView").onclick=exitHistory;
   $("seatCountCancel").onclick=closeSeatCountDialog;$("seatCountProceed").onclick=()=>{closeSeatCountDialog();generateAssignment({allowSurplus:true})};
+  $("quickGroup").onclick=openQuickGroup;
   $("newGroup").onclick=()=>startGroupEdit();$("saveGroup").onclick=saveGroup;$("cancelGroup").onclick=cancelGroupEdit;
   $("className").onchange=e=>{classState.className=e.target.value.trim().slice(0,30)||"우리 반";saveState();renderTopTitle()};
   $("backToTeacher").onclick=backToTeacher;$("simpleBackToTeacher").onclick=backToTeacher;$("run1").onclick=()=>runPlayback(1);$("run5").onclick=()=>runPlayback(5);$("instant").onclick=finishPlayback;updatePlaybackControls();
