@@ -1,7 +1,7 @@
 name: Classroom UI2 full regression
 on:
   pull_request:
-    paths: ['seating/**','classroom/**','shared/**','.github/workflows/classroom-ui2-full-regression.yml']
+    paths: ['seating/**','classroom/**','shared/**','hanja/**','.github/workflows/classroom-ui2-full-regression.yml']
 permissions:
   contents: read
 jobs:
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [browser, browser-features, browser-cloud, browser-distribution, browser-plan-import, browser-traits, browser-life-guided]
+        suite: [browser, browser-features, browser-cloud, browser-distribution, browser-plan-import, browser-traits, browser-life-guided, browser-hanja]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
