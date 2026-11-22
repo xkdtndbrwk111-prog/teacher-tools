@@ -984,6 +984,8 @@ async function stage03ApplyHost(message){
  const nextClass=m.classes.find(c=>c.stage03SourceId===message.sourceInstanceId)?.id||null;
  if(nextClass!==selectedClass){
   selectedAssessment=null;selectedGradeSubject=undefined;filter='';$('student-search').value='';
+  // Reset draft checkbox defaults on a host class change; never preselect the previous class.
+  $('class-checks').querySelectorAll('input:checked').forEach(input=>{input.checked=false});
   selectedMemberId=null;$('student-detail').classList.add('hidden');
  }
  selectedClass=nextClass;selectedGradeClass=nextClass||'all';
