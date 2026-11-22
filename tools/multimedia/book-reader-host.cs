@@ -26,7 +26,8 @@ internal sealed class BookReader : Form {
  Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
- readonly int pages, requested, initialMark;
+ readonly int pages, requested, initialMark, fixtureTotal;
+  int actualPages;
  readonly Rectangle screenArea, workingArea;
  int saved,detected,previous,stable,waitingFor,steps,manualMode;
  bool ready,busy,closed,fixture;
@@ -39,7 +40,7 @@ internal sealed class BookReader : Form {
  static bool ValidUrl(string u){return u!=null&&u.Length<=500&&UrlPattern.IsMatch(u);}
  static Rectangle Rect(Dictionary<string,object> a,string prefix,Rectangle fallback){try{var r=new Rectangle(Int(a,prefix+"X"),Int(a,prefix+"Y"),Int(a,prefix+"W"),Int(a,prefix+"H"));return r.Width>=400&&r.Height>=300&&r.Width<=16384&&r.Height<=16384?r:fallback;}catch{return fallback;}}
  BookReader(string folder,Dictionary<string,object> config,bool lab){
-  dir=folder;fixture=lab;url=Str(config,"url");title=Str(config,"title");pages=Int(config,"pages");requested=Int(config,"start");initialMark=Int(config,"saved");saved=initialMark;
+  dir=folder;fixture=lab;url=Str(config,"url");title=Str(config,"title");pages=Int(config,"pages");requested=Int(config,"start");initialMark=Int(config,"saved");saved=initialMark;fixtureTotal=fixture&&Int(config,"fixtureTotal")>0?Int(config,"fixtureTotal"):pages;
   if(!fixture&&!ValidUrl(url)||pages<1||pages>4095||requested<1||requested>pages||initialMark<0||initialMark>pages||title.Length>80)throw new ArgumentException("invalid book request");
   screenArea=Rect(config,"screen",Screen.PrimaryScreen.Bounds);workingArea=Rect(config,"work",Screen.PrimaryScreen.WorkingArea);
   owner=new IntPtr(Convert.ToInt64(config.ContainsKey("owner")?config["owner"]:0));
@@ -112,7 +113,7 @@ internal sealed class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls});}
  void Publish(string status){
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
@@ -121,7 +122,7 @@ internal sealed class BookReader : Form {
   var d=ReadFile("command.json");if(d==null)return;
   long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
   string kind=Str(d,"kind");int p=Int(d,"page");
-  if(kind=="manual"&&p>=1&&p<=pages){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
+  if(kind=="manual"&&p>=1&&p<=(actualPages>0?actualPages:pages)){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
   else if((kind=="prev"||kind=="next")&&immersive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
   else return;
@@ -137,7 +138,7 @@ internal sealed class BookReader : Form {
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
    core.NavigationStarting+=(s,e)=>{if(!fixture&&!String.Equals(e.Uri,url,StringComparison.Ordinal))e.Cancel=true;};
    core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?"페이지 판독 중":"책 연결 실패");};
-   if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax=5 aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min(5,+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
+   if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
    else core.Navigate(url);
    timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
@@ -156,7 +157,7 @@ internal sealed class BookReader : Form {
   string script=fixture?PageScript.Replace("if(location.origin!=='https://www.canva.com')return null;",""):PageScript;
   string raw=await web.CoreWebView2.ExecuteScriptAsync(script);
   if(raw=="null")return 0;
-  var d=Json.Deserialize<Dictionary<string,object>>(raw);int p=Int(d,"page"),n=Int(d,"total");return n==pages&&p>=1&&p<=pages?p:0;
+  var d=Json.Deserialize<Dictionary<string,object>>(raw);int p=Int(d,"page"),n=Int(d,"total");if(n<1||n>4095||p<1||p>n)return 0;actualPages=n;return p;
  }
  async Task<bool> Step(bool next){
   string label=next?"Next page":"Previous page";
@@ -176,6 +177,7 @@ internal sealed class BookReader : Form {
    await ApplyImmersive();
    if(seekTarget<0)seekTarget=requested;
    int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
+    if(seekTarget>actualPages)seekTarget=actualPages;
    if(p==previous)stable++;else{previous=p;stable=1;}
    if(stable<2)return;
    detected=p;
