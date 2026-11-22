@@ -404,8 +404,10 @@ async function setRoster(p,names){
    assert.equal(await grades.locator('input.grade-input').count(),0,'기존 반 평가는 다른 반에 표시하지 않음');
    assert.match(await grades.locator('#grade-info').textContent(),/둘째반.*평가가 없습니다/);
    await grades.locator('.nav[data-page="assessments"]').click();
-   const checked=await grades.locator('#class-checks input:checked').evaluateAll(xs=>xs.map(x=>x.value));
-   assert.deepEqual(checked,[secondId],'새 평가도 현재 반이 기본 대상');
+   // Grade memberships use separate internal UUIDs, linked to Seating by stage03SourceId.
+   // Verify the teacher-visible class rather than comparing the two distinct UUID domains.
+   const checked=await grades.locator('#class-checks label').evaluateAll(xs=>xs.filter(x=>x.querySelector('input')?.checked).map(x=>x.textContent.trim()));
+   assert.deepEqual(checked,['둘째반'],'새 평가도 현재 반이 기본 대상');
    await grades.locator('input[name="subject"]').fill('수학');
    await grades.locator('input[name="title"]').fill('둘째반 평가');
    await grades.locator('#assessment-form button[type="submit"]').click();
