@@ -402,7 +402,7 @@ async function setRoster(p,names){
    await grades.locator('.nav[data-page="grades"]').click();await wait(250);
    assert.deepEqual(await grades.locator('#class-tabs button').allTextContents(),['둘째반']);
    assert.equal(await grades.locator('input.grade-input').count(),0,'기존 반 평가는 다른 반에 표시하지 않음');
-   assert.match(await grades.locator('#grade-info').textContent(),/둘째반.*연결된 평가가 없습니다/);
+   assert.match(await grades.locator('#grade-info').textContent(),/둘째반.*평가가 없습니다/);
    await grades.locator('.nav[data-page="assessments"]').click();
    const checked=await grades.locator('#class-checks input:checked').evaluateAll(xs=>xs.map(x=>x.value));
    assert.deepEqual(checked,[secondId],'새 평가도 현재 반이 기본 대상');
