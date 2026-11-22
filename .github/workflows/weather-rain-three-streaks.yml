@@ -1,0 +1,16 @@
+name: Rain icon three-streak regression
+on:
+  pull_request:
+    paths:
+      - 'runtime-src/system/dashboard.html'
+      - 'classroom/tests/weather-rain-three-streaks.test.cjs'
+      - '.github/workflows/weather-rain-three-streaks.yml'
+permissions:
+  contents: read
+jobs:
+  weather-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: node --test classroom/tests/weather-rain-three-streaks.test.cjs
