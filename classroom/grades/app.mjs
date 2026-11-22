@@ -13,7 +13,7 @@ const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const names={overview:['대시보드','CLASSROOM OVERVIEW','교실 관리 대시보드','학급, 학생, 평가를 하나의 작업공간에서 관리합니다.'],classes:['학급 · 학생명단','CLASS & STUDENT DIRECTORY','학급 · 학생명단','학급별 명단을 등록하고 관리합니다.'],assessments:['평가 관리','ASSESSMENT MANAGEMENT','평가 관리','같은 평가를 여러 학급에 연결합니다.'],grades:['성적 입력','GRADE WORKSPACE','성적 입력','점수·단계·기타 기록으로 평가 결과를 입력하고 학급별로 확인합니다.'],traits:['능력치 연동','TRAIT LINK','5축 능력치 연동','자리배치 학생 탭의 5축 능력치를 성적과 연결합니다.']};
 const cloud=new GoogleCloud(GOOGLE_CLIENT_ID);
 let cloudMode=false,cloudDirty=false,cloudFileKey=null,changeCounter=0;
-let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve();
+let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve(),lastAppliedHostClassId=null;
 let cloudOpBusy=false,cloudLookupState='idle',cloudCandidates=[],cloudLookupSerial=0;
 let year=schoolYear(),m=fresh(year),page='overview',selectedClass=null,selectedAssessment=null,selectedGradeClass='all',selectedGradeSubject=undefined,filter='',timer=null,edited=new Set(),persistFailed=false,stripOpen=true,gradeStripOpen=false,selectedMemberId=null,selectedPersonalSubject=null;
 function toast(msg,isError=false){const t=$('toast');t.textContent=msg;t.classList.toggle('error',isError);t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,4200);}
@@ -993,12 +993,13 @@ async function stage03ApplyHost(message){
  if(result.changed){m=result.workspace;markChanged();await stage03Flush();}
  else m=result.workspace;
  const nextClass=m.classes.find(c=>c.stage03SourceId===message.sourceInstanceId)?.id||null;
- if(nextClass!==selectedClass){
+ if(nextClass!==lastAppliedHostClassId){
   selectedAssessment=null;selectedGradeSubject=undefined;filter='';$('student-search').value='';
   // Reset draft checkbox defaults on a host class change; never preselect the previous class.
   $('class-checks').querySelectorAll('input:checked').forEach(input=>{input.checked=false});
   selectedMemberId=null;$('student-detail').classList.add('hidden');
  }
+ lastAppliedHostClassId=nextClass;
  selectedClass=nextClass;selectedGradeClass=nextClass||'all';
  render();
  const v=result.stats;
