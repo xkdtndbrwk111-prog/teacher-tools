@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "version": "1.66.28",
+  "previous_version": "1.66.27",
+  "previous_payload_sha": "d8a02387e2007ea73dd923e5284ac967a6ba79484f79926b7c1f9cbceb7c3e84",
+  "source_sha": "49bfb43af1e9b0f091310c6b45fdaecfdacc9701",
+  "review_sha": "1eae9ae831741c4f23b8c73532312b63c5a5fef3",
+  "artifact_id": 14778058468,
+  "archive_sha": "e3e8db92fc12f2bc0d001d90e0376ff7649798078458499f6b94fd3e90daadc3",
+  "payload_sha": "ef5e9e28f0bfcda8406930d4466a6c244774498ead89b1e85fdd8d30a1dc31a3",
+  "main_runs": {
+    "R8 source-driven build": 45084334209,
+    "R8 native Windows verification": 45084334166,
+    "R8 native R7 integration checks": 45084334158,
+    "V1.66.6 browser text contrast": 45084334154,
+    "V1.66.7 theme font shadow and icon regressions": 45084334442,
+    "V1.66.8 education activities browser regression": 45084334332,
+    "V1.66.9 common badge browser regression": 45084334184,
+    "Tournament host bridge review": 45084334221,
+    "QR square widget and integer fit checks": 45084334187
+  },
+  "review_runs": {
+    "R8 source-driven build": 45083901052,
+    "R8 native Windows verification": 45083901250,
+    "R8 native R7 integration checks": 45083901125,
+    "Multimedia candidate browser review": 45083901271,
+    "V1.66.6 browser text contrast": 45083901087,
+    "V1.66.7 theme font shadow and icon regressions": 45083901141,
+    "V1.66.8 education activities browser regression": 45083901084,
+    "V1.66.9 common badge browser regression": 45083901137,
+    "Tournament host bridge review": 45083901060,
+    "QR square widget and integer fit checks": 45083901054,
+    "Classroom UI2 home and HUD candidate": 45083901055,
+    "Daily lesson alert mute checks": 45083901368,
+    "Routine integer coin candidate checks": 45083901321
+  },
+  "authorization": "Owner explicitly requested V1.66.28 deployment after relevant automated checks passed. Physical classroom Windows/Canva validation remains pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16628_book_reader_owner_field_test_only"
+}
