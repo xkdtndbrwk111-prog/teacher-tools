@@ -202,13 +202,13 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
 
 
  // Integrated book slot: mock native process only, preserve actual HTML geometry and toolbar.
- await page.evaluate(()=>localStorage.setItem('tt-books-v1:mark:DAHbOpoUrrg',JSON.stringify({page:5,at:Date.now()})));
+ await page.evaluate(()=>localStorage.setItem('tt-books-v1:mark:DAHbOZ_XOJI',JSON.stringify({page:5,at:Date.now()})));
  let nativeCalls=[],session='a'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[];
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
-   assert.equal(a.id,'DAHbOpoUrrg');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);
+   assert.equal(a.id,'DAHbOZ_XOJI');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);assert.equal(a.pages,phase===0?379:381);assert.match(a.url,/DAHbOZ_XOJI/);
    if(failOpen){failOpen=false;return route.fulfill({status:409,json:{error:'native unavailable'}})}
    return route.fulfill({json:{ok:true,session}});
   }
@@ -217,7 +217,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));layouts.push(a.layout);
   if(a.command&&a.command.seq>ack){ack=a.command.seq;manual=a.command.kind==='manual';saved=manual?a.command.page:4}
   if(!manual&&phase===0)saved=4;
-  return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:phase===2,page:4,saved,manual,ack,status:'저장됨'}});
+  return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:phase===2,page:4,saved,total:381,manual,ack,status:'저장됨'}});
  });
  // Wait for the previous modal lifecycle, then identify the book tile by its stable key.
  // Check the visible label separately so platform emoji accessibility differences do not hide regressions.
@@ -234,11 +234,12 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   console.error('Book entry diagnostics',await dlg.evaluate(d=>({open:d.open,heading:d.querySelector('h2')?.textContent,tiles:[...d.querySelectorAll('[data-media-tool]')].map(x=>({key:x.dataset.mediaTool,text:x.textContent,hidden:x.hidden,inert:x.inert}))})));
   throw error;
  }
- await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'다시 시도',exact:true}).waitFor();
- assert.equal(await dlg.locator('iframe').count(),0);assert.equal(await dlg.getByText('기존 재생기',{exact:true}).count(),0);
- await dlg.getByRole('button',{name:'다시 시도',exact:true}).click();
- await dlg.getByText('4 / 5쪽 · 저장됨',{exact:true}).waitFor();
- await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page===4);
+ await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).waitFor();
+  assert.equal(await dlg.locator('.mm-book-slot iframe').count(),1,'native failure must open the Canva web fallback');
+  assert.equal(await dlg.getByRole('button',{name:'현재 쪽 북마크',exact:true}).count(),1,'manual bookmark is available in fallback only');
+  await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).click();
+  await dlg.getByText('4 / 381쪽 · 저장됨',{exact:true}).waitFor();
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===4);
  assert.equal(await dlg.getByRole('button',{name:'수동 저장',exact:true}).count(),0);
  const slot=await dlg.locator('.mm-book-slot').boundingBox(),foot=await dlg.locator('.mm-foot').boundingBox();assert.ok(slot.width>=1100&&slot.y+slot.height<=foot.y+1);
  await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
@@ -254,10 +255,10 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await dlg.getByRole('button',{name:'+ 책 추가',exact:true}).click();await dlg.getByLabel('책 제목',{exact:true}).fill('다른 책');
  await dlg.getByLabel('캔바 보기용 주소',{exact:true}).fill('https://www.canva.com/design/TEST_SECOND/ABC/view?embed');
  await dlg.getByLabel('전체 페이지 수',{exact:true}).fill('12');await dlg.getByRole('button',{name:'추가',exact:true}).click();
- assert.equal(await dlg.locator('[data-book-id]').count(),2);
+ assert.equal(await dlg.locator('[data-book-id]').count(),2);assert.equal(await page.evaluate(()=>localStorage.getItem('tt-books-v1:total:DAHbOZ_XOJI')),'381');
  await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();await page.unroute('**/api/book-reader/**');
  await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOpoUrrg')).page),4);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),4);
  console.log('PASS single HTML toolbar, native slot layout and resize, retry without legacy, automatic bookmark, immersive toolbar hiding and exit, separate books and reload');
 
 // Timetable: the rendered one-day table uses all available space, preserving lunch and inner gaps.

@@ -1551,7 +1551,21 @@ try {
     $same=$localHost -and $fetchSite -eq 'same-origin' -and (-not $origin -or $origin -in @("http://127.0.0.1:$Port","http://localhost:$Port"))
     if(!$same){$status='403 Forbidden';$body='{"error":"forbidden"}'}
     elseif(($path -eq '/api/book-reader/status' -and $parts[0] -notin @('GET','POST')) -or ($path -ne '/api/book-reader/status' -and $parts[0] -ne 'POST')){$status='405 Method Not Allowed';$body='{"error":"method"}'}
-    elseif($path -eq '/api/book-reader/open'){try{$body=ConvertTo-Json -Compress (Open-TTBookHost $bodyText)}catch{$status='409 Conflict';$body='{"error":"native unavailable"}'}}
+    elseif($path -eq '/api/book-reader/open'){
+     try{$body=ConvertTo-Json -Compress (Open-TTBookHost $bodyText)}
+     catch{
+      # Public response contains a bounded diagnostic code, never a local path, URL or student data.
+      $reason=switch -Exact ([string]$_.Exception.Message){
+       'invalid book' {'BOOK_URL_INVALID';break}
+       'board owner unavailable' {'OWNER_NOT_FOUND';break}
+       'native dependency unavailable' {'BUNDLE_MISMATCH';break}
+       'book already open' {'READER_ALREADY_RUNNING';break}
+       default {'READER_START_ERROR'}
+      }
+      $status='409 Conflict'
+      $body=ConvertTo-Json -Compress @{error='native unavailable';reason=$reason}
+     }
+    }
     else{
      if(!$script:ttBookSession -or $uri.Query -cnotmatch '^\?session=([a-f0-9]{32})$' -or $Matches[1] -cne $script:ttBookSession.token){$status='404 Not Found';$body='{"error":"session"}'}
      else{
