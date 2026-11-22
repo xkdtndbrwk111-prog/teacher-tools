@@ -218,7 +218,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .detail-track::-webkit-scrollbar { display: none; }
 .detail-page { flex: 0 0 100%; scroll-snap-align: start; overflow-y: auto; display: grid; grid-template-columns: 1.25fr 1fr; min-height: 0; }
 .detail-media { background: #111; position: relative; min-height: 260px; }
-.detail-media img, .detail-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.detail-media img, .detail-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .detail-media figcaption { position: absolute; left: 12px; bottom: 10px; font-size: 11.5px; color: #fff; background: rgba(0, 0, 0, .5); padding: 3px 8px; border-radius: 6px; }
 .detail-body { padding: 56px 32px 28px; overflow-y: auto; }
 .detail-kicker { font-size: 13px; font-weight: 700; color: var(--accent); margin: 0; }
@@ -246,7 +246,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   box-shadow: 0 40px 80px rgba(20, 30, 25, .18);
   transform: scale(var(--s, .92)); transition: transform .1s linear;
 }
-.product-media img, .product-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.product-media img, .product-media video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .product-feats { list-style: none; padding: 0; margin: 40px auto 0; max-width: 980px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .product-feats button {
   width: 100%; height: 100%; text-align: left; padding: 16px; border: 1px solid var(--line); background: #fff; border-radius: 16px;
