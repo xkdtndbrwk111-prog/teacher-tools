@@ -13,7 +13,7 @@ const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const names={overview:['대시보드','CLASSROOM OVERVIEW','교실 관리 대시보드','학급, 학생, 평가를 하나의 작업공간에서 관리합니다.'],classes:['학급 · 학생명단','CLASS & STUDENT DIRECTORY','학급 · 학생명단','학급별 명단을 등록하고 관리합니다.'],assessments:['평가 관리','ASSESSMENT MANAGEMENT','평가 관리','같은 평가를 여러 학급에 연결합니다.'],grades:['성적 입력','GRADE WORKSPACE','성적 입력','점수·단계·기타 기록으로 평가 결과를 입력하고 학급별로 확인합니다.'],traits:['능력치 연동','TRAIT LINK','5축 능력치 연동','자리배치 학생 탭의 5축 능력치를 성적과 연결합니다.']};
 const cloud=new GoogleCloud(GOOGLE_CLIENT_ID);
 let cloudMode=false,cloudDirty=false,cloudFileKey=null,changeCounter=0;
-let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve(),lastAppliedHostClassId=null;
+let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve(),lastAppliedHostClassId=null,gradeAssessmentTargetsTouched=false;
 let cloudOpBusy=false,cloudLookupState='idle',cloudCandidates=[],cloudLookupSerial=0;
 let year=schoolYear(),m=fresh(year),page='overview',selectedClass=null,selectedAssessment=null,selectedGradeClass='all',selectedGradeSubject=undefined,filter='',timer=null,edited=new Set(),persistFailed=false,stripOpen=true,gradeStripOpen=false,selectedMemberId=null,selectedPersonalSubject=null;
 function toast(msg,isError=false){const t=$('toast');t.textContent=msg;t.classList.toggle('error',isError);t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,4200);}
@@ -120,8 +120,12 @@ function renderClasses(){
  list.querySelectorAll('[data-class-id]').forEach(b=>b.onclick=()=>{selectedClass=b.dataset.classId;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip()});
 }
 function renderAssessments(){
- const checks=$('class-checks');const previous=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
- if(!previous.size&&selectedClass)previous.add(selectedClass);
+ const checks=$('class-checks'),previous=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
+ const currentGradeClass=activeGradeClass();
+ // The host class always supplies the default; preserve deliberate multi-class selections.
+ if(currentGradeClass&&!gradeAssessmentTargetsTouched){previous.clear();previous.add(currentGradeClass);}
+ else if(!previous.size&&selectedClass)previous.add(selectedClass);
+ checks.onchange=event=>{if(event.target?.matches?.('input[name="targetClass"]'))gradeAssessmentTargetsTouched=true;};
  checks.innerHTML=m.classes.length?m.classes.map(c=>`<label class="check"><input type="checkbox" name="targetClass" value="${h(c.id)}" ${previous.has(c.id)?'checked':''}> ${h(c.name)}</label>`).join(''):'<div class="empty-state">학급을 먼저 등록하세요.</div>';
  const shownList=semAssessments(),list=$('assessment-list');
  const section=(title,items)=>items.length?`<div class="assess-section-title">${title} <small>${items.length}개</small></div>`+items.map(assessItem).join(''):'';
@@ -996,6 +1000,7 @@ async function stage03ApplyHost(message){
  if(nextClass!==lastAppliedHostClassId){
   selectedAssessment=null;selectedGradeSubject=undefined;filter='';$('student-search').value='';
   // Reset draft checkbox defaults on a host class change; never preselect the previous class.
+  gradeAssessmentTargetsTouched=false;
   $('class-checks').querySelectorAll('input:checked').forEach(input=>{input.checked=false});
   selectedMemberId=null;$('student-detail').classList.add('hidden');
  }
