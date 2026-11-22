@@ -384,7 +384,7 @@ function renderGrades(){
   tabs.innerHTML=current?`<button type="button" role="tab" aria-selected="true" class="active" data-filter-class="${h(current.id)}">${h(current.name)}</button>`:'';
   table.innerHTML='<tr><td class="empty-state sheet-empty-row">현재 학급에 표시할 평가가 없습니다.</td></tr>';
   gradeViewRows=[];$('grade-summary').textContent='';$('export-csv').disabled=true;
-  $('grade-info').textContent=gradeHostScoped()&&!active?'상단에서 선택한 학급의 명단을 연결하는 중입니다.':current?`${current.name} · ${selectedSemester}학기에 연결된 평가가 없습니다. ③ 평가 관리에서 이 학급에 평가를 연결해 주세요.`:m.assessments.length?`${selectedSemester}학기 평가가 없습니다. 위에서 학기를 바꾸거나 평가 관리에서 만들어 주세요.`:'평가 관리에서 평가를 만들어주세요.';
+  $('grade-info').textContent=gradeHostScoped()&&!active?'상단에서 선택한 학급의 명단을 연결하는 중입니다.':current?`${current.name} · ${selectedSemester}학기 평가가 없습니다. ③ 평가 관리에서 이 학급에 평가를 연결해 주세요.`:m.assessments.length?`${selectedSemester}학기 평가가 없습니다. 위에서 학기를 바꾸거나 평가 관리에서 만들어 주세요.`:'평가 관리에서 평가를 만들어주세요.';
   showLevelNotes(null);$('grade-guide').textContent='평가 생성 후 입력 가능합니다.';$('sheet-cell-info').textContent='셀을 선택하세요';return;
  }
  $('export-csv').disabled=false;
