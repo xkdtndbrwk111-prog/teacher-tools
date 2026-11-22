@@ -151,7 +151,8 @@ function injectStyles(){
     .pe-board.pe-count-2 .pe-member{min-height:96px;padding:8px 9px}
     .pe-board.pe-count-4 .pe-team-body{grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px;padding:11px}
     .pe-board.pe-count-4 .pe-member{min-height:88px}
-    .pe-member{position:relative;min-height:82px;border:1px solid #d7dee8;border-radius:10px;background:#f8fafc;display:flex;align-items:center;gap:6px;padding:6px 7px;cursor:pointer;user-select:none}.pe-member:hover{border-color:#94a3b8;background:#fff}.pe-member.fixed{box-shadow:inset 0 0 0 2px #f59e0b;background:#fffbeb}.pe-member.fixed::after{content:"🔒";position:absolute;right:6px;top:5px;font-size:12px}.pe-member.pe-just-fixed{animation:peLockPulse .28s ease-out}@keyframes peLockPulse{0%{transform:scale(.97)}60%{transform:scale(1.025)}100%{transform:scale(1)}}.pe-member .student-mini-sprite{flex:0 0 auto}.pe-member strong{font-size:13px;line-height:1.2}.pe-member em{font-style:normal;font-size:10px;color:#92400e;font-weight:900;display:block;margin-top:3px}.pe-empty{padding:24px;color:#94a3b8;font-size:12px;text-align:center;grid-column:1/-1}
+    .pe-member{position:relative;min-height:82px;border:1px solid #d7dee8;border-radius:10px;background:#f8fafc;display:flex;align-items:center;gap:6px;padding:6px 7px;cursor:pointer;user-select:none}.pe-member:hover{border-color:#94a3b8;background:#fff}.pe-member.fixed{box-shadow:inset 0 0 0 2px #f59e0b;background:#fffbeb}.pe-member.fixed::after{content:"🔒";position:absolute;right:6px;top:5px;font-size:12px}.pe-member.pe-just-fixed{animation:peLockPulse .28s ease-out}@keyframes peLockPulse{0%{transform:scale(.97)}60%{transform:scale(1.025)}100%{transform:scale(1)}}.pe-member .student-mini-sprite{flex:0 0 auto}.pe-member>div{min-width:0;flex:1}
+    .pe-team .pe-member strong{display:block;color:#17233a!important;text-shadow:none!important;font-size:clamp(15px,1.25vw,19px);font-weight:900;line-height:1.3;word-break:keep-all;overflow-wrap:anywhere}.pe-member em{font-style:normal;font-size:10px;color:#92400e;font-weight:900;display:block;margin-top:3px}.pe-empty{padding:24px;color:#94a3b8;font-size:12px;text-align:center;grid-column:1/-1}
     .trait-radar-wrap{display:grid;grid-template-columns:132px 1fr;gap:9px;align-items:center}.trait-radar{width:132px;height:132px}.trait-grid{display:flex;flex-direction:column;gap:5px}.trait-row{display:grid;grid-template-columns:36px repeat(4,1fr);gap:4px;align-items:center}.trait-radar-wrap.trait-scale-8{grid-template-columns:1fr;justify-items:center}.trait-scale-8 .trait-grid{width:100%}.trait-scale-8 .trait-row{grid-template-columns:36px repeat(8,1fr);gap:3px}.trait-row>span{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.1}.trait-row button:disabled{cursor:not-allowed;opacity:.55}.trait-row button.on:disabled{opacity:.85}.trait-linked-tag{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#e8f0fe;border-radius:5px;padding:1px 4px;white-space:nowrap}.trait-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}.trait-head .inspector-label{margin:0;flex:1 1 auto}.trait-scale{display:flex;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden}.trait-scale button{height:30px;padding:0 9px;border:0;background:#fff;color:#475569;font-size:11px;font-weight:900}.trait-scale button.on{background:#172033;color:#fff}.trait-grade-link{height:30px;padding:0 10px;border:1px solid #1d4ed8;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:900}.trait-row>span{font-size:11px;font-weight:900;color:#475569}.trait-row button{height:29px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-size:11px;font-weight:950;padding:0}.trait-row button.on{background:#172033;color:#fff;border-color:#172033}.trait-row.inactive-axis{opacity:.38}.trait-hint{margin-top:7px;font-size:10px;color:#64748b;line-height:1.45}.trait-legend{display:flex;justify-content:center;gap:8px;margin-top:4px;font-size:10px;color:#64748b}.trait-legend b{color:#172033}
     .pe-fixed-team{margin-top:10px}.pe-fixed-team select{margin-top:5px}
     /* Preserve the original 3×2 dock-tab footprint in PE mode.
@@ -801,6 +802,49 @@ function pePitchRounded(ctx,x,y,w,h,r){
   ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);
   else {ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath()}
 }
+
+// Draw a softly tinted, team-colored group area behind players and field lines.
+// Uses the same coordinates as the live entrance animation, so group boundaries
+// do not jump or disappear when players enter. Render-only; never changes teams.
+function drawPEPitchTeamZones(ctx,plan,field){
+  const spriteHeight=32*pePitch.spriteScale;
+  const tagHeight=22*pePitch.tagScale;
+  const colors=TEAM_COLORS;
+  for(const group of plan){
+    if(!group.members.length)continue;
+    let left=Math.min(...group.members.map(m=>m.x))-52;
+    let right=Math.max(...group.members.map(m=>m.x))+52;
+    let top=Math.min(...group.members.map(m=>m.y))-spriteHeight-14;
+    let bottom=Math.max(...group.members.map(m=>m.y))+tagHeight+10;
+    // Split the shared pitch at the halfway point between adjacent team centers.
+    // For 4–6 teams also separate upper and lower rows; never draw over a peer.
+    for(const other of plan){
+      if(other===group)continue;
+      if(Math.abs(group.centerY-other.centerY)<75){
+        const split=(group.centerX+other.centerX)/2;
+        if(group.centerX<other.centerX)right=Math.min(right,split-10);
+        else if(group.centerX>other.centerX)left=Math.max(left,split+10);
+      }else if(Math.abs(group.centerY-other.centerY)>=75){
+        const split=(group.centerY+other.centerY)/2;
+        if(group.centerY<other.centerY)bottom=Math.min(bottom,split-9);
+        else top=Math.max(top,split+9);
+      }
+    }
+    left=Math.max(field.x+9,left);
+    right=Math.min(field.x+field.w-9,right);
+    top=Math.max(field.y+9,top);
+    bottom=Math.min(field.y+field.h-9,bottom);
+    if(right-left<44||bottom-top<44)continue;
+    const color=colors[group.team]||'#2563eb';
+    ctx.save();
+    pePitchRounded(ctx,left,top,right-left,bottom-top,16);
+    ctx.globalAlpha=.19;
+    ctx.fillStyle=color;ctx.fill();
+    ctx.globalAlpha=.95;
+    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.stroke();
+    ctx.restore();
+  }
+}
 function drawPEPitch(){
   const canvas=$('pePitchCanvas');if(!canvas)return;
   if(!document.body.classList.contains('pe-pitch-open'))return;
@@ -825,6 +869,8 @@ function drawPEPitch(){
   ctx.fillRect(0,0,worldW,worldH);
   ctx.fillStyle=isDirt?'rgba(255,243,214,.06)':'rgba(255,255,190,.075)';
   ctx.fillRect(f.x,f.y,f.w,f.h);
+  const plan=pePitchRenderPlan();
+  drawPEPitchTeamZones(ctx,plan,f);
   // Optional lines: disabled means no white pitch markings, including
   // sidelines, middle stripe, center circle, penalty area, goals or spots.
   if(pePitch.showLines){
@@ -845,7 +891,6 @@ function drawPEPitch(){
     ctx.strokeRect(f.x-28*Z,f.cy-52*Z,28*Z,104*Z);
     ctx.strokeRect(f.x+f.w,f.cy-52*Z,28*Z,104*Z);
   }
-  const plan=pePitchRenderPlan();
   const pixelSize=32*pePitch.spriteScale;
   const tag=pePitch.tagScale;
   for(const group of plan){

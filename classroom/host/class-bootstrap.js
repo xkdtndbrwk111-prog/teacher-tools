@@ -1,7 +1,7 @@
 // The seating scripts read their data as they load, so they start only after the store is ready.
 (()=>{
  'use strict';
- const SCRIPTS=['app.js?v=20261121-unified-drag-unpin','pe-v1.js?v=20261115-step10-menu','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js?v=20261121-classdata','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-lock-center','../classroom/host/cloud-sync.js?v=ui2-m'];
+ const SCRIPTS=['app.js?v=20261121-unified-drag-unpin','pe-v1.js?v=20261122-team-zones','classroom-trait-balance-v1.js?v=20261103-t8','backup-unified-v2.js?v=20261103-t8','../classroom/host/life-mount.js?v=20261116-board-present','../classroom/host/grade-mount.js?v=ui2-a','../classroom/host/class-ui.js?v=20261121-classdata','../classroom/host/storage-ui.js','../classroom/host/dashboard-link.js?v=ui2-lock-center','../classroom/host/cloud-sync.js?v=ui2-m'];
  const store=window.__TT_STORE;
  const domReady=()=>new Promise(resolve=>{if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',resolve,{once:true});else resolve()});
  const load=src=>new Promise((resolve,reject)=>{
@@ -34,7 +34,7 @@
   if(student){
    document.documentElement.classList.add('tt-student-only');
    await load('app.js?v=20261121-unified-drag-unpin');
-   await load('pe-v1.js?v=20261115-step10-menu');
+   await load('pe-v1.js?v=20261122-team-zones');
    await load('../classroom/host/student-window.js?v=ui2-j');
    return;
   }

@@ -58,7 +58,20 @@ const qr={kind:'life-qr',payload:{url:'https://teacher-tools-class-life-39733542
   const detached=f;console.log('seating chart theme and history PASS');
   f=await offer(pe);assert(detached.isDetached());assert(await f.evaluate(()=>document.querySelector('#pePitchReveal').classList.contains('is-dirt')&&document.querySelector('#pePitchTeamCount').textContent.includes('2팀')));
   for(const selector of ['.pe-pitch-identity','#pePitchTeamCount','.pe-pitch-entrance-meta','#pePitchSpriteStatus'])assert(!(await f.locator(selector).isVisible()));
-  await f.locator('#pePitchInstant').click();await f.locator('#pePitchSimpleOpen').click();assert.equal(await f.locator('.pe-simple-team').count(),2);
+  // The public/offline Hoja Board uses the same PE canvas renderer as the web manager.
+  // Confirm both team zones are actually drawn *before* opening the simple team sheet.
+  const zoneColors=await f.evaluate(()=>{
+    const paint=document.querySelector('#pePitchCanvas').getContext('2d');
+    const fill=paint.fill,colors=[];
+    paint.fill=function(...args){
+      if(Math.abs(this.globalAlpha-.19)<.001)colors.push(this.fillStyle.toLowerCase());
+      return fill.apply(this,args);
+    };
+    try{document.querySelector('#pePitchInstant').click()}finally{paint.fill=fill}
+    return colors;
+  });
+  assert.deepEqual(zoneColors,['#2563eb','#dc2626'],'two distinct translucent team zones should render in offline board canvas');
+  await f.locator('#pePitchSimpleOpen').click();assert.equal(await f.locator('.pe-simple-team').count(),2);
   const peFrame=f;f=await offer(seating);assert(peFrame.isDetached());assert(await f.evaluate(()=>playbackData.historyTransition));await close();console.log('Seat simple -> PE -> seat without close, old frames detached, buttons only PASS');
   f=await offer(qr);assert((await f.locator('.tt-life-qr-code svg rect').count())>100);
   assert(await bp.evaluate(()=>{const c=document.querySelector('#ttPresentationParticles'),r=c.getBoundingClientRect(),f=document.querySelector('#ttPresentationFrame'),b=f.contentDocument.querySelector('.tt-life-qr-code').getBoundingClientRect(),fr=f.getBoundingClientRect();return c.getContext('2d').getImageData(Math.round(fr.left-r.left+b.left+b.width/2),Math.round(fr.top-r.top+b.top+b.height/2),1,1).data[3]===0}));
