@@ -1,0 +1,47 @@
+name: R8 Canva public document DOM diagnostic (temporary)
+on:
+  pull_request:
+    paths: ['.github/workflows/r8-canva-dom-probe.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Prepare isolated Chromium
+        run: |
+          npm install --prefix /tmp/tt-canva-dom --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-canva-dom/node_modules/.bin/playwright install chromium
+      - name: Inspect navigation metadata only (no document text)
+        env:
+          NODE_PATH: /tmp/tt-canva-dom/node_modules
+        run: |
+          node <<'JS'
+          const { chromium }=require('playwright');
+          const url='https://www.canva.com/design/DAHbOZ_XOJI/d_oXAabCNXOYBSoES_ZXxA/view?embed';
+          const delay=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const b=await chromium.launch({headless:true});
+            try{
+              const page=await b.newPage({viewport:{width:988,height:660}});
+              const resp=await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+              console.log('document HTTP status',resp?.status(),'origin',new URL(page.url()).origin);
+              for(const [index,seconds] of [0,12,25,55].entries()){
+                if(seconds)await delay((seconds-[0,12,25,55][index-1])*1000);
+                const list=[];
+                for(const f of page.frames().slice(0,12)){
+                  try{
+                    const info=await f.evaluate(()=>{
+                      const slider=[...document.querySelectorAll('[role="slider"]')].map(e=>({now:e.getAttribute('aria-valuenow'),min:e.getAttribute('aria-valuemin'),max:e.getAttribute('aria-valuemax'),visible:e.getClientRects().length>0})).slice(0,12);
+                      const paging=[...document.querySelectorAll('button,[role="button"]')].filter(e=>/(?:page|next|previous|다음|이전|페이지)/i.test(e.getAttribute('aria-label')||'')).map(e=>({label:(e.getAttribute('aria-label')||'').slice(0,100),visible:e.getClientRects().length>0})).slice(0,30);
+                      return {sliders:slider,controls:paging,iframes:document.querySelectorAll('iframe').length,bodyLength:document.body?.innerText?.length||0};
+                    });
+                    list.push({origin:new URL(f.url()).origin,...info});
+                  }catch(e){list.push({frameUnavailable:e.name})}
+                }
+                console.log('metadata at',seconds,'sec:',JSON.stringify(list));
+              }
+            }finally{await b.close();}
+          })().catch(e=>{console.error('probe error type',e.name);process.exitCode=1});
+          JS
