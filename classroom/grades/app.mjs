@@ -22,13 +22,16 @@ function draftKey(){return `TT_STAGE03_${stage03InstallId||'UNBOUND'}_${year}`;}
 function markChanged(){if(readOnlyYear)return;changeCounter++;if(cloudMode)cloudDirty=true;m.updatedAt=new Date().toISOString();$('draft-state').textContent=cloudMode?'● 미저장 변경 있음 · Sheets 저장 필요':'◌ 임시 보관 중';updateCloudUI();scheduleTraitSync();clearTimeout(timer);timer=setTimeout(async()=>{try{validateWorkspace(m);stage03PendingDraft=writeDraft(draftKey(),structuredClone(m));await stage03PendingDraft;persistFailed=false;$('draft-state').textContent=cloudMode?(cloudDirty?'● 이 기기에 임시 보관됨 · Sheets 미저장':'● Sheets 저장 확인됨'):'● 이 기기에 임시 보관됨';}catch(e){persistFailed=true;$('draft-state').textContent='⚠ 임시 보관 실패';toast('브라우저 임시 보관에 실패했습니다. JSON 백업을 내려받으세요.',true);}},500);}
 // The seating host is the only active-class selector for live grade entry.
 const gradeHostScoped=()=>!readOnlyYear&&window.parent!==window;
-const activeGradeClass=()=>gradeHostScoped()&&stage03InstallId&&m.classes.some(c=>c.id===selectedClass)?selectedClass:null;
+// Resolve by the last roster message's immutable source ID, never by iframe-only selectors.
+const activeGradeClass=()=>gradeHostScoped()&&stage03InstallId&&hostSourceId?m.classes.find(c=>c.stage03SourceId===hostSourceId)?.id||null:null;
 function gradeSemesterAssessments(){
  const list=semAssessments(),active=activeGradeClass();
  return !gradeHostScoped()?list:active?list.filter(a=>a.classIds.includes(active)):[];
 }
 function syncSelection(){
- if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;
+ const hostClass=activeGradeClass();
+ if(hostClass)selectedClass=hostClass;
+ else if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;
  if(gradeHostScoped()){
   const list=gradeSemesterAssessments();
   if(!list.some(a=>a.id===selectedAssessment))selectedAssessment=list[0]?.id||null;
@@ -758,7 +761,15 @@ function showStudent(memberId){
 $('personal-back').onclick=()=>{selectedPersonalSubject=null;renderPersonalView();$('student-detail').scrollTop=0;};
 $('close-student-detail').onclick=()=>{selectedMemberId=null;selectedPersonalSubject=null;$('student-detail').classList.add('hidden');renderStudentStrip()};
 $('strip-toggle').onclick=()=>{if(page==='grades')gradeStripOpen=!gradeStripOpen;else stripOpen=!stripOpen;$('student-detail').classList.add('hidden');selectedMemberId=null;renderStudentStrip()};
-$('strip-class').onchange=e=>{selectedClass=e.target.value;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip()};
+$('strip-class').onchange=e=>{
+ if(gradeHostScoped()){
+  const requested=m.classes.find(c=>c.id===e.target.value),active=activeGradeClass();
+  $('strip-class').value=active||'';
+  if(requested?.stage03SourceId&&requested.id!==active)window.parent.postMessage({type:'TT_STAGE031_SWITCH_CLASS',installId:stage03InstallId,sourceInstanceId:requested.stage03SourceId},location.origin);
+  return;
+ }
+ selectedClass=e.target.value;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip();
+};
 function applySeating(source){
  const seat=extractSeatingRoster(source),current=m.classes.find(c=>c.id===selectedClass);if(!current)throw Error('먼저 학급을 선택하세요.');
  if(seat.className!==current.name&&!confirm(`자리배치 학급: ${seat.className}\n현재 학급: ${current.name}\n\n반 이름이 다릅니다. 현재 학급에서 이름이 유일하게 일치하는 학생의 아바타만 연결할까요?`))return;
