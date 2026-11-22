@@ -3280,7 +3280,8 @@ window.HOJA_DATA={"pal":{".":"#f7ebd6","*":"#ebcf9e","@":"#876048","E":"#000000"
    Object.assign(o,{ready:true,whole:c,top:part(0,band),fall:band<32?part(band,32):null,band,
     heavy:name==='heavy_snow',kind:/thunder/.test(name)?'thunder':band<32?(/snow|hail/.test(name)?'snow':'rain'):'static'});
     if(name==='drizzle'){
-     const q=o.fall.getContext('2d');q.clearRect(19,band,13,32-band);o.speed=.5;
+     // Preserve all three source streaks, while keeping the gentler drizzle speed.
+     o.speed=.5;
     }
     if(name==='heavy_rain'){
      const top=o.top.getContext('2d'),fall=o.fall.getContext('2d'),tp=top.getImageData(0,0,32,32),fp=fall.getImageData(0,0,32,32);
