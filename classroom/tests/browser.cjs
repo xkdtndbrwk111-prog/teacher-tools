@@ -397,6 +397,37 @@ async function setRoster(p,names){
    assert.equal(read.keys.includes(read.peKey),true);
    assert.ok(read.unbalanced>read.balanced,`${read.unbalanced} > ${read.balanced}`);
   });
+  await step('상단 학급을 바꾸면 성적표가 전환되고 원래 반 성적을 보존한다',async()=>{
+   let grades=await openGrades(p);
+   await grades.locator('.nav[data-page="grades"]').click();await wait(250);
+   assert.deepEqual(await grades.locator('#class-tabs button').allTextContents(),['둘째반']);
+   assert.equal(await grades.locator('input.grade-input').count(),0,'기존 반 평가는 다른 반에 표시하지 않음');
+   assert.match(await grades.locator('#grade-info').textContent(),/둘째반.*평가가 없습니다/);
+   await grades.locator('.nav[data-page="assessments"]').click();
+   // Grade memberships use separate internal UUIDs, linked to Seating by stage03SourceId.
+   // Verify the teacher-visible class rather than comparing the two distinct UUID domains.
+   const checked=await grades.locator('#class-checks label').evaluateAll(xs=>xs.filter(x=>x.querySelector('input')?.checked).map(x=>x.textContent.trim()));
+   assert.deepEqual(checked,['둘째반'],'새 평가도 현재 반이 기본 대상');
+   await openSeating(p);
+   const navFirst=p.waitForNavigation();
+   await p.selectOption('#tt-class-select',first.activeId);await navFirst;await started(p);
+   grades=await openGrades(p);
+   await grades.locator('.nav[data-page="grades"]').click();await wait(250);
+   assert.equal(await grades.locator('#class-tabs button').count(),1);
+   assert.notEqual((await grades.locator('#class-tabs button').textContent()).trim(),'둘째반');
+   const prior=await grades.locator('input.grade-input').evaluateAll(xs=>xs.map(x=>x.value));
+   assert.ok(prior.length>=4,'원래 반 평가가 존재');
+   assert.equal(prior[0],'90','원래 반의 점수 유지');
+   assert.equal(prior.filter(Boolean).length,4,'다른 반으로 전환해도 원래 성적 4건 보존');
+   await openSeating(p);
+   const navSecond=p.waitForNavigation();
+   await p.selectOption('#tt-class-select',secondId);await navSecond;await started(p);
+   grades=await openGrades(p);
+   await grades.locator('.nav[data-page="grades"]').click();await wait(250);
+   assert.deepEqual(await grades.locator('#class-tabs button').allTextContents(),['둘째반']);
+   assert.equal(await grades.locator('input.grade-input').count(),0,'다시 둘째반을 선택해도 원래 반 성적은 표시하지 않음');
+   await openSeating(p);
+  });
   await step('한자 매니저 명단이 선택한 반을 따른다',async()=>{
    const hanja=await ctx.newPage();hanja.on('pageerror',e=>errors.push(e.message));
    await hanja.goto(BASE+'/hanja/');

@@ -13,14 +13,35 @@ const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const names={overview:['대시보드','CLASSROOM OVERVIEW','교실 관리 대시보드','학급, 학생, 평가를 하나의 작업공간에서 관리합니다.'],classes:['학급 · 학생명단','CLASS & STUDENT DIRECTORY','학급 · 학생명단','학급별 명단을 등록하고 관리합니다.'],assessments:['평가 관리','ASSESSMENT MANAGEMENT','평가 관리','같은 평가를 여러 학급에 연결합니다.'],grades:['성적 입력','GRADE WORKSPACE','성적 입력','점수·단계·기타 기록으로 평가 결과를 입력하고 학급별로 확인합니다.'],traits:['능력치 연동','TRAIT LINK','5축 능력치 연동','자리배치 학생 탭의 5축 능력치를 성적과 연결합니다.']};
 const cloud=new GoogleCloud(GOOGLE_CLIENT_ID);
 let cloudMode=false,cloudDirty=false,cloudFileKey=null,changeCounter=0;
-let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve();
+let readOnlyYear=false,stage03InstallId=null,stage03ProjectionBusy=Promise.resolve(),stage03PendingDraft=Promise.resolve(),lastAppliedHostClassId=null,gradeAssessmentTargetsTouched=false;
 let cloudOpBusy=false,cloudLookupState='idle',cloudCandidates=[],cloudLookupSerial=0;
 let year=schoolYear(),m=fresh(year),page='overview',selectedClass=null,selectedAssessment=null,selectedGradeClass='all',selectedGradeSubject=undefined,filter='',timer=null,edited=new Set(),persistFailed=false,stripOpen=true,gradeStripOpen=false,selectedMemberId=null,selectedPersonalSubject=null;
 function toast(msg,isError=false){const t=$('toast');t.textContent=msg;t.classList.toggle('error',isError);t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,4200);}
 function download(name,content,mime){const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 function draftKey(){return `TT_STAGE03_${stage03InstallId||'UNBOUND'}_${year}`;}
 function markChanged(){if(readOnlyYear)return;changeCounter++;if(cloudMode)cloudDirty=true;m.updatedAt=new Date().toISOString();$('draft-state').textContent=cloudMode?'● 미저장 변경 있음 · Sheets 저장 필요':'◌ 임시 보관 중';updateCloudUI();scheduleTraitSync();clearTimeout(timer);timer=setTimeout(async()=>{try{validateWorkspace(m);stage03PendingDraft=writeDraft(draftKey(),structuredClone(m));await stage03PendingDraft;persistFailed=false;$('draft-state').textContent=cloudMode?(cloudDirty?'● 이 기기에 임시 보관됨 · Sheets 미저장':'● Sheets 저장 확인됨'):'● 이 기기에 임시 보관됨';}catch(e){persistFailed=true;$('draft-state').textContent='⚠ 임시 보관 실패';toast('브라우저 임시 보관에 실패했습니다. JSON 백업을 내려받으세요.',true);}},500);}
-function syncSelection(){if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;if(!m.assessments.some(a=>a.id===selectedAssessment))selectedAssessment=m.assessments[0]?.id||null;const a=m.assessments.find(x=>x.id===selectedAssessment);if(!a || (selectedGradeClass!=='all'&&!a.classIds.includes(selectedGradeClass)))selectedGradeClass='all';}
+// The seating host is the only active-class selector for live grade entry.
+const gradeHostScoped=()=>!readOnlyYear&&window.parent!==window;
+// Resolve by the last roster message's immutable source ID, never by iframe-only selectors.
+const activeGradeClass=()=>gradeHostScoped()&&stage03InstallId&&hostSourceId?m.classes.find(c=>c.stage03SourceId===hostSourceId)?.id||null:null;
+function gradeSemesterAssessments(){
+ const list=semAssessments(),active=activeGradeClass();
+ return !gradeHostScoped()?list:active?list.filter(a=>a.classIds.includes(active)):[];
+}
+function syncSelection(){
+ const hostClass=activeGradeClass();
+ if(hostClass)selectedClass=hostClass;
+ else if(!m.classes.some(c=>c.id===selectedClass))selectedClass=m.classes[0]?.id||null;
+ if(gradeHostScoped()){
+  const list=gradeSemesterAssessments();
+  if(!list.some(a=>a.id===selectedAssessment))selectedAssessment=list[0]?.id||null;
+  selectedGradeClass=activeGradeClass()||'all';
+ }else{
+  if(!m.assessments.some(a=>a.id===selectedAssessment))selectedAssessment=m.assessments[0]?.id||null;
+  const a=m.assessments.find(x=>x.id===selectedAssessment);
+  if(!a||(selectedGradeClass!=='all'&&!a.classIds.includes(selectedGradeClass)))selectedGradeClass='all';
+ }
+}
 function go(next){const priorPage=page;page=next;$('grade-toolbar-subject').classList.toggle('hidden',next!=='grades');if(next==='grades'&&priorPage!==next)activateDock('grades');selectedMemberId=null;$('student-detail').classList.add('hidden');document.querySelectorAll('.nav').forEach(b=>{b.classList.toggle('active',b.dataset.page===next);b.classList.toggle('on',b.dataset.page===next);});document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('hidden',x.dataset.view!==next));const n=names[next];$('crumb').textContent=n[0];$('eyebrow').textContent=n[1];$('heading').textContent=n[2];$('subheading').textContent=next==='classes'?'':n[3];render();}
 function render(){syncSelection();updateCloudUI();$('n-classes').textContent=m.classes.length;$('n-students').textContent=m.memberships.filter(x=>x.active).length;$('n-assessments').textContent=m.assessments.length;$('n-grades').textContent=m.gradeValues.filter(x=>x.value!==null).length;renderOverview();renderClasses();renderAssessments();renderGrades();renderTraitLink();updateDock();renderStudentStrip();applyReadOnly();}
 function applyReadOnly(){
@@ -99,8 +120,12 @@ function renderClasses(){
  list.querySelectorAll('[data-class-id]').forEach(b=>b.onclick=()=>{selectedClass=b.dataset.classId;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip()});
 }
 function renderAssessments(){
- const checks=$('class-checks');const previous=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
- if(!previous.size&&selectedClass)previous.add(selectedClass);
+ const checks=$('class-checks'),previous=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
+ const currentGradeClass=activeGradeClass();
+ // The host class always supplies the default; preserve deliberate multi-class selections.
+ if(currentGradeClass&&!gradeAssessmentTargetsTouched){previous.clear();previous.add(currentGradeClass);}
+ else if(!previous.size&&selectedClass)previous.add(selectedClass);
+ checks.onchange=event=>{if(event.target?.matches?.('input[name="targetClass"]'))gradeAssessmentTargetsTouched=true;};
  checks.innerHTML=m.classes.length?m.classes.map(c=>`<label class="check"><input type="checkbox" name="targetClass" value="${h(c.id)}" ${previous.has(c.id)?'checked':''}> ${h(c.name)}</label>`).join(''):'<div class="empty-state">학급을 먼저 등록하세요.</div>';
  const shownList=semAssessments(),list=$('assessment-list');
  const section=(title,items)=>items.length?`<div class="assess-section-title">${title} <small>${items.length}개</small></div>`+items.map(assessItem).join(''):'';
@@ -142,14 +167,14 @@ function loadSheetLayout(){
 }
 let sheetLayout=loadSheetLayout(),sheetRowHeights=new Map(),gradeViewAssessments=[],gradeViewRows=[];
 function displayAssessments(){
- const list=semAssessments();
+ const list=gradeSemesterAssessments();
  if(selectedGradeSubject===undefined && list.length)selectedGradeSubject=list.find(a=>a.id===selectedAssessment)?.subject||list[0].subject;
  if(selectedGradeSubject&&!list.some(a=>a.subject===selectedGradeSubject))selectedGradeSubject=list[0]?.subject||'';
  if(!selectedGradeSubject&&!list.some(a=>a.id===selectedAssessment))selectedAssessment=list[0]?.id||selectedAssessment;
  const shown=selectedGradeSubject?list.filter(a=>a.subject===selectedGradeSubject):list.filter(a=>a.id===selectedAssessment);
  return [...shown.filter(a=>!isPlanAssessment(a)),...shown.filter(isPlanAssessment)];
 }
-function currentGradeRows(assessments){const ids=new Set(assessments.flatMap(a=>a.classIds));return roster(m).filter(r=>ids.has(r.classId)&&(selectedGradeClass==='all'||r.classId===selectedGradeClass)&&(!filter||r.name.includes(filter)));}
+function currentGradeRows(assessments){const ids=new Set(assessments.flatMap(a=>a.classIds)),hostClass=activeGradeClass();return roster(m).filter(r=>ids.has(r.classId)&&(!gradeHostScoped()||r.classId===hostClass)&&(selectedGradeClass==='all'||r.classId===selectedGradeClass)&&(!filter||r.name.includes(filter)));}
 function sheetColumnWidth(col){if(col.kind==='fixed')return sheetLayout.fixed[col.index];if(col.kind==='status')return sheetLayout.status;return sheetLayout.results[col.id]||sheetLayout.defaultResult;}
 function sheetColumns(assessments){return [...SHEET_FIXED_NAMES.map((name,index)=>({kind:'fixed',name,index})),...assessments.map(a=>({kind:'assessment',id:a.id})),{kind:'status'}];}
 function setSheetWidths(assessments){
@@ -351,21 +376,31 @@ function setAssessMode(mode){
 document.querySelectorAll('[data-assess-mode]').forEach(b=>b.onclick=()=>setAssessMode(b.dataset.assessMode));
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
 function renderGrades(){
- const pick=$('grade-assessment');
- pick.innerHTML=semAssessments().length?semAssessments().map(a=>`<option value="${h(a.id)}" ${a.id===selectedAssessment?'selected':''}>${h(a.subject)} · ${h(a.title)}</option>`).join(''):'<option value="">평가를 먼저 만들어주세요</option>';
- const subjectPick=$('grade-subject'),subjects=[...new Set(semAssessments().map(a=>a.subject))];
- if(selectedGradeSubject===undefined && semAssessments().length)selectedGradeSubject=semAssessments().find(a=>a.id===selectedAssessment)?.subject||semAssessments()[0].subject;
+ const pick=$('grade-assessment'),visibleAssessments=gradeSemesterAssessments();
+ pick.innerHTML=visibleAssessments.length?visibleAssessments.map(a=>`<option value="${h(a.id)}" ${a.id===selectedAssessment?'selected':''}>${h(a.subject)} · ${h(a.title)}</option>`).join(''):'<option value="">이 학급의 평가 없음</option>';
+ const subjectPick=$('grade-subject'),subjects=[...new Set(visibleAssessments.map(a=>a.subject))];
+ if(selectedGradeSubject===undefined && visibleAssessments.length)selectedGradeSubject=visibleAssessments.find(a=>a.id===selectedAssessment)?.subject||visibleAssessments[0].subject;
  if(selectedGradeSubject&&!subjects.includes(selectedGradeSubject))selectedGradeSubject=subjects[0]||'';
  subjectPick.innerHTML=`<option value="">평가 하나씩 보기</option>`+subjects.map(sub=>`<option value="${h(sub)}" ${selectedGradeSubject===sub?'selected':''}>${h(sub)} · 평가 전체</option>`).join('');
  $('grade-assessment').closest('label').classList.toggle('hidden',Boolean(selectedGradeSubject));
  const assessments=displayAssessments(),tabs=$('class-tabs'),table=$('grade-rows'),thead=$('grade-table').querySelector('thead');
  gradeViewAssessments=assessments;
- if(!assessments.length){$('grade-toolbar-subject').textContent='과목 미선택';tabs.innerHTML='';table.innerHTML='<tr><td class="empty-state sheet-empty-row">선택된 평가가 없습니다.</td></tr>';gradeViewRows=[];$('grade-summary').textContent='';$('export-csv').disabled=true;$('grade-info').textContent=m.assessments.length?`${selectedSemester}학기 평가가 없습니다. 위에서 학기를 바꾸거나 평가 관리에서 만들어 주세요.`:'평가 관리에서 평가를 만들어주세요.';showLevelNotes(null);$('grade-guide').textContent='평가 생성 후 입력 가능합니다.';$('sheet-cell-info').textContent='셀을 선택하세요';return;}
+ if(!assessments.length){
+  const active=activeGradeClass(),current=m.classes.find(c=>c.id===active);
+  $('grade-toolbar-subject').textContent=current?`${current.name} · 평가 없음`:'과목 미선택';
+  tabs.innerHTML=current?`<button type="button" role="tab" aria-selected="true" class="active" data-filter-class="${h(current.id)}">${h(current.name)}</button>`:'';
+  table.innerHTML='<tr><td class="empty-state sheet-empty-row">현재 학급에 표시할 평가가 없습니다.</td></tr>';
+  gradeViewRows=[];$('grade-summary').textContent='';$('export-csv').disabled=true;
+  $('grade-info').textContent=gradeHostScoped()&&!active?'상단에서 선택한 학급의 명단을 연결하는 중입니다.':current?`${current.name} · ${selectedSemester}학기 평가가 없습니다. ③ 평가 관리에서 이 학급에 평가를 연결해 주세요.`:m.assessments.length?`${selectedSemester}학기 평가가 없습니다. 위에서 학기를 바꾸거나 평가 관리에서 만들어 주세요.`:'평가 관리에서 평가를 만들어주세요.';
+  showLevelNotes(null);$('grade-guide').textContent='평가 생성 후 입력 가능합니다.';$('sheet-cell-info').textContent='셀을 선택하세요';return;
+ }
  $('export-csv').disabled=false;
- const classIds=[...new Set(assessments.flatMap(a=>a.classIds))],classes=classIds.map(id=>m.classes.find(c=>c.id===id)).filter(Boolean);
- if(selectedGradeClass!=='all'&&!classIds.includes(selectedGradeClass))selectedGradeClass='all';
- tabs.innerHTML=[{id:'all',name:'전체'},...classes].map(c=>`<button type="button" role="tab" aria-selected="${selectedGradeClass===c.id?'true':'false'}" class="${selectedGradeClass===c.id?'active':''}" data-filter-class="${h(c.id)}">${h(c.name)}</button>`).join('');
- tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>{selectedGradeClass=b.dataset.filterClass;renderGrades()});
+ const classIds=[...new Set(assessments.flatMap(a=>a.classIds))],hostClass=activeGradeClass();
+ const classes=(hostClass?[m.classes.find(c=>c.id===hostClass)]:classIds.map(id=>m.classes.find(c=>c.id===id))).filter(Boolean);
+ if(hostClass)selectedGradeClass=hostClass;
+ else if(selectedGradeClass!=='all'&&!classIds.includes(selectedGradeClass))selectedGradeClass='all';
+ tabs.innerHTML=(hostClass?classes:[{id:'all',name:'전체'},...classes]).map(c=>`<button type="button" role="tab" aria-selected="${selectedGradeClass===c.id?'true':'false'}" class="${selectedGradeClass===c.id?'active':''}" data-filter-class="${h(c.id)}">${h(c.name)}</button>`).join('');
+ if(!hostClass)tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>{selectedGradeClass=b.dataset.filterClass;renderGrades()});
  const first=assessments[0],subject=selectedGradeSubject;
  $('grade-info').textContent=subject?`${subject} · 평가 ${assessments.length}개를 나란히 입력 · 과목 내 단원별 독립 저장`:`${first.subject} · ${first.title}`;
  $('grade-toolbar-subject').textContent=subject?`${subject} · ${assessments.length}개 평가`:`${first.subject} · ${first.title}`;
@@ -730,7 +765,15 @@ function showStudent(memberId){
 $('personal-back').onclick=()=>{selectedPersonalSubject=null;renderPersonalView();$('student-detail').scrollTop=0;};
 $('close-student-detail').onclick=()=>{selectedMemberId=null;selectedPersonalSubject=null;$('student-detail').classList.add('hidden');renderStudentStrip()};
 $('strip-toggle').onclick=()=>{if(page==='grades')gradeStripOpen=!gradeStripOpen;else stripOpen=!stripOpen;$('student-detail').classList.add('hidden');selectedMemberId=null;renderStudentStrip()};
-$('strip-class').onchange=e=>{selectedClass=e.target.value;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip()};
+$('strip-class').onchange=e=>{
+ if(gradeHostScoped()){
+  const requested=m.classes.find(c=>c.id===e.target.value),active=activeGradeClass();
+  $('strip-class').value=active||'';
+  if(requested?.stage03SourceId&&requested.id!==active)window.parent.postMessage({type:'TT_STAGE031_SWITCH_CLASS',installId:stage03InstallId,sourceInstanceId:requested.stage03SourceId},location.origin);
+  return;
+ }
+ selectedClass=e.target.value;selectedMemberId=null;$('student-detail').classList.add('hidden');renderClasses();renderStudentStrip();
+};
 function applySeating(source){
  const seat=extractSeatingRoster(source),current=m.classes.find(c=>c.id===selectedClass);if(!current)throw Error('먼저 학급을 선택하세요.');
  if(seat.className!==current.name&&!confirm(`자리배치 학급: ${seat.className}\n현재 학급: ${current.name}\n\n반 이름이 다릅니다. 현재 학급에서 이름이 유일하게 일치하는 학생의 아바타만 연결할까요?`))return;
@@ -953,7 +996,16 @@ async function stage03ApplyHost(message){
  void fillYearChoices();
  if(result.changed){m=result.workspace;markChanged();await stage03Flush();}
  else m=result.workspace;
- selectedClass=m.classes.find(c=>c.stage03SourceId===message.sourceInstanceId)?.id||null;
+ const nextClass=m.classes.find(c=>c.stage03SourceId===message.sourceInstanceId)?.id||null;
+ if(nextClass!==lastAppliedHostClassId){
+  selectedAssessment=null;selectedGradeSubject=undefined;filter='';$('student-search').value='';
+  // Reset draft checkbox defaults on a host class change; never preselect the previous class.
+  gradeAssessmentTargetsTouched=false;
+  $('class-checks').querySelectorAll('input:checked').forEach(input=>{input.checked=false});
+  selectedMemberId=null;$('student-detail').classList.add('hidden');
+ }
+ lastAppliedHostClassId=nextClass;
+ selectedClass=nextClass;selectedGradeClass=nextClass||'all';
  render();
  const v=result.stats;
  const excluded=inactiveMembers(m,selectedClass).length;
