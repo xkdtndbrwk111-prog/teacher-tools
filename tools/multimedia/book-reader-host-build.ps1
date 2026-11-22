@@ -31,6 +31,16 @@ foreach($target in @(1,3,5)){
  $state=Get-Content -Raw (Join-Path $session 'state.json') | ConvertFrom-Json
  if($state.saved -ne $target -or $state.page -ne $target -or !$state.closed){throw "Invalid native final state"}
 }
+# Regression: a Canva book grows after registration (declared 5, live slider 6).
+$growing=Join-Path $root 'fixture-growing-total'
+New-Item -ItemType Directory -Force $growing | Out-Null
+[IO.File]::WriteAllText((Join-Path $growing 'request.json'),(ConvertTo-Json -Compress @{url='';title='growing fixture';pages=5;fixtureTotal=6;start=3;saved=0}),[Text.UTF8Encoding]::new($false))
+& "$out\BookReader.exe" --self-test $growing
+if($LASTEXITCODE -ne 0){throw 'Growing page count fixture failed'}
+$growingState=Get-Content -Raw (Join-Path $growing 'state.json') | ConvertFrom-Json
+if($growingState.total -ne 6 -or $growingState.saved -ne 3 -or $growingState.page -ne 3 -or !$growingState.closed){throw 'Dynamic page total was not detected'}
+Write-Host 'PASS live page total growth without losing bookmark'
+
 $bundle=Join-Path $root 'asset-book-reader-host.zip'
 Compress-Archive -Path "$out\*" -DestinationPath $bundle -Force
 $bytes=[IO.File]::ReadAllBytes($bundle)

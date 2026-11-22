@@ -106,7 +106,17 @@ public static class BookTestGeometry {
   if(![BookTestGeometry]::GetClientRect([IntPtr][long]$m.window,[ref]$rect)){throw 'No test owner rect'}
   $vw=$rect.R-$rect.L;$vh=$rect.B-$rect.T
   $geometry=@{vw=$vw;vh=$vh;x=10;y=10;w=($vw-20);h=($vh-100);visible=1}
-  $args=@{id='DAHbOpoUrrg';url='https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed';title='Book native installed smoke test';pages=5;start=3;saved=3;layout=$geometry}
+  $args=@{id='DAHbOZ_XOJI';url='https://www.canva.com/design/DAHbOZ_XOJI/d_oXAabCNXOYBSoES_ZXxA/view?embed';title='Book native installed smoke test';pages=379;start=3;saved=3;layout=$geometry}
+  # Diagnostic only: keep the full native Canva gate unchanged. Log no query tokens or page contents.
+  try {
+   $canvaProbe=Invoke-WebRequest -UseBasicParsing -TimeoutSec 12 -MaximumRedirection 2 -Uri $args.url
+   $canvaHost=([Uri]$canvaProbe.BaseResponse.ResponseUri).Host
+   Write-Host ('CANVA_HTTP_PROBE status='+[int]$canvaProbe.StatusCode+' host='+$canvaHost)
+  } catch {
+   $code=if($_.Exception.Response){[int]$_.Exception.Response.StatusCode}else{'no-http-response'}
+   $type=$_.Exception.GetType().Name
+   Write-Host ('CANVA_HTTP_PROBE failure status='+$code+' exception='+$type)
+  }
   function Encode-Book($a){[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -Compress $a)))}
   function Assert-BookRejected([string]$request,[string]$method,$headers,$body,[int]$expected){
    try{
