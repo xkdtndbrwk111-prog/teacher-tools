@@ -10973,13 +10973,17 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  window.addEventListener('pagehide',()=>{if(offlineStop){const stop=offlineStop;offlineStop=null;stop()}});
 
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
- const BOOKS_KEY='tt-books-v1:catalog',MARK_PREFIX='tt-books-v1:mark:';
- const firstBook=Object.freeze({id:'DAHbOpoUrrg',title:'아몬드 · 시험판',url:'https://www.canva.com/design/DAHbOpoUrrg/d0A5Phk1p8VRXhaj5raOWg/view?embed',pages:5});
+ const BOOKS_KEY='tt-books-v1:catalog',MARK_PREFIX='tt-books-v1:mark:',PAGE_PREFIX='tt-books-v1:total:';
+ // Full Canva book used by the verified Windows reader field fixture; the old five-page bookmark stays stored.
+ const firstBook=Object.freeze({id:'DAHbOZ_XOJI',title:'아몬드',url:'https://www.canva.com/design/DAHbOZ_XOJI/d_oXAabCNXOYBSoES_ZXxA/view?embed',pages:379});
  function cleanBook(raw){const url=canva(raw?.url||''),m=url.match(/^https:\/\/(?:www\.)?canva\.com\/design\/([A-Za-z0-9_-]+)\/[A-Za-z0-9_-]+\/view\?embed$/);const title=String(raw?.title||'').trim().slice(0,80),pages=Number(raw?.pages);return m&&title&&Number.isInteger(pages)&&pages>=1&&pages<=4095?{id:m[1],title,url,pages}:null}
  function catalog(){let a=[];try{a=JSON.parse(localStorage.getItem(BOOKS_KEY)||'[]')}catch{}if(!Array.isArray(a))a=[];const used=new Set([firstBook.id]);return [firstBook,...a.map(cleanBook).filter(x=>{if(!x||used.has(x.id))return false;used.add(x.id);return true}).slice(0,98)]}
- function bookMark(book){try{const x=JSON.parse(localStorage.getItem(MARK_PREFIX+book.id)||'null');return x&&Number.isInteger(x.page)&&x.page>=1&&x.page<=book.pages?x.page:null}catch{return null}}
- function saveBookMark(book,p){if(!Number.isInteger(p)||p<1||p>book.pages)throw Error('페이지 번호를 확인하세요.');localStorage.setItem(MARK_PREFIX+book.id,JSON.stringify({page:p,at:Date.now()}));}
- function books(){dirty=false;reset('books','책 읽어주기');const list=wrapper('mm-book-list');for(const book of catalog()){const row=document.createElement('div');row.className='mm-book-row';row.dataset.bookId=book.id;const cover=document.createElement('span');cover.className='mm-book-cover';cover.textContent='📕';cover.setAttribute('aria-hidden','true');const info=document.createElement('div');info.className='mm-book-info';const name=document.createElement('strong');name.textContent=book.title;const progress=document.createElement('small');const mark=bookMark(book);progress.textContent=mark?'북마크 '+mark+' / '+book.pages+'쪽':book.pages+'쪽 · 읽기 전';info.append(name,progress);row.append(cover,info);
+ // Canva presentations may grow after registration. Never overwrite the teacher's catalog or older bookmarks.
+ function bookPages(book){try{const n=Number(localStorage.getItem(PAGE_PREFIX+book.id));if(Number.isInteger(n)&&n>=1&&n<=4095)return n}catch{}return book.pages}
+ function rememberBookPages(book,n){if(!Number.isInteger(n)||n<1||n>4095)return;if(n!==bookPages(book)){try{localStorage.setItem(PAGE_PREFIX+book.id,String(n))}catch{}}}
+ function bookMark(book){try{const x=JSON.parse(localStorage.getItem(MARK_PREFIX+book.id)||'null');return x&&Number.isInteger(x.page)&&x.page>=1&&x.page<=bookPages(book)?x.page:null}catch{return null}}
+ function saveBookMark(book,p){if(!Number.isInteger(p)||p<1||p>bookPages(book))throw Error('페이지 번호를 확인하세요.');localStorage.setItem(MARK_PREFIX+book.id,JSON.stringify({page:p,at:Date.now()}));}
+ function books(){dirty=false;reset('books','책 읽어주기');const list=wrapper('mm-book-list');for(const book of catalog()){const row=document.createElement('div');row.className='mm-book-row';row.dataset.bookId=book.id;const cover=document.createElement('span');cover.className='mm-book-cover';cover.textContent='📕';cover.setAttribute('aria-hidden','true');const info=document.createElement('div');info.className='mm-book-info';const name=document.createElement('strong');name.textContent=book.title;const progress=document.createElement('small');const mark=bookMark(book);progress.textContent=mark?'북마크 '+mark+' / '+bookPages(book)+'쪽':bookPages(book)+'쪽 · 읽기 전';info.append(name,progress);row.append(cover,info);
  if(mark){row.append(button(mark+'쪽 이어 읽기',()=>readBook(book,true),true),button('처음부터',()=>readBook(book,false)))}else row.append(button('읽기',()=>readBook(book,false),true));
  if(book.id!==firstBook.id){const remove=button('삭제',()=>{if(!confirm('책 목록에서 이 책을 삭제할까요? 북마크도 삭제됩니다.'))return;try{localStorage.setItem(BOOKS_KEY,JSON.stringify(catalog().filter(x=>x.id!==firstBook.id&&x.id!==book.id)));localStorage.removeItem(MARK_PREFIX+book.id);books()}catch{status.textContent='책 삭제에 실패했습니다.'}});remove.setAttribute('aria-label',book.title+' 삭제');row.append(remove)}
  list.append(row)}
@@ -10998,20 +11002,32 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   document.addEventListener('keydown',keyNav,true);
   bookStop=()=>{cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);document.removeEventListener('keydown',keyNav,true);statusHome.insertBefore(status,statusNext);};
   const back=button('← 책 목록',books);actions.append(back);window.ttSystemVolume?.read();status.textContent='페이지 번호를 확인하고 있어요.';
-  function failed(message){
+  function fallback(message){
    if(cancelled||epoch!==token)return;
-   cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);if(dialog.classList.contains('mm-full'))full.click();
-   w.textContent=message;status.textContent='기존 북마크는 유지됩니다.';
-   actions.replaceChildren(back,button('다시 시도',()=>readBook(book,resume),true));
+   cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);session='';
+   if(dialog.classList.contains('mm-full'))full.click();
+   // No new permissions, external scripts or capture: re-use the existing Canva iframe policy.
+   const iframe=document.createElement('iframe');iframe.title=book.title+' 웹 재생';
+   iframe.src=book.url;iframe.referrerPolicy='strict-origin-when-cross-origin';
+   iframe.setAttribute('allow','autoplay; fullscreen');
+   iframe.setAttribute('sandbox','allow-scripts allow-same-origin allow-presentation');
+   iframe.allowFullscreen=true;w.replaceChildren(iframe);
+   const input=document.createElement('input');input.type='number';input.className='mm-book-page';
+   input.min='1';input.max=String(bookPages(book));input.step='1';input.value=String(bookMark(book)||1);input.setAttribute('aria-label','현재 책 페이지');
+   const save=button('현재 쪽 북마크',()=>{const n=Number(input.value);try{saveBookMark(book,n);status.textContent='웹 재생 모드 · '+n+'쪽 북마크 저장됨 · 자동 저장은 지원하지 않습니다.'}catch{status.textContent='1~'+bookPages(book)+' 사이의 페이지를 입력하세요.'}});
+   const direct=button('캔바에서 열기',()=>window.open(book.url,'_blank','noopener,noreferrer'));
+   status.textContent='웹 재생 모드 · '+message+' · 자동 북마크는 지원하지 않습니다. 현재 쪽을 직접 저장할 수 있습니다.';
+   actions.replaceChildren(back,input,save,button('Windows 재생기 재시도',()=>readBook(book,resume),true),direct);
   }
   try{
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    if(cancelled||epoch!==token)return;
    const saved=bookMark(book)||0;
-   const args={id:book.id,url:book.url,title:book.title,pages:book.pages,start:resume&&saved?saved:1,saved,layout:layout()};
-   const response=await fetch('/api/book-reader/open',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(args)}),data=await response.json();
+   const args={id:book.id,url:book.url,title:book.title,pages:bookPages(book),start:resume&&saved?saved:1,saved,layout:layout()};
+   const response=await fetch('/api/book-reader/open',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(args)});
+   const data=await response.json();
    if(response.ok&&data.ok&&/^[a-f0-9]{32}$/.test(data.session||'')){session=data.session;if(cancelled||epoch!==token){closeNativeBook(session);return;}}
-   else{failed('책을 열 수 없습니다. 다시 시도해 주세요.');return}
+   else{fallback('Windows 재생기 시작 실패'+(data.reason?' ('+String(data.reason).slice(0,48)+')':''));return}
    async function poll(){
     if(cancelled||epoch!==token)return;
     try{
@@ -11021,17 +11037,19 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
      errors=0;
      if(command&&Number(x.ack)>=command.seq)command=null;
      if(!dialog.classList.contains('mm-full'))command=null;
-     if(Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=book.pages&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
+     if(x.ready&&Number.isInteger(x.total)&&x.total>=1&&x.total<=4095)rememberBookPages(book,x.total);
+     if(Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
      if(x.ready){w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
-     status.textContent=(x.page>0?x.page+' / '+book.pages+'쪽 · ':'')+String(x.status||'불러오는 중');
-     if(x.closed){if(x.ready)books();else failed('책 재생기를 시작하지 못했습니다.');return}
-    }catch{if(++errors>=4){failed('책 재생기와 연결이 끊겼습니다.');return}}
+     status.textContent=(x.page>0?x.page+' / '+bookPages(book)+'쪽 · ':'')+String(x.status||'불러오는 중');
+     if(x.closed){if(x.ready)books();else fallback('Windows 재생기 조기 종료 · '+String(x.status||'원인 미확인').slice(0,80));return}
+    }catch{if(++errors>=4){fallback('재생기 상태 연결 실패');return}}
     if(!cancelled&&epoch===token)pollTimer=setTimeout(poll,300);
    }
    poll();
-  }catch{failed('책 재생기를 시작하지 못했습니다.')}
+  }catch{fallback('재생기 연결 또는 시작 실패')}
  }
+
  window.addEventListener('pagehide',()=>{if(bookStop)bookStop()});
 
 function detail(){home('meeting')}
