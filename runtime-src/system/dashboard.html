@@ -11033,10 +11033,21 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);session='';
    if(dialog.classList.contains('mm-full'))full.click();
    if(book.interactive){
-    // An embedded iframe is explicitly blocked by Canva. Do not regress to it.
-    w.textContent='내장 Canva 재생기를 실행하지 못했습니다. ';
+    // Never mask the server's bounded diagnostic reason. An iframe fallback is
+    // blocked by Canva; allow a local retry while preserving the external option.
+    w.textContent='내장 Canva 재생기를 실행하지 못했습니다.';
+    const detail=document.createElement('p');
+    const errorCode=String(message||'재생기 연결 실패').slice(0,160);
+    const diagnoses={'BUNDLE_MISMATCH':'내장 재생기 파일을 확인해야 합니다.','OWNER_NOT_FOUND':'호자보드 창 연결을 확인해야 합니다.','READER_ALREADY_RUNNING':'이전 책읽기 창이 아직 실행 중입니다.','READER_START_ERROR':'Windows 재생기 시작 과정에서 오류가 발생했습니다.','BOOK_URL_INVALID':'등록된 책 주소 또는 페이지 정보가 올바르지 않습니다.'};
+    const match=errorCode.match(/\\b(BUNDLE_MISMATCH|OWNER_NOT_FOUND|READER_ALREADY_RUNNING|READER_START_ERROR|BOOK_URL_INVALID)\\b/);
+    detail.textContent=(match?diagnoses[match[1]]+' ('+match[1]+')':errorCode);
+    detail.style.cssText='color:#ffcf85;font-size:clamp(14px,1.1vw,22px);margin:12px 0 20px;max-width:90%;text-align:center;word-break:break-word';
+    const retry=button('내장 재생기 다시 시도',()=>readBook(book,resume),true);
+    retry.style.cssText='margin:8px;min-height:44px;padding:10px 18px;cursor:pointer';
     const link=document.createElement('a');link.href=book.url;link.target='_blank';link.rel='noopener noreferrer';
-    link.textContent='Canva 직접 열기';w.append(link);return;
+    link.textContent='Canva 직접 열기';link.style.cssText='color:#ffd4a6;text-decoration:underline;font-size:clamp(16px,1.1vw,22px);padding:12px;display:inline-block';
+    const group=document.createElement('div');group.style.cssText='display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap';
+    group.append(retry,link);w.append(detail,group);return;
    }
    // Standard embedded-view fallback applies only to noninteractive books.
    const iframe=document.createElement('iframe');iframe.title=book.title+' 웹 재생';
