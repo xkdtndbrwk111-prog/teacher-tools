@@ -205,7 +205,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   localStorage.setItem('tt-books-v1:mark:TEST_NATIVE',JSON.stringify({page:5,at:Date.now()}));
  });
  // Native WebView2 loads the shortlink itself. Browser regression must never open a popup or blocked iframe.
- let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7;
+ let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7,failAlmondOpen=true;
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
@@ -214,6 +214,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
     assert.equal(a.id,'DAHbOZ_XOJI');
     assert.equal(a.url,'https://canva.link/9qxk3zuhh93ts2s');
     assert.equal(a.saved,7);assert.equal(a.layout.visible,1);assert.equal(a.pages,394);
+    if(failAlmondOpen){failAlmondOpen=false;return route.fulfill({status:409,json:{error:'native unavailable',reason:'OWNER_NOT_FOUND'}});}
     return route.fulfill({json:{ok:true,session:almondSession}});
    }
    assert.equal(a.id,'TEST_NATIVE');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);assert.equal(a.pages,phase===0?379:381);assert.match(a.url,/TEST_NATIVE/);
@@ -252,6 +253,12 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  const almond=dlg.locator('[data-book-id="DAHbOZ_XOJI"]');
  let popups=0;page.on('popup',()=>popups++);
  await almond.getByRole('button',{name:'7쪽 이어 읽기',exact:true}).click();
+ // Failed native startup must display the explicit server reason and retain an in-board retry.
+ await dlg.getByText(/OWNER_NOT_FOUND/).waitFor();
+ assert.match(await dlg.locator('.mm-book-slot').innerText(),/호자보드 창 연결/);
+ assert.equal(await dlg.locator('.mm-book-slot iframe').count(),0,'never show an unusable nested Canva iframe');
+ assert.equal(await dlg.getByRole('link',{name:'Canva 직접 열기'}).count(),1);
+ await dlg.getByRole('button',{name:'내장 재생기 다시 시도'}).click();
  await page.waitForFunction(()=>document.querySelector('#ttMediaDialog')?.classList.contains('mm-book-interactive'));
  await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-slot')?.getBoundingClientRect().width>500);
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')||'null')?.page===7);
