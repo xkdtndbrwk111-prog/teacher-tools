@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "status": "preparing",
+  "channel": "stable",
+  "version": null,
+  "url": null,
+  "sha256": null,
+  "note": "No verified Windows manual installer ZIP is published yet. Update atomically after approved R8 feed + manual installer release."
+}

@@ -50,15 +50,15 @@ const APPS = [
 
   {
     id: "dashboard",
-    title: "교실 대시보드",
-    description: "시간표와 급식, 자리표, 수업 도구를 전자칠판 한 화면에 · 정식판 준비 중",
+    title: "호자보드",
+    description: "시간표와 급식, 자리표, 수업 도구를 전자칠판 한 화면에",
     type: "internal",
-    status: "development",
+    status: "preview",
     linked: true,
-    url: null, // Stable release only; never link a private TEST artifact here.
+    url: "./hoja-board/", // Public install-info page. No unverified ZIP or private TEST URL.
     download: false,
     badge: "Windows",
-    action: "정식판 공개 후 내려받기",
+    action: "설치 파일 확인",
     arrow: "↓",
     icon: "seats",
     color: "blue",
@@ -171,7 +171,7 @@ const ICONS = {
 function navigationUrl(app) {
   if (
     !app ||
-    app.status !== "active" ||
+    !["active", "preview"].includes(app.status) ||
     typeof app.url !== "string" ||
     !app.url.trim()
   ) {

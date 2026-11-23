@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="호자보드 Windows 설치 안내와 공식 수동 설치 파일 다운로드">
+<title>호자보드 설치 | 역사보리꼬리 공작소</title>
+<link rel="icon" href="../assets/hub/favicon.svg" type="image/svg+xml">
+<style>
+:root{color-scheme:light;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;color:#203048;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;line-height:1.65}.wrap{max-width:750px;margin:0 auto;padding:34px 20px 72px}
+a{color:#235eac}header a{color:#51647e;text-decoration:none;font-weight:700}
+h1{font-size:clamp(29px,5vw,40px);margin:26px 0 7px;letter-spacing:-.04em}
+.lead{font-size:17px;color:#50617c;margin:0 0 27px}
+.card{border:1px solid #d9e1ed;border-radius:18px;background:#fff;padding:26px;box-shadow:0 7px 25px rgba(31,49,74,.05)}
+.eyebrow{font-size:12px;letter-spacing:.1em;color:#677995;font-weight:800;margin:0 0 3px}
+h2{font-size:21px;margin:0 0 10px}
+.version{font-size:14px;color:#60708a;margin-bottom:15px}
+.btn{display:inline-flex;align-items:center;justify-content:center;background:#205dae;color:#fff;text-decoration:none;min-height:48px;border-radius:12px;font-weight:700;padding:11px 20px}
+.btn[hidden]{display:none}.state{padding:13px 15px;background:#f1f4f8;border-radius:10px;color:#425570;font-size:15px}
+.info{font-size:14px;color:#61718c;overflow-wrap:anywhere;margin:14px 0 0}
+section+section{margin-top:24px}.steps{padding-left:21px}.steps li{margin:7px 0}
+footer{margin-top:30px;font-size:13px;color:#71819a}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><a href="../">← 역사보리꼬리 공작소</a></header>
+<main>
+<h1>호자보드</h1>
+<p class="lead">시간표·급식·수업 도구·학급 운영을 연결하는 Windows 전자칠판 프로그램</p>
+<section class="card" aria-labelledby="download-title">
+<p class="eyebrow">WINDOWS</p>
+<h2 id="download-title">수동 설치 파일</h2>
+<p id="version" class="version">설치 파일 배포 상태 확인 중…</p>
+<p id="status" class="state" role="status" aria-live="polite">공식 설치 파일을 확인하고 있습니다.</p>
+<a id="download" class="btn" hidden rel="noopener noreferrer">Windows 설치 ZIP 내려받기</a>
+<p id="checksum" class="info" hidden></p>
+<p class="info">수동 설치 파일은 자동 업데이트와 동일한 검증된 버전으로 제공됩니다. 프로그램 소스 ZIP이나 이전 시험판은 정식 설치 파일이 아닙니다.</p>
+</section>
+<section class="card" aria-labelledby="install-title">
+<h2 id="install-title">설치 방법</h2>
+<ol class="steps">
+<li>최신 Windows 설치 ZIP을 내려받습니다.</li>
+<li>압축 파일을 마우스 오른쪽 버튼으로 눌러 <strong>모두 압축 풀기</strong>를 선택합니다.</li>
+<li>압축을 푼 폴더의 <strong>호자보드 설치.cmd</strong>를 실행합니다.</li>
+</ol>
+<p class="info">이미 설치된 호자보드는 업데이트 기능을 이용할 수 있습니다. 단, 구형 1.65.5는 이전 업데이트 채널을 사용하므로 최신 설치판으로 한 번 전환해야 합니다. 사용자 설정과 학생 데이터를 지우는 설치는 지원하지 않습니다.</p>
+</section>
+</main>
+<footer>배포 정책: 자동 업데이트와 수동 설치판은 같은 릴리스에서 함께 게시합니다.</footer>
+</div>
+<script>
+(async()=>{
+const msg=document.getElementById('status'),version=document.getElementById('version'),link=document.getElementById('download'),checksum=document.getElementById('checksum');
+try{
+  const response=await fetch('./release.json',{cache:'no-store'});
+  if(!response.ok)throw Error('manifest');
+  const r=await response.json();
+  const trusted=r&&r.schema===1&&r.status==='ready'&&/^\\d+\\.\\d+\\.\\d+$/.test(r.version)&&/^[a-f0-9]{64}$/.test(r.sha256);
+  let url=null;
+  if(trusted){
+    url=new URL(r.url);
+    if(url.protocol!=='https:'||url.hostname!=='github.com'||!/^\\/xkdtndbrwk111-prog\\/teacher-tools\\/releases\\/download\\/[^/]+\\/[^/]+\\.zip$/.test(url.pathname)||url.username||url.password)url=null;
+  }
+  if(url){
+    version.textContent='배포 버전: '+r.version;
+    link.href=url.href;link.hidden=false;
+    checksum.textContent='SHA-256: '+r.sha256;checksum.hidden=false;
+    msg.textContent='공식 수동 설치 파일이 준비됐습니다.';
+  }else{
+    version.textContent='공식 설치 ZIP 준비 중';
+    msg.textContent='현재 최신 Windows 수동 설치 파일은 아직 게시되지 않았습니다. 설치본 검증 후 이 페이지에 다운로드 링크가 표시됩니다.';
+  }
+}catch(_){
+  version.textContent='배포 상태 확인 필요';
+  msg.textContent='공식 설치 파일의 상태를 불러오지 못했습니다. 현재 안전한 다운로드 링크를 제공할 수 없습니다.';
+}
+})();
+</script>
+</body>
+</html>
