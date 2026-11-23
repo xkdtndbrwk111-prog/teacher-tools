@@ -837,7 +837,7 @@ function Open-TTBookHost([string]$encoded) {
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
- if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'cd7c394078725dcda0bd61763ecfe9e9c27d77da2482b22224f397e98cb92955'){throw 'native dependency unavailable'}
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '3f66008905fb8155d49f62a3b3b1219bfe362f675f67e9e42a1943c5fe18c7db'){throw 'native dependency unavailable'}
  Add-Type -AssemblyName System.IO.Compression.FileSystem
  Add-Type -AssemblyName System.Windows.Forms
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
