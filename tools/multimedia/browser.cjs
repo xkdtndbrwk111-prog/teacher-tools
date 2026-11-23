@@ -213,7 +213,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
    if(a.interactive){
     assert.equal(a.id,'DAHbOZ_XOJI');
     assert.equal(a.url,'https://canva.link/9qxk3zuhh93ts2s');
-    assert.equal(a.saved,7);assert.equal(a.layout.visible,1);assert.equal(a.pages,379);
+    assert.equal(a.saved,7);assert.equal(a.layout.visible,1);assert.equal(a.pages,394);
     return route.fulfill({json:{ok:true,session:almondSession}});
    }
    assert.equal(a.id,'TEST_NATIVE');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);assert.equal(a.pages,phase===0?379:381);assert.match(a.url,/TEST_NATIVE/);
@@ -224,7 +224,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
    if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
    if(a.command?.kind==='manual'){almondAck=a.command.seq;almondPage=a.command.page;}
-   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:379,manual:true,ack:almondAck,status:'Canva 직접 재생'}});
+   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:394,manual:true,ack:almondAck,status:'Canva 직접 재생'}});
   }
   assert.equal(u.searchParams.get('session'),session);
   if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
