@@ -24,7 +24,7 @@ internal sealed class BookReader : Form {
  readonly Timer placement=new Timer();
  readonly IntPtr owner;
  readonly int ownerPid;
- bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls;
+ bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls, embedWrapperPending;
  long commandSeq;
  bool immersiveApplied;
  Rectangle lastSlot;
@@ -149,9 +149,13 @@ internal sealed class BookReader : Form {
    core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
-   core.NavigationStarting+=(s,e)=>{if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal)))e.Cancel=true;};
+   core.NavigationStarting+=(s,e)=>{
+     // Permit the internally generated about:blank wrapper once, but not later navigation to arbitrary pages.
+     if(interactive&&embedWrapperPending&&String.Equals(e.Uri,"about:blank",StringComparison.OrdinalIgnoreCase)){embedWrapperPending=false;return;}
+     if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal)))e.Cancel=true;
+    };
    core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");};
-   if(interactive)core.NavigateToString(AlmondEmbedHtml);
+   if(interactive){embedWrapperPending=true;core.NavigateToString(AlmondEmbedHtml);}
    else if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
    else core.Navigate(url);
    timer.Start();
