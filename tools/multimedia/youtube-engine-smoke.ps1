@@ -116,10 +116,18 @@ server.serve_forever()
  $fixtureProcess=[Diagnostics.Process]::Start($fixtureInfo)
  try{
   $deadline=[DateTime]::UtcNow.AddSeconds(15)
-  while(!(Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $deadline -and !$fixtureProcess.HasExited){Start-Sleep -Milliseconds 100}
-  if(!(Test-Path -LiteralPath $ready)){throw 'fixture startup failed'}
-  $portText=(Get-Content -LiteralPath $ready -Raw).Trim()
-  if($portText -notmatch '^[0-9]{1,5}$' -or [int]$portText -lt 1 -or [int]$portText -gt 65535){throw 'invalid fixture port'}
+  $portText=''
+  while([DateTime]::UtcNow -lt $deadline -and !$fixtureProcess.HasExited){
+   if(Test-Path -LiteralPath $ready -PathType Leaf){
+    $rawPort=Get-Content -LiteralPath $ready -Raw -ErrorAction SilentlyContinue
+    if(-not [string]::IsNullOrWhiteSpace($rawPort)){
+     $portText=$rawPort.Trim()
+     if($portText -match '^[0-9]{1,5}$' -and [int]$portText -ge 1 -and [int]$portText -le 65535){break}
+    }
+   }
+   Start-Sleep -Milliseconds 100
+  }
+  if($portText -notmatch '^[0-9]{1,5}$' -or [int]$portText -lt 1 -or [int]$portText -gt 65535){throw 'fixture startup or port readiness failed'}
   $download=Join-Path $Root 'downloaded.mp4';$titlePath=Join-Path $Root 'title.json'
   $null=Invoke-Hidden 'yt-dlp.exe' @('--ignore-config','--no-playlist','--no-cache-dir','--no-progress','--proxy','','--ffmpeg-location',$bin,'--no-js-runtimes','--js-runtimes',('deno:'+(Join-Path $bin 'deno.exe')),'--print-to-file','after_move:%(title)j',$titlePath,'--no-simulate','-o',$download,'--',("http://127.0.0.1:"+$portText+"/test.mp4"))
   if(!(Test-Path -LiteralPath $download -PathType Leaf) -or (Get-FileHash -LiteralPath $download).Hash -ne (Get-FileHash -LiteralPath $merged).Hash){throw 'yt-dlp downloaded bytes differ'}

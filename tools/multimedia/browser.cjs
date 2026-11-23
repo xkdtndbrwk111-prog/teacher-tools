@@ -204,15 +204,27 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   localStorage.setItem('tt-books-v1:catalog',JSON.stringify([{title:'Native test book',url:'https://www.canva.com/design/TEST_NATIVE/ABC/view?embed',pages:379}]));
   localStorage.setItem('tt-books-v1:mark:TEST_NATIVE',JSON.stringify({page:5,at:Date.now()}));
  });
- await page.context().route('https://canva.link/**',route=>route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><html><body>Mock click-to-reveal Canva presentation</body></html>'}));
- let nativeCalls=[],session='a'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[];
+ // Native WebView2 loads the shortlink itself. Browser regression must never open a popup or blocked iframe.
+ let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7;
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
+   if(a.interactive){
+    assert.equal(a.id,'DAHbOZ_XOJI');
+    assert.equal(a.url,'https://canva.link/9qxk3zuhh93ts2s');
+    assert.equal(a.saved,7);assert.equal(a.layout.visible,1);assert.equal(a.pages,379);
+    return route.fulfill({json:{ok:true,session:almondSession}});
+   }
    assert.equal(a.id,'TEST_NATIVE');assert.equal(a.start,5);assert.equal(a.saved,5);assert.equal(a.layout.visible,1);assert.equal(a.pages,phase===0?379:381);assert.match(a.url,/TEST_NATIVE/);
    if(failOpen){failOpen=false;return route.fulfill({status:409,json:{error:'native unavailable'}})}
    return route.fulfill({json:{ok:true,session}});
+  }
+  if(u.searchParams.get('session')===almondSession){
+   if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
+   const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
+   if(a.command?.kind==='manual'){almondAck=a.command.seq;almondPage=a.command.page;}
+   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:379,manual:true,ack:almondAck,status:'Canva 직접 재생'}});
   }
   assert.equal(u.searchParams.get('session'),session);
   if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
@@ -236,35 +248,32 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   console.error('Book entry diagnostics',await dlg.evaluate(d=>({open:d.open,heading:d.querySelector('h2')?.textContent,tiles:[...d.querySelectorAll('[data-media-tool]')].map(x=>({key:x.dataset.mediaTool,text:x.textContent,hidden:x.hidden,inert:x.inert}))})));
   throw error;
  }
- // Almond opens its direct Canva link as a top-level page; no blocked iframe or extra footer controls.
+ // Almond must create a native top-level WebView2 window owned by the board, not a browser popup or iframe.
  const almond=dlg.locator('[data-book-id="DAHbOZ_XOJI"]');
- const almondOpened=page.waitForEvent('popup');
+ let popups=0;page.on('popup',()=>popups++);
  await almond.getByRole('button',{name:'7쪽 이어 읽기',exact:true}).click();
- const almondWindow=await almondOpened;
- await almondWindow.waitForURL('https://canva.link/**');
- assert.equal(new URL(almondWindow.url()).hostname,'canva.link');
- await almondWindow.close();
- assert.equal(await dlg.locator('iframe').count(),0,'Almond must not render an iframe refused by Canva');
- assert.equal(await dlg.locator('.mm-stage').isVisible(),false,'separate Canva browser must not leave a blocked viewer');
- assert.equal(await dlg.locator('#ttMediaStatus').isVisible(),false,'minimal Almond bar hides instructional status');
+ await page.waitForFunction(()=>document.querySelector('#ttMediaDialog')?.classList.contains('mm-book-interactive'));
+ await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-slot')?.getBoundingClientRect().width>500);
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')||'null')?.page===7);
+ await page.waitForTimeout(500);
+ assert.equal(popups,0,'Almond must not open external browser popup');
+ assert.equal(await dlg.locator('iframe').count(),0,'no blocked Canva iframe');
+ assert.equal(await dlg.locator('.mm-stage').isVisible(),true,'native reader requires a visible placement slot');
+ assert.equal(await dlg.locator('#ttMediaStatus').isVisible(),false,'minimal book footer hides status');
  assert.equal(await dlg.locator('.mm-foot .mm-footer-title').innerText(),'아몬드');
  assert.equal(await dlg.locator('.mm-foot .mm-actions input').count(),1);
- assert.equal(await dlg.locator('.mm-foot .mm-actions button').count(),0,'no list, open, bookmark or retry buttons');
+ assert.equal(await dlg.locator('.mm-foot .mm-actions button').count(),0);
  assert.equal(await dlg.locator('.mm-foot .mm-volume').isVisible(),true);
  assert.equal(await dlg.locator('#ttMediaFull').isVisible(),true);
  assert.equal(await dlg.locator('#ttMediaBottomClose').isVisible(),true);
- assert.equal(nativeCalls.length,0,'Almond must never request native iframe reader');
+ assert.ok(nativeCalls.some(x=>x.endsWith('/open')),'Almond must start owned native host');
  await dlg.getByRole('spinbutton',{name:'현재 페이지 (직접 입력)'}).fill('13');
  await dlg.getByRole('spinbutton',{name:'현재 페이지 (직접 입력)'}).press('Tab');
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),13,'manual page edit saves bookmark automatically');
- const reopen=page.waitForEvent('popup');
- await dlg.locator('.mm-footer-title a').click();
- const reopened=await reopen;
- await reopened.waitForURL('https://canva.link/**');
- assert.equal(new URL(reopened.url()).hostname,'canva.link');
- await reopened.close();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===13);
+ await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-page')?.value==='13');
+ await page.waitForTimeout(500);assert.equal(almondPage,13,'manual page update reaches native session');
  await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
- assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'Almond must not swallow keyboard arrows');
+ assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'Canva owns interactive arrow keys');
  await page.keyboard.press('Escape');
  await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
  await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
@@ -300,8 +309,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),13);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:TEST_NATIVE')).page),4);
- await page.context().unroute('https://canva.link/**');
- console.log('PASS Almond top-level Canva popup, minimal five-item footer, bookmark page autosave, no refused iframe, native other book unaffected, fullscreen Escape, reload');
+ console.log('PASS Almond owned native top-level WebView2, no popups/iframe, minimal five-item footer, bookmark command, native other book regression, fullscreen Escape');
 
 // Timetable: the rendered one-day table uses all available space, preserving lunch and inner gaps.
 // Exercise the real renderer, including the compact layout, and restore the weekly view.

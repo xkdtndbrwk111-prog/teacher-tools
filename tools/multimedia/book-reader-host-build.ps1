@@ -31,6 +31,17 @@ foreach($target in @(1,3,5)){
  $state=Get-Content -Raw (Join-Path $session 'state.json') | ConvertFrom-Json
  if($state.saved -ne $target -or $state.page -ne $target -or !$state.closed){throw "Invalid native final state"}
 }
+# Native interactive mode: do not inject the auto-page reader or Canva navigation overlay.
+# The approved shortlink is a top-level navigation in production, with a local deterministic fixture.
+$interactive=Join-Path $root 'fixture-interactive'
+New-Item -ItemType Directory -Force $interactive | Out-Null
+[IO.File]::WriteAllText((Join-Path $interactive 'request.json'),(ConvertTo-Json -Compress @{url='https://canva.link/9qxk3zuhh93ts2s';title='Almond';interactive=1;pages=379;start=7;saved=7}),[Text.UTF8Encoding]::new($false))
+& "$out\BookReader.exe" --self-test $interactive
+if($LASTEXITCODE -ne 0){throw 'Native interactive Canva fixture failed'}
+$interactiveState=Get-Content -Raw (Join-Path $interactive 'state.json') | ConvertFrom-Json
+if($interactiveState.saved -ne 7 -or $interactiveState.page -ne 7 -or !$interactiveState.closed -or $interactiveState.cleanControls){throw 'Interactive fixture unexpectedly sought or overlaid Canva navigation'}
+Write-Host 'PASS top-level interactive Canva fixture without page overlay'
+
 # Regression: a Canva book grows after registration (declared 5, live slider 6).
 $growing=Join-Path $root 'fixture-growing-total'
 New-Item -ItemType Directory -Force $growing | Out-Null
