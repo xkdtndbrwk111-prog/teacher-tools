@@ -241,6 +241,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  const almondOpened=page.waitForEvent('popup');
  await almond.getByRole('button',{name:'7쪽 이어 읽기',exact:true}).click();
  const almondWindow=await almondOpened;
+ await almondWindow.waitForURL('https://canva.link/**');
  assert.equal(new URL(almondWindow.url()).hostname,'canva.link');
  await almondWindow.close();
  assert.equal(await dlg.locator('iframe').count(),0,'Almond must not render an iframe refused by Canva');
@@ -259,6 +260,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  const reopen=page.waitForEvent('popup');
  await dlg.locator('.mm-footer-title a').click();
  const reopened=await reopen;
+ await reopened.waitForURL('https://canva.link/**');
  assert.equal(new URL(reopened.url()).hostname,'canva.link');
  await reopened.close();
  await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
