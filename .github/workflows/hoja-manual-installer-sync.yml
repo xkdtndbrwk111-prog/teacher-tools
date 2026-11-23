@@ -1,0 +1,74 @@
+name: HOJA Board manual installer sync from signed runtime
+on:
+  push:
+    branches: [main]
+    paths:
+      - stable/runtime-v1/latest.json
+      - tools/manual-installer/**
+      - .github/workflows/hoja-manual-installer-sync.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+concurrency:
+  group: hoja-manual-installer-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Confirm signed feed and build exactly matching installer
+        run: |
+          set -euo pipefail
+          python3 tools/manual-installer/publish.py
+          python3 tools/manual-installer/publish.py
+          python3 - <<'PY'
+          import json,hashlib,pathlib,zipfile,urllib.parse
+          root=pathlib.Path('.')
+          m=json.loads((root/'hoja-board/release.json').read_text())
+          assert m['status']=='ready' and m['channel']=='stable'
+          fn='호자보드_'+m['version']+'_설치파일.zip'
+          p=root/'hoja-board/downloads'/fn
+          assert p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==m['sha256']
+          assert urllib.parse.unquote(m['url']).endswith('/hoja-board/downloads/'+fn)
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              assert set(z.namelist())=={'호자보드 설치.cmd','INSTALL_HOJA_BOARD.ps1','설치가 안되면 열어보세요.txt'}
+              s=z.read('INSTALL_HOJA_BOARD.ps1').decode('utf-8-sig')
+              assert "$Version = '"+m['version']+"'" in s
+              assert m['signedManifestSha256'] in s
+              assert 'Update-HojaShortcut' in s
+          print('SIGNED MANUAL PACKAGE CHECK PASS',m['version'],fn,m['sha256'])
+          PY
+      - name: Publish installer ZIP and webpage manifest in ONE commit
+        id: commit
+        run: |
+          set -euo pipefail
+          git add -- hoja-board/release.json hoja-board/downloads
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "release(hoja-board): sync manual installer to signed R8 auto-update"
+            git fetch origin main
+            git rebase origin/main
+            # A newer signed manifest published during this run must win.
+            if ! git show origin/main:stable/runtime-v1/latest.json | cmp -s stable/runtime-v1/latest.json -; then
+              echo "Signed feed changed during publisher run; refusing stale installer" >&2
+              exit 1
+            fi
+            git push origin HEAD:refs/heads/main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Request GitHub Pages rebuild for a bot-created commit
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${{ github.repository }}/pages/builds" --silent
+          echo "Pages branch build requested"
