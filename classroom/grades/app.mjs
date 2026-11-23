@@ -375,7 +375,28 @@ function setAssessMode(mode){
 }
 document.querySelectorAll('[data-assess-mode]').forEach(b=>b.onclick=()=>setAssessMode(b.dataset.assessMode));
 function spreadsheetColumnName(index){let value=index+1,result='';while(value){value--;result=String.fromCharCode(65+value%26)+result;value=Math.floor(value/26);}return result;}
+// An external roster/trait update can rebuild the sheet while the teacher is typing.
+ // Identify the cell by immutable IDs, not by its DOM node or visible row number.
+function captureGradeCellFocus(table){
+ const input=document.activeElement;
+ if(page!=='grades'||!input?.classList?.contains('grade-input')||!table.contains(input))return null;
+ return {
+  membershipId:input.dataset.membership,assessmentId:input.dataset.assessment,
+  selection:input instanceof HTMLInputElement&&input.selectionStart!==null
+   ?{start:input.selectionStart,end:input.selectionEnd,direction:input.selectionDirection}:null
+ };
+}
+function restoreGradeCellFocus(table,previous){
+ if(!previous||page!=='grades')return;
+ const input=table.querySelector(`.grade-input[data-membership="${CSS.escape(previous.membershipId)}"][data-assessment="${CSS.escape(previous.assessmentId)}"]`);
+ if(!input)return; // Class, student, or assessment really changed.
+ input.focus({preventScroll:true});
+ if(previous.selection&&input instanceof HTMLInputElement){
+  input.setSelectionRange(previous.selection.start,previous.selection.end,previous.selection.direction||'none');
+ }
+}
 function renderGrades(){
+ const focusedGradeCell=captureGradeCellFocus($('grade-rows'));
  const pick=$('grade-assessment'),visibleAssessments=gradeSemesterAssessments();
  pick.innerHTML=visibleAssessments.length?visibleAssessments.map(a=>`<option value="${h(a.id)}" ${a.id===selectedAssessment?'selected':''}>${h(a.subject)} · ${h(a.title)}</option>`).join(''):'<option value="">이 학급의 평가 없음</option>';
  const subjectPick=$('grade-subject'),subjects=[...new Set(visibleAssessments.map(a=>a.subject))];
@@ -464,6 +485,7 @@ function renderGrades(){
   };
   input.closest('.sheet-entry-cell').addEventListener('click',()=>{if(document.activeElement!==input){input.focus();if(input instanceof HTMLInputElement)input.select();}});
  });
+ restoreGradeCellFocus(table,focusedGradeCell);
 }
 // The browser scrolls a focused cell into the table's box but not clear of the sticky header, so the cell can stay hidden under it.
 function revealSheetCell(input){
@@ -973,11 +995,17 @@ document.addEventListener('click',event=>{
 const stage03Startup=loadYear(year);
 const stage03BridgeStatus=()=>{let el=document.getElementById('tt-grade-bridge-status');if(!el){el=document.createElement('div');el.id='tt-grade-bridge-status';el.className='tt-grade-bridge-status';document.getElementById('app')?.prepend(el)}return el;};
 function stage03Report(message,error=false){const el=stage03BridgeStatus();if(el){el.textContent=message;el.classList.toggle('is-error',error)}window.parent.postMessage({type:'TT_STAGE03_SYNC_RESULT',installId:stage03InstallId,message,error},location.origin);}
-async function stage03Flush(){
+async function stage03Flush({keepGradeFocus=false}={}){
  clearTimeout(timer);timer=null;
  if(readOnlyYear)return;
- // Blurring invokes ordinary input commit/change before final draft write.
- const el=document.activeElement;if(el&&el!==document.body)el.blur();
+ // A navigation flush may blur. A background roster flush must commit without
+ // stealing focus, otherwise the next Arrow/Tab/Enter has no active cell.
+ const el=document.activeElement;
+ if(el&&el!==document.body){
+  if(keepGradeFocus&&el.classList?.contains('grade-input')&&$('grade-rows').contains(el))
+   el.dispatchEvent(new Event('change',{bubbles:true}));
+  else el.blur();
+ }
  await stage03PendingDraft;
  validateWorkspace(m);
  await writeDraft(draftKey(),structuredClone(m));
@@ -994,9 +1022,10 @@ async function stage03ApplyHost(message){
  }
  const result=projectRoster(m,message);
  void fillYearChoices();
- if(result.changed){m=result.workspace;markChanged();await stage03Flush();}
+ if(result.changed){m=result.workspace;markChanged();await stage03Flush({keepGradeFocus:true});}
  else m=result.workspace;
  const nextClass=m.classes.find(c=>c.stage03SourceId===message.sourceInstanceId)?.id||null;
+ const classChanged=nextClass!==lastAppliedHostClassId;
  if(nextClass!==lastAppliedHostClassId){
   selectedAssessment=null;selectedGradeSubject=undefined;filter='';$('student-search').value='';
   // Reset draft checkbox defaults on a host class change; never preselect the previous class.
@@ -1006,7 +1035,10 @@ async function stage03ApplyHost(message){
  }
  lastAppliedHostClassId=nextClass;
  selectedClass=nextClass;selectedGradeClass=nextClass||'all';
- render();
+ // The host also echoes the roster after linked-trait writes and window focus.
+ // With unchanged members and class, rebuilding every input drops keyboard focus.
+ if(result.changed||classChanged)render();
+ else if(page==='traits')renderTraitLink();
  const v=result.stats;
  const excluded=inactiveMembers(m,selectedClass).length;
  const warning=excluded?` · 명단에서 제외된 학생 ${excluded}명의 성적 보존 중 (② 학급 · 학생에서 다시 연결)`:'';
