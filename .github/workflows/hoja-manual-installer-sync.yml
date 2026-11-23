@@ -1,5 +1,11 @@
 name: HOJA Board manual installer sync from signed runtime
 on:
+  pull_request:
+    paths:
+      - stable/runtime-v1/latest.json
+      - tools/manual-installer/**
+      - hoja-board/index.html
+      - .github/workflows/hoja-manual-installer-sync.yml
   push:
     branches: [main]
     paths:
@@ -46,6 +52,7 @@ jobs:
           PY
       - name: Publish installer ZIP and webpage manifest in ONE commit
         id: commit
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git add -- hoja-board/release.json hoja-board/downloads
