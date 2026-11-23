@@ -34,7 +34,7 @@ footer{margin-top:30px;font-size:13px;color:#71819a}
 <h2 id="download-title">수동 설치 파일</h2>
 <p id="version" class="version">설치 파일 배포 상태 확인 중…</p>
 <p id="status" class="state" role="status" aria-live="polite">공식 설치 파일을 확인하고 있습니다.</p>
-<a id="download" class="btn" hidden rel="noopener noreferrer">Windows 설치 ZIP 내려받기</a>
+<a id="download" class="btn" hidden rel="noopener noreferrer">호자보드 설치파일 내려받기</a>
 <p id="checksum" class="info" hidden></p>
 <p class="info">수동 설치 파일은 자동 업데이트와 동일한 검증된 버전으로 제공됩니다. 프로그램 소스 ZIP이나 이전 시험판은 정식 설치 파일이 아닙니다.</p>
 </section>
@@ -45,7 +45,7 @@ footer{margin-top:30px;font-size:13px;color:#71819a}
 <li>압축 파일을 마우스 오른쪽 버튼으로 눌러 <strong>모두 압축 풀기</strong>를 선택합니다.</li>
 <li>압축을 푼 폴더의 <strong>호자보드 설치.cmd</strong>를 실행합니다.</li>
 </ol>
-<p class="info">이미 설치된 호자보드는 업데이트 기능을 이용할 수 있습니다. 단, 구형 1.65.5는 이전 업데이트 채널을 사용하므로 최신 설치판으로 한 번 전환해야 합니다. 사용자 설정과 학생 데이터를 지우는 설치는 지원하지 않습니다.</p>
+<p class="info">압축 해제 후 <strong>설치가 안되면 열어보세요.txt</strong>에 적힌 보안 차단 해제 방법을 참고하세요. 설치할 때마다 바탕화면의 <strong>호자보드</strong> 바로가기 하나를 최신 실행기로 갱신합니다. 이미 설치된 호자보드는 자동 업데이트를 사용할 수 있습니다. 구형 1.65.5는 최신 설치판으로 한 번 전환해야 합니다.</p>
 </section>
 </main>
 <footer>배포 정책: 자동 업데이트와 수동 설치판은 같은 릴리스에서 함께 게시합니다.</footer>
@@ -63,12 +63,16 @@ try{
   if(trusted){
     url=new URL(r.url);
     const pieces=url.pathname.split('/');
-    const trustedUrl=url.protocol==='https:'&&url.hostname==='github.com'&&!url.username&&!url.password&&pieces.length===7&&pieces[1]==='xkdtndbrwk111-prog'&&pieces[2]==='teacher-tools'&&pieces[3]==='releases'&&pieces[4]==='download'&&pieces[5].endsWith(r.version)&&pieces[6].toLowerCase().endsWith('.zip');
-    if(!trustedUrl)url=null;
+    const githubRelease=url.protocol==='https:'&&url.hostname==='github.com'&&!url.username&&!url.password&&pieces.length===7&&pieces[1]==='xkdtndbrwk111-prog'&&pieces[2]==='teacher-tools'&&pieces[3]==='releases'&&pieces[4]==='download'&&pieces[5]==='v'+r.version&&pieces[6].toLowerCase().endsWith('.zip');
+    // A versioned package hosted beside this page is generated from the SAME
+    // signed manifest as auto-update. Require the exact versioned file path.
+    const localAsset=new URL('./downloads/'+encodeURIComponent('호자보드_'+r.version+'_설치파일.zip'),location.href);
+    const sameSite=url.protocol==='https:'&&url.origin===location.origin&&!url.username&&!url.password&&url.pathname===localAsset.pathname;
+    if(!githubRelease&&!sameSite)url=null;
   }
   if(url){
     version.textContent='배포 버전: '+r.version;
-    link.href=url.href;link.hidden=false;
+    link.href=url.href;link.textContent='호자보드 '+r.version+' 설치파일 내려받기';link.hidden=false;
     checksum.textContent='SHA-256: '+r.sha256;checksum.hidden=false;
     msg.textContent='공식 수동 설치 파일이 준비됐습니다.';
   }else{
