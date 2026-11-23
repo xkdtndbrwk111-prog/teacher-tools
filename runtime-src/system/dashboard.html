@@ -10986,11 +10986,11 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  // Book reader is independent of meeting sequence, YouTube, and meeting settings.
  const BOOKS_KEY='tt-books-v1:catalog',MARK_PREFIX='tt-books-v1:mark:',PAGE_PREFIX='tt-books-v1:total:';
  // Almond uses the teacher's on-click presentation link. Keep the stable book id to preserve saved bookmarks.
- const firstBook=Object.freeze({id:'DAHbOZ_XOJI',title:'아몬드',url:'https://canva.link/9qxk3zuhh93ts2s',pages:379,interactive:true});
+ const firstBook=Object.freeze({id:'DAHbOZ_XOJI',title:'아몬드',url:'https://canva.link/9qxk3zuhh93ts2s',pages:394,interactive:true});
  function cleanBook(raw){const url=canva(raw?.url||''),m=url.match(/^https:\/\/(?:www\.)?canva\.com\/design\/([A-Za-z0-9_-]+)\/[A-Za-z0-9_-]+\/view\?embed$/);const title=String(raw?.title||'').trim().slice(0,80),pages=Number(raw?.pages);return m&&title&&Number.isInteger(pages)&&pages>=1&&pages<=4095?{id:m[1],title,url,pages}:null}
  function catalog(){let a=[];try{a=JSON.parse(localStorage.getItem(BOOKS_KEY)||'[]')}catch{}if(!Array.isArray(a))a=[];const used=new Set([firstBook.id]);return [firstBook,...a.map(cleanBook).filter(x=>{if(!x||used.has(x.id))return false;used.add(x.id);return true}).slice(0,98)]}
  // Canva presentations may grow after registration. Never overwrite the teacher's catalog or older bookmarks.
- function bookPages(book){try{const n=Number(localStorage.getItem(PAGE_PREFIX+book.id));if(Number.isInteger(n)&&n>=1&&n<=4095)return n}catch{}return book.pages}
+ function bookPages(book){try{const n=Number(localStorage.getItem(PAGE_PREFIX+book.id));if(Number.isInteger(n)&&n>=1&&n<=4095)return Math.max(n,book.pages)}catch{}return book.pages}
  function rememberBookPages(book,n){if(!Number.isInteger(n)||n<1||n>4095)return;if(n!==bookPages(book)){try{localStorage.setItem(PAGE_PREFIX+book.id,String(n))}catch{}}}
  function bookMark(book){try{const x=JSON.parse(localStorage.getItem(MARK_PREFIX+book.id)||'null');return x&&Number.isInteger(x.page)&&x.page>=1&&x.page<=bookPages(book)?x.page:null}catch{return null}}
  function saveBookMark(book,p){if(!Number.isInteger(p)||p<1||p>bookPages(book))throw Error('페이지 번호를 확인하세요.');localStorage.setItem(MARK_PREFIX+book.id,JSON.stringify({page:p,at:Date.now()}));}
