@@ -38,8 +38,8 @@ await page.route('**/api/youtube/**',async route=>{
  if(p.endsWith('/play-stop')){assert.deepEqual(data,{session:playSession});return route.fulfill({json:{ok:true}})}
  throw Error('unexpected downloader endpoint '+p)
 });
-await page.evaluate(()=>{window.ttPodo.requestTeacherAccess=async()=>window.__downloadFixtureAuth===true;window.__downloadFixtureAuth=false});
-let renameValue='Morning music';const dlConfirm=async d=>{if(d.type()==='prompt')await d.accept(renameValue);else if(d.type()==='confirm'&&d.message().includes('다운로드 권한'))await d.accept();else await d.dismiss()};page.on('dialog',dlConfirm);
+await page.evaluate(()=>{window.__downloadPinCalls=0;window.ttPodo.requestTeacherAccess=async()=>{window.__downloadPinCalls++;return false}});
+let renameValue='Morning music',unexpectedDialogs=[];const dlConfirm=async d=>{if(d.type()==='prompt')await d.accept(renameValue);else{unexpectedDialogs.push(d.type()+':'+d.message());await d.dismiss()}};page.on('dialog',dlConfirm);
 
 await dlg.locator('[data-media-tool="youtube-downloader"]').click();
 await dlg.getByRole('heading',{name:'유튜브 다운로더',exact:true}).waitFor();
@@ -61,10 +61,6 @@ for(const [url,expected] of [['https://www.youtube.com/watch?v=sVoh_DAt9is',true
 assert.equal(dlCalls.length,0);
 await dlURL.fill('https://youtu.be/sVoh_DAt9is');
 await dlg.getByLabel('최대 화질',{exact:true}).selectOption('720');
-await dlg.getByRole('button',{name:'다운로드',exact:true}).click();
-await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog .mm-book-form button[type=button]').disabled);
-assert.equal(dlCalls.length,0,'denied teacher access must not send a start');
-await page.evaluate(()=>{window.__downloadFixtureAuth=true});
 await dlg.getByRole('button',{name:'다운로드',exact:true}).click();
 await dlg.locator('[data-youtube-state]').getByText('영상 다운로드 중 · 45%',{exact:true}).waitFor();
 assert.equal(dlCalls.length,1);
@@ -102,8 +98,7 @@ assert.equal(direct,beforeDownloader);assert.equal(await dlg.locator('iframe,vid
 await page.route('**/'+playSession+'/video.mp4',r=>r.fulfill({status:200,contentType:'video/mp4',body:Buffer.from('invalid synthetic video fixture')}));
 const playButton=dlg.locator('[data-youtube-library]').getByRole('button',{name:'재생',exact:true});
 const playHandle=await playButton.elementHandle();await page.waitForTimeout(1200);assert.ok(await playHandle.evaluate(e=>e.isConnected),'unchanged library rows must survive polling');
-await page.evaluate(()=>{window.__downloadFixtureAuth=false});await playButton.click();await page.waitForFunction(()=>!document.querySelector('[data-youtube-library] button').disabled);assert.ok(!dlCalls.some(x=>x.p.endsWith('/play-start')),'denied playback must not launch server');
-await page.evaluate(()=>{window.__downloadFixtureAuth=true});await playButton.click();
+await playButton.click();
 await dlg.locator('#ttMediaFooterTitle').filter({hasText:'저장 영상 재생'}).waitFor();
 assert.equal(await dlg.locator('#ttMediaHeading').isVisible(),false,'playing mode intentionally hides header');
 assert.ok(await dlg.evaluate(d=>d.classList.contains('mm-playing')));
@@ -145,7 +140,9 @@ await dlg.getByText('이름 변경 영상',{exact:true}).waitFor({state:'hidden'
 await dlg.getByRole('button',{name:'← 멀티미디어',exact:true}).click();
 console.log('PASS reference-only personal videos, distinct style, SVG icons, local handle registration, playback, persistent name, missing source hidden and library shortcut; flat file add rename and delete');
 page.off('dialog',dlConfirm);await page.unroute('**/api/youtube/**');
-console.log('PASS downloader tile, valid and invalid URLs, teacher denial, start, progress, cancel, library and return');
+assert.deepEqual(unexpectedDialogs,[],'downloader should not open an OS-style permission confirm');
+assert.equal(await page.evaluate(()=>window.__downloadPinCalls),0,'downloader actions and downloaded playback must not request the teacher PIN');
+console.log('PASS downloader tile, valid and invalid URLs, PIN-free start/cancel/library/playback, progress and return');
 async function checkFlip(reverse=false){
  const result=await page.evaluate(async reverse=>{
   const d=document.querySelector('#ttMediaDialog'),stage=d.querySelector('.mm-stage'),card=d.querySelector('.mm-card'),inner=card.querySelector('.mm-card-inner');
@@ -236,6 +233,8 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  }
  await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).waitFor();
   assert.equal(await dlg.locator('.mm-book-slot iframe').count(),1,'native failure must open the Canva web fallback');
+  assert.equal(await dlg.locator('.mm-book-slot iframe').getAttribute('tabindex'),'0','web fallback must be keyboard focusable');
+  assert.match(await dlg.locator('#ttMediaStatus').textContent(),/좌우 화살표나 방향키/,'web fallback must explain native Canva navigation');
   assert.equal(await dlg.getByRole('button',{name:'현재 쪽 북마크',exact:true}).count(),1,'manual bookmark is available in fallback only');
   await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).click();
   await dlg.getByText('4 / 381쪽 · 저장됨',{exact:true}).waitFor();
