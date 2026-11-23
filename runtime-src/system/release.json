@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "version": "1.66.29",
-  "release": "2026-11-23-V1.66.29-STABLE-PILOT",
+  "version": "1.66.30",
+  "release": "2026-11-23-V1.66.30-STABLE-PILOT",
   "channel": "stable",
   "updateMode": "auto-pilot",
   "audience": "owner-field-test",
