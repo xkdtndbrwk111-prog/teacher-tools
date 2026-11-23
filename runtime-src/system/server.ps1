@@ -827,7 +827,9 @@ function Open-TTBookHost([string]$encoded) {
  if($encoded.Length -gt 4096){throw 'size'}
  $x=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)))
  $url=[string]$x.url;$id=[string]$x.id;$title=[string]$x.title
- if($url.Length -gt 500 -or $url -cnotmatch '^https://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed$' -or $Matches[1] -cne $id -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
+ $interactive=($x.interactive -eq $true)
+ $validBook=if($interactive){$id -ceq 'DAHbOZ_XOJI' -and $url -ceq 'https://canva.link/9qxk3zuhh93ts2s'}else{$url -cmatch '^https://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed$' -and $Matches[1] -ceq $id}
+ if($url.Length -gt 500 -or !$validBook -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
  $old=$script:ttBookSession
  if($old){
   if(!$old.process.HasExited){throw 'book already open'}
@@ -858,7 +860,7 @@ function Open-TTBookHost([string]$encoded) {
   $mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))
   if(!$mode.window -or !$mode.pid -or $mode.mode -notin @('window','wallpaper') -or $mode.release -cne $TTRelease -or !(@(Get-TTProfileBrowserProcesses | Where-Object {$_.ProcessId -eq $mode.pid}).Count)){throw 'board owner unavailable'}
   $layout=Get-TTBookLayout $x.layout
-  $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;owner=[long]$mode.window;ownerPid=[int]$mode.pid}
+  $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;interactive=[int]$interactive;owner=[long]$mode.window;ownerPid=[int]$mode.pid}
   Write-TTBookJson (Join-Path $dir 'request.json') $config
   Write-TTBookJson (Join-Path $dir 'layout.json') $layout
   [IO.File]::WriteAllText((Join-Path $dir 'lease'),'1')
