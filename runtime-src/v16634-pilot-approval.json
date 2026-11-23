@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "version": "1.66.34",
+  "previous_version": "1.66.33",
+  "previous_payload_sha": "ad2164eb3148868fbdaea01f9c7ede3adb423a93e87827f7d1621c2bd25af09d",
+  "source_sha": "70df87a6e212c97d4b32d245d6fd6a23487575a6",
+  "review_sha": "030be120932caf5d92b1180b798c366b65ecff33",
+  "artifact_id": 14874726948,
+  "archive_sha": "5e1dbe8635b0b754c4b4974dcaf768e494cf17bdd48528c4901587c0a16983a5",
+  "payload_sha": "087f34201283a89a294ca92ed8fcd0b12cb1db92cf7871953560be98972d4fde",
+  "main_runs": {
+    "Tournament host bridge review": 45292408020,
+    "R8 source-driven build": 45292408307,
+    "V1.66.8 education activities browser regression": 45292408125,
+    "V1.66.6 browser text contrast": 45292408002,
+    "V1.66.9 common badge browser regression": 45292408079,
+    "QR square widget and integer fit checks": 45292408023,
+    "R8 native R7 integration checks": 45292408073,
+    "V1.66.7 theme font shadow and icon regressions": 45292408115,
+    "R8 native Windows verification": 45292408080
+  },
+  "review_runs": {
+    "QR square widget and integer fit checks": 45292108054,
+    "Tournament host bridge review": 45292108147,
+    "V1.66.7 theme font shadow and icon regressions": 45292108035,
+    "Classroom UI2 home and HUD candidate": 45292108292,
+    "V1.66.6 browser text contrast": 45292108217,
+    "R8 native R7 integration checks": 45292108194,
+    "V1.66.8 education activities browser regression": 45292108134,
+    "V1.66.9 common badge browser regression": 45292108319,
+    "Book reader native host build and fixture": 45292108010,
+    "Multimedia candidate browser review": 45292108272,
+    "Routine integer coin candidate checks": 45292108138,
+    "Daily lesson alert mute checks": 45292108053,
+    "R8 source-driven build": 45292108052,
+    "YouTube engine isolated Windows smoke": 45292108176,
+    "R8 native Windows verification": 45292108055
+  },
+  "authorization": "Owner explicitly requested test deployment of Almond 394-page direct native Canva WebView2, error-code diagnostics and in-board retry after 15 reviewed CI checks and 9 signed-update source main checks. The 1.66.34 candidate may be signed as an owner-field-test pilot; actual school Windows Canva touch, arrow and login behavior remain unverified.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16634_almond_native_direct_owner_field_test_only"
+}
