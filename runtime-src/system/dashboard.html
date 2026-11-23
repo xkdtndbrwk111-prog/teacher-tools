@@ -11039,7 +11039,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
     const detail=document.createElement('p');
     const errorCode=String(message||'재생기 연결 실패').slice(0,160);
     const diagnoses={'BUNDLE_MISMATCH':'내장 재생기 파일을 확인해야 합니다.','OWNER_NOT_FOUND':'호자보드 창 연결을 확인해야 합니다.','READER_ALREADY_RUNNING':'이전 책읽기 창이 아직 실행 중입니다.','READER_START_ERROR':'Windows 재생기 시작 과정에서 오류가 발생했습니다.','BOOK_URL_INVALID':'등록된 책 주소 또는 페이지 정보가 올바르지 않습니다.'};
-    const match=errorCode.match(/\\b(BUNDLE_MISMATCH|OWNER_NOT_FOUND|READER_ALREADY_RUNNING|READER_START_ERROR|BOOK_URL_INVALID)\\b/);
+    const match=errorCode.match(/\b(BUNDLE_MISMATCH|OWNER_NOT_FOUND|READER_ALREADY_RUNNING|READER_START_ERROR|BOOK_URL_INVALID)\b/);
     detail.textContent=(match?diagnoses[match[1]]+' ('+match[1]+')':errorCode);
     detail.style.cssText='color:#ffcf85;font-size:clamp(14px,1.1vw,22px);margin:12px 0 20px;max-width:90%;text-align:center;word-break:break-word';
     const retry=button('내장 재생기 다시 시도',()=>readBook(book,resume),true);
