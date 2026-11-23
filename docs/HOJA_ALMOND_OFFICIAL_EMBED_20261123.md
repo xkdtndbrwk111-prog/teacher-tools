@@ -17,11 +17,11 @@
 - [x] 코드 변경 범위를 `tools/multimedia/book-reader-host.cs` 및 해당 fixture 설명으로 제한.
 
 ## 검증·배포 체크리스트
-- [ ] GitHub Actions Windows 네이티브 빌드 및 fixture PASS
-- [ ] Windows 멀티미디어 브라우저 회귀 PASS
-- [ ] 새 `asset-book-reader-host.zip` 생성, SHA-256 확인 및 `runtime-src/system/server.ps1`의 정확한 해시 핀 교체
-- [ ] 정본 패키지에 위 ZIP 포함, 서명/업데이트 계보 검증
-- [ ] 버전 증가, 정확한 Windows CI·R8 CI PASS, 승인된 owner-field-test 배포 및 Pages 게시
+- [x] GitHub Actions Windows 네이티브 빌드 및 fixture PASS
+- [x] Windows 멀티미디어 브라우저 회귀 PASS
+- [x] 새 `asset-book-reader-host.zip` 생성, SHA-256 확인 및 `runtime-src/system/server.ps1`의 정확한 해시 핀 교체
+- [x] 정본 패키지에 위 ZIP 포함, 서명/업데이트 계보 검증
+- [x] 버전 증가, 정확한 Windows CI·R8 CI PASS, 승인된 owner-field-test 배포 및 Pages 게시
 - [ ] Windows 학교 PC에서 실제 Canva 임베드 로딩·클릭 순서/애니메이션·좌우키·터치 확인
 - [ ] 전체화면·호자보드 자체 닫기·시스템 음량 확인
 - [ ] 기존 379쪽 수동 페이지 기록/복귀와 외부 도서 회귀 확인
@@ -30,3 +30,12 @@
 자동 fixture는 **임베드 iframe 생성 및 기본 UI 구조**만 검증한다. 제3자 Canva 서비스가 실제 iframe을 허용하는지, 클릭할 때 애니메이션이 원하는 순서로 진행되는지, WebView2에서 키보드/터치가 전달되는지는 Windows 실기기에서 확인하기 전까지 PASS 표시하지 않는다.
 
 이번 후보만으로 서명된 업데이트 피드가 변경되었다고 주장하지 않는다.
+
+## 배포 완료 기록 (현장 기능 검증과 분리)
+- 수정 후보 PR #140 병합: `8fa3a896c28ac7b9ab7ea16b5865316709db2128`
+- 배포 승인 PR #141 병합: `96aa7e7c5d907de0279ec226099f1e14295dabf5`
+- Windows 임베드 fixture PASS: GitHub Actions `45143075956`; 변경 소스 포함 15개 리뷰 CI 및 9개 main CI PASS.
+- 새 책 재생기 ZIP SHA-256: `80f7594fa78b39c6d06100d28e576e3e4e20f89c5501a9707588730be80cb4ad`
+- 서명된 1.66.33 owner-field-test 게시: `45144395324` PASS; `stable/runtime-v1/latest.json`의 페이로드 버전 및 서명 확인.
+- GitHub Pages 배포: `45144568604` PASS.
+- **미검증 유지:** 실제 Windows 학교 PC에서 Canva iframe 렌더링, 클릭 애니메이션, 페이지 조작/키보드/터치, 전체화면·음량·닫기, 수동 북마크 회귀.
