@@ -1,9 +1,11 @@
 {
   "schema": 1,
-  "status": "preparing",
+  "status": "ready",
   "channel": "stable",
-  "version": null,
-  "url": null,
-  "sha256": null,
-  "note": "No verified Windows manual installer ZIP is published yet. Update atomically after approved R8 feed + manual installer release."
+  "version": "1.66.33",
+  "url": "https://xkdtndbrwk111-prog.github.io/teacher-tools/hoja-board/downloads/%ED%98%B8%EC%9E%90%EB%B3%B4%EB%93%9C_1.66.33_%EC%84%A4%EC%B9%98%ED%8C%8C%EC%9D%BC.zip",
+  "sha256": "9f0922958baa8193ac3a96c3f923b733492744f1179f105c00a39792befd9c33",
+  "signedManifestSha256": "ad2164eb3148868fbdaea01f9c7ede3adb423a93e87827f7d1621c2bd25af09d",
+  "feedSnapshotCommit": "52b3e5cd0448523f76f73a5813e52dd597296b3c",
+  "note": "Signed stable runtime; installer generated from the identical R8 auto-update feed."
 }
