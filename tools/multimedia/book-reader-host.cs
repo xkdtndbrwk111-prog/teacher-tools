@@ -17,6 +17,7 @@ internal sealed class BookReader : Form {
  static readonly Regex UrlPattern=new Regex(@"^https://www\.canva\.com/design/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/view\?embed$",RegexOptions.CultureInvariant);
  // Use direct top-level Canva navigation so real touch/click/arrow input reaches the document.
  // The earlier nested iframe was blocked or noninteractive on the field PC.
+ const string AlmondOfficialViewUrl="https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed";
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
  readonly Timer placement=new Timer();
@@ -157,7 +158,7 @@ internal sealed class BookReader : Form {
      Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");
     };
     if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');const step=n=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+n)));for(let b of document.querySelectorAll('button'))b.onclick=()=>step(b.textContent==='next'?1:-1);document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')step(1);if(e.key==='ArrowLeft')step(-1)})</script>");
-    else core.Navigate(url);
+    else core.Navigate(interactive?AlmondOfficialViewUrl:url);
     timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
  }
