@@ -57,11 +57,14 @@ try{
   const response=await fetch('./release.json',{cache:'no-store'});
   if(!response.ok)throw Error('manifest');
   const r=await response.json();
-  const trusted=r&&r.schema===1&&r.status==='ready'&&/^\\d+\\.\\d+\\.\\d+$/.test(r.version)&&/^[a-f0-9]{64}$/.test(r.sha256);
+  const v=String(r?.version||'').split('.');
+  const trusted=r&&r.schema===1&&r.status==='ready'&&v.length===3&&v.every(x=>/^[0-9]+$/.test(x))&&/^[a-f0-9]{64}$/.test(r.sha256);
   let url=null;
   if(trusted){
     url=new URL(r.url);
-    if(url.protocol!=='https:'||url.hostname!=='github.com'||!/^\\/xkdtndbrwk111-prog\\/teacher-tools\\/releases\\/download\\/[^/]+\\/[^/]+\\.zip$/.test(url.pathname)||url.username||url.password)url=null;
+    const pieces=url.pathname.split('/');
+    const trustedUrl=url.protocol==='https:'&&url.hostname==='github.com'&&!url.username&&!url.password&&pieces.length===7&&pieces[1]==='xkdtndbrwk111-prog'&&pieces[2]==='teacher-tools'&&pieces[3]==='releases'&&pieces[4]==='download'&&pieces[5].endsWith(r.version)&&pieces[6].toLowerCase().endsWith('.zip');
+    if(!trustedUrl)url=null;
   }
   if(url){
     version.textContent='배포 버전: '+r.version;
