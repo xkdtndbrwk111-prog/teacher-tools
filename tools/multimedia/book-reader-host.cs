@@ -26,6 +26,7 @@ internal sealed class BookReader : Form {
  Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
+ readonly bool interactive;
  readonly int pages, requested, initialMark, fixtureTotal;
   int actualPages;
  readonly Rectangle screenArea, workingArea;
@@ -38,10 +39,18 @@ internal sealed class BookReader : Form {
  static int Int(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToInt32(v):0;}
  static string Str(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToString(v):"";}
  static bool ValidUrl(string u){return u!=null&&u.Length<=500&&UrlPattern.IsMatch(u);}
+ // Only the approved Canva book may navigate top-level without an iframe.
+ static bool AllowedInteractiveNavigation(string u) {
+  Uri x; if(!Uri.TryCreate(u,UriKind.Absolute,out x)||x.Scheme!=Uri.UriSchemeHttps||x.Port!=443||x.UserInfo.Length!=0)return false;
+  if(x.Host=="canva.link")return x.AbsolutePath=="/9qxk3zuhh93ts2s";
+  return (x.Host=="www.canva.com"||x.Host=="canva.com")&&
+         (x.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal)||
+          x.AbsolutePath=="/login"||x.AbsolutePath=="/signup");
+ }
  static Rectangle Rect(Dictionary<string,object> a,string prefix,Rectangle fallback){try{var r=new Rectangle(Int(a,prefix+"X"),Int(a,prefix+"Y"),Int(a,prefix+"W"),Int(a,prefix+"H"));return r.Width>=400&&r.Height>=300&&r.Width<=16384&&r.Height<=16384?r:fallback;}catch{return fallback;}}
  BookReader(string folder,Dictionary<string,object> config,bool lab){
-  dir=folder;fixture=lab;url=Str(config,"url");title=Str(config,"title");pages=Int(config,"pages");requested=Int(config,"start");initialMark=Int(config,"saved");saved=initialMark;fixtureTotal=fixture&&Int(config,"fixtureTotal")>0?Int(config,"fixtureTotal"):pages;
-  if(!fixture&&!ValidUrl(url)||pages<1||pages>4095||requested<1||requested>pages||initialMark<0||initialMark>pages||title.Length>80)throw new ArgumentException("invalid book request");
+  dir=folder;fixture=lab;url=Str(config,"url");title=Str(config,"title");interactive=Int(config,"interactive")==1;pages=Int(config,"pages");requested=Int(config,"start");initialMark=Int(config,"saved");saved=initialMark;fixtureTotal=fixture&&Int(config,"fixtureTotal")>0?Int(config,"fixtureTotal"):pages;
+  if(!fixture&&!(interactive?url=="https://canva.link/9qxk3zuhh93ts2s":ValidUrl(url))||pages<1||pages>4095||requested<1||requested>pages||initialMark<0||initialMark>pages||title.Length>80)throw new ArgumentException("invalid book request");
   screenArea=Rect(config,"screen",Screen.PrimaryScreen.Bounds);workingArea=Rect(config,"work",Screen.PrimaryScreen.WorkingArea);
   owner=new IntPtr(Convert.ToInt64(config.ContainsKey("owner")?config["owner"]:0));
   ownerPid=Int(config,"ownerPid");
@@ -124,7 +133,7 @@ internal sealed class BookReader : Form {
   string kind=Str(d,"kind");int p=Int(d,"page");
   if(kind=="manual"&&p>=1&&p<=(actualPages>0?actualPages:pages)){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
-  else if((kind=="prev"||kind=="next")&&immersive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
+  else if((kind=="prev"||kind=="next")&&immersive&&!interactive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
   else return;
   commandSeq=seq;Publish(manualMode!=0?"수동 저장됨":"자동 판독 중");
  }
@@ -136,9 +145,10 @@ internal sealed class BookReader : Form {
    core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
-   core.NavigationStarting+=(s,e)=>{if(!fixture&&!String.Equals(e.Uri,url,StringComparison.Ordinal))e.Cancel=true;};
-   core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?"페이지 판독 중":"책 연결 실패");};
-   if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
+   core.NavigationStarting+=(s,e)=>{if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal)))e.Cancel=true;};
+   core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");};
+   if(fixture&&interactive)core.NavigateToString("<!doctype html><main>Native top-level Canva fixture</main>");
+   else if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
    else core.Navigate(url);
    timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
@@ -174,6 +184,14 @@ internal sealed class BookReader : Form {
   try{
    await Command();
    if(!fixture&&!slotVisible)return;
+   if(interactive){
+    // Canva click animations belong to the page, not to our page-seeking overlay.
+    // Its DOM is not a reliable bookmark source; manual page changes are authoritative.
+    detected=saved>0?saved:requested;
+    Publish("Canva 직접 재생 · 페이지 수동 기록");
+    if(fixture){Console.WriteLine("HOST INTERACTIVE FIXTURE PASS");Close();}
+    return;
+   }
    await ApplyImmersive();
    if(seekTarget<0)seekTarget=requested;
    int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
