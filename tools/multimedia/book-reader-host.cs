@@ -210,8 +210,6 @@ internal sealed class BookReader : Form {
     }
     return;
    }
-   await ApplyImmersive();    return;
-   }
    await ApplyImmersive();
    if(seekTarget<0)seekTarget=requested;
    int p=await Read();if(p==0){stable=0;previous=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
