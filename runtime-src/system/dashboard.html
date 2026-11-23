@@ -11009,12 +11009,13 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    iframe.src=book.url;iframe.referrerPolicy='strict-origin-when-cross-origin';
    iframe.setAttribute('allow','autoplay; fullscreen');
    iframe.setAttribute('sandbox','allow-scripts allow-same-origin allow-presentation');
-   iframe.allowFullscreen=true;w.replaceChildren(iframe);
+   iframe.allowFullscreen=true;iframe.tabIndex=0;w.replaceChildren(iframe);
+   iframe.addEventListener('load',()=>{if(epoch===token&&dialog.open)iframe.focus({preventScroll:true})},{once:true});
    const input=document.createElement('input');input.type='number';input.className='mm-book-page';
    input.min='1';input.max=String(bookPages(book));input.step='1';input.value=String(bookMark(book)||1);input.setAttribute('aria-label','현재 책 페이지');
    const save=button('현재 쪽 북마크',()=>{const n=Number(input.value);try{saveBookMark(book,n);status.textContent='웹 재생 모드 · '+n+'쪽 북마크 저장됨 · 자동 저장은 지원하지 않습니다.'}catch{status.textContent='1~'+bookPages(book)+' 사이의 페이지를 입력하세요.'}});
    const direct=button('캔바에서 열기',()=>window.open(book.url,'_blank','noopener,noreferrer'));
-   status.textContent='웹 재생 모드 · '+message+' · 자동 북마크는 지원하지 않습니다. 현재 쪽을 직접 저장할 수 있습니다.';
+   status.textContent='웹 재생 모드 · '+message+' · Canva 화면을 한 번 누른 뒤 좌우 화살표나 방향키로 넘기세요. 자동 북마크는 지원하지 않습니다.';
    actions.replaceChildren(back,input,save,button('Windows 재생기 재시도',()=>readBook(book,resume),true),direct);
   }
   try{
