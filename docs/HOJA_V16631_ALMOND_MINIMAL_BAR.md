@@ -27,5 +27,5 @@
 - [x] PR #135: 브라우저 및 Windows 포함 13개 검증 성공, main merge `143305fe943aeaf53fefc1222f90a571eb1c46e8`
 - [x] 정확한 CI/아티팩트 결합: PR #136, 1.66.31 pilot preflight PASS `45094974611`
 - [x] 서명 및 원자적 게시 성공: `45095077748`; 서명된 `stable/runtime-v1/latest.json` payload version=1.66.31
-- [ ] GitHub Pages 최신 배포 작업 성공 확인
+- [x] GitHub Pages 배포 성공 — `45095212946`
 - [ ] 학교 PC에서 1.66.31 업데이트 설치, 아몬드 직접 열기, 클릭 애니메이션, 수동 페이지 저장 동작 확인
