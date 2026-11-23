@@ -15,6 +15,10 @@ internal sealed class BookReader : Form {
  static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
  static readonly UTF8Encoding Utf8=new UTF8Encoding(false);
  static readonly Regex UrlPattern=new Regex(@"^https://www\.canva\.com/design/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/view\?embed$",RegexOptions.CultureInvariant);
+ // The official Canva embed is framed inside the board-owned WebView (no public Canva editor chrome).
+ // Keep the short-link request for existing server allowlisting and bookmark identity.
+ const string AlmondOfficialEmbedUrl="https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed";
+ const string AlmondEmbedHtml="<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title='아몬드' src='"+AlmondOfficialEmbedUrl+"' allow='fullscreen' allowfullscreen></iframe></body></html>";
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
  readonly Timer placement=new Timer();
@@ -39,7 +43,7 @@ internal sealed class BookReader : Form {
  static int Int(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToInt32(v):0;}
  static string Str(Dictionary<string,object> d,string k){object v;return d.TryGetValue(k,out v)?Convert.ToString(v):"";}
  static bool ValidUrl(string u){return u!=null&&u.Length<=500&&UrlPattern.IsMatch(u);}
- // Only the approved Canva book may navigate top-level without an iframe.
+ // Keep top-level navigation constrained, including attempts to leave the embed wrapper.
  static bool AllowedInteractiveNavigation(string u) {
   Uri x; if(!Uri.TryCreate(u,UriKind.Absolute,out x)||x.Scheme!=Uri.UriSchemeHttps||x.Port!=443||x.UserInfo.Length!=0)return false;
   if(x.Host=="canva.link")return x.AbsolutePath=="/9qxk3zuhh93ts2s";
@@ -147,7 +151,7 @@ internal sealed class BookReader : Form {
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
    core.NavigationStarting+=(s,e)=>{if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal)))e.Cancel=true;};
    core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");};
-   if(fixture&&interactive)core.NavigateToString("<!doctype html><main>Native top-level Canva fixture</main>");
+   if(interactive)core.NavigateToString(AlmondEmbedHtml);
    else if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
    else core.Navigate(url);
    timer.Start();
@@ -189,7 +193,12 @@ internal sealed class BookReader : Form {
     // Its DOM is not a reliable bookmark source; manual page changes are authoritative.
     detected=saved>0?saved:requested;
     Publish("Canva 직접 재생 · 페이지 수동 기록");
-    if(fixture){Console.WriteLine("HOST INTERACTIVE FIXTURE PASS");Close();}
+    if(fixture){
+     // Verify wrapper markup only. External Canva content and animation require physical testing.
+     string embedCheck=await web.CoreWebView2.ExecuteScriptAsync("(()=>{const f=document.querySelector('iframe');return !!f&&document.querySelectorAll('iframe').length===1&&f.src==='https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed'&&f.getAttribute('allow')==='fullscreen'&&f.hasAttribute('allowfullscreen')})()");
+     if(embedCheck!="true"){saved=0;Publish("임베드 fixture 실패");Console.Error.WriteLine("INVALID CANVA EMBED WRAPPER");Close();return;}
+     Console.WriteLine("HOST INTERACTIVE EMBED FIXTURE PASS");Close();
+    }
     return;
    }
    await ApplyImmersive();
