@@ -248,7 +248,8 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).count(),0);
  await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
  assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'interactive arrow events must not be swallowed');
- await dlg.getByRole('button',{name:'전체화면 해제',exact:true}).click();
+ await page.evaluate(()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})));
+ await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
  await dlg.getByRole('button',{name:'← 책 목록',exact:true}).click();
  await dlg.locator('[data-book-id="TEST_NATIVE"]').getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();
  await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).waitFor();
