@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "version": "1.66.32",
+  "previous_version": "1.66.31",
+  "previous_payload_sha": "3597585986a2758ee143523da2a9bc635e3cdbe42ed947c0952e387534865b55",
+  "source_sha": "379cf0e4ce475746e77cb563559a7a610be52166",
+  "review_sha": "7bc009476e5f024122c1765926527174a05fdd9b",
+  "artifact_id": 14783981882,
+  "archive_sha": "c58721b16d024ffabd9b5023071067e5694b6376894b3d8ce7f61e2a7a8f3992",
+  "payload_sha": "b9dedb54a4a0ae5144d9fea709bb55d402c0f790806fb16d578e7924c27b09c7",
+  "main_runs": {
+    "Tournament host bridge review": 45097611939,
+    "R8 source-driven build": 45097612032,
+    "V1.66.8 education activities browser regression": 45097611911,
+    "V1.66.6 browser text contrast": 45097611879,
+    "V1.66.7 theme font shadow and icon regressions": 45097612025,
+    "V1.66.9 common badge browser regression": 45097611930,
+    "QR square widget and integer fit checks": 45097611932,
+    "R8 native R7 integration checks": 45097611957,
+    "R8 native Windows verification": 45097611947
+  },
+  "review_runs": {
+    "R8 source-driven build": 45097453634,
+    "R8 native R7 integration checks": 45097453582,
+    "QR square widget and integer fit checks": 45097453501,
+    "V1.66.7 theme font shadow and icon regressions": 45097453366,
+    "Daily lesson alert mute checks": 45097453401,
+    "Routine integer coin candidate checks": 45097453385,
+    "Tournament host bridge review": 45097453404,
+    "V1.66.9 common badge browser regression": 45097453376,
+    "V1.66.6 browser text contrast": 45097453352,
+    "V1.66.8 education activities browser regression": 45097453333,
+    "YouTube engine isolated Windows smoke": 45097453336,
+    "Classroom UI2 home and HUD candidate": 45097453456,
+    "Book reader native host build and fixture": 45097453350,
+    "Multimedia candidate browser review": 45097453506,
+    "R8 native Windows verification": 45097453500
+  },
+  "authorization": "Owner directly requested native in-board Canva playback rather than external browser. Exact reviewed 1.66.32 candidate is permitted for signed owner-field-test publication after CI; physical Canva account and animation tests remain pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16632_almond_inboard_native_webview_owner_field_test_only"
+}
