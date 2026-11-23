@@ -233,6 +233,8 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  }
  await dlg.getByRole('button',{name:'5쪽 이어 읽기',exact:true}).click();await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).waitFor();
   assert.equal(await dlg.locator('.mm-book-slot iframe').count(),1,'native failure must open the Canva web fallback');
+  assert.equal(await dlg.locator('.mm-book-slot iframe').getAttribute('tabindex'),'0','web fallback must be keyboard focusable');
+  assert.match(await dlg.locator('#ttMediaStatus').textContent(),/좌우 화살표나 방향키/,'web fallback must explain native Canva navigation');
   assert.equal(await dlg.getByRole('button',{name:'현재 쪽 북마크',exact:true}).count(),1,'manual bookmark is available in fallback only');
   await dlg.getByRole('button',{name:'Windows 재생기 재시도',exact:true}).click();
   await dlg.getByText('4 / 381쪽 · 저장됨',{exact:true}).waitFor();
