@@ -10721,8 +10721,8 @@ body{
 #ttMediaDialog.mm-book-active.mm-full .mm-display{border-radius:0}
 /* Almond's top-level Canva page is intentionally not placed in an iframe:
    Canva blocks iframe embedding, but its direct presentation link works. */
-#ttMediaDialog.mm-book-interactive.mm-playing{width:min(980px,calc(100vw - 16px))!important;height:auto!important;max-height:none!important;min-height:0!important;inset:auto 0 8px 0!important;margin:0 auto!important;padding:6px 8px!important;border-radius:12px!important;background:var(--tt-modal-panel,var(--panel))!important}
-#ttMediaDialog.mm-book-interactive .mm-stage,
+#ttMediaDialog.mm-book-interactive.mm-playing{width:98vw!important;height:98vh!important;max-height:none!important;min-height:0!important;inset:0!important;margin:auto!important;padding:4px!important;border-radius:8px!important;background:var(--tt-modal-panel,var(--panel))!important}
+#ttMediaDialog.mm-book-interactive .mm-stage{display:flex!important;flex:1 1 0;min-height:0}
 #ttMediaDialog.mm-book-interactive .mm-status{display:none!important}
 #ttMediaDialog.mm-book-interactive .mm-foot{display:flex!important;align-items:center;flex-wrap:nowrap;gap:8px;width:100%;min-height:48px}
 #ttMediaDialog.mm-book-interactive .mm-footer-title{flex:1 1 auto;min-width:72px;max-width:none}
@@ -10731,7 +10731,7 @@ body{
 #ttMediaDialog.mm-book-interactive .mm-foot .mm-actions{flex:0 0 auto;min-width:0}
 #ttMediaDialog.mm-book-interactive .mm-book-page{width:65px;min-height:40px}
 #ttMediaDialog.mm-book-interactive .mm-volume{margin-left:auto}
-#ttMediaDialog.mm-book-interactive.mm-full .mm-foot{display:flex!important}
+#ttMediaDialog.mm-book-interactive.mm-full .mm-foot{display:flex!important;background:var(--tt-modal-panel,var(--panel));padding:4px 8px!important}
 #ttMediaDialog [hidden]{display:none!important}
 @media(max-width:700px){#ttMediaDialog .mm-input{grid-template-columns:1fr}#ttMediaDialog .mm-volume{margin-left:0}}
 </style>
@@ -11006,40 +11006,39 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  function encodeBookRequest(x){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(x))))}
  async function readBook(book,resume){
   reset('book',book.title,true);
-  if(book.interactive){
-   // The direct Canva presentation URL rejects iframe embedding.
-   // Open it synchronously from the original book-button click (no popup delay).
-   dialog.classList.add('mm-book-interactive');
-   const title=$('ttMediaFooterTitle');
-   const link=document.createElement('a');
-   link.href=book.url;link.target='_blank';link.rel='noopener noreferrer';
-   link.textContent=book.title;link.title='Canva 책 다시 열기';
-   title.replaceChildren(link);
-   const input=document.createElement('input');input.type='number';input.className='mm-book-page';
-   input.min='1';input.max=String(bookPages(book));input.step='1';
-   input.value=String(bookMark(book)||1);
-   input.setAttribute('aria-label','현재 페이지 (직접 입력)');input.title='Canva 페이지는 자동 추적할 수 없습니다. 번호를 수정하면 북마크가 저장됩니다.';
-   input.addEventListener('change',()=>{
-    try{saveBookMark(book,Number(input.value));input.removeAttribute('aria-invalid')}
-    catch{input.value=String(bookMark(book)||1);input.setAttribute('aria-invalid','true')}
-   });
-   actions.replaceChildren(input);status.textContent='';
-   window.open(book.url,'_blank','noopener,noreferrer');
-   return;
-  }
+  if(book.interactive)dialog.classList.add('mm-book-interactive');
   const token=epoch,w=wrapper('mm-display mm-book-slot');w.textContent='책을 불러오는 중…';
   let session='',cancelled=false,pollTimer=0,errors=0,seq=0,command=null;
+  let pageInput=null;
+  if(book.interactive){
+   pageInput=document.createElement('input');pageInput.type='number';pageInput.className='mm-book-page';
+   pageInput.min='1';pageInput.max=String(bookPages(book));pageInput.step='1';
+   pageInput.value=String(bookMark(book)||1);pageInput.setAttribute('aria-label','현재 페이지 (직접 입력)');
+   pageInput.title='현재 페이지를 입력하면 자동 저장됩니다. Canva의 실제 페이지는 자동 추적하지 않습니다.';
+   pageInput.addEventListener('change',()=>{
+    const n=Number(pageInput.value);
+    try{saveBookMark(book,n);pageInput.removeAttribute('aria-invalid');if(session)command={seq:++seq,kind:'manual',page:n}}
+    catch{pageInput.value=String(bookMark(book)||1);pageInput.setAttribute('aria-invalid','true')}
+   });
+   actions.replaceChildren(pageInput);
+  }
   const statusHome=status.parentNode,statusNext=status.nextSibling;actions.before(status);
   const layout=()=>{const r=w.getBoundingClientRect(),vw=innerWidth,vh=innerHeight,x=Math.max(0,Math.ceil(r.left)),y=Math.max(0,Math.ceil(r.top));return {vw,vh,x,y,w:Math.max(0,Math.floor(Math.min(vw,r.right))-x),h:Math.max(0,Math.floor(Math.min(vh,r.bottom))-y),visible:Number(dialog.open&&!document.hidden&&epoch===token&&r.width>100&&r.height>60),immersive:Number(dialog.classList.contains('mm-full'))}};
-  const keyNav=e=>{if(cancelled||!dialog.classList.contains('mm-full')||e.ctrlKey||e.altKey||e.metaKey)return;if(!['Escape','ArrowLeft','ArrowRight',' ','PageUp','PageDown'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){full.click();return}if(session&&!command)command={seq:++seq,kind:['ArrowLeft','PageUp'].includes(e.key)?'prev':'next',page:0}};
+  const keyNav=e=>{if((book.interactive&&e.key!=='Escape')||cancelled||!dialog.classList.contains('mm-full')||e.ctrlKey||e.altKey||e.metaKey)return;if(!['Escape','ArrowLeft','ArrowRight',' ','PageUp','PageDown'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){full.click();return}if(session&&!command)command={seq:++seq,kind:['ArrowLeft','PageUp'].includes(e.key)?'prev':'next',page:0}};
   document.addEventListener('keydown',keyNav,true);
   bookStop=()=>{cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);document.removeEventListener('keydown',keyNav,true);statusHome.insertBefore(status,statusNext);};
-  const back=button('← 책 목록',books);actions.append(back);window.ttSystemVolume?.read();status.textContent='페이지 번호를 확인하고 있어요.';
+  const back=button('← 책 목록',books);if(!book.interactive)actions.append(back);window.ttSystemVolume?.read();status.textContent=book.interactive?'':'페이지 번호를 확인하고 있어요.';
   function fallback(message){
    if(cancelled||epoch!==token)return;
    cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);session='';
    if(dialog.classList.contains('mm-full'))full.click();
-   // Prefer the teacher's direct Canva presentation URL, with no autoplay permission or native overlay.
+   if(book.interactive){
+    // An embedded iframe is explicitly blocked by Canva. Do not regress to it.
+    w.textContent='내장 Canva 재생기를 실행하지 못했습니다. ';
+    const link=document.createElement('a');link.href=book.url;link.target='_blank';link.rel='noopener noreferrer';
+    link.textContent='Canva 직접 열기';w.append(link);return;
+   }
+   // Standard embedded-view fallback applies only to noninteractive books.
    const iframe=document.createElement('iframe');iframe.title=book.title+' 웹 재생';
    iframe.src=book.url;iframe.referrerPolicy='strict-origin-when-cross-origin';
    iframe.setAttribute('allow','autoplay; fullscreen');
@@ -11057,7 +11056,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    if(cancelled||epoch!==token)return;
    const saved=bookMark(book)||0;
-   const args={id:book.id,url:book.url,title:book.title,pages:bookPages(book),start:resume&&saved?saved:1,saved,layout:layout()};
+   const args={id:book.id,url:book.url,title:book.title,pages:bookPages(book),start:resume&&saved?saved:1,saved,interactive:!!book.interactive,layout:layout()};
    const response=await fetch('/api/book-reader/open',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(args)});
    const data=await response.json();
    if(response.ok&&data.ok&&/^[a-f0-9]{32}$/.test(data.session||'')){session=data.session;if(cancelled||epoch!==token){closeNativeBook(session);return;}}
@@ -11065,17 +11064,17 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    async function poll(){
     if(cancelled||epoch!==token)return;
     try{
-     const payload={layout:layout(),command:dialog.classList.contains('mm-full')?command:null};
+     const payload={layout:layout(),command:book.interactive||dialog.classList.contains('mm-full')?command:null};
      const r=await fetch('/api/book-reader/status?session='+encodeURIComponent(session),{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(payload),cache:'no-store'}),x=await r.json();
      if(cancelled||epoch!==token)return;if(!r.ok||!x.ok)throw Error('session');
      errors=0;
      if(command&&Number(x.ack)>=command.seq)command=null;
-     if(!dialog.classList.contains('mm-full'))command=null;
+     if(!book.interactive&&!dialog.classList.contains('mm-full'))command=null;
      if(x.ready&&Number.isInteger(x.total)&&x.total>=1&&x.total<=4095)rememberBookPages(book,x.total);
-     if(Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
+     if(!book.interactive&&Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
      if(x.ready){w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
-     status.textContent=(x.page>0?x.page+' / '+bookPages(book)+'쪽 · ':'')+String(x.status||'불러오는 중');
+     if(!book.interactive)status.textContent=(x.page>0?x.page+' / '+bookPages(book)+'쪽 · ':'')+String(x.status||'불러오는 중');
      if(x.closed){if(x.ready)books();else fallback('Windows 재생기 조기 종료 · '+String(x.status||'원인 미확인').slice(0,80));return}
     }catch{if(++errors>=4){fallback('재생기 상태 연결 실패');return}}
     if(!cancelled&&epoch===token)pollTimer=setTimeout(poll,300);
