@@ -232,6 +232,42 @@ async function setRoster(p,names){
    for(let i=0;i<4;i++){await cells.nth(i).fill(String(90-i*10));await cells.nth(i).blur()}
    await wait(300);
   });
+  await step('성적 자동 저장·명단 재동기화 후에도 방향키로 연속 셀 이동한다',async()=>{
+   frame=await openGrades(p);
+   await frame.locator('.nav[data-page="grades"]').click();
+   const cells=frame.locator('input.grade-input');
+   const activeIndex=()=>cells.evaluateAll(xs=>xs.findIndex(x=>x===document.activeElement));
+   assert.equal(await cells.count(),4);
+   await cells.nth(0).fill('91');
+   await cells.nth(0).press('ArrowDown');
+   assert.equal(await activeIndex(),1,'첫 방향키 이동은 다음 학생 셀을 선택');
+   await wait(900); // browser draft save and any linked-trait round trip
+   assert.equal(await activeIndex(),1,'자동 저장 후에도 현재 셀 포커스 유지');
+   await cells.nth(1).evaluate(el=>{el.dataset.focusIdentity='preserved';});
+   await p.evaluate(()=>window.__TT_STAGE031_SEND_ROSTER());await wait(450);
+   assert.equal(await activeIndex(),1,'같은 학급 명단 메시지로 포커스를 빼앗지 않음');
+   assert.equal(await cells.nth(1).getAttribute('data-focus-identity'),'preserved','변경 없는 명단은 셀 DOM을 재생성하지 않음');
+   await cells.nth(1).fill('81');
+   await cells.nth(1).press('ArrowDown');
+   assert.equal(await activeIndex(),2,'두 번째 방향키 이동도 계속 작동');
+   await wait(900);
+   assert.equal(await activeIndex(),2,'두 번째 저장 후에도 포커스 유지');
+   // A real roster change does require a sheet rebuild: restore focus by membership/assessment IDs.
+   const originalName=await p.evaluate(()=>classState.students[0].name);
+   try{
+    await p.evaluate(()=>{classState.students[0].name+='-포커스검증';window.__TT_STAGE031_SEND_ROSTER();});
+    await wait(900);
+    assert.equal(await activeIndex(),2,'실제 명단 갱신으로 표가 다시 그려져도 동일 셀 복원');
+   }finally{
+    await p.evaluate(name=>{classState.students[0].name=name;window.__TT_STAGE031_SEND_ROSTER();},originalName);
+    await wait(900);
+   }
+   assert.equal(await activeIndex(),2,'명단 복구 후에도 동일 셀 선택');
+   await cells.nth(0).fill('90');await cells.nth(0).press('ArrowDown');
+   await cells.nth(1).fill('80');await cells.nth(1).press('ArrowDown');
+   await wait(900);
+   assert.deepEqual(await cells.evaluateAll(xs=>xs.map(e=>e.value)),['90','80','70','60'],'검증 후 원래 점수로 복원');
+  });
   const gradeRows=async()=>frame.locator('input.grade-input').evaluateAll(xs=>xs.map(e=>[e.getAttribute('aria-label').split(' ').slice(-4,-3)[0]||e.getAttribute('aria-label'),e.value]));
   await step('학생 참가 태그 클릭과 기존 우클릭 모두 배치 참가를 전환한다',async()=>{
    await openSeating(p);
