@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "version": "1.66.31",
+  "previous_version": "1.66.30",
+  "previous_payload_sha": "3e699f9942e96f9b331b33ee8b810d2edbfa2832ef3c257de0468df349d22c42",
+  "source_sha": "143305fe943aeaf53fefc1222f90a571eb1c46e8",
+  "review_sha": "af19a29d892814de38e128e582f1743128fc7ab4",
+  "artifact_id": 14782887220,
+  "archive_sha": "bcf92372865558651f0b7b08c12b9bbb625c9c19835a189f193629407aa1c13c",
+  "payload_sha": "3597585986a2758ee143523da2a9bc635e3cdbe42ed947c0952e387534865b55",
+  "main_runs": {
+    "R8 source-driven build": 45094569500,
+    "R8 native Windows verification": 45094569438,
+    "R8 native R7 integration checks": 45094569469,
+    "V1.66.6 browser text contrast": 45094569501,
+    "V1.66.7 theme font shadow and icon regressions": 45094569443,
+    "V1.66.8 education activities browser regression": 45094569545,
+    "V1.66.9 common badge browser regression": 45094569754,
+    "Tournament host bridge review": 45094569482,
+    "QR square widget and integer fit checks": 45094569460
+  },
+  "review_runs": {
+    "Multimedia candidate browser review": 45094395509,
+    "R8 source-driven build": 45094395510,
+    "R8 native Windows verification": 45094395401,
+    "R8 native R7 integration checks": 45094395417,
+    "Classroom UI2 home and HUD candidate": 45094395435,
+    "Daily lesson alert mute checks": 45094395377,
+    "Routine integer coin candidate checks": 45094395413,
+    "Tournament host bridge review": 45094395379,
+    "QR square widget and integer fit checks": 45094395427,
+    "V1.66.6 browser text contrast": 45094395425,
+    "V1.66.7 theme font shadow and icon regressions": 45094395475,
+    "V1.66.8 education activities browser regression": 45094395621,
+    "V1.66.9 common badge browser regression": 45094395442
+  },
+  "authorization": "Owner directly requested removing the redundant book controls and status text while preserving the working Canva click-animation launch. Exact reviewed 1.66.31 candidate allowed for signed owner-field-test publication after CI; physical school device remains pending.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16631_almond_direct_popup_minimal_five_control_bar_owner_field_test_only"
+}
