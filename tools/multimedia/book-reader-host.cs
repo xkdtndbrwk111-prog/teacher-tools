@@ -15,16 +15,15 @@ internal sealed class BookReader : Form {
  static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
  static readonly UTF8Encoding Utf8=new UTF8Encoding(false);
  static readonly Regex UrlPattern=new Regex(@"^https://www\.canva\.com/design/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/view\?embed$",RegexOptions.CultureInvariant);
- // The official Canva embed is framed inside the board-owned WebView (no public Canva editor chrome).
- // Keep the short-link request for existing server allowlisting and bookmark identity.
- const string AlmondOfficialEmbedUrl="https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed";
- const string AlmondEmbedHtml="<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title='아몬드' src='"+AlmondOfficialEmbedUrl+"' allow='fullscreen' allowfullscreen></iframe></body></html>";
+ // Use direct top-level Canva navigation so real touch/click/arrow input reaches the document.
+ // The earlier nested iframe was blocked or noninteractive on the field PC.
+ const string AlmondOfficialViewUrl="https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed";
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
  readonly Timer placement=new Timer();
  readonly IntPtr owner;
  readonly int ownerPid;
- bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls, embedWrapperPending;
+ bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls;
  long commandSeq;
  bool immersiveApplied;
  Rectangle lastSlot;
@@ -150,15 +149,17 @@ internal sealed class BookReader : Form {
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
    core.NavigationStarting+=(s,e)=>{
-     // Permit the internally generated about:blank wrapper once, but not later navigation to arbitrary pages.
-     if(interactive&&embedWrapperPending&&String.Equals(e.Uri,"about:blank",StringComparison.OrdinalIgnoreCase)){embedWrapperPending=false;return;}
+     // Allow only this exact Canva share target and redirects within the same design.
      if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal)))e.Cancel=true;
     };
-   core.NavigationCompleted+=(s,e)=>{ready=e.IsSuccess;seekStart=DateTime.UtcNow;Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");};
-   if(interactive){embedWrapperPending=true;core.NavigateToString(AlmondEmbedHtml);}
-   else if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');for(let b of document.querySelectorAll('button'))b.onclick=()=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+(b.textContent==='next'?1:-1))))</script>");
-   else core.Navigate(url);
-   timer.Start();
+   core.NavigationCompleted+=(s,e)=>{
+     ready=e.IsSuccess;seekStart=DateTime.UtcNow;
+     if(ready&&interactive&&!fixture)BeginInvoke(new Action(()=>{if(!closed&&web.CanFocus)web.Focus();}));
+     Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");
+    };
+    if(fixture)core.NavigateToString("<!doctype html><div role=slider aria-valuemin=1 aria-valuemax="+fixtureTotal+" aria-valuenow=1>fixture</div><button aria-label='Previous page'>back</button><button aria-label='Next page'>next</button><script>let s=document.querySelector('[role=slider]');const step=n=>s.setAttribute('aria-valuenow',Math.max(1,Math.min("+fixtureTotal+",+s.getAttribute('aria-valuenow')+n)));for(let b of document.querySelectorAll('button'))b.onclick=()=>step(b.textContent==='next'?1:-1);document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')step(1);if(e.key==='ArrowLeft')step(-1)})</script>");
+    else core.Navigate(interactive?AlmondOfficialViewUrl:url);
+    timer.Start();
   }catch{Publish("WebView2 시작 실패");Close();}
  }
  const string ImmersiveScript=@"(()=>{const on=MODE;if(location.origin!=='https://www.canva.com'&&location.protocol!=='about:')return {exit:false,clean:false};const key='__ttBookImmersiveV1';let q=window[key];if(!on){if(q){q.remove();delete window[key]}return {exit:false,clean:false}}if(!q){let hidden=null,prior='',ended=false,exit=false,navigated=false,timer=0,canStep=false;const overlay=document.createElement('div');overlay.setAttribute('aria-label','Book fullscreen navigation');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:transparent;touch-action:manipulation;outline:none';overlay.tabIndex=0;const hint=document.createElement('button');hint.type='button';hint.textContent='전체화면 해제 (Esc)';hint.style.cssText='position:absolute;top:12px;right:12px;padding:12px 18px;font:16px sans-serif;color:white;background:#222d;border:1px solid #fff8;border-radius:8px;display:none;cursor:pointer';overlay.append(hint);const reveal=()=>{hint.style.display='block';clearTimeout(timer);timer=setTimeout(()=>hint.style.display='none',2200)};const findButtons=label=>[...document.querySelectorAll('button,[role=button]')].filter(e=>e.getAttribute('aria-label')===label&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getClientRects().length>0);const step=next=>{if(!canStep)return false;const a=findButtons(next?'Next page':'Previous page');if(a.length!==1)return false;navigated=true;a[0].click();return true};const keys=e=>{if(ended||e.altKey||e.ctrlKey||e.metaKey)return;if(!['ArrowLeft','ArrowRight',' ','PageDown','PageUp','Escape'].includes(e.key))return;if(e.key!=='Escape'&&!canStep)return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){exit=true;return}step(e.key!=='ArrowLeft'&&e.key!=='PageUp')};document.addEventListener('keydown',keys,true);overlay.addEventListener('click',e=>{e.stopPropagation();if(e.target===hint){exit=true;return}const x=e.clientX/innerWidth;if(x<.45)step(false);else if(x>.55)step(true);else reveal()});overlay.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.clientY<80)reveal()});document.body.append(overlay);overlay.focus({preventScroll:true});q=window[key]={get exit(){return exit},takeNavigation(){const n=navigated;navigated=false;return n},refresh(){canStep=findButtons('Previous page').length===1&&findButtons('Next page').length===1;overlay.style.pointerEvents=canStep?'auto':'none';hint.style.pointerEvents='auto';const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');let bar=null;if(canStep&&a.length===1){for(let p=a[0];p&&p!==document.body;p=p.parentElement){const r=p.getBoundingClientRect();if(r.height>Math.min(240,innerHeight*.28))break;if(r.top>=innerHeight*.70&&r.bottom<=innerHeight+5&&p.querySelector('[aria-label=""Next page""]')&&p.querySelector('[aria-label=""Previous page""]'))bar=p;}}if(bar!==hidden){if(hidden)hidden.style.opacity=prior;hidden=bar;if(bar){prior=bar.style.opacity;bar.style.opacity='0'}}return !!bar},remove(){ended=true;clearTimeout(timer);document.removeEventListener('keydown',keys,true);if(hidden)hidden.style.opacity=prior;overlay.remove()}};reveal();}return {exit:q.exit,clean:q.refresh(),navigated:q.takeNavigation()}})()";
@@ -193,15 +194,20 @@ internal sealed class BookReader : Form {
    await Command();
    if(!fixture&&!slotVisible)return;
    if(interactive){
-    // Canva click animations belong to the page, not to our page-seeking overlay.
+    // Canva owns native clicks and arrow keys; never synthesize animation clicks.
     // Its DOM is not a reliable bookmark source; manual page changes are authoritative.
     detected=saved>0?saved:requested;
     Publish("Canva 직접 재생 · 페이지 수동 기록");
     if(fixture){
-     // Verify wrapper markup only. External Canva content and animation require physical testing.
-     string embedCheck=await web.CoreWebView2.ExecuteScriptAsync("(()=>{const f=document.querySelector('iframe');return !!f&&document.querySelectorAll('iframe').length===1&&f.src==='https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view?embed'&&f.getAttribute('allow')==='fullscreen'&&f.hasAttribute('allowfullscreen')})()");
-     if(embedCheck!="true"){saved=0;Publish("임베드 fixture 실패");Console.Error.WriteLine("INVALID CANVA EMBED WRAPPER");Close();return;}
-     Console.WriteLine("HOST INTERACTIVE EMBED FIXTURE PASS");Close();
+     // Verify pointer and keyboard events on a real top-level WebView2 fixture.
+     if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");
+     await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('button')[1].click()");
+     if(await Read()!=2)throw new InvalidOperationException("interactive fixture click failed");
+     await web.CoreWebView2.ExecuteScriptAsync("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))");
+     if(await Read()!=3)throw new InvalidOperationException("interactive fixture right arrow failed");
+     await web.CoreWebView2.ExecuteScriptAsync("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
+     if(await Read()!=2)throw new InvalidOperationException("interactive fixture left arrow failed");
+     Console.WriteLine("HOST INTERACTIVE TOP-LEVEL INPUT FIXTURE PASS");Close();
     }
     return;
    }
