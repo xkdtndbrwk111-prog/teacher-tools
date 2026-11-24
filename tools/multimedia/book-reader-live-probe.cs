@@ -85,6 +85,10 @@ internal sealed partial class BookReader {
  async Task ObserveRegisteredFullscreen(){
   await Pause(1200);
   var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);
+  // Read-only hit geometry; distinguish an editor toolbar outside the slide
+  // from a real interactive slide. Never click editor controls or capture text.
+  const string geometry=@"(()=>{const x=innerWidth*.5,y=innerHeight*.48,hit=document.elementFromPoint(x,y),r=e=>{const a=e.getBoundingClientRect();return {x:Math.round(a.x),y:Math.round(a.y),w:Math.round(a.width),h:Math.round(a.height)}};const vis=e=>{const a=e.getBoundingClientRect();return a.width>0&&a.height>0&&getComputedStyle(e).visibility!=='hidden'};const label=e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim();const editor=/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i;return {viewport:[innerWidth,innerHeight],hitAncestors:(()=>{let out=[];for(let p=hit;p&&out.length<12;p=p.parentElement)out.push({tag:p.tagName,role:p.getAttribute('role'),editable:p.isContentEditable,rect:r(p)});return out})(),controls:[...document.querySelectorAll('button,[role=button]')].filter(e=>vis(e)&&editor.test(label(e))).map(e=>({label:label(e),rect:r(e),containsHit:e.contains(hit)})),canvas:[...document.querySelectorAll('canvas')].filter(vis).map(r),sliders:[...document.querySelectorAll('[role=slider]')].filter(vis).map(e=>({rect:r(e),page:e.getAttribute('aria-valuenow'),total:e.getAttribute('aria-valuemax')}))}})()";
+  ProbeLog("REGISTERED_STAGE_GEOMETRY",Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(geometry)));
   if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return;}
   int observed=0,changes=0;
   for(int i=0;i<10;i++){
@@ -108,9 +112,9 @@ internal sealed partial class BookReader {
   while((web.CoreWebView2==null||!slotVisible||navigationMode=="pending")&&DateTime.UtcNow<deadline)await Pause(400);
   if(web.CoreWebView2==null||!slotVisible){ProbeLog("WINDOWS_BLOCKED",new{reason="no-window-or-WebView2"});return 2;}
   var ui=await PrepareUi("registered-short-link");
-  if(Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
+  if(!Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
    await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT",new{phase="registered-short-link",ui});
-   if(Int(ui,"slider")==0&&ui["manage"]==null&&ui["reject"]==null&&ui["saveCookie"]==null&&await ClickControl(ui,"present")){
+   if(!Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"slider")==0&&ui["manage"]==null&&ui["reject"]==null&&ui["saveCookie"]==null&&await ClickControl(ui,"present")){
     await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT_CONFIRM",new{phase="registered-short-link",ui});
    }
   }
