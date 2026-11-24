@@ -19,6 +19,7 @@ internal sealed partial class BookReader : Form {
  // The earlier nested iframe was blocked or noninteractive on the field PC.
  const string AlmondShareUrl="https://canva.link/9qxk3zuhh93ts2s";
  string navigationMode="pending";
+ int presentAttempts; DateTime presentRetry=DateTime.MinValue; bool presentationConfirmed;
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
  readonly Timer placement=new Timer();
@@ -128,7 +129,7 @@ internal sealed partial class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed});}
  void Publish(string status){
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
@@ -178,7 +179,7 @@ internal sealed partial class BookReader : Form {
      if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal))){e.Cancel=true;if(interactive){ready=false;navigationMode="blocked";Publish("Canva 재생 주소 차단");}}
     };
    core.NavigationCompleted+=(s,e)=>{
-     ready=e.IsSuccess;seekStart=DateTime.UtcNow;
+     ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;
      if(interactive){
       if(fixture)navigationMode="fixture";
       else{Uri target; bool direct=Uri.TryCreate(core.Source,UriKind.Absolute,out target)&&AllowedInteractiveNavigation(core.Source)&&(target.Host=="www.canva.com"||target.Host=="canva.com")&&target.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal);navigationMode=direct?"direct":(navigationMode=="blocked"?"blocked":"not-presentation");ready=ready&&direct;}
@@ -213,6 +214,42 @@ internal sealed partial class BookReader : Form {
   return await web.CoreWebView2.ExecuteScriptAsync(script)=="true";
  }
 
+ // Exact official Present button only. CDP dispatches a browser input event
+ // without moving the teacher's physical pointer or injecting a click overlay.
+ // Never click the public view's generic fullscreen control: it is not proof
+ // of interactive sentence animation, and never click consent/login/edit UI.
+ const string PresentProbe=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return {allowed:false};if(document.fullscreenElement)return {allowed:true,full:true};const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};if([...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(visible))return {allowed:false,dialog:true};const labels=/^(present|present full screen|present fullscreen|전체 화면으로 발표|전체 화면 발표|발표|프레젠테이션)$/i;const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&labels.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()));if(a.length!==1)return {allowed:true};const r=a[0].getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);return {allowed:true,hit:!!h&&(a[0]===h||a[0].contains(h)),x,y}})()";
+ static bool Flag(Dictionary<string,object> d,string k){return d!=null&&d.ContainsKey(k)&&d[k] is bool&&(bool)d[k];}
+ async Task<bool> PresentInput(bool lab){
+  var core=web.CoreWebView2;
+  var d=Json.Deserialize<Dictionary<string,object>>(await core.ExecuteScriptAsync(PresentProbe.Replace("LAB",lab?"true":"false")));
+  if(!Flag(d,"allowed")||!Flag(d,"hit")||Flag(d,"full"))return false;
+  double x=Convert.ToDouble(d["x"]),y=Convert.ToDouble(d["y"]);
+  if(x<0||y<0||x>web.Width*4||y>web.Height*4)return false;
+  await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",Json.Serialize(new{type="mousePressed",x=x,y=y,button="left",buttons=1,clickCount=1}));
+  await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",Json.Serialize(new{type="mouseReleased",x=x,y=y,button="left",buttons=0,clickCount=1}));
+  return true;
+ }
+ async Task TryEnterPresentation(){
+  if(fixture||presentationConfirmed||closed||!slotVisible)return;
+  var core=web.CoreWebView2;
+  if(await core.ExecuteScriptAsync("!!document.fullscreenElement")=="true"){presentationConfirmed=true;return;}
+  if(presentAttempts>=2||DateTime.UtcNow<presentRetry)return;
+  // Wait for a rendered, hit-tested official control. Blocked or absent
+  // controls leave the teacher's native interaction untouched.
+  if(await PresentInput(false)){presentAttempts++;presentRetry=DateTime.UtcNow.AddSeconds(4);}
+ }
+ async Task VerifyPresentInputFixture(){
+  var core=web.CoreWebView2;
+  await core.ExecuteScriptAsync("(()=>{const b=document.createElement('button');b.setAttribute('aria-label','Present');b.textContent='Present';b.style.cssText='position:fixed;left:20px;top:100px;width:180px;height:60px';b.onclick=()=>{document.body.dataset.presented='yes';document.documentElement.requestFullscreen().catch(()=>{})};document.body.append(b);return true})()");
+  if(!await PresentInput(true))throw new InvalidOperationException("fixture official Present input missing");
+  await Task.Delay(300);
+  if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'")!="true")throw new InvalidOperationException("fixture trusted Present input not delivered");
+  if(await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("fixture browser presentation not entered");
+  await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
+  Console.WriteLine("HOST OFFICIAL PRESENT INPUT FIXTURE PASS");
+ }
+
  int seekTarget=-1;
  async Task Poll(){
   if(closed||busy)return;
@@ -226,7 +263,8 @@ internal sealed partial class BookReader : Form {
     // Canva owns native clicks and arrow keys; never synthesize animation clicks.
     // Its DOM is not a reliable bookmark source; manual page changes are authoritative.
     detected=saved>0?saved:requested;
-    Publish("Canva 직접 재생 · 페이지 수동 기록");
+    if(!fixture){await TryEnterPresentation();Publish(presentationConfirmed?"Canva 전체 화면 · 페이지 수동 기록":"Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}
+    else Publish("Canva 직접 재생 · 페이지 수동 기록");
     if(fixture){
      // Verify pointer and keyboard events on a real top-level WebView2 fixture.
      if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");
@@ -239,6 +277,7 @@ internal sealed partial class BookReader : Form {
      if(await Read()!=3)throw new InvalidOperationException("interactive fixture right arrow failed");
      await web.CoreWebView2.ExecuteScriptAsync("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
      if(await Read()!=2)throw new InvalidOperationException("interactive fixture left arrow failed");
+     await VerifyPresentInputFixture();
      Console.WriteLine("HOST INTERACTIVE TOP-LEVEL INPUT FIXTURE PASS");Close();
     }
     return;
