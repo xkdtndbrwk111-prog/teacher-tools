@@ -232,15 +232,7 @@ public static class BookTestGeometry {
     Write-Host ('Interactive open diagnostic: '+$diagnostic)
     throw
    }
-   if(!$open.ok -or $open.session -cnotmatch '^[a-f0-9]{32} }
- Write-Host 'PASS: actual Windows board window, local HTTP signed update, close and restart, matching readiness, all target files, synthetic data preservation. Test key and isolated local feed only; no physical school device or installer test.'
-}finally{
- if($http -and -not $http.HasExited){$http.Kill()}
- $rsa.Dispose()
- # Terminate only processes explicitly referencing the disposable test path.
- Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.Name -in @('chrome.exe','msedge.exe','powershell.exe','pwsh.exe')} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}
-}
-){throw 'Interactive native session not created'}
+    if(!$open.ok -or $open.session -cnotmatch '^[a-f0-9]{32}$'){throw 'Interactive native session not created'}
    $suffix='?session='+$open.session
    try{
     $deadline=[DateTime]::UtcNow.AddSeconds(55)
