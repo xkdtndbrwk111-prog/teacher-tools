@@ -37,8 +37,16 @@ internal sealed partial class BookReader {
   await Pause(200);return true;
  }
  async Task<string> FrameHash(){
-  using(var m=new MemoryStream()){await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,m);
-   using(var sha=SHA256.Create())return Convert.ToBase64String(sha.ComputeHash(m.ToArray()));}
+  using(var m=new MemoryStream()){await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,m);m.Position=0;
+   using(var image=new Bitmap(m)){
+    // Exclude moving pointer, edge controls and top/bottom toolbar. Only
+    // the central slide pixels are hashed, never stored or output.
+    var rect=new Rectangle(image.Width/8,image.Height/8,image.Width*3/4,image.Height*3/4);
+    using(var cropped=image.Clone(rect,System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+    using(var data=new MemoryStream())
+    using(var sha=SHA256.Create()){cropped.Save(data,System.Drawing.Imaging.ImageFormat.Png);return Convert.ToBase64String(sha.ComputeHash(data.ToArray()));}
+   }
+  }
  }
  async Task<Dictionary<string,object>> InspectPublicUi(){
   const string js=@"(()=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'};const bs=[...document.querySelectorAll('button,[role=button]')].filter(vis);const exact=(re)=>{const a=bs.filter(e=>re.test((e.getAttribute('aria-label')||e.innerText||e.getAttribute('title')||'').trim()));if(a.length!==1)return null;const r=a[0].getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const h=document.elementFromPoint(x,y);return {x:x/innerWidth,y:y/innerHeight,hit:!!h&&(a[0]===h||a[0].contains(h))}};return {host:location.hostname,route:location.pathname.endsWith('/edit')?'edit':location.pathname.endsWith('/view')?'view':'other',dialogs:[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(vis).length,fullscreen:!!document.fullscreenElement,manage:exact(/^(manage cookies|쿠키 관리)$/i),reject:exact(/^(reject all|reject all cookies|reject optional cookies|decline all|decline all cookies|only necessary cookies|essential cookies only|strictly necessary cookies only|reject non-essential cookies|모든 쿠키 거부|선택적 쿠키 거부|필수 쿠키만 허용|필수 쿠키만|모두 거부)$/i),saveCookie:exact(/^(save preferences|save my preferences|save cookie preferences|save cookie settings|confirm choices|confirm my choices|save and close|설정 저장|쿠키 설정 저장|선택 사항 저장|환경 설정 저장|선택 확인)$/i),present:exact(/^(present|present full screen|present fullscreen|enter full screen|enter fullscreen|전체 화면으로 전환|전체 화면으로 발표|전체 화면 발표|발표|프레젠테이션)$/i),cookieButtons:[...document.querySelectorAll('[role=dialog] button,[aria-modal=true] button')].filter(vis).map(e=>(e.getAttribute('aria-label')||e.innerText||'').trim().slice(0,65)).filter(s=>/cookie|reject|decline|save|confirm|preference|necessary|allow|apply|쿠키|저장|거부|선택|확인|필수|허용|적용/i.test(s)).slice(0,20),slider:[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(vis).length}})()";
@@ -67,6 +75,33 @@ internal sealed partial class BookReader {
   }
   return ui;
  }
+ async Task<Dictionary<string,object>> InspectFullscreenStage(){
+  const string js=@"(()=>{const full=document.fullscreenElement;const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight&&getComputedStyle(e).visibility!=='hidden'};const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48);const inStage=!!(full&&center&&full.contains(center));const unsafe=!!(center&&center.closest('input,textarea,select,button,[role=button],a,[contenteditable=true],[role=textbox]'));const bs=full?[...full.querySelectorAll('button,[role=button]')].filter(vis):[];const editControls=bs.filter(e=>/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i.test((e.getAttribute('aria-label')||e.innerText||'').trim())).length;const labels=bs.map(e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()).filter(s=>/^(next|previous|next page|previous page|next slide|previous slide|exit full screen|exit fullscreen|play|pause|다음|이전|다음 페이지|이전 페이지|다음 슬라이드|이전 슬라이드|전체 화면 종료|전체 화면 해제|재생|일시정지)$/i.test(s));const nums=full?[...full.querySelectorAll('[aria-valuenow],[aria-current], [role=status], [aria-live]')].filter(vis).map(e=>({v:e.getAttribute('aria-valuenow'),max:e.getAttribute('aria-valuemax'),label:e.getAttribute('aria-label'),text:(e.innerText||'').trim()})).map(x=>({value:/^\d{1,4}$/.test(x.v||'')?Number(x.v):null,total:/^\d{1,4}$/.test(x.max||'')?Number(x.max):null,pageLabel:[x.label,x.text].filter(s=>/^(?:(?:page|slide|페이지|슬라이드)\s*)?\d{1,4}\s*(?:\/|of|중)\s*\d{1,4}(?:\s*(?:쪽|페이지))?$/i.test(s||''))})).filter(x=>x.value!==null||x.pageLabel.length).slice(0,12):[];return {full:!!full,tag:full?full.tagName:null,centerTag:center?center.tagName:null,inStage,unsafe,editControls,dialogs:[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(vis).length,canvas:full?[...full.querySelectorAll('canvas')].filter(vis).length:0,images:full?[...full.querySelectorAll('img')].filter(vis).length:0,iframes:full?[...full.querySelectorAll('iframe')].filter(vis).length:0,labels,nums}})()";
+  return Json.Deserialize<Dictionary<string,object>>(await web.CoreWebView2.ExecuteScriptAsync(js));
+ }
+ bool SafeStage(Dictionary<string,object> stage){
+  return Convert.ToBoolean(stage["full"])&&Convert.ToBoolean(stage["inStage"])&&!Convert.ToBoolean(stage["unsafe"])&&Int(stage,"editControls")==0&&Int(stage,"dialogs")==0;
+ }
+ async Task ObserveRegisteredFullscreen(){
+  await Pause(1200);
+  var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);
+  if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return;}
+  int observed=0,changes=0;
+  for(int i=0;i<10;i++){
+   stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
+   await Pause(800);string a=await FrameHash();await Pause(650);string b=await FrameHash();int before=await Read();
+   if(!await PhysicalClick(.5,.48)){ProbeLog("REGISTERED_BLOCKED",new{reason="click-delivery"});break;}
+   await Pause(1100);string c=await FrameHash();int after=await Read();
+   stage=await InspectFullscreenStage();observed++;if(a==b&&b!=c)changes++;
+   ProbeLog("REGISTERED_CLICK",new{step=i+1,before,after,stableBefore=a==b,changedAfter=b!=c,stage});
+  }
+  foreach(byte key in new byte[]{0x27,0x25}){
+   stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
+   string before=await FrameHash();bool delivered=await PhysicalKey(key);await Pause(1000);string after=await FrameHash();
+   ProbeLog("REGISTERED_KEY",new{key=key==0x27?"right":"left",delivered,changed=before!=after,stage=await InspectFullscreenStage()});
+  }
+  ProbeLog("REGISTERED_RESULT",new{observed,changes,acceptance=false,reason="visual change alone is not proof of page identity or sentence reveal"});
+ }
  async Task<int> RunClickProbe(){
   // Production navigation is exercised first: the exact registered short URL.
   var deadline=DateTime.UtcNow.AddSeconds(55);
@@ -79,7 +114,18 @@ internal sealed partial class BookReader {
     await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT_CONFIRM",new{phase="registered-short-link",ui});
    }
   }
-  bool editorPresent=Str(ui,"route")=="edit"&&Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"slider")>0&&Int(ui,"dialogs")==0;
+  // The registered link has entered fullscreen even when its navigation
+  // slider is absent. Do not assume this is the public viewer. Inspect the
+  // actual fullscreen surface and test its safe, non-editable slide region.
+  bool registeredFull=Str(ui,"route")=="edit"&&Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"dialogs")==0;
+  if(registeredFull){
+   await ObserveRegisteredFullscreen();
+   // Leave actual presentation before navigation to independent control.
+   if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
+   await Pause(600);
+   ui=await InspectPublicUi();
+  }
+  bool editorPresent=false;
   // Public-view comparison is a diagnostic control, never evidence of true Present.
   if(Str(ui,"route")!="view"&&!editorPresent){
    web.CoreWebView2.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
