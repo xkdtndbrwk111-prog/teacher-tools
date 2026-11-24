@@ -1,0 +1,22 @@
+const fs=require('node:fs');
+const source=fs.readFileSync('runtime-src/system/dashboard.html','utf8');
+function section(a,b){const start=source.indexOf(a),end=source.indexOf(b,start+1);if(start<0||end<0)throw Error('source anchor missing '+a);return source.slice(start,end)}
+const dateHelper=section('function ttWeekDate(d,i)','function ttWeekEditable(d,i)');
+const scheduleSource=section('function miniBreakSchedule(now,','let miniBreakReady=false');
+const schedule=new Function(dateHelper+scheduleSource+'return miniBreakSchedule;')();
+const checks=[];const check=(name,pass)=>{checks.push(name);if(!pass)throw Error(name)};
+check('helper syntax',!!new Function(section('function miniBreakSchedule(now,','function miniLoad(retry=false)')));
+const c={date:'2026-11-24',day:2,md:'11/24'},w={referenceDate:'2026-11-23',dates:['11/23','11/24','11/25','11/26','11/27'],rows:[{label:'1교시',cells:['','국어']},{label:'2교시',cells:['','수학']},{label:'3교시',cells:['','']},{label:'4교시',cells:['','사회']},{label:'5교시',cells:['','—']}]},p=[['09:00','09:40'],['09:50','10:30'],['10:40','11:20'],['11:30','12:10'],['13:00','13:40']];
+const at=t=>Date.parse(c.date+'T'+t+'+09:00');
+const call=(t,clock=c,week=w,times=p,confirmed=true)=>schedule(at(t),clock,week,times,confirmed);
+check('next lesson at break',call('09:49:00').next?.period===2);
+check('active lesson',call('09:50:00').active?.period===2);
+check('blank period skipped',call('10:39:00').next?.period===4);
+check('dash placeholder skipped',call('12:20:00').next===null);
+check('unconfirmed timetable',call('09:49:00',c,w,p,false).next===null);
+check('weekend',call('09:49:00',{...c,day:6}).next===null);
+check('wrong reference date',call('09:49:00',c,{...w,referenceDate:'2025-11-24'}).next===null);
+check('invalid saved time',call('09:49:00',c,w,[p[0],['25:00','26:00'],...p.slice(2)]).next?.period===4);
+check('KST conversion',call('09:49:00').next?.start===at('09:50:00'));
+check('after last actual period',call('14:00:00').next===null);
+console.log(checks.length+'/'+checks.length+' checks passed');
