@@ -79,22 +79,23 @@ internal sealed partial class BookReader {
   const string js=@"(()=>{const full=document.fullscreenElement;const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight&&getComputedStyle(e).visibility!=='hidden'};const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48);const inStage=!!(full&&center&&full.contains(center));const unsafe=!!(center&&(center.isContentEditable||center.closest('input,textarea,select,button,[role=button],a,[contenteditable=true],[role=textbox]')));const bs=full?[...full.querySelectorAll('button,[role=button]')].filter(vis):[];const editButtons=bs.filter(e=>/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()));const editControls=editButtons.length;const harmlessShare=editButtons.filter(e=>{if(!/^(share|공유)$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()))return false;const r=e.getBoundingClientRect(),x=innerWidth*.5,y=innerHeight*.48;return r.bottom<=innerHeight*.18&&!(x>=r.left-24&&x<=r.right+24&&y>=r.top-24&&y<=r.bottom+24)&&!(center&&e.contains(center))}).length;const exitControl=bs.some(e=>/^(exit full screen|exit fullscreen|전체 화면 종료|전체 화면 해제)$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()));const labels=bs.map(e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()).filter(s=>/^(next|previous|next page|previous page|next slide|previous slide|exit full screen|exit fullscreen|play|pause|다음|이전|다음 페이지|이전 페이지|다음 슬라이드|이전 슬라이드|전체 화면 종료|전체 화면 해제|재생|일시정지)$/i.test(s));const nums=full?[...full.querySelectorAll('[aria-valuenow],[aria-current], [role=status], [aria-live]')].filter(vis).map(e=>({v:e.getAttribute('aria-valuenow'),max:e.getAttribute('aria-valuemax'),label:e.getAttribute('aria-label'),text:(e.innerText||'').trim()})).map(x=>({value:/^\d{1,4}$/.test(x.v||'')?Number(x.v):null,total:/^\d{1,4}$/.test(x.max||'')?Number(x.max):null,pageLabel:[x.label,x.text].filter(s=>/^(?:(?:page|slide|페이지|슬라이드)\s*)?\d{1,4}\s*(?:\/|of|중)\s*\d{1,4}(?:\s*(?:쪽|페이지))?$/i.test(s||''))})).filter(x=>x.value!==null||x.pageLabel.length).slice(0,12):[];return {full:!!full,tag:full?full.tagName:null,centerTag:center?center.tagName:null,inStage,unsafe,editControls,harmlessShare,exitControl,registered:location.origin==='https://www.canva.com'&&location.pathname.startsWith('/design/DAHbOZ_XOJI/')&&location.pathname.endsWith('/edit'),dialogs:[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(vis).length,canvas:full?[...full.querySelectorAll('canvas')].filter(vis).length:0,images:full?[...full.querySelectorAll('img')].filter(vis).length:0,iframes:full?[...full.querySelectorAll('iframe')].filter(vis).length:0,labels,nums}})()";
   return Json.Deserialize<Dictionary<string,object>>(await web.CoreWebView2.ExecuteScriptAsync(js));
  }
- bool SafeStage(Dictionary<string,object> stage){
+ bool SafeStage(Dictionary<string,object> stage,bool initial=false){
   // A non-overlapping Share button in the top toolbar alone is not evidence of editable slide content.
-  // Still require the registered design, fullscreen exit control, safe non-editable hit target and no dialogs.
-  return Flag(stage,"registered")&&Flag(stage,"full")&&Flag(stage,"inStage")&&!Flag(stage,"unsafe")&&Flag(stage,"exitControl")&&Int(stage,"editControls")==Int(stage,"harmlessShare")&&Int(stage,"harmlessShare")<=1&&Int(stage,"dialogs")==0;
+  // Require the exit control only on entry: Canva hides its toolbar during playback.
+  // All subsequent inputs still require actual fullscreen, exact design, safe target and no dialogs.
+  return Flag(stage,"registered")&&Flag(stage,"full")&&Flag(stage,"inStage")&&!Flag(stage,"unsafe")&&(!initial||Flag(stage,"exitControl"))&&Int(stage,"editControls")==Int(stage,"harmlessShare")&&Int(stage,"harmlessShare")<=1&&Int(stage,"dialogs")==0;
  }
- async Task ObserveRegisteredFullscreen(){
+ async Task<bool> ObserveRegisteredFullscreen(){
   await Pause(1200);
   var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);
   // Read-only hit geometry; distinguish an editor toolbar outside the slide
   // from a real interactive slide. Never click editor controls or capture text.
   const string geometry=@"(()=>{const x=innerWidth*.5,y=innerHeight*.48,hit=document.elementFromPoint(x,y),r=e=>{const a=e.getBoundingClientRect();return {x:Math.round(a.x),y:Math.round(a.y),w:Math.round(a.width),h:Math.round(a.height)}};const vis=e=>{const a=e.getBoundingClientRect();return a.width>0&&a.height>0&&getComputedStyle(e).visibility!=='hidden'};const label=e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim();const editor=/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i;return {viewport:[innerWidth,innerHeight],hitAncestors:(()=>{let out=[];for(let p=hit;p&&out.length<12;p=p.parentElement)out.push({tag:p.tagName,role:p.getAttribute('role'),editable:p.isContentEditable,rect:r(p)});return out})(),controls:[...document.querySelectorAll('button,[role=button]')].filter(e=>vis(e)&&editor.test(label(e))).map(e=>({label:label(e),rect:r(e),containsHit:e.contains(hit)})),canvas:[...document.querySelectorAll('canvas')].filter(vis).map(r),sliders:[...document.querySelectorAll('[role=slider]')].filter(vis).map(e=>({rect:r(e),page:e.getAttribute('aria-valuenow'),total:e.getAttribute('aria-valuemax')}))}})()";
   ProbeLog("REGISTERED_STAGE_GEOMETRY",Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(geometry)));
-  if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return;}
-  int observed=0,changes=0,samePageChanges=0;
+  if(!SafeStage(stage,true)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return false;}
+  int observed=0,changes=0,samePageChanges=0,keysDelivered=0,keysChanged=0;
   for(int i=0;i<24;i++){
-   stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
+   stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="unsafe-next-click",stage});break;}
    await Pause(800);string a=await FrameHash();await Pause(650);string b=await FrameHash();int before=await Read();
    stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="target-changed-before-click"});break;}
    if(!await PhysicalClick(.5,.48)){ProbeLog("REGISTERED_BLOCKED",new{reason="click-delivery"});break;}
@@ -104,10 +105,11 @@ internal sealed partial class BookReader {
   }
   foreach(byte key in new byte[]{0x27,0x25}){
    stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
-   string before=await FrameHash();bool delivered=await PhysicalKey(key);await Pause(1000);string after=await FrameHash();
+   string before=await FrameHash();bool delivered=await PhysicalKey(key);await Pause(1000);string after=await FrameHash();if(delivered)keysDelivered++;if(delivered&&before!=after)keysChanged++;
    ProbeLog("REGISTERED_KEY",new{key=key==0x27?"right":"left",delivered,changed=before!=after,stage=await InspectFullscreenStage()});
   }
-  ProbeLog("REGISTERED_RESULT",new{observed,changes,samePageChanges,acceptance=false,reason="visual change alone is not proof of page identity or sentence reveal"});
+  ProbeLog("REGISTERED_RESULT",new{observed,changes,samePageChanges,keysDelivered,keysChanged,acceptance=false,reason="visual change alone is not proof of page identity or sentence reveal"});
+  return observed==24&&keysDelivered==2&&changes>0;
  }
  async Task<int> RunClickProbe(){
   // Production navigation is exercised first: the exact registered short URL.
@@ -126,42 +128,13 @@ internal sealed partial class BookReader {
   // actual fullscreen surface and test its safe, non-editable slide region.
   if(Int(ui,"dialogs")!=0){ProbeLog("REGISTERED_BLOCKED",new{reason="original-link-dialog-still-open",ui});return 2;}
   bool registeredFull=Str(ui,"route")=="edit"&&Convert.ToBoolean(ui["fullscreen"]);
-  if(registeredFull){
-   await ObserveRegisteredFullscreen();
-   // Leave actual presentation before navigation to independent control.
-   if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
-   await Pause(600);
-   ui=await InspectPublicUi();
-  }
-  bool editorPresent=false;
-  // Public-view comparison is a diagnostic control, never evidence of true Present.
-  if(Str(ui,"route")!="view"&&!editorPresent){
-   web.CoreWebView2.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
-   ui=await PrepareUi("public-view-control");
-   if(Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
-    await Pause(2500);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT",new{phase="public-view-control",ui});
-   }
-  }
-  if(Int(ui,"dialogs")!=0||(Str(ui,"route")!="view"&&!editorPresent)||Int(ui,"slider")<1){ProbeLog("WINDOWS_BLOCKED",new{reason="no-unobstructed-observable-view",ui});return 2;}
-  int start=await Read();
-  // Move to a text-bearing page using actual Windows mouse clicks. A click
-  // that reveals a sentence instead of advancing is itself a useful observation.
-  int steps=0,sameChanged=0,advances=0;
-  for(int i=0;i<10;i++){
-   await Pause(1000);string a=await FrameHash();await Pause(700);string b=await FrameHash();int before=await Read();
-   if(before==0){ProbeLog("WINDOWS_BLOCKED",new{reason="page-index-unavailable"});return 2;}
-   bool delivered=await PhysicalClick(.5,.48);await Pause(1300);int after=await Read();string c=await FrameHash();
-   bool stable=a==b,changed=b!=c;
-   ProbeLog("WINDOWS_CLICK",new{step=i+1,delivered,before,after,stableBefore=stable,changedAfter=changed,foreground=GetForegroundWindow()==Handle});
-   if(!delivered)return 2;
-   steps++;if(stable&&changed&&before==after&&after>0)sameChanged++;if(after==before+1)advances++;
-  }
-  foreach(byte key in new byte[]{0x27,0x25}){
-   int before=await Read();bool delivered=await PhysicalKey(key);await Pause(1200);
-   ProbeLog("WINDOWS_KEY",new{key=key==0x27?"right":"left",delivered,before,after=await Read()});
-  }
-  ProbeLog("WINDOWS_RESULT",new{start,steps,advances,sameChanged,editorPresent,presentationAcceptance=false,reason="same-page visual changes require verification against a known animated slide"});
-  return 0;
+  if(!registeredFull){ProbeLog("REGISTERED_BLOCKED",new{reason="registered-fullscreen-not-entered",ui});return 2;}
+  bool inputOk=await ObserveRegisteredFullscreen();
+  // The public-view comparison was already recorded; do not obscure an original-link failure.
+  if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
+  await Pause(500);
+  ProbeLog("REGISTERED_INPUT_RESULT",new{inputOk,fullscreenExited=!Flag(await InspectPublicUi(),"fullscreen"),animationAcceptance=false});
+  return inputOk?0:2;
  }
  static int RunLiveProbe(string folder){
   if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true")return 2;
