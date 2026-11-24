@@ -69,7 +69,7 @@ const APPS = [
 
   {
     id: "mario-game",
-    title: "호자 퀴즈 2.0",
+    title: "호자게임 1.5",
     description: "달리고 점프하며 퀴즈를 푸는 횡스크롤 아케이드 게임",
     type: "external",
     status: "active",
@@ -84,21 +84,6 @@ const APPS = [
     }
   },
 
-  {
-    id: "mario-manager",
-    title: "퀴즈 매니저",
-    description: "개인 카트리지를 만들고 문제를 수정하는 퀴즈 매니저",
-    type: "external",
-    status: "active",
-    linked: true,
-    url: "https://script.google.com/macros/s/AKfycbzwfZwv7JLEw0_CxeIyvozy9QaqmUXwBOCsCSWQin_SITmVJzx618p9kZtCOjxkD4X-/exec",
-    icon: "folder",
-    color: "amber",
-    media: {
-      poster: "./assets/hub/cards/mario-manager-hover-poster-v1.webp",
-      video: "./assets/hub/cards/mario-manager-hover-preview-v1.mp4"
-    }
-  },
 
   {
     id: "hoja-minigames",
@@ -115,29 +100,7 @@ const APPS = [
     }
   },
 
-  {
-    id: "project-c",
-    title: "Project C",
-    description: "새로운 실시간 수업 게임",
-    type: "external",
-    status: "development",
-    url: null,
-    icon: "spark",
-    color: "muted",
-    media: null
-  },
 
-  {
-    id: "role-manager",
-    title: "1인1역 배치 매니저",
-    description: "학급 역할을 배정하는 도구",
-    type: "internal",
-    status: "development",
-    url: null,
-    icon: "people",
-    color: "muted",
-    media: null
-  }
 ];
 
 const ICONS = {
@@ -357,9 +320,9 @@ function ensureQrModal() {
       </button>
 
       <p class="qr-modal-kicker">STUDENT JOIN</p>
-      <h2 id="mario-qr-title">호자 퀴즈 2.0 학생 접속</h2>
+      <h2 id="mario-qr-title">호자게임 1.5 학생 접속</h2>
       <p class="qr-modal-guide">
-        학생들이 카메라로 QR 코드를 스캔하면 바로 호자 퀴즈 2.0으로 이동합니다.
+        학생들이 카메라로 QR 코드를 스캔하면 바로 호자게임 1.5으로 이동합니다.
       </p>
 
       <a
@@ -367,18 +330,18 @@ function ensureQrModal() {
         data-qr-link
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="호자 퀴즈 2.0 열기"
+        aria-label="호자게임 1.5 열기"
       >
         <img
           src="./assets/hub/cards/mario-game-join-qr-v1.svg"
-          alt="호자 퀴즈 2.0 학생 접속 QR 코드"
+          alt="호자게임 1.5 학생 접속 QR 코드"
           width="560"
           height="560"
         >
       </a>
 
       <p class="qr-modal-note">
-        QR 코드를 클릭해도 호자 퀴즈 2.0으로 이동합니다.
+        QR 코드를 클릭해도 호자게임 1.5으로 이동합니다.
       </p>
     </section>
   `;
