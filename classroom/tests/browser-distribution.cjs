@@ -75,6 +75,21 @@ async function step(name,fn){
    assert.deepEqual(types,[],'성적 관리 밖으로 보낸 메시지 없음');
    assert.deepEqual(requests.filter(u=>!/\/classroom\/grades\//.test(u)),[],'바깥 요청 없음');
   });
+  await step('대시보드에서 교과 전체 분포를 바로 열고 개인 결과로 이동한다',async()=>{
+   await f.locator('#close-student-detail').click();
+   await f.locator('.nav[data-page="overview"]').click();
+   await f.locator('#overview-class-dist').click();
+   await f.locator('#class-dist-dialog[open]').waitFor();
+   assert.match(await f.locator('.dist-chart-title').textContent(),/수학 · 교과 전체 · 표준점수/);
+   assert.equal(await f.locator('.dist-chip').count(),n-1);
+   await f.locator('#class-dist-close').click();
+   assert.equal(await f.locator('.page[data-view="overview"]').isVisible(),true);
+   await f.locator('#overview-class-dist').click();
+   await f.locator('.dist-chip').first().click();await f.locator('#dist-personal').click();
+   assert.equal(await f.locator('#student-detail:not(.hidden)').isVisible(),true);
+   assert.equal(await f.locator('.page[data-view="classes"]').evaluate(el=>!el.classList.contains('hidden')),true);
+   await f.locator('#close-student-detail').click();
+  });
   await step('분포 자료는 칠판 보기와 대시보드 보내기에 들어가지 않는다',async()=>{
    const keys=await p.evaluate(()=>{const out=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i),v=localStorage.getItem(k)||'';if(/표준점수|dist-chip|class-dist/.test(v))out.push(k)}return out});
    assert.deepEqual(keys,[]);

@@ -44,3 +44,7 @@ html,body{height:100%!important;min-height:0!important;overflow:hidden!important
 /* STAGE 03.4 dashboard: only the data-management tab on the right. */
 .tool-dock .dock-tabs.tt-dashboard-data-only{grid-template-columns:minmax(0,1fr)!important}
 .tool-dock .dock-tabs.tt-dashboard-data-only .dock-tab:not([data-dock="data"]){display:none!important}
+
+/* The embedded workspace otherwise forces overflow:auto with higher specificity. */
+#app>.studio>.workspace-column>.workspace:has(>.student-detail-view:not(.hidden)){overflow:hidden!important}
+#app>.studio>.workspace-column>.workspace:has(.page[data-view="grades"]:not(.hidden)){overflow:hidden!important}

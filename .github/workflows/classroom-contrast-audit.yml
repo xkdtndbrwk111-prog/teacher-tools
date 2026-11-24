@@ -1,0 +1,16 @@
+name: Classroom all-theme rendered contrast and scroll audit
+on:
+  pull_request:
+    paths: ['seating/**','classroom/**','shared/**','.github/workflows/classroom-contrast-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: npm install --prefix /tmp/tt-contrast --no-audit --no-fund --no-package-lock playwright@1.55.0
+      - run: NODE_PATH=/tmp/tt-contrast/node_modules node classroom/tests/browser-contrast-audit.cjs

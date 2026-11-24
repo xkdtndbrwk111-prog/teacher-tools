@@ -291,12 +291,13 @@ function renderTraitLink(){
 let distState=null;
 const distView=()=>({...m,assessments:semAssessments()});
 const distClassIds=()=>[...new Set(semAssessments().flatMap(a=>a.classIds))].filter(id=>m.classes.some(c=>c.id===id));
-function openClassDistribution(){
+function openClassDistribution(source='sheet'){
  const ids=distClassIds();
  if(!ids.length){toast('평가를 먼저 만들어 주세요.',true);return;}
  const assess=m.assessments.find(a=>a.id===selectedAssessment);
- const classId=selectedGradeClass!=='all'&&ids.includes(selectedGradeClass)?selectedGradeClass:ids.includes(selectedClass)?selectedClass:ids[0];
- distState={classId,subject:selectedGradeSubject||assess?.subject||'',assessmentId:selectedGradeSubject?null:(assess?.id||null),selected:null};
+ const fromOverview=source==='overview';
+ const classId=(!fromOverview&&selectedGradeClass!=='all'&&ids.includes(selectedGradeClass))?selectedGradeClass:ids.includes(selectedClass)?selectedClass:ids[0];
+ distState={classId,subject:fromOverview?'':selectedGradeSubject||assess?.subject||'',assessmentId:fromOverview||selectedGradeSubject?null:(assess?.id||null),selected:null};
  renderClassDistribution();
  const dlg=$('class-dist-dialog');if(!dlg.open)dlg.showModal();
 }
@@ -333,7 +334,7 @@ function renderClassDistribution(){
  if($('dist-unit'))$('dist-unit').onchange=e=>{st.assessmentId=e.target.value;st.selected=null;renderClassDistribution();};
  document.querySelectorAll('[data-dist-mode]').forEach(b=>b.onclick=()=>{st.assessmentId=b.dataset.distMode==='unit'?units[0]?.id||null:null;renderClassDistribution();});
  $('class-dist-body').querySelectorAll('[data-dist-member]').forEach(el=>{const pick=()=>{st.selected=st.selected===el.dataset.distMember?null:el.dataset.distMember;renderClassDistribution();};el.onclick=pick;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
- if($('dist-personal'))$('dist-personal').onclick=()=>{const id=st.selected;$('class-dist-dialog').close();showStudent(id);};
+ if($('dist-personal'))$('dist-personal').onclick=()=>{const id=st.selected;$('class-dist-dialog').close();if(page==='overview')go('classes');showStudent(id);};
 }
 // The sheet redraws often (window focus, roster sync), so keep showing the assessment last looked at
 // while it is on the sheet, else the first school-plan assessment shown.
@@ -821,7 +822,7 @@ async function loadYear(y){
 }
 for(let y=schoolYear()-2;y<=schoolYear()+3;y++){const opt=document.createElement('option');opt.value=String(y);opt.textContent=y+'학년도';if(y===year)opt.selected=true;$('year').append(opt)}
 $('year').onchange=async()=>{toast('지금은 이번 학년도만 볼 수 있습니다.',true);$('year').value=String(year);return;if(cloudOpBusy||cloud.busy){toast('Google 파일 확인 또는 저장 작업이 끝난 뒤 학년도를 바꿔 주세요.',true);$('year').value=String(year);return;}if(cloudMode&&cloudDirty){toast('먼저 현재 작업을 Sheets에 저장하거나 JSON 백업으로 보관해 주세요.',true);$('year').value=String(year);return;}await waitToSave().catch(()=>{});await loadYear($('year').value)};
-$('open-class-dist').onclick=openClassDistribution;$('class-dist-close').onclick=()=>$('class-dist-dialog').close();
+$('open-class-dist').onclick=()=>openClassDistribution('sheet');$('overview-class-dist').onclick=()=>openClassDistribution('overview');$('class-dist-close').onclick=()=>$('class-dist-dialog').close();
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>go(b.dataset.page));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));$('dock-next').onclick=()=>go($('dock-next').dataset.go);document.querySelectorAll('.dock-tab').forEach(b=>b.onclick=()=>activateDock(b.dataset.dock));document.querySelectorAll('input[name="gradeType"]').forEach(i=>i.onchange=updateType);$('level-count').onchange=updateType;updateType();
 $('class-form').onsubmit=e=>{e.preventDefault();if(true){toast('학생과 학급은 자리배치 메뉴에서만 수정합니다.',true);return;}try{const c=addClass(m,$('new-class').value);selectedClass=c.id;$('new-class').value='';markChanged();render();toast('새 학급이 등록되었습니다.')}catch(x){toast(x.message,true)}};
 $('assessment-form').onsubmit=e=>{e.preventDefault();try{const c=new BroadcastChannel('tt-classroom-changes');c.postMessage({important:true});c.close()}catch{};const form=e.currentTarget;const fd=new FormData(form);try{const gradeType=fd.get('gradeType');if(gradeType==='other'&&!['higher','lower'].includes(fd.get('recordDirection')))throw Error('기타 기록의 우수 방향을 선택해 주세요.');const a=addAssessment(m,{title:fd.get('title'),subject:fd.get('subject'),gradeType,criterion:gradeType==='level'?fd.get('criterionLevel'):gradeType==='other'?fd.get('criterionOther'):fd.get('criterionScore'),unit:fd.get('recordUnit'),recordDirection:fd.get('recordDirection'),levelCount:fd.get('levelCount'),maxScore:fd.get('maxScore'),classIds:fd.getAll('targetClass'),semester:fd.get('semester')||selectedSemester});selectedAssessment=a.id;selectedGradeClass='all';markChanged();form.reset();$('new-semester').value=selectedSemester;updateType();render();toast('평가를 생성했습니다.')}catch(x){toast(x.message,true)}};

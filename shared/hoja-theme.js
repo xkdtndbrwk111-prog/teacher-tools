@@ -116,7 +116,7 @@
   out['--cm-work-line']=mix(p.border,'#ffffff',.52);
   out['--cm-work-ink']='#172033';
   out['--cm-work-sub']='#475569';
-  out['--cm-work-emphasis']=ink(out['--cm-work-paper'],p.accent);
+  out['--cm-work-emphasis']=contrast(out['--cm-work-bg'],p.accent)>=4.5&&contrast(out['--cm-work-paper'],p.accent)>=4.5?p.accent:'#172033';
   out['--cm-work-alert']=ink(out['--cm-work-paper'],'#b91c1c');
   out['--cm-font']=v.font?'"'+v.font+'", system-ui, "Malgun Gothic", sans-serif':'system-ui, "Malgun Gothic", sans-serif';
   return out;

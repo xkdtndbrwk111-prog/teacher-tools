@@ -79,7 +79,7 @@ html.tt-manager-theme #teacherScreen .tt-life-panel :is(.life-card,.life-stat){
 html.tt-manager-theme #teacherScreen .dock-panel .dock-title span{color:var(--cm-work-sub)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important;border-radius:var(--cm-button-radius)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.selected{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;outline:2px solid var(--cm-accent);outline-offset:-3px}
-html.tt-manager-theme #teacherScreen .shared-student-card:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card:not(.seating-student-card):not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.selected:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-control-ink)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg);border-radius:5px;padding:1px 4px}
 html.tt-manager-theme #teacherScreen .life-side{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important}
@@ -450,3 +450,49 @@ html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud
 @media(max-width:720px){
  html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud{display:none!important}
 }
+
+/* Grade dock: its surface is the theme panel, not the light workspace paper.
+   Old fixed white/blue-gray text is unreadable on peach, sky and green. */
+html.tt-manager-theme #app .tool-dock .dock-panel{
+ --text-primary:var(--cm-panel-ink);--text-secondary:var(--cm-panel-sub);
+ --text-accent:var(--cm-panel-emphasis);--text-alert:var(--cm-panel-alert);
+ color:var(--text-primary)
+}
+html.tt-manager-theme #app .tool-dock .dock-panel :is(.dock-subheading,.dock-roster-heading,.roster-bulk-title,.dock-roster-row,.dock-form label,.cloud-key-label,.grade-tools label){
+ color:var(--text-primary)!important
+}
+html.tt-manager-theme #app .tool-dock .dock-panel :is(.dock-title span,.dock-note,.dock-help,.dock-empty,.empty-state,.grade-dock-hint,.dock-bulk summary,.roster-bulk p){
+ color:var(--text-secondary)!important
+}
+html.tt-manager-theme #app .tool-dock :is(.dock-box,.grade-dock-description,.grade-level-notes,.roster-bulk,.cloud-candidates){
+ --text-primary:var(--cm-control-ink);--text-secondary:var(--cm-control-sub);
+ --text-accent:var(--cm-control-emphasis);
+ background:var(--cm-control)!important;color:var(--text-primary)!important;border-color:var(--cm-border)!important
+}
+html.tt-manager-theme #app .tool-dock :is(.dock-box,.grade-level-notes,.cloud-candidates) :is(strong,b){color:var(--text-primary)!important}
+html.tt-manager-theme #app .tool-dock :is(.dock-box,.grade-level-notes,.cloud-candidates) :is(span,small){color:var(--text-secondary)!important}
+html.tt-manager-theme #app .tool-dock .dock-divider{background:var(--cm-border)}
+html.tt-manager-theme #app .tool-dock .class-item{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;border-color:var(--cm-border)!important}
+html.tt-manager-theme #app .tool-dock .class-item.active{background:var(--cm-action-fill)!important;color:var(--cm-action-ink)!important;border-color:var(--cm-accent)!important}
+html.tt-manager-theme #app .tool-dock .class-item small{color:inherit!important}
+
+/* Light data paper uses its own contrast-safe text roles, even in dark themes.
+   Leave the semantic seat, status and grade-cell fills unchanged. */
+html.tt-manager-theme #app :is(.workspace,.student-detail-view,.class-dist-dialog) :is(.empty-state,.muted,.tile small,.assess-item small,.class-stage-student .number,.class-stage-help,.class-inline-summary,.student-detail-top p,.personal-section-heading span,.personal-subject-score small,.personal-no-data,.personal-method-note,.personal-table td small,.ability-preview h3 small,.ability-scores span,.ability-scores small,.type-option small,.trait-preview th small,.trait-preview td.trait-keep,.trait-actions span,.dist-empty,.dist-detail-hint,.dist-list button:not(.on) span,.dist-excluded,.pi-school small,.pi-found small,.pi-manual small,.pi-result-head small,.pi-item-top em,.pi-dup,.pi-item small,.assess-section-title small,.assess-semester,.grade-unit-hint,.sheet-tab-label,.sheet-tab-count,.grade-table .sheet-letters th,.grade-table th.sheet-row-num){
+ color:var(--cm-work-sub)!important
+}
+html.tt-manager-theme #app .student-detail-view{background:var(--cm-work-bg)!important;color:var(--cm-work-ink)}
+html.tt-manager-theme #app .student-detail-inner{background:var(--cm-work-paper);color:var(--cm-work-ink);border-color:var(--cm-work-line)}
+html.tt-manager-theme #teacherScreen .dock-panel :is(.inspector-label,.student-inspector-empty,.select-grid label,.rule-card small,.group-row small,.history-meta,.data-transfer p,.data-transfer-status:not(.error):not(.success)){
+ color:var(--cm-work-sub)!important
+}
+html.tt-manager-theme #teacherScreen :is(.seat-occupant.empty,.pe-empty){color:var(--cm-work-sub)!important}
+html.tt-manager-theme #teacherScreen .dock-panel label:not(:has(button)){color:var(--cm-work-sub)}
+html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body,.tt-class-modal-box) :is(input:not([type=color]):not([type=range]):not([type=radio]):not([type=checkbox]),textarea)::placeholder{color:var(--cm-work-sub)!important;opacity:1}
+
+/* Follow-up findings from 160 actual screen states. */
+html.tt-manager-theme #teacherScreen .tool-dock .dock-panel .dock-title span{color:var(--cm-work-sub)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus:not(.error):not(.warning){color:var(--cm-control-sub)!important}
+html.tt-manager-theme #teacherScreen .seating-student-card:not(.assignment-excluded) .shared-student-status{color:var(--cm-control-ink)!important;background:var(--cm-control)!important}
+html.tt-manager-theme #teacherScreen .seating-student-card.selected:not(.assignment-excluded) .shared-student-status{color:var(--cm-control-ink)!important}
+html.tt-manager-theme .tt-class-modal-box #tt-class-names::placeholder{color:var(--cm-work-sub)!important;opacity:1}
