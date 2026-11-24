@@ -79,7 +79,7 @@ html.tt-manager-theme #teacherScreen .tt-life-panel :is(.life-card,.life-stat){
 html.tt-manager-theme #teacherScreen .dock-panel .dock-title span{color:var(--cm-work-sub)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important;border-radius:var(--cm-button-radius)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.selected{background:var(--cm-control)!important;color:var(--cm-control-ink)!important;outline:2px solid var(--cm-accent);outline-offset:-3px}
-html.tt-manager-theme #teacherScreen .shared-student-card:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
+html.tt-manager-theme #teacherScreen .shared-student-card:not(.seating-student-card):not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-panel-sub)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.selected:not(.assignment-excluded):not([aria-pressed="false"]) .shared-student-status{color:var(--cm-control-ink)!important}
 html.tt-manager-theme #teacherScreen .shared-student-card.assignment-excluded .shared-student-status{color:var(--cm-status-danger)!important;background:var(--cm-status-danger-bg);border-radius:5px;padding:1px 4px}
 html.tt-manager-theme #teacherScreen .life-side{background:var(--cm-panel)!important;color:var(--cm-panel-ink)!important}
