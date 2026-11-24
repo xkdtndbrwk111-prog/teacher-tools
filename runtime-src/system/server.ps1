@@ -886,6 +886,7 @@ function Open-TTBookHost([string]$encoded) {
  $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token
  [void][IO.Directory]::CreateDirectory($dir)
  try{
+  $launch=$null
   $stage='extract-bundle'
   $required=@('BookReader.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','LICENSE.txt')
   $allowed=$required+@('ThirdPartyNotices.txt')
