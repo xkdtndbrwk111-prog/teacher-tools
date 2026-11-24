@@ -11,7 +11,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-internal sealed class BookReader : Form {
+internal sealed partial class BookReader : Form {
  static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
  static readonly UTF8Encoding Utf8=new UTF8Encoding(false);
  static readonly Regex UrlPattern=new Regex(@"^https://www\.canva\.com/design/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/view\?embed$",RegexOptions.CultureInvariant);
@@ -289,6 +289,9 @@ internal sealed class BookReader : Form {
  [STAThread] static int Main(string[] args){
   try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}
   Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
+#if TT_LIVE_PROBE
+  if(args.Length==2&&args[0]=="--live-probe")return RunLiveProbe(args[1]);
+#endif
   try{
    if(args.Length!=2||args[0]!="--session"&&args[0]!="--self-test")return 2;
    bool lab=args[0]=="--self-test";string dir=Path.GetFullPath(args[1]);
