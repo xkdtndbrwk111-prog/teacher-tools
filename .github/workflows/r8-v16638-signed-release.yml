@@ -1,0 +1,139 @@
+name: R8 V1.66.38 exact verified owner pilot release
+on:
+  workflow_call:
+    inputs:
+      artifact_id:
+        required: true
+        type: string
+      archive_sha:
+        required: true
+        type: string
+      payload_sha:
+        required: true
+        type: string
+      field_gate:
+        required: true
+        type: boolean
+      owner_pilot_16638:
+        required: true
+        type: boolean
+    secrets:
+      TT_SIGNING_PFX_B64:
+        required: false
+      TT_SIGNING_PFX_PASSWORD:
+        required: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: r8-runtime-release
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/main' && inputs.owner_pilot_16638 == true && inputs.field_gate == false && inputs.artifact_id == '14916639624' && inputs.archive_sha == 'e434798d0970027f9d9a66af9025e3158fa12360e44cbd67bad80aa2b93b5a1c' && inputs.payload_sha == '3d40f6ccd7065eccd901dda5a5ac9e122ee7e7f280bb0c2c6f5099daf6417e25'
+    runs-on: windows-latest
+    environment: teacher-tools-signing
+    timeout-minutes: 10
+    outputs:
+      old_sha: ${{ steps.check.outputs.old_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Exact archive and payload validation (no key)
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER_PILOT_16638: ${{ inputs.owner_pilot_16638 }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          ARCHIVE_SHA: ${{ inputs.archive_sha }}
+          PAYLOAD_SHA: ${{ inputs.payload_sha }}
+        run: |
+          $ErrorActionPreference='Stop'
+          # Use the committed bytes, not Windows checkout newline conversion.
+          python -c "import pathlib,subprocess; p=pathlib.Path('stable/runtime-v1/latest.json'); p.write_bytes(subprocess.check_output(['git','show','HEAD:'+p.as_posix()]))"
+          if($LASTEXITCODE -ne 0){throw 'Exact old feed extraction failed'}
+          if($env:ARTIFACT_ID -cnotmatch '^[0-9]{1,20}$' -or $env:ARCHIVE_SHA -cnotmatch '^[a-f0-9]{64}$' -or $env:PAYLOAD_SHA -cnotmatch '^[a-f0-9]{64}$'){throw 'Invalid release inputs'}
+          if($env:OWNER_PILOT_16638 -eq 'true'){
+            if($env:ARTIFACT_ID -cne '14916639624' -or $env:ARCHIVE_SHA -cne 'e434798d0970027f9d9a66af9025e3158fa12360e44cbd67bad80aa2b93b5a1c' -or $env:PAYLOAD_SHA -cne '3d40f6ccd7065eccd901dda5a5ac9e122ee7e7f280bb0c2c6f5099daf6417e25'){throw 'Exact V1.66.38 owner pilot candidate required'}
+            python -c "import sys,pathlib,hashlib,json; sys.path.insert(0,'tools/r8-publisher'); import validate as v; b=v.decode_feed(pathlib.Path('stable/runtime-v1/latest.json').read_bytes()); assert hashlib.sha256(b).hexdigest()=='ca7e2eea093431954329d9e2a9136396808fac7d47353c52c3121bf0f7f09cea' and json.loads(b)['version']=='1.66.36','Previous signed feed mismatch'"
+            if($LASTEXITCODE -ne 0){throw 'V1.66.38 owner pilot requires exact signed V1.66.36 previous feed'}
+          }
+          $dir=Join-Path $env:RUNNER_TEMP 'r8-release'
+          New-Item -ItemType Directory $dir | Out-Null
+          $meta=gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID" | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0 -or $meta.expired -or $meta.name -cne 'r8-runtime-release-candidate'){throw 'Unexpected artifact'}
+          $url="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
+          Invoke-WebRequest -Uri $url -Headers @{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json'} -OutFile (Join-Path $dir 'candidate.zip')
+          python tools/r8-publisher/validate.py extract (Join-Path $dir 'candidate.zip') (Join-Path $dir 'candidate') $env:ARCHIVE_SHA
+          if($LASTEXITCODE -ne 0){throw 'Archive rejected'}
+          python tools/r8-publisher/validate.py check (Join-Path $dir 'candidate') stable/runtime-v1/latest.json $env:PAYLOAD_SHA
+          if($LASTEXITCODE -ne 0){throw 'Manifest rejected'}
+          "old_sha=$((Get-FileHash stable/runtime-v1/latest.json -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Sign exact approved manifest
+        shell: pwsh
+        env:
+          TT_PFX: ${{ secrets.TT_SIGNING_PFX_B64 }}
+          TT_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'r8-release'
+          & tools/r8-publisher/sign.ps1 (Join-Path $dir 'candidate/payload.json') (Join-Path $dir 'signature.bin')
+          if($LASTEXITCODE -ne 0){throw 'Signing failed'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r8-signed-release
+          path: |
+            ${{ runner.temp }}/r8-release/candidate.zip
+            ${{ runner.temp }}/r8-release/signature.bin
+          retention-days: 7
+          if-no-files-found: error
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+      pages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ARCHIVE_SHA: ${{ inputs.archive_sha }}
+      PAYLOAD_SHA: ${{ inputs.payload_sha }}
+      OLD_SHA: ${{ needs.sign.outputs.old_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+      - name: Independently verify and atomically publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/r8-signed"
+          mkdir -p "$dir"
+          gh run download "$GITHUB_RUN_ID" --name r8-signed-release --dir "$dir"
+          actual="$(sha256sum stable/runtime-v1/latest.json | cut -d ' ' -f1)"
+          if [ "$actual" != "$OLD_SHA" ]; then echo "::error::Old feed digest differs from signer ($actual != $OLD_SHA)"; exit 1; fi
+          python tools/r8-publisher/validate.py extract "$dir/candidate.zip" "$dir/candidate" "$ARCHIVE_SHA"
+          python tools/r8-publisher/validate.py stage "$dir/candidate" "$dir/signature.bin" stable/runtime-v1/latest.json "$PAYLOAD_SHA" stable/runtime-v1
+          git add -- stable/runtime-v1/blobs stable/runtime-v1/latest.json
+          git diff --cached --name-only | python -c 'import sys,re; p=sys.stdin.read().splitlines(); assert p and all(re.fullmatch(r"stable/runtime-v1/(latest\.json|blobs/[a-f0-9]{64}\.bin)",x) for x in p)'
+          git config user.name "teacher-tools-release"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish independently verified R8 runtime snapshot"
+          git push origin HEAD:main
+          echo 'Git commit published atomically; request Pages deployment explicitly.'
+      - name: Request Pages build
+        shell: bash
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
+          echo 'Pages build requested; verify live feed before announcing availability.'
+      - name: Queue official manual installer for the newly signed runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GITHUB_TOKEN pushes do not trigger ordinary 'push' workflows.
+          # workflow_dispatch is the documented opt-in exception: it does.
+          gh workflow run hoja-manual-installer-sync.yml --ref main
+          echo 'Manual installer sync explicitly dispatched after signed release.'

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "version": "1.66.38",
+  "previous_version": "1.66.36",
+  "previous_payload_sha": "ca7e2eea093431954329d9e2a9136396808fac7d47353c52c3121bf0f7f09cea",
+  "source_sha": "5d2b6d7bf4b74e9b111f34a89c70337dad17b425",
+  "review_sha": "3fb92ee5ac63965e2f9d8607e72fcddfd0cd1050",
+  "artifact_id": 14916639624,
+  "archive_sha": "e434798d0970027f9d9a66af9025e3158fa12360e44cbd67bad80aa2b93b5a1c",
+  "payload_sha": "3d40f6ccd7065eccd901dda5a5ac9e122ee7e7f280bb0c2c6f5099daf6417e25",
+  "main_runs": {
+    "R8 publisher contract review": 45389581361,
+    "R8 native Windows verification": 45389581726,
+    "V1.66.8 education activities browser regression": 45389581651,
+    "R8 native R7 integration checks": 45389581441,
+    "V1.66.6 browser text contrast": 45389581653,
+    "QR square widget and integer fit checks": 45389581202,
+    "V1.66.9 common badge browser regression": 45389581263,
+    "Tournament host bridge review": 45389581251,
+    "R8 source-driven build": 45389581171,
+    "V1.66.7 theme font shadow and icon regressions": 45389581155
+  },
+  "review_runs": {
+    "V1.66.6 browser text contrast": 45378081708,
+    "R8 native Windows verification": 45378078473,
+    "V1.66.7 theme font shadow and icon regressions": 45378078130,
+    "R8 source-driven build": 45378078252,
+    "QR square widget and integer fit checks": 45378078128,
+    "V1.66.8 education activities browser regression": 45378078215,
+    "V1.66.9 common badge browser regression": 45378078246,
+    "Multimedia candidate browser review": 45378078189,
+    "R8 recovery candidate build": 45378078283,
+    "Tournament host bridge review": 45378078147,
+    "Routine integer coin candidate checks": 45378078162,
+    "Daily lesson alert mute checks": 45378078225,
+    "Classroom UI2 home and HUD candidate": 45378078291,
+    "R8 native R7 integration checks": 45378078380
+  },
+  "authorization": "Owner explicitly requested deployment after being informed that 14/14 candidate CI checks passed and the physical classroom board test had not been performed. Exact minigame lesson-end candidate only; 10 exact successful main checks and independent signature verification required.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16638_minigame_lesson_end_owner_field_test_only"
+}
