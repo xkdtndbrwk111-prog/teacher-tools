@@ -36,6 +36,37 @@ const {chromium}=require('playwright');
     const full=await page.evaluate(()=>!!document.fullscreenElement);
     if(full){
      await page.mouse.move(1490,10);
+     // Earlier pages may have no click animations. Test text-bearing pages
+     // identified read-only through Canva's design API: 6, 12, 20, 40, 80.
+     // Navigate only with the public viewer's official accessible slider.
+     const slider=page.locator('[role=slider][aria-valuenow][aria-valuemax]');
+     for(const targetPage of [6,12,20,40,80]){
+      if(await slider.count()!==1){console.log('SEEK_UNAVAILABLE '+locale);break}
+      let from=Number(await index());
+      if(!Number.isInteger(from)||from<1){console.log('SEEK_UNAVAILABLE '+locale);break}
+      try{
+       await slider.focus({timeout:3000});
+       for(let n=0;n<Math.abs(targetPage-from);n++){
+        await slider.press(targetPage>from?'ArrowRight':'ArrowLeft',{timeout:3000});
+       }
+       await page.waitForTimeout(1600);
+       let reached=Number(await index());
+       console.log('PAGE_SEEK '+JSON.stringify({locale,targetPage,reached}));
+       if(reached!==targetPage)continue;
+       await slider.evaluate(el=>el.blur());
+       await page.mouse.move(1490,10);
+       for(let step=1;step<=3;step++){
+        await page.waitForTimeout(1100);
+        let a=await shot();await page.waitForTimeout(850);let b=await shot(),before=await index();
+        await page.mouse.click(750,400);await page.mouse.move(1490,10);
+        await page.waitForTimeout(1500);let after=await shot(),next=await index();
+        console.log('LATER_CLICK '+JSON.stringify({locale,targetPage,step,before,next,stableBefore:a===b,changedAfter:b!==after,fullscreen:await page.evaluate(()=>!!document.fullscreenElement)}));
+        if(before!==next)break;
+       }
+      }catch(e){console.log('PAGE_SEEK_ERROR '+JSON.stringify({locale,targetPage,type:e.name}));break}
+     }
+     // Existing five-click diagnostic remains; these observations are not
+     // a release acceptance gate unless a verified animated page reveals.
      for(let i=0;i<5;i++){
       await page.waitForTimeout(1500);
       let a=await shot();await page.waitForTimeout(1000);let b=await shot();let before=await index();
