@@ -240,7 +240,7 @@ public static class BookTestGeometry {
     do{
      $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$interactiveArgs.layout}) -TimeoutSec 4
      if($state.closed){throw ('Interactive reader closed prematurely: '+$state.status)}
-     if($state.ready -and $state.owned -and $state.visible -and $state.total -eq 394 -and $state.saved -eq 1){$ready=$true;break}
+     if($state.ready -and $state.navigationMode -eq 'direct' -and $state.owned -and $state.visible -and $state.total -eq 394 -and $state.saved -eq 1){$ready=$true;break}
      Start-Sleep -Milliseconds 500
     }while([DateTime]::UtcNow -lt $deadline)
     if(!$ready){throw ('Interactive Canva ready not confirmed: '+($state|ConvertTo-Json -Compress))}
@@ -248,7 +248,7 @@ public static class BookTestGeometry {
      $hold=[DateTime]::UtcNow.AddSeconds(40)
      do{
       $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$interactiveArgs.layout}) -TimeoutSec 4
-      if($state.closed -or !$state.ready -or !$state.owned -or !$state.visible){throw ('Interactive session lost during lease test: '+($state|ConvertTo-Json -Compress))}
+      if($state.closed -or !$state.ready -or $state.navigationMode -ne 'direct' -or !$state.owned -or !$state.visible){throw ('Interactive session lost during lease test: '+($state|ConvertTo-Json -Compress))}
       Start-Sleep -Milliseconds 800
      }while([DateTime]::UtcNow -lt $hold)
     }
@@ -275,6 +275,28 @@ public static class BookTestGeometry {
    }
   }
   Write-Host 'PASS interactive installed reader open, 40-second lease maintenance, close and reopen'
+
+  # Verify hard failure of the isolated worker cannot kill the HTTP listener.
+  $failureOpen=Invoke-RestMethod -TimeoutSec 10 -Uri ($site+'/api/book-reader/open') -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book $interactiveArgs)
+  if(!$failureOpen.ok -or $failureOpen.session -cnotmatch '^[a-f0-9]{32}$'){throw 'Failure isolation session missing'}
+  $failureSuffix='?session='+$failureOpen.session
+  $worker=@(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object {$_.CommandLine -match ('-BookWorker '+[regex]::Escape($failureOpen.session)+' -BookParentPid \d+')})
+  if($worker.Count -ne 1){throw 'Expected exact isolated worker process'}
+  $listenerBefore=Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 17439 -State Listen | Select-Object -First 1
+  if(!$listenerBefore -or $listenerBefore.OwningProcess -eq $worker[0].ProcessId){throw 'Worker shares the core server process'}
+  Stop-Process -Id $worker[0].ProcessId -Force
+  $deadline=[datetime]::UtcNow.AddSeconds(15)
+  do{
+   $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$failureSuffix) -Headers $headers -TimeoutSec 4
+   if($state.closed){break}
+   Start-Sleep -Milliseconds 400
+  }while([datetime]::UtcNow -lt $deadline)
+  if(!$state.closed){throw 'Worker failure session did not close'}
+  $health=Invoke-RestMethod -Uri ($site+'/health') -TimeoutSec 4
+  $listenerAfter=Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 17439 -State Listen | Select-Object -First 1
+  if($health.service -ne 'teacher-tools-local' -or $listenerAfter.OwningProcess -ne $listenerBefore.OwningProcess){throw 'Worker failure killed or replaced server'}
+  Write-Host 'PASS isolated book worker hard termination leaves original HTTP server alive'
+
  }
  Write-Host 'PASS: actual Windows board window, local HTTP signed update, close and restart, matching readiness, all target files, synthetic data preservation. Test key and isolated local feed only; no physical school device or installer test.'
 }finally{

@@ -86,7 +86,12 @@ function Start-TTServer {
   if (!(Test-Path -LiteralPath $serverPath)) { throw 'Teacher Tools server.ps1 is missing. Run INSTALL_TEACHER_TOOLS.cmd.' }
   $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (!(Test-Path -LiteralPath $exe)) { throw 'Windows PowerShell 5.1 was not found.' }
-  Start-TTHidden -ScriptPath $serverPath
+  # Match the successful school-PC diagnostic: a hidden process with file-backed
+  # stdout/stderr, not a console-less child inheriting absent standard handles.
+  # These files stay local, are replaced on the next server launch, and are not
+  # part of student data or the updater manifest.
+  $arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$serverPath+'"'
+  Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $TTInstallDir -WindowStyle Hidden -RedirectStandardOutput (Join-Path $TTInstallDir 'server-stdout.log') -RedirectStandardError (Join-Path $TTInstallDir 'server-stderr.log')
 }
 # A process created with no console at all cannot appear in Windows Terminal, whatever the default terminal is.
 function Start-TTHidden {
