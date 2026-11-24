@@ -17,6 +17,42 @@ Copy-Item $core.FullName,$win,$loader.FullName $out
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$out\BookReader.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'book-reader-host.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
+# Exercise the same server launcher under a hidden PowerShell parent, not just
+# BookReader --self-test. Use a local console fixture to assert both pipes drain.
+$launchFixture=Join-Path $root 'server-launch-fixture'
+New-Item -ItemType Directory -Force $launchFixture | Out-Null
+$fixtureSource=Join-Path $launchFixture 'fixture.cs'
+[IO.File]::WriteAllText($fixtureSource,'using System; class Fixture { static int Main(string[] a) { Console.WriteLine(a.Length==2 && a[0]=="--session" ? "ARGS_OK" : "ARGS_BAD"); Console.Error.WriteLine("STDERR_OK"); return 17; } }')
+& $csc /nologo /target:exe /platform:x64 "/out:$launchFixture\BookReader.exe" $fixtureSource
+if($LASTEXITCODE -ne 0){throw 'Server launch fixture compilation failed'}
+$harness=Join-Path $launchFixture 'hidden-server-test.ps1'
+@'
+param([string]$Server,[string]$Fixture)
+$ErrorActionPreference='Stop'
+try{
+ $tokens=$null;$errors=$null
+ $ast=[System.Management.Automation.Language.Parser]::ParseFile($Server,[ref]$tokens,[ref]$errors)
+ if($errors.Count){throw 'Server parse failed'}
+ $fn=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Start-TTBookProcess'},$true)
+ if(!$fn){throw 'Server launcher missing'}
+ . ([scriptblock]::Create($fn.Extent.Text))
+ $r=Start-TTBookProcess $Fixture
+ if(!$r.process.WaitForExit(10000)){try{$r.process.Kill()}catch{};throw 'Server launcher timed out'}
+ if($r.process.ExitCode -ne 17 -or $r.stdout.Result.Trim() -ne 'ARGS_OK' -or $r.stderr.Result.Trim() -ne 'STDERR_OK'){throw 'Process arguments or pipes failed'}
+ [IO.File]::WriteAllText((Join-Path $Fixture 'result.txt'),'PASS')
+ exit 0
+}catch{[IO.File]::WriteAllText((Join-Path $Fixture 'result.txt'),$_.Exception.GetType().FullName);exit 1}
+'@ | Set-Content -LiteralPath $harness -Encoding UTF8
+$server=(Resolve-Path (Join-Path $PSScriptRoot '../../runtime-src/system/server.ps1')).Path
+$hidden=New-Object Diagnostics.ProcessStartInfo
+$hidden.FileName="$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+$hidden.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$harness+'" -Server "'+$server+'" -Fixture "'+$launchFixture+'"'
+$hidden.UseShellExecute=$false;$hidden.CreateNoWindow=$true
+$hiddenProcess=[Diagnostics.Process]::Start($hidden)
+if(!$hiddenProcess.WaitForExit(20000)){try{$hiddenProcess.Kill()}catch{};throw 'Hidden launcher harness timed out'}
+if($hiddenProcess.ExitCode -ne 0 -or (Get-Content -LiteralPath (Join-Path $launchFixture 'result.txt') -Raw) -ne 'PASS'){throw 'Hidden server launch regression failed'}
+Write-Host 'PASS hidden server process launch, arguments, exit code and stdout/stderr pipes'
+
 # Redistributable SDK notices, not the full browser runtime.
 $license=Get-ChildItem $sdk -Recurse -File | Where-Object {$_.Name -match '^(LICENSE|LICENSE\.txt|LICENSE\.md)$'} | Select-Object -First 1
 $notices=Get-ChildItem $sdk -Recurse -File | Where-Object {$_.Name -match 'ThirdPartyNotices'} | Select-Object -First 1
