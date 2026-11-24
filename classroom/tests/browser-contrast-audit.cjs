@@ -79,5 +79,7 @@ function inspect(){
    await p.locator('[data-tt-ui2-open="life"]').click();await p.waitForTimeout(150);await scan('life-entry');
   }
   console.log('AUDIT_SUMMARY '+JSON.stringify({scenes:all.length,checked:all.reduce((s,x)=>s+x.checked,0),findings:all.reduce((s,x)=>s+x.issues.length,0),uncertain:all.reduce((s,x)=>s+x.uncertain,0)}));
+  assert.equal(all.length,160,'all 8 palettes and 20 scenes must be tested');
+  assert.equal(all.reduce((n,x)=>n+x.issues.length,0),0,'rendered low-contrast text findings remain');
  }finally{await browser?.close();server.kill()}
 })().catch(e=>{console.error(e);process.exitCode=1});

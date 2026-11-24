@@ -19,6 +19,8 @@ const LEVELS4=[4,3,2,1],LEVELS8=[8,7,6,5,4,3,2,1];
 const LEVEL_LABEL={4:"매",3:"잘",2:"보",1:"노",null:"·"};
 const TRAIT_MODES=["manual","linked"];
 const TEAM_COLORS=["#2563eb","#dc2626","#16a34a","#ea580c","#7c3aed","#0891b2"];
+// Teacher team headers keep the team hue but choose ink against its actual fill.
+const teamHeaderInk=color=>{const c=color.slice(1).match(/../g).map(x=>{const v=parseInt(x,16)/255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4});const l=.2126*c[0]+.7152*c[1]+.0722*c[2];return (l+.05)/.05>=1.05/(l+.05)?'#000000':'#ffffff'};
 
 let mode="classroom";
 let peState=loadPEState();
@@ -144,8 +146,8 @@ function injectStyles(){
     .pe-board.pe-count-4{grid-template-columns:repeat(2,minmax(280px,1fr));grid-template-rows:repeat(2,minmax(270px,1fr));align-content:stretch}
     .pe-team{display:flex;flex-direction:column;background:#fff;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 5px 18px rgba(15,23,42,.07);overflow:hidden;min-height:230px;transition:border-color .12s,box-shadow .12s,transform .12s}
     .pe-board.pe-count-2 .pe-team,.pe-board.pe-count-4 .pe-team{min-height:0;height:100%}.pe-team.pe-drop-target{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.18),0 8px 22px rgba(15,23,42,.10);transform:translateY(-1px)}
-    .pe-team-head{height:47px;min-height:47px;flex:0 0 47px;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 13px;color:#fff;font-weight:950}.pe-team-head small{font-size:12px;opacity:.92}
-    .pe-team-title{display:flex;align-items:center;gap:7px;min-width:0}.pe-team-title>span{white-space:nowrap}.pe-team-head-actions{display:flex;align-items:center;gap:5px}.pe-team-head button{height:28px;padding:0 9px;border:1px solid rgba(255,255,255,.58);border-radius:7px;background:rgba(255,255,255,.13);color:#fff;font-size:10px;font-weight:950;cursor:pointer}.pe-team-head button:hover,.pe-team-head button.on{background:#fff;color:#172033;border-color:#fff}.pe-team-head button.fixed-edit-on{background:#fef3c7;color:#92400e;border-color:#fde68a}
+    .pe-team-head{height:47px;min-height:47px;flex:0 0 47px;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 13px;color:#fff;font-weight:950}.pe-team-head small{font-size:12px;opacity:1}
+    .pe-team-title{display:flex;align-items:center;gap:7px;min-width:0}.pe-team-title>span{white-space:nowrap}.pe-team-head-actions{display:flex;align-items:center;gap:5px}.pe-team-head button{height:28px;padding:0 9px;border:1px solid currentColor;border-radius:7px;background:transparent;color:inherit;font-size:10px;font-weight:950;cursor:pointer}.pe-team-head button:hover,.pe-team-head button.on{background:#fff;color:#172033;border-color:#fff}.pe-team-head button.fixed-edit-on{background:#fef3c7;color:#92400e;border-color:#fde68a}
     .pe-team-body{min-height:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px;padding:10px;align-content:start;flex:1}
     .pe-board.pe-count-2 .pe-team-body{grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:9px;padding:12px}
     .pe-board.pe-count-2 .pe-member{min-height:96px;padding:8px 9px}
@@ -442,7 +444,7 @@ function renderPE(){
     const boys=team.filter(s=>peGender(s)==="male").length,girls=team.filter(s=>peGender(s)==="female").length,unspecified=team.length-boys-girls;
     const members=team.length?team.map(s=>{const idx=classState.students.indexOf(s),d=ensurePEStudent(s,idx);return`<div class="pe-member ${d.fixedTeam===teamNo?'fixed':''}" data-student-id="${s.id}" data-team-no="${teamNo}" title="클릭: 이 팀 고정/해제 · 우클릭: 고정 해제">${studentPreviewMarkup(s,idx)}<div><strong>${escapeHtml(s.name)}</strong>${d.fixedTeam===teamNo?`<em>🔒 ${teamNo}팀 고정</em>`:'<em style="color:#64748b">클릭해 고정</em>'}</div></div>`}).join(''):`<div class="pe-empty">${peAssignments.length?'배정 학생 없음':'하단 학생을 이 팀으로 끌어 고정할 수 있습니다.'}</div>`;
     const ability=`<div class="pe-team-ability">${teamRadarLarge(avg)}<div class="pe-team-ability-copy"><strong>${teamNo}팀 능력 균형</strong><span>체육 편성에 사용하는 네 능력의 팀 평균 형태입니다. 숫자 총점은 사용하지 않습니다.</span><div class="pe-axis-key"><b>체력</b><b>통솔</b><b>적극</b><b>매력</b></div></div></div>`;
-    return`<section class="pe-team" data-pe-team="${teamNo}"><div class="pe-team-head" style="background:${TEAM_COLORS[i]}"><div class="pe-team-title"><span>${teamNo}팀</span><button type="button" data-team-ability="${teamNo}" class="${abilityOpen?'on':''}">${abilityOpen?'팀원 보기':'팀 능력'}</button><button type="button" data-fixed-edit="${teamNo}" class="${peFixedEditTeam===teamNo?'fixed-edit-on':''}">${peFixedEditTeam===teamNo?'고정 지정 중':'고정 지정'}</button></div><small>${team.length}명 · 남 ${boys} / 여 ${girls}${unspecified?` / 미지정 ${unspecified}`:""}</small></div><div class="pe-team-body">${abilityOpen?ability:members}</div></section>`;
+    return`<section class="pe-team" data-pe-team="${teamNo}"><div class="pe-team-head" style="background:${TEAM_COLORS[i]};color:${teamHeaderInk(TEAM_COLORS[i])}"><div class="pe-team-title"><span>${teamNo}팀</span><button type="button" data-team-ability="${teamNo}" class="${abilityOpen?'on':''}">${abilityOpen?'팀원 보기':'팀 능력'}</button><button type="button" data-fixed-edit="${teamNo}" class="${peFixedEditTeam===teamNo?'fixed-edit-on':''}">${peFixedEditTeam===teamNo?'고정 지정 중':'고정 지정'}</button></div><small>${team.length}명 · 남 ${boys} / 여 ${girls}${unspecified?` / 미지정 ${unspecified}`:""}</small></div><div class="pe-team-body">${abilityOpen?ability:members}</div></section>`;
   }).join('');
 
   // 하단 학생 카드 -> 팀 드롭: 해당 팀에 즉시 고정하고, 이미 편성된 상태라면 그 팀으로 이동한다.

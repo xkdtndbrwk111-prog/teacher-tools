@@ -489,3 +489,10 @@ html.tt-manager-theme #teacherScreen .dock-panel :is(.inspector-label,.student-i
 html.tt-manager-theme #teacherScreen :is(.seat-occupant.empty,.pe-empty){color:var(--cm-work-sub)!important}
 html.tt-manager-theme #teacherScreen .dock-panel label:not(:has(button)){color:var(--cm-work-sub)}
 html.tt-manager-theme :is(#teacherScreen,#app) :is(.workspace,.dock-panel,.life-body,.tt-class-modal-box) :is(input:not([type=color]):not([type=range]):not([type=radio]):not([type=checkbox]),textarea)::placeholder{color:var(--cm-work-sub)!important;opacity:1}
+
+/* Follow-up findings from 160 actual screen states. */
+html.tt-manager-theme #teacherScreen .tool-dock .dock-panel .dock-title span{color:var(--cm-work-sub)!important}
+html.tt-manager-theme #teacherScreen>.studio-topbar.tt-hud-unified .tt-hud-cloud #saveStatus:not(.error):not(.warning){color:var(--cm-control-sub)!important}
+html.tt-manager-theme #teacherScreen .seating-student-card:not(.assignment-excluded) .shared-student-status{color:var(--cm-control-ink)!important;background:var(--cm-control)!important}
+html.tt-manager-theme #teacherScreen .seating-student-card.selected:not(.assignment-excluded) .shared-student-status{color:var(--cm-control-ink)!important}
+html.tt-manager-theme .tt-class-modal-box #tt-class-names::placeholder{color:var(--cm-work-sub)!important;opacity:1}
