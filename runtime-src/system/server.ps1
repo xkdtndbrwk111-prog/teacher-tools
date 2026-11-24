@@ -871,7 +871,7 @@ function Invoke-TTBookWorker([string]$token,[int]$parentPid){
   if($parent.HasExited -or (Test-Path -LiteralPath $stop) -or ![IO.File]::Exists($lease)){return 0}
   foreach($name in @('request.json','layout.json')){if(!(Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)){throw 'worker request missing'}}
   $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
-  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'd32b46cf45cc269f1e3820ca496534a829ef1013a86dcd2da9fee08ab7959f52'){throw 'native dependency unavailable'}
+  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '7a2ecc17f932d65d33f31899d03945dab883f205822fd33bdea5f714d52303dc'){throw 'native dependency unavailable'}
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   Write-TTBookLaunchDiagnostic 'worker-extract-bundle'
   $stage='extract-bundle'
@@ -946,14 +946,18 @@ function Open-TTBookHost([string]$encoded) {
  $interactive=($x.interactive -eq $true)
  $validBook=if($interactive){$id -ceq 'DAHbOZ_XOJI' -and $url -ceq 'https://canva.link/9qxk3zuhh93ts2s'}else{$url -cmatch '^https://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed$' -and $Matches[1] -ceq $id}
  if($url.Length -gt 500 -or !$validBook -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
+ $openId=[string]$x.openId
+ if($openId -and $openId -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid book'}
  $old=$script:ttBookSession
  if($old){
+  # Retrying a lost open response must recover the original worker, not launch another one.
+  if($openId -and $old.openId -ceq $openId -and $old.url -ceq $url -and !$old.process.HasExited){return @{ok=$true;session=$old.token}}
   if(!$old.process.HasExited -or (Test-TTBookNativeRunning $old.dir)){throw 'book already open'}
   try{Remove-Item -LiteralPath $old.dir -Recurse -Force -ErrorAction Stop}catch{}
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
- if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'd32b46cf45cc269f1e3820ca496534a829ef1013a86dcd2da9fee08ab7959f52'){throw 'native dependency unavailable'}
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '7a2ecc17f932d65d33f31899d03945dab883f205822fd33bdea5f714d52303dc'){throw 'native dependency unavailable'}
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
  [void][IO.Directory]::CreateDirectory($root)
  $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token
@@ -974,7 +978,7 @@ function Open-TTBookHost([string]$encoded) {
   Write-TTBookLaunchDiagnostic 'worker-start'
   $launch=Start-TTBookWorker $token
   $stage='register-session'
-  $script:ttBookSession=@{token=$token;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
+  $script:ttBookSession=@{token=$token;openId=$openId;url=$url;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
   return @{ok=$true;session=$token}
  }catch{
   Write-TTBookLaunchDiagnostic $stage $_
