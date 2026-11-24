@@ -41,14 +41,14 @@ internal sealed partial class BookReader {
    using(var sha=SHA256.Create())return Convert.ToBase64String(sha.ComputeHash(m.ToArray()));}
  }
  async Task<Dictionary<string,object>> InspectPublicUi(){
-  const string js=@"(()=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'};const bs=[...document.querySelectorAll('button,[role=button]')].filter(vis);const exact=(re)=>{const a=bs.filter(e=>re.test((e.getAttribute('aria-label')||e.innerText||e.getAttribute('title')||'').trim()));if(a.length!==1)return null;const r=a[0].getBoundingClientRect();return {x:(r.left+r.width/2)/innerWidth,y:(r.top+r.height/2)/innerHeight}};return {host:location.hostname,route:location.pathname.endsWith('/edit')?'edit':location.pathname.endsWith('/view')?'view':'other',dialogs:[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(vis).length,fullscreen:!!document.fullscreenElement,manage:exact(/^(manage cookies|쿠키 관리)$/i),reject:exact(/^(reject all|reject all cookies|reject optional cookies|decline all|decline all cookies|only necessary cookies|essential cookies only|strictly necessary cookies only|reject non-essential cookies|모든 쿠키 거부|선택적 쿠키 거부|필수 쿠키만 허용|필수 쿠키만|모두 거부)$/i),present:exact(/^(present|present full screen|present fullscreen|enter full screen|enter fullscreen|전체 화면으로 전환|전체 화면으로 발표|전체 화면 발표|발표|프레젠테이션)$/i),slider:[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(vis).length}})()";
+  const string js=@"(()=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'};const bs=[...document.querySelectorAll('button,[role=button]')].filter(vis);const exact=(re)=>{const a=bs.filter(e=>re.test((e.getAttribute('aria-label')||e.innerText||e.getAttribute('title')||'').trim()));if(a.length!==1)return null;const r=a[0].getBoundingClientRect();const x=r.left+r.width/2,y=r.top+r.height/2;const h=document.elementFromPoint(x,y);return {x:x/innerWidth,y:y/innerHeight,hit:!!h&&(a[0]===h||a[0].contains(h))}};return {host:location.hostname,route:location.pathname.endsWith('/edit')?'edit':location.pathname.endsWith('/view')?'view':'other',dialogs:[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(vis).length,fullscreen:!!document.fullscreenElement,manage:exact(/^(manage cookies|쿠키 관리)$/i),reject:exact(/^(reject all|reject all cookies|reject optional cookies|decline all|decline all cookies|only necessary cookies|essential cookies only|strictly necessary cookies only|reject non-essential cookies|모든 쿠키 거부|선택적 쿠키 거부|필수 쿠키만 허용|필수 쿠키만|모두 거부)$/i),saveCookie:exact(/^(save preferences|save my preferences|save cookie preferences|save cookie settings|confirm choices|confirm my choices|save and close|설정 저장|쿠키 설정 저장|선택 사항 저장|환경 설정 저장|선택 확인)$/i),present:exact(/^(present|present full screen|present fullscreen|enter full screen|enter fullscreen|전체 화면으로 전환|전체 화면으로 발표|전체 화면 발표|발표|프레젠테이션)$/i),cookieButtons:[...document.querySelectorAll('[role=dialog] button,[aria-modal=true] button')].filter(vis).map(e=>(e.getAttribute('aria-label')||e.innerText||'').trim().slice(0,65)).filter(s=>/cookie|reject|decline|save|confirm|preference|necessary|allow|apply|쿠키|저장|거부|선택|확인|필수|허용|적용/i.test(s)).slice(0,20),slider:[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(vis).length}})()";
   return Json.Deserialize<Dictionary<string,object>>(await web.CoreWebView2.ExecuteScriptAsync(js));
  }
  async Task<bool> ClickControl(Dictionary<string,object> ui,string key){
   object v;if(!ui.TryGetValue(key,out v)||v==null)return false;
   var d=v as Dictionary<string,object>;if(d==null)return false;
   double x=Convert.ToDouble(d["x"]),y=Convert.ToDouble(d["y"]);
-  if(x<=0||x>=1||y<=0||y>=1)return false;
+  if(x<=0||x>=1||y<=0||y>=1||!d.ContainsKey("hit")||!Convert.ToBoolean(d["hit"]))return false;
   return await PhysicalClick(x,y);
  }
  async Task<Dictionary<string,object>> PrepareUi(string phase){
@@ -56,7 +56,15 @@ internal sealed partial class BookReader {
   ProbeLog("WINDOWS_UI",new{phase,ui});
   // Fresh, disposable CI profile only. Reject optional cookies via exact UI.
   if(Int(ui,"dialogs")>0&&await ClickControl(ui,"manage")){await Pause(850);ui=await InspectPublicUi();ProbeLog("WINDOWS_COOKIE_OPTIONS",new{phase,ui});}
-  if(Int(ui,"dialogs")>0&&await ClickControl(ui,"reject")){await Pause(1400);ui=await InspectPublicUi();ProbeLog("WINDOWS_REJECT_OPTIONAL",new{phase,ui});}
+  if(Int(ui,"dialogs")>0&&await ClickControl(ui,"reject")){
+   await Pause(2200);ui=await InspectPublicUi();ProbeLog("WINDOWS_REJECT_OPTIONAL",new{phase,ui});
+   // The cookie manager can remain open after reject-all until preferences
+   // are saved. Only an exact cookie settings save control is allowed here,
+   // and only after the explicit reject-optional choice in this CI profile.
+   if(Int(ui,"dialogs")>0&&await ClickControl(ui,"saveCookie")){
+    await Pause(2200);ui=await InspectPublicUi();ProbeLog("WINDOWS_COOKIE_SAVE",new{phase,ui});
+   }
+  }
   return ui;
  }
  async Task<int> RunClickProbe(){
@@ -67,16 +75,20 @@ internal sealed partial class BookReader {
   var ui=await PrepareUi("registered-short-link");
   if(Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
    await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT",new{phase="registered-short-link",ui});
+   if(Int(ui,"slider")==0&&ui["manage"]==null&&ui["reject"]==null&&ui["saveCookie"]==null&&await ClickControl(ui,"present")){
+    await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT_CONFIRM",new{phase="registered-short-link",ui});
+   }
   }
+  bool editorPresent=Str(ui,"route")=="edit"&&Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"slider")>0&&Int(ui,"dialogs")==0;
   // Public-view comparison is a diagnostic control, never evidence of true Present.
-  if(Str(ui,"route")!="view"){
+  if(Str(ui,"route")!="view"&&!editorPresent){
    web.CoreWebView2.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
    ui=await PrepareUi("public-view-control");
    if(Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
     await Pause(2500);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT",new{phase="public-view-control",ui});
    }
   }
-  if(Int(ui,"dialogs")!=0||Str(ui,"route")!="view"||Int(ui,"slider")<1){ProbeLog("WINDOWS_BLOCKED",new{reason="no-unobstructed-observable-view",ui});return 2;}
+  if(Int(ui,"dialogs")!=0||(Str(ui,"route")!="view"&&!editorPresent)||Int(ui,"slider")<1){ProbeLog("WINDOWS_BLOCKED",new{reason="no-unobstructed-observable-view",ui});return 2;}
   int start=await Read();
   // Move to a text-bearing page using actual Windows mouse clicks. A click
   // that reveals a sentence instead of advancing is itself a useful observation.
@@ -94,7 +106,7 @@ internal sealed partial class BookReader {
    int before=await Read();bool delivered=await PhysicalKey(key);await Pause(1200);
    ProbeLog("WINDOWS_KEY",new{key=key==0x27?"right":"left",delivered,before,after=await Read()});
   }
-  ProbeLog("WINDOWS_RESULT",new{start,steps,advances,sameChanged,presentationAcceptance=false,reason="public-view observations are not proof of sentence reveals"});
+  ProbeLog("WINDOWS_RESULT",new{start,steps,advances,sameChanged,editorPresent,presentationAcceptance=false,reason="same-page visual changes require verification against a known animated slide"});
   return 0;
  }
  static int RunLiveProbe(string folder){
