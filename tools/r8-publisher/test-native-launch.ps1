@@ -209,6 +209,15 @@ public static class BookTestGeometry {
    }while([DateTime]::UtcNow -lt $deadline)
    if(!$state.closed){throw 'Native close not confirmed'}
   }
+  # A closed-state publication may precede actual process exit.
+  $priorExe=Join-Path (Join-Path (Join-Path $root 'book-reader-sessions') $open.session) 'BookReader.exe'
+  $deadline=[DateTime]::UtcNow.AddSeconds(12)
+  do{
+   $prior=@(Get-CimInstance Win32_Process -Filter "Name='BookReader.exe'" | Where-Object {$_.ExecutablePath -eq $priorExe})
+   if(!$prior.Count){break}
+   Start-Sleep -Milliseconds 300
+  }while([DateTime]::UtcNow -lt $deadline)
+  if($prior.Count){throw 'Native process did not exit after close'}
   Write-Host 'PASS native session close'
 
   # The failing field path is interactive Almond, not the legacy noninteractive
