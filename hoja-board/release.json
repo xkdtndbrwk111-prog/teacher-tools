@@ -2,10 +2,10 @@
   "schema": 1,
   "status": "ready",
   "channel": "stable",
-  "version": "1.66.35",
-  "url": "https://xkdtndbrwk111-prog.github.io/teacher-tools/hoja-board/downloads/%ED%98%B8%EC%9E%90%EB%B3%B4%EB%93%9C_1.66.35_%EC%84%A4%EC%B9%98%ED%8C%8C%EC%9D%BC.zip",
-  "sha256": "15f5713f91981c5d233050be0d1abc512b3adb9665330b7e6b357e07bfbdcc14",
-  "signedManifestSha256": "4670d96cd30896fdd5276f90fbdb726322e4902a49afde5bffccd04344cb3d5b",
-  "feedSnapshotCommit": "e51c1f2e1626f5a3ee7140669dc7c7cf26ae152c",
+  "version": "1.66.36",
+  "url": "https://xkdtndbrwk111-prog.github.io/teacher-tools/hoja-board/downloads/%ED%98%B8%EC%9E%90%EB%B3%B4%EB%93%9C_1.66.36_%EC%84%A4%EC%B9%98%ED%8C%8C%EC%9D%BC.zip",
+  "sha256": "52ec32362c7727afb8415a9770649ff2612846028d9558fbf27f4476cce006d4",
+  "signedManifestSha256": "ca7e2eea093431954329d9e2a9136396808fac7d47353c52c3121bf0f7f09cea",
+  "feedSnapshotCommit": "1acbb130ed369448852f22f06a4c0f6d9277a883",
   "note": "Signed stable runtime; installer generated from the identical R8 auto-update feed."
 }
