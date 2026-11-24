@@ -7,21 +7,18 @@
 | 도구 | 제품 상태 | 위치 | 초기 연결 상태 |
 |---|---|---|---|
 | 마리오 게임 | active | 외부 Project A | Production URL 연결됨 |
-| 마리오 매니저 (퀴즈 매니저) | active | 외부 Project B | Production URL 연결됨 |
 | 자리배치 매니저 | active | `./seating/` | 사용 가능 |
 | 한자 학습 매니저 | active | `./hanja/` | 사용 가능 |
 | 호자 미니게임 | active | 외부 `hoja-minigames` Pages | 사용 가능 |
 | 피드백 | hidden | Hub 내장 게시판 (`#feedback`) | 화면 숨김·자동 연결 중지, 소스 보존 |
-| Project C | development | 향후 외부 서비스 | 개발 중, 비활성 |
-| 1인1역 배치 매니저 | development | 향후 내부 앱 | 개발 중, 비활성 |
 
-Hub는 GitHub Pages(`https://xkdtndbrwk111-prog.github.io/teacher-tools/`)에서 운영 중입니다. Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다.
+Hub는 GitHub Pages(`https://xkdtndbrwk111-prog.github.io/teacher-tools/`)에서 운영 중입니다. 메인 메뉴는 한자 학습 매니저, 교실 매니저, 호자보드, **호자게임 1.5**, 호자 미니게임만 노출합니다. 퀴즈 매니저·Project C·1인1역 배치 매니저 카드는 제거했으며 관련 외부 데이터/프로젝트를 삭제하지 않았습니다. Hub는 도구·상태 표시와 링크 이동을 담당하며, A/B/C 소스·backend·인증을 통합하지 않습니다.
 
 **Feedback (FB-HUB-1, 구현 보존 / 화면 숨김 2026-10-15):** Hub의 Feedback 게시판은 현재 `index.html`에서 숨겨져 있으며, 게시판용 CSS/JS의 자동 로딩을 중지했습니다. `feedback-board.js`, `feedback-board.css`, `feedback-auth-bridge.js`, `feedback-transport.js` 및 HTML 마크업은 보존되어 있습니다. 누적 실행 횟수는 게시판 밖에서 계속 표시합니다. (게시판을 다시 켜려면 `index.html`의 `#feedback` 숨김 속성과 주석 처리된 로딩 태그를 복구하세요.) Project B의 Feedback 게시판 UI는 제거되었고, Project B는 Feedback에 대해 backend 전용입니다(Google Creator 인증, OWNER 권한, Hub bridge, mutation relay, idempotency, moderation, Supabase 특권 접근). 공개 읽기는 Production Supabase 공개 RPC(`feedback-transport.js`), 작성·수정·삭제·OWNER 관리는 Project B Production 세션 브리지(`feedback-auth-bridge.js`)를 거치며 권한은 Project B 서버가 결정합니다. 문의 대상(product)은 `feedback_products` registry가 기준입니다. 현재 기준 문서: [FB_HUB_1_FINAL_REPORT](docs/project-b/FB_HUB_1_FINAL_REPORT.md).
 
 ## 외부 주소 설정
 
-`hub.js` 상단 `APPS` 배열의 `mario-game`(Project A), `mario-manager`(Project B) `url`에는 확인된 HTTPS Production URL이 설정되어 있습니다. 주소가 null이면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
+`hub.js` 상단 `APPS` 배열의 `mario-game`(HOJA 게임) `url`에는 확인된 HTTPS Production URL이 설정되어 있습니다. 주소가 null이면 active 상태를 유지하며 ‘링크 설정 필요’를 표시하고 링크를 생성하지 않습니다. [Registry 계약](docs/APP_REGISTRY.md)을 참고하세요.
 
 ## 익명 실행 횟수 (USAGE-1)
 
