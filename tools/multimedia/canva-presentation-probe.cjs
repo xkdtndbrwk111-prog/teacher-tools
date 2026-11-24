@@ -1,5 +1,6 @@
 // Read-only diagnostic of the actual public Canva viewer. No authentication,
-// legal/cookie consent, design modification or captured book content.
+// legal consent, account data, design modification or captured book content.
+// Anonymous disposable CI may reject optional cookies via an exact official button.
 const {chromium}=require('playwright');
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage']});
@@ -21,6 +22,19 @@ const {chromium}=require('playwright');
    }
    // Only click an exact unambiguous official full-screen presentation control.
    // Never click consent, close a consent prompt, or act on editable design content.
+   // This browser is newly created for anonymous CI only, not a teacher profile.
+   // Never accept cookies, sign in, or agree to terms. A clear reject-optional
+   // choice in Canva's cookie manager is a permissible privacy-preserving test
+   // setting. If the option is ambiguous, leave the dialog intact and stop.
+   const manage=page.getByRole('button',{name:/^(manage cookies|쿠키 관리)$/i});
+   if(await manage.count()===1&&await manage.isVisible()){
+    await manage.click({timeout:5000});
+    await page.waitForTimeout(600);
+    const reject=page.getByRole('button',{name:/^(reject all|reject all cookies|reject optional cookies|decline all|decline all cookies|only necessary cookies|essential cookies only|strictly necessary cookies only|reject non-essential cookies|모든 쿠키 거부|선택적 쿠키 거부|필수 쿠키만 허용|필수 쿠키만|모두 거부)$/i});
+    const options=await page.evaluate(()=>[...document.querySelectorAll('[role=dialog] button,[aria-modal=true] button')].filter(e=>e.getClientRects().length>0).map(e=>({label:e.getAttribute('aria-label'),text:(e.innerText||'').trim().slice(0,80)})));
+    console.log('COOKIE_OPTIONS '+JSON.stringify({locale,options}));
+    if(await reject.count()===1&&await reject.isVisible()){await reject.click({timeout:5000});await page.waitForTimeout(900);console.log('CI_OPTIONAL_COOKIES_REJECTED '+locale)}
+   }
    const hasDialog=await page.locator('[role=dialog]:visible,[aria-modal=true]:visible').count();
    const control=page.getByRole('button',{name:/^(present full screen|present fullscreen|full screen|fullscreen|enter full screen|enter fullscreen|present|전체 화면으로 전환|전체 화면으로 발표|전체 화면 발표|전체 화면|전체화면|발표|프레젠테이션)$/i});
    if(!hasDialog&&await control.count()===1&&await control.isVisible()){
