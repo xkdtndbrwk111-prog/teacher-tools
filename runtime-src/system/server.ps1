@@ -946,8 +946,12 @@ function Open-TTBookHost([string]$encoded) {
  $interactive=($x.interactive -eq $true)
  $validBook=if($interactive){$id -ceq 'DAHbOZ_XOJI' -and $url -ceq 'https://canva.link/9qxk3zuhh93ts2s'}else{$url -cmatch '^https://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed$' -and $Matches[1] -ceq $id}
  if($url.Length -gt 500 -or !$validBook -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
+ $openId=[string]$x.openId
+ if($openId -and $openId -cnotmatch '^[a-f0-9]{32}$'){throw 'invalid book'}
  $old=$script:ttBookSession
  if($old){
+  # Retrying a lost open response must recover the original worker, not launch another one.
+  if($openId -and $old.openId -ceq $openId -and $old.url -ceq $url -and !$old.process.HasExited){return @{ok=$true;session=$old.token}}
   if(!$old.process.HasExited -or (Test-TTBookNativeRunning $old.dir)){throw 'book already open'}
   try{Remove-Item -LiteralPath $old.dir -Recurse -Force -ErrorAction Stop}catch{}
   $script:ttBookSession=$null
@@ -974,7 +978,7 @@ function Open-TTBookHost([string]$encoded) {
   Write-TTBookLaunchDiagnostic 'worker-start'
   $launch=Start-TTBookWorker $token
   $stage='register-session'
-  $script:ttBookSession=@{token=$token;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
+  $script:ttBookSession=@{token=$token;openId=$openId;url=$url;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
   return @{ok=$true;session=$token}
  }catch{
   Write-TTBookLaunchDiagnostic $stage $_
