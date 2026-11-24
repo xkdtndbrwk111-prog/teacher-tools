@@ -210,6 +210,70 @@ public static class BookTestGeometry {
    if(!$state.closed){throw 'Native close not confirmed'}
   }
   Write-Host 'PASS native session close'
+
+  # The failing field path is interactive Almond, not the legacy noninteractive
+  # embed above. Keep all existing assertions, and exercise the actual installed
+  # server with the exact 394-page request and a renewed lease, twice.
+  $interactiveArgs=@{id='DAHbOZ_XOJI';url='https://canva.link/9qxk3zuhh93ts2s';title='Almond interactive installed smoke';interactive=$true;pages=394;start=1;saved=1;layout=@{vw=$vw;vh=$vh;x=10;y=10;w=($vw-20);h=($vh-100);visible=1;immersive=0}}
+  for($attempt=1;$attempt -le 2;$attempt++){
+   try{
+    $open=Invoke-RestMethod -TimeoutSec 10 -Uri ($site+'/api/book-reader/open') -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book $interactiveArgs)
+   }catch{
+    $diagnostic=Get-Content -LiteralPath (Join-Path $root 'book-reader-launch-diagnostic.json') -Raw -ErrorAction SilentlyContinue
+    Write-Host ('Interactive open diagnostic: '+$diagnostic)
+    throw
+   }
+   if(!$open.ok -or $open.session -cnotmatch '^[a-f0-9]{32} }
+ Write-Host 'PASS: actual Windows board window, local HTTP signed update, close and restart, matching readiness, all target files, synthetic data preservation. Test key and isolated local feed only; no physical school device or installer test.'
+}finally{
+ if($http -and -not $http.HasExited){$http.Kill()}
+ $rsa.Dispose()
+ # Terminate only processes explicitly referencing the disposable test path.
+ Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.Name -in @('chrome.exe','msedge.exe','powershell.exe','pwsh.exe')} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}
+}
+){throw 'Interactive native session not created'}
+   $suffix='?session='+$open.session
+   try{
+    $deadline=[DateTime]::UtcNow.AddSeconds(55)
+    $ready=$false
+    do{
+     $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$interactiveArgs.layout}) -TimeoutSec 4
+     if($state.closed){throw ('Interactive reader closed prematurely: '+$state.status)}
+     if($state.ready -and $state.owned -and $state.visible -and $state.total -eq 394 -and $state.saved -eq 1){$ready=$true;break}
+     Start-Sleep -Milliseconds 500
+    }while([DateTime]::UtcNow -lt $deadline)
+    if(!$ready){throw ('Interactive Canva ready not confirmed: '+($state|ConvertTo-Json -Compress))}
+    if($attempt -eq 1){
+     $hold=[DateTime]::UtcNow.AddSeconds(40)
+     do{
+      $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Method POST -Headers $headers -ContentType 'text/plain' -Body (Encode-Book @{layout=$interactiveArgs.layout}) -TimeoutSec 4
+      if($state.closed -or !$state.ready -or !$state.owned -or !$state.visible){throw ('Interactive session lost during lease test: '+($state|ConvertTo-Json -Compress))}
+      Start-Sleep -Milliseconds 800
+     }while([DateTime]::UtcNow -lt $hold)
+    }
+    Write-Host ('PASS interactive installed reader attempt '+$attempt+'; direct Canva ready, owned, visible, 394 pages; not a physical click/keyboard test')
+   }finally{
+    Invoke-RestMethod -Uri ($site+'/api/book-reader/close'+$suffix) -Method POST -Headers $headers -TimeoutSec 4 | Out-Null
+    $deadline=[DateTime]::UtcNow.AddSeconds(12)
+    do{
+     $state=Invoke-RestMethod -Uri ($site+'/api/book-reader/status'+$suffix) -Headers $headers -TimeoutSec 4
+     if($state.closed){break}
+     Start-Sleep -Milliseconds 400
+    }while([DateTime]::UtcNow -lt $deadline)
+    if(!$state.closed){throw 'Interactive native close not confirmed'}
+    # The final closed-state write can precede actual process exit. Confirm the
+    # exact session's executable exited before requesting the next session.
+    $sessionDir=Join-Path (Join-Path $root 'book-reader-sessions') $open.session
+    $deadline=[DateTime]::UtcNow.AddSeconds(12)
+    do{
+     $liveReader=@(Get-CimInstance Win32_Process -Filter "Name='BookReader.exe'" | Where-Object {$_.ExecutablePath -eq (Join-Path $sessionDir 'BookReader.exe')})
+     if(!$liveReader.Count){break}
+     Start-Sleep -Milliseconds 300
+    }while([DateTime]::UtcNow -lt $deadline)
+    if($liveReader.Count){throw 'Interactive native process did not exit'}
+   }
+  }
+  Write-Host 'PASS interactive installed reader open, 40-second lease maintenance, close and reopen'
  }
  Write-Host 'PASS: actual Windows board window, local HTTP signed update, close and restart, matching readiness, all target files, synthetic data preservation. Test key and isolated local feed only; no physical school device or installer test.'
 }finally{
