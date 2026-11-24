@@ -1,0 +1,32 @@
+name: Minigame lesson guard review
+on:
+  push:
+    branches: [codex/minigame-lesson-end]
+    paths: ['.github/workflows/minigame-lesson-end.yml']
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Timetable and minigame bridge regression
+        run: |
+          set -euo pipefail
+          node --test tools/minigame-bridge/lesson-end.test.cjs tools/minigame-bridge/test.cjs tools/lesson-alert/mute.test.cjs tools/routine/routine.test.cjs
+      - name: Parse inline dashboard scripts
+        run: |
+          python3 - <<'PY'
+          import re, pathlib, tempfile, subprocess
+          s=pathlib.Path('runtime-src/system/dashboard.html').read_text(encoding='utf-8')
+          with tempfile.TemporaryDirectory() as d:
+              for i,(attrs,body) in enumerate(re.findall(r'<script\b([^>]*)>([\s\S]*?)</script>',s,re.I)):
+                  if not body.strip() or re.search(r'\bsrc\s*=',attrs,re.I) or re.search(r'application/json|importmap|type=["\x27]module',attrs,re.I):
+                      continue
+                  p=pathlib.Path(d)/f'{i}.js'
+                  p.write_text(body,encoding='utf-8')
+                  subprocess.run(['node','--check',str(p)],check=True)
+          PY
