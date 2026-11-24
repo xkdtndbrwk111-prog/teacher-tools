@@ -1,4 +1,4 @@
-﻿param([int]$Port=17439,[string]$YoutubeJob='', [string]$YoutubeVideoId='', [string]$YoutubeQuality='', [string]$YoutubePlayback='', [int]$YoutubeParentPid=0)
+﻿param([int]$Port=17439,[string]$YoutubeJob='', [string]$YoutubeVideoId='', [string]$YoutubeQuality='', [string]$YoutubePlayback='', [int]$YoutubeParentPid=0,[string]$BookWorker='', [int]$BookParentPid=0)
 # BEGIN GENERATED youtube-engine-install.ps1
 # Candidate installer: Windows PowerShell 5.1 compatible. No admin, PATH or registry changes.
 # Pins were verified by the isolated Windows smoke run 44527013450.
@@ -838,6 +838,75 @@ function Start-TTBookProcess([string]$dir) {
   throw
  }
 }
+
+# Extract and run only inside a dedicated child PowerShell. A native/AV failure
+# here must never take down the board's HTTP listener.
+function Start-TTBookWorker([string]$token) {
+ $info=New-Object Diagnostics.ProcessStartInfo
+ $info.FileName=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+ $info.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -BookWorker '+$token+' -BookParentPid '+$PID
+ $info.WorkingDirectory=$PSScriptRoot;$info.UseShellExecute=$false;$info.CreateNoWindow=$true
+ $info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+ $p=[Diagnostics.Process]::Start($info)
+ if(!$p){throw 'book worker missing'}
+ try{return @{process=$p;stdout=$p.StandardOutput.ReadToEndAsync();stderr=$p.StandardError.ReadToEndAsync()}}
+ catch{try{if(!$p.HasExited){$p.Kill()}}catch{};throw}
+}
+function Test-TTBookNativeRunning([string]$dir){
+ $exe=Join-Path $dir 'BookReader.exe'
+ foreach($p in @(Get-Process -Name BookReader -ErrorAction SilentlyContinue)){
+  try{if($p.Path -ieq $exe -and !$p.HasExited){return $true}}catch{}
+ }
+ return $false
+}
+function Invoke-TTBookWorker([string]$token,[int]$parentPid){
+ $stage='worker-validate';$launch=$null;$parent=$null
+ try{
+  if($token -cnotmatch '^[a-f0-9]{32}$' -or $parentPid -le 0 -or $parentPid -eq $PID){throw 'worker identity'}
+  $root=Join-Path $TTInstallDir 'book-reader-sessions';$dir=Join-Path $root $token
+  foreach($path in @($root,$dir)){if((Get-Item -LiteralPath $path -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'worker directory'}}
+  $parent=Get-Process -Id $parentPid -ErrorAction Stop
+  $null=$parent.Handle
+  $lease=Join-Path $dir 'lease';$stop=Join-Path $dir 'stop'
+  if($parent.HasExited -or (Test-Path -LiteralPath $stop) -or ![IO.File]::Exists($lease)){return 0}
+  foreach($name in @('request.json','layout.json')){if(!(Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)){throw 'worker request missing'}}
+  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
+  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '60d89ace7b567fad79bd75c8744cc70e07be7feb998ad42f8ebec82eb19130d7'){throw 'native dependency unavailable'}
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  Write-TTBookLaunchDiagnostic 'worker-extract-bundle'
+  $stage='extract-bundle'
+  $required=@('BookReader.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','LICENSE.txt')
+  $allowed=$required+@('ThirdPartyNotices.txt')
+  $seen=@{};$total=0;$archive=[IO.Compression.ZipFile]::OpenRead($bundle)
+  try{
+   foreach($e in $archive.Entries){
+    $name=$e.FullName;$total+=$e.Length
+    if($name -cnotin $allowed -or $seen.ContainsKey($name) -or $e.Length -lt 1 -or $e.Length -gt 1500000 -or $total -gt 3000000){throw 'invalid native dependency'}
+    $seen[$name]=$true
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($e,(Join-Path $dir $name))
+   }
+   foreach($name in $required){if(!$seen.ContainsKey($name)){throw 'missing native dependency'}}
+  }finally{$archive.Dispose()}
+  if($parent.HasExited -or (Test-Path -LiteralPath $stop) -or ([datetime]::UtcNow-[IO.File]::GetLastWriteTimeUtc($lease)).TotalSeconds -gt 35){return 0}
+  $stage='worker-process-start'
+  $launch=Start-TTBookProcess $dir
+  Write-TTBookLaunchDiagnostic 'process-started'
+  $stopAt=$null
+  while(!$launch.process.WaitForExit(250)){
+   if($parent.HasExited -or ![IO.File]::Exists($lease) -or ([datetime]::UtcNow-[IO.File]::GetLastWriteTimeUtc($lease)).TotalSeconds -gt 35 -or (Test-Path -LiteralPath $stop)){
+    if(!$stopAt){$stopAt=[datetime]::UtcNow;[IO.File]::WriteAllText($stop,'1')}
+    if(([datetime]::UtcNow-$stopAt).TotalSeconds -gt 6){$launch.process.Kill();$launch.process.WaitForExit();break}
+   }
+  }
+  return [int]$launch.process.ExitCode
+ }catch{
+  Write-TTBookLaunchDiagnostic $stage $_
+  return 1
+ }finally{
+  if($launch -and $launch.process){try{if(!$launch.process.HasExited){$launch.process.Kill()}}catch{}}
+  if($parent){$parent.Dispose()}
+ }
+}
 function Get-TTBookState {
  $v=$script:ttBookSession
  $d=@{ok=$true;ready=$false;closed=$false;page=0;saved=0;total=$v.pages;status='책 재생기 시작 중'}
@@ -853,15 +922,21 @@ function Get-TTBookState {
    $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
    foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
+   if($x.navigationMode -cin @('pending','direct','blocked','not-presentation','fixture')){$d.navigationMode=[string]$x.navigationMode}
   }
  }catch{}
- try{if($v.process.HasExited){
-  $d.closed=$true
-  if(!$d.ready){
-   $d.status='새 재생기 실행 실패'
-   if(!$v.exitLogged){Write-TTBookLaunchDiagnostic 'process-exit-before-ready' $null $v.process.ExitCode;$v.exitLogged=$true}
-  }
- }}catch{$d.closed=$true}
+ try{
+  if($v.process.HasExited){
+   # If the worker died abruptly, request only its exact native child to close.
+   # Do not remove its session or accept another open until that child is gone.
+   if(Test-TTBookNativeRunning $v.dir){[IO.File]::WriteAllText((Join-Path $v.dir 'stop'),'1');$d.closed=$false;$d.ready=$false;$d.status='재생기 정리 중'}
+   else{$d.closed=$true}
+   if(!$d.ready){
+    $d.status='새 재생기 실행 실패'
+    if(!$v.exitLogged){Write-TTBookJson (Join-Path $v.dir 'worker-exit.json') @{exitCode=$v.process.ExitCode;at=[datetime]::UtcNow.ToString('o')};$v.exitLogged=$true}
+   }
+  }elseif($d.closed){$d.closed=$false}
+ }catch{$d.closed=$true}
  return $d
 }
 function Open-TTBookHost([string]$encoded) {
@@ -873,33 +948,18 @@ function Open-TTBookHost([string]$encoded) {
  if($url.Length -gt 500 -or !$validBook -or $title.Length -gt 80 -or !$title.Trim() -or !(Test-TTBookInt $x.pages) -or !(Test-TTBookInt $x.start) -or !(Test-TTBookInt $x.saved) -or $x.pages -lt 1 -or $x.pages -gt 4095 -or $x.start -lt 1 -or $x.start -gt $x.pages -or $x.saved -lt 0 -or $x.saved -gt $x.pages){throw 'invalid book'}
  $old=$script:ttBookSession
  if($old){
-  if(!$old.process.HasExited){throw 'book already open'}
+  if(!$old.process.HasExited -or (Test-TTBookNativeRunning $old.dir)){throw 'book already open'}
   try{Remove-Item -LiteralPath $old.dir -Recurse -Force -ErrorAction Stop}catch{}
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '60d89ace7b567fad79bd75c8744cc70e07be7feb998ad42f8ebec82eb19130d7'){throw 'native dependency unavailable'}
- Add-Type -AssemblyName System.IO.Compression.FileSystem
- Add-Type -AssemblyName System.Windows.Forms
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
  [void][IO.Directory]::CreateDirectory($root)
  $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token
  [void][IO.Directory]::CreateDirectory($dir)
  try{
   $launch=$null
-  $stage='extract-bundle'
-  $required=@('BookReader.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','LICENSE.txt')
-  $allowed=$required+@('ThirdPartyNotices.txt')
-  $seen=@{};$total=0;$archive=[IO.Compression.ZipFile]::OpenRead($bundle)
-  try{
-   foreach($e in $archive.Entries){
-    $name=$e.FullName;$total+=$e.Length
-    if($name -cnotin $allowed -or $seen.ContainsKey($name) -or $e.Length -lt 1 -or $e.Length -gt 1500000 -or $total -gt 3000000){throw 'invalid native dependency'}
-    $seen[$name]=$true
-    [IO.Compression.ZipFileExtensions]::ExtractToFile($e,(Join-Path $dir $name))
-   }
-   foreach($name in $required){if(!$seen.ContainsKey($name)){throw 'missing native dependency'}}
-  }finally{$archive.Dispose()}
   $stage='validate-owner'
   $mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))
   if(!$mode.window -or !$mode.pid -or $mode.mode -notin @('window','wallpaper') -or $mode.release -cne $TTRelease -or !(@(Get-TTProfileBrowserProcesses | Where-Object {$_.ProcessId -eq $mode.pid}).Count)){throw 'board owner unavailable'}
@@ -910,11 +970,11 @@ function Open-TTBookHost([string]$encoded) {
   Write-TTBookJson (Join-Path $dir 'request.json') $config
   Write-TTBookJson (Join-Path $dir 'layout.json') $layout
   [IO.File]::WriteAllText((Join-Path $dir 'lease'),'1')
-  $stage='process-start'
-  $launch=Start-TTBookProcess $dir
+  $stage='worker-start'
+  Write-TTBookLaunchDiagnostic 'worker-start'
+  $launch=Start-TTBookWorker $token
   $stage='register-session'
   $script:ttBookSession=@{token=$token;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
-  Write-TTBookLaunchDiagnostic 'process-started'
   return @{ok=$true;session=$token}
  }catch{
   Write-TTBookLaunchDiagnostic $stage $_
@@ -923,6 +983,8 @@ function Open-TTBookHost([string]$encoded) {
   throw
  }
 }
+
+if($BookWorker){exit (Invoke-TTBookWorker $BookWorker $BookParentPid)}
 
 function RemoteText([string]$url) {
   $req=[System.Net.WebRequest]::Create($url); $req.Method='GET'; $req.Timeout=9000; $req.ReadWriteTimeout=9000; $req.UserAgent='Mozilla/5.0'
