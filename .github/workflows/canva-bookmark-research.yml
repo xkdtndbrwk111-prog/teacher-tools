@@ -1,0 +1,19 @@
+name: BookReader baseline and bookmark research
+on:
+  pull_request:
+    paths: ['tools/multimedia/canva-bookmark-research.cjs','.github/workflows/canva-bookmark-research.yml']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-research --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-research/node_modules/.bin/playwright install chromium
+          node --check tools/multimedia/canva-bookmark-research.cjs
+          NODE_PATH=/tmp/tt-research/node_modules node tools/multimedia/canva-bookmark-research.cjs
