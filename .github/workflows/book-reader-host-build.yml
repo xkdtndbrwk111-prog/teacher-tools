@@ -2,7 +2,7 @@ name: Book reader native host build and fixture
 on:
   push:
     branches: [codex/book-reader-present-entry]
-    paths: ['tools/multimedia/book-reader-host*','.github/workflows/book-reader-host-build.yml']
+    paths: ['tools/multimedia/book-reader-host*','tools/multimedia/book-reader-live-probe*','.github/workflows/book-reader-host-build.yml']
   pull_request:
     paths: ['tools/multimedia/book-reader-host*','tools/multimedia/book-reader-live-probe*','.github/workflows/book-reader-host-build.yml']
 permissions:
