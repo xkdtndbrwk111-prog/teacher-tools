@@ -1,13 +1,14 @@
 // Test the actual shipped dashboard's minigame bridge, not a separate reference implementation.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('runtime-src/system/dashboard.html','utf8');
-const start=html.indexOf("const miniOrigin="), close=html.indexOf("}else if(type==='hoja-close')miniClose()",start), end=html.indexOf('});',close)+3;
-assert(start>=0 && close>start && end>close);
+const start=html.indexOf("const miniOrigin="), end=html.indexOf('// Editable layout:',start);
+assert(start>=0 && end>start);
+assert(html.slice(start,end).includes("else if(type==='hoja-close')"));
 const code=html.slice(start,end);
 const el={},listeners={},loads=[];
-const box=id=>el[id]??={hidden:false,textContent:'',open:false,dataset:{},contentWindow:{},focus(){this.focused=true},showModal(){this.open=true},close(){this.open=false},removeAttribute(){this.src=''},addEventListener(){}};
+const box=id=>el[id]??={hidden:false,textContent:'',open:false,dataset:{},contentWindow:{postMessage(){}},focus(){this.focused=true},showModal(){this.open=true},close(){this.open=false},removeAttribute(){this.src=''},addEventListener(){}};
 const window={addEventListener:(n,f)=>listeners[n]=f};
-const ctx={$:id=>box(id.slice(1)),window,document:{fullscreenElement:true},navigator:{},Image:class{set src(v){this.value=v;loads.push(v)}get src(){return this.value}},setTimeout:()=>1,clearTimeout(){},Date,Math,console};
+const ctx={$:id=>box(id.slice(1)),window,document:{fullscreenElement:true,addEventListener(){}},navigator:{},Image:class{set src(v){this.value=v;loads.push(v)}get src(){return this.value}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,seoulClock:()=>({date:'2026-11-24',day:2}),lessonAlertSettings:{enabled:true},weekAlertConfirmed:false,savedPeriodTimesConfirmed:()=>false,Date,Math,console};
 vm.runInNewContext(code,ctx);
 assert.equal(loads.length,2);assert(loads.every(v=>v.startsWith('data:image/webp;base64,')));
 box('openMiniGames').onclick();const f=box('miniFrame'),first=f.src,portrait=box('miniPortrait').src;
