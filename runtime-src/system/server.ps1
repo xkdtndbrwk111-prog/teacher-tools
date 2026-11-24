@@ -803,6 +803,41 @@ function Sync-TTBookHost($session,[string]$encoded){
  if($raw -cne $session.layout){Write-TTBookJson (Join-Path $session.dir 'layout.json') $layout;$session.layout=$raw}
 }
 
+# Local-only bounded launch diagnostics. Never include request payloads, URLs or student data.
+function Write-TTBookLaunchDiagnostic([string]$stage,$failure=$null,$exitCode=$null) {
+ try{
+  $d=@{at=[datetime]::UtcNow.ToString('o');stage=$stage;release=$TTRelease}
+  if($failure){
+   $e=$failure.Exception
+   if($e){
+    while($e.InnerException){$e=$e.InnerException}
+    $d.exception=$e.GetType().FullName;$d.hresult=$e.HResult
+    if($e -is [ComponentModel.Win32Exception]){$d.nativeError=$e.NativeErrorCode}
+   }
+  }
+  if($null -ne $exitCode){$d.exitCode=$exitCode}
+  Write-TTBookJson (Join-Path $TTInstallDir 'book-reader-launch-diagnostic.json') $d
+ }catch{}
+}
+function Start-TTBookProcess([string]$dir) {
+ # Explicit pipes match the successful field PowerShell launch and avoid
+ # inheriting unavailable console handles from the hidden server.
+ $info=New-Object Diagnostics.ProcessStartInfo
+ $info.FileName=Join-Path $dir 'BookReader.exe'
+ $info.Arguments='--session "'+$dir+'"'
+ $info.WorkingDirectory=$dir;$info.UseShellExecute=$false;$info.CreateNoWindow=$true
+ $info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+ $p=[Diagnostics.Process]::Start($info)
+ if(!$p){throw 'native host process missing'}
+ try{
+  $stdout=$p.StandardOutput.ReadToEndAsync()
+  $stderr=$p.StandardError.ReadToEndAsync()
+  return @{process=$p;stdout=$stdout;stderr=$stderr}
+ }catch{
+  try{if(!$p.HasExited){$p.Kill()}}catch{}
+  throw
+ }
+}
 function Get-TTBookState {
  $v=$script:ttBookSession
  $d=@{ok=$true;ready=$false;closed=$false;page=0;saved=0;total=$v.pages;status='책 재생기 시작 중'}
@@ -820,7 +855,13 @@ function Get-TTBookState {
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
   }
  }catch{}
- try{if($v.process.HasExited){$d.closed=$true;if(!$d.ready){$d.status='새 재생기 실행 실패'}}}catch{$d.closed=$true}
+ try{if($v.process.HasExited){
+  $d.closed=$true
+  if(!$d.ready){
+   $d.status='새 재생기 실행 실패'
+   if(!$v.exitLogged){Write-TTBookLaunchDiagnostic 'process-exit-before-ready' $null $v.process.ExitCode;$v.exitLogged=$true}
+  }
+ }}catch{$d.closed=$true}
  return $d
 }
 function Open-TTBookHost([string]$encoded) {
@@ -845,6 +886,7 @@ function Open-TTBookHost([string]$encoded) {
  $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token
  [void][IO.Directory]::CreateDirectory($dir)
  try{
+  $stage='extract-bundle'
   $required=@('BookReader.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','LICENSE.txt')
   $allowed=$required+@('ThirdPartyNotices.txt')
   $seen=@{};$total=0;$archive=[IO.Compression.ZipFile]::OpenRead($bundle)
@@ -857,20 +899,28 @@ function Open-TTBookHost([string]$encoded) {
    }
    foreach($name in $required){if(!$seen.ContainsKey($name)){throw 'missing native dependency'}}
   }finally{$archive.Dispose()}
+  $stage='validate-owner'
   $mode=ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $TTInstallDir 'board-mode.json'),[Text.Encoding]::UTF8))
   if(!$mode.window -or !$mode.pid -or $mode.mode -notin @('window','wallpaper') -or $mode.release -cne $TTRelease -or !(@(Get-TTProfileBrowserProcesses | Where-Object {$_.ProcessId -eq $mode.pid}).Count)){throw 'board owner unavailable'}
+  $stage='validate-layout'
   $layout=Get-TTBookLayout $x.layout
+  $stage='write-session'
   $config=@{url=$url;title=$title;pages=$x.pages;start=$x.start;saved=$x.saved;interactive=[int]$interactive;owner=[long]$mode.window;ownerPid=[int]$mode.pid}
   Write-TTBookJson (Join-Path $dir 'request.json') $config
   Write-TTBookJson (Join-Path $dir 'layout.json') $layout
   [IO.File]::WriteAllText((Join-Path $dir 'lease'),'1')
-  $info=New-Object Diagnostics.ProcessStartInfo
-  $info.FileName=Join-Path $dir 'BookReader.exe';$info.Arguments='--session "'+$dir+'"';$info.WorkingDirectory=$dir;$info.UseShellExecute=$false;$info.CreateNoWindow=$true
-  $process=[Diagnostics.Process]::Start($info)
-  if(!$process){throw 'native host process missing'}
-  $script:ttBookSession=@{token=$token;dir=$dir;process=$process;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout)}
+  $stage='process-start'
+  $launch=Start-TTBookProcess $dir
+  $stage='register-session'
+  $script:ttBookSession=@{token=$token;dir=$dir;process=$launch.process;stdout=$launch.stdout;stderr=$launch.stderr;pages=$x.pages;seq=0;layout=(ConvertTo-Json -Compress $layout);exitLogged=$false}
+  Write-TTBookLaunchDiagnostic 'process-started'
   return @{ok=$true;session=$token}
- }catch{try{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop}catch{};throw}
+ }catch{
+  Write-TTBookLaunchDiagnostic $stage $_
+  if($launch -and $launch.process){try{if(!$launch.process.HasExited){$launch.process.Kill()}}catch{}}
+  try{Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop}catch{}
+  throw
+ }
 }
 
 function RemoteText([string]$url) {
