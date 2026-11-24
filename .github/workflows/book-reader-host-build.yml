@@ -1,13 +1,16 @@
 name: Book reader native host build and fixture
 on:
+  push:
+    branches: [codex/book-reader-present-entry, codex/book-reader-v16639]
+    paths: ['tools/multimedia/book-reader-host*','tools/multimedia/book-reader-live-probe*','.github/workflows/book-reader-host-build.yml']
   pull_request:
-    paths: ['tools/multimedia/book-reader-host*','.github/workflows/book-reader-host-build.yml']
+    paths: ['tools/multimedia/book-reader-host*','tools/multimedia/book-reader-live-probe*','.github/workflows/book-reader-host-build.yml']
 permissions:
   contents: read
 jobs:
   native:
     runs-on: windows-latest
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -20,3 +23,6 @@ jobs:
           path: ${{ runner.temp }}/tt-book-host/asset-book-reader-host.zip
           if-no-files-found: error
           retention-days: 14
+      - name: Actual Windows WebView2 mouse and keyboard probe (diagnostic only)
+        shell: powershell
+        run: tools/multimedia/book-reader-live-probe.ps1

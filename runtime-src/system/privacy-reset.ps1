@@ -18,7 +18,21 @@ try {
  if($null -ne $serverPid){Assert-TTOwnedPid -ProcessId $serverPid;Stop-Process -Id $serverPid -Force}
  for($n=0;$n -lt 30 -and $null -ne (Get-TTListenerPid);$n++){Start-Sleep -Milliseconds 200}
  if($null -ne (Get-TTListenerPid)){throw 'Teacher Tools server is still running. Data was not removed.'}
- $dirNames=@('ChromeProfile','EdgeProfile')
+ # The native book host has its own persistent WebView2 data. Wait for
+ # the owned book window and isolated worker to close after board shutdown.
+ $bookSessions=Join-Path $TTInstallDir 'book-reader-sessions'
+ $bookProfile=Join-Path $TTInstallDir 'book-reader-profile'
+ function Get-TTActiveBookResetProcesses {
+  @(Get-CimInstance Win32_Process -Filter "Name='BookReader.exe' OR Name='msedgewebview2.exe' OR Name='powershell.exe'" -ErrorAction Stop | Where-Object {
+   $cmd=[string]$_.CommandLine;$exe=[string]$_.ExecutablePath
+   ($_.Name -eq 'BookReader.exe' -and $exe.StartsWith($bookSessions+'\',[StringComparison]::OrdinalIgnoreCase)) -or
+   ($_.Name -eq 'msedgewebview2.exe' -and ($cmd.IndexOf($bookProfile,[StringComparison]::OrdinalIgnoreCase) -ge 0 -or $cmd.IndexOf($bookSessions,[StringComparison]::OrdinalIgnoreCase) -ge 0)) -or
+   ($_.Name -eq 'powershell.exe' -and $cmd.IndexOf((Join-Path $TTInstallDir 'server.ps1'),[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $cmd -match '(?i)\s-BookWorker\s+[a-f0-9]{32}\s')
+  })
+ }
+ for($n=0;$n -lt 75 -and @(Get-TTActiveBookResetProcesses).Count -gt 0;$n++){Start-Sleep -Milliseconds 400}
+ if(@(Get-TTActiveBookResetProcesses).Count -gt 0){throw 'Book reader is still open. Browser data was not removed.'}
+ $dirNames=@('ChromeProfile','EdgeProfile','book-reader-profile','book-reader-sessions')
  $files=@('school.json','weather-place.json','weather-cache.json','weather-cache.json.tmp','weather-cache.json.bak','seating.json','coins.log','notice.log','photos.txt',
           'browser.txt','display.txt','board-mode.json','board-window.json','share-input.json',
           'share-input-status.json','share-input.log','share-input-error.log','open-web.log',
@@ -34,6 +48,15 @@ try {
   $entry=Get-Item -LiteralPath $target -Force
   if(($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw ('Refusing to follow a directory link: '+$name)}
   if(-not $entry.PSIsContainer){throw ('Expected directory: '+$name)}
+  if($name -in @('book-reader-profile','book-reader-sessions')){
+   # Walk one directory at a time, never follow a linked descendant.
+   $queue=New-Object 'System.Collections.Generic.Queue[string]'
+   $queue.Enqueue($target)
+   while($queue.Count){foreach($child in @(Get-ChildItem -LiteralPath $queue.Dequeue() -Force -ErrorAction Stop)){
+    if($child.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Refusing linked book profile entry.'}
+    if($child.PSIsContainer){$queue.Enqueue($child.FullName)}
+   }}
+  }
   Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
   if(Test-Path -LiteralPath $target){throw ('Unable to remove directory: '+$name)}
   $removed++

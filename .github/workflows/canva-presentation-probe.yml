@@ -1,0 +1,18 @@
+name: Live Canva presentation entry probe
+on:
+  pull_request:
+    paths: ['tools/multimedia/canva-presentation-probe.cjs','.github/workflows/canva-presentation-probe.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-probe --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-probe/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-probe/node_modules node tools/multimedia/canva-presentation-probe.cjs
