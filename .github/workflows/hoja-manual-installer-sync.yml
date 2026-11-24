@@ -12,6 +12,7 @@ on:
       - stable/runtime-v1/latest.json
       - tools/manual-installer/**
       - .github/workflows/hoja-manual-installer-sync.yml
+      - .github/workflows/r8-runtime-release.yml
   workflow_dispatch:
 permissions:
   contents: write

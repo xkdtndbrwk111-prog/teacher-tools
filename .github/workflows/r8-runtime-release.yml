@@ -380,7 +380,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      actions: read
+      actions: write
       pages: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -414,3 +414,11 @@ jobs:
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
           echo 'Pages build requested; verify live feed before announcing availability.'
+      - name: Queue official manual installer for the newly signed runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GITHUB_TOKEN pushes do not trigger ordinary 'push' workflows.
+          # workflow_dispatch is the documented opt-in exception: it does.
+          gh workflow run hoja-manual-installer-sync.yml --ref main
+          echo 'Manual installer sync explicitly dispatched after signed release.'
