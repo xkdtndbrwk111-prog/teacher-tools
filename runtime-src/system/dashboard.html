@@ -11004,11 +11004,15 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  list.append(add,form,button('← 멀티미디어',()=>home()));}
  function closeNativeBook(session){if(session)fetch('/api/book-reader/close?session='+encodeURIComponent(session),{method:'POST',keepalive:true}).catch(()=>{});}
  function encodeBookRequest(x){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(x))))}
- async function readBook(book,resume){
+ async function readBook(book,resume,startupRetry=0){
   reset('book',book.title,true);
   if(book.interactive)dialog.classList.add('mm-book-interactive');
   const token=epoch,w=wrapper('mm-display mm-book-slot');w.textContent='책을 불러오는 중…';
   let session='',cancelled=false,pollTimer=0,errors=0,seq=0,command=null;
+  const openId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
+  let lostSince=0,readySince=0,wasReady=false;
+  const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  async function request(path,options,timeout){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),timeout);try{const r=await fetch(path,{...options,signal:ac.signal}),data=await r.json();return {r,data}}finally{clearTimeout(t)}}
   let pageInput=null;
   if(book.interactive){
    pageInput=document.createElement('input');pageInput.type='number';pageInput.className='mm-book-page';
@@ -11068,27 +11072,60 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
    if(cancelled||epoch!==token)return;
    const saved=bookMark(book)||0;
    const args={id:book.id,url:book.url,title:book.title,pages:bookPages(book),start:resume&&saved?saved:1,saved,interactive:!!book.interactive,layout:layout()};
-   const response=await fetch('/api/book-reader/open',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(args)});
-   const data=await response.json();
-   if(response.ok&&data.ok&&/^[a-f0-9]{32}$/.test(data.session||'')){session=data.session;if(cancelled||epoch!==token){closeNativeBook(session);return;}}
-   else{fallback('Windows 재생기 시작 실패'+(data.reason?' ('+String(data.reason).slice(0,48)+')':''));return}
+   if(book.interactive)args.openId=openId;
+   const openDeadline=performance.now()+35000;
+   let lastOpenError='재생기 연결 또는 시작 실패';
+   do{
+    if(cancelled||epoch!==token)return;
+    try{
+     const {r:response,data}=await request('/api/book-reader/open',{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(args)},book.interactive?8000:15000);
+     if(response.ok&&data.ok&&/^[a-f0-9]{32}$/.test(data.session||'')){
+      session=data.session;if(cancelled||epoch!==token){closeNativeBook(session);return;}break;
+     }
+     lastOpenError='Windows 재생기 시작 실패'+(data.reason?' ('+String(data.reason).slice(0,48)+')':'');
+     if(!book.interactive||['BOOK_URL_INVALID','BUNDLE_MISMATCH'].includes(data.reason)){fallback(lastOpenError);return}
+    }catch(e){if(!book.interactive)throw e}
+    if(cancelled||epoch!==token)return;
+    w.textContent='재생기를 연결하고 있어요. 잠시만 기다려 주세요.';
+    await pause(1500);
+   }while(performance.now()<openDeadline);
+   if(!session){fallback(lastOpenError);return}
+   const startupDeadline=performance.now()+75000;
    async function poll(){
     if(cancelled||epoch!==token)return;
     try{
      const payload={layout:layout(),command:book.interactive||dialog.classList.contains('mm-full')?command:null};
-     const r=await fetch('/api/book-reader/status?session='+encodeURIComponent(session),{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(payload),cache:'no-store'}),x=await r.json();
+     const {r,data:x}=await request('/api/book-reader/status?session='+encodeURIComponent(session),{method:'POST',headers:{'Content-Type':'text/plain'},body:encodeBookRequest(payload),cache:'no-store'},8000);
      if(cancelled||epoch!==token)return;if(!r.ok||!x.ok)throw Error('session');
-     errors=0;
+     errors=0;lostSince=0;
      if(command&&Number(x.ack)>=command.seq)command=null;
      if(!book.interactive&&!dialog.classList.contains('mm-full'))command=null;
      if(x.ready&&Number.isInteger(x.total)&&x.total>=1&&x.total<=4095)rememberBookPages(book,x.total);
      if(!book.interactive&&Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
-     if(x.ready){w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
+     if(x.ready){wasReady=true;w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
+     else if(book.interactive){
+      w.textContent='Canva 발표 화면을 준비하고 있어요.';
+      // Explicit first-use consent/setup is user-paced, not a network failure.
+      if(x.navigationMode==='consent'||x.navigationMode==='setup'){readySince=performance.now();}
+      else if(!x.closed&&performance.now()>Math.max(startupDeadline,readySince+75000)){fallback('Canva 발표 화면 준비 시간이 초과되었습니다.');return}
+     }
      if(!book.interactive)status.textContent=(x.page>0?x.page+' / '+bookPages(book)+'쪽 · ':'')+String(x.status||'불러오는 중');
-     if(x.closed){if(x.ready)books();else fallback('Windows 재생기 조기 종료 · '+String(x.status||'원인 미확인').slice(0,80));return}
-    }catch{if(++errors>=4){fallback('재생기 상태 연결 실패');return}}
-    if(!cancelled&&epoch===token)pollTimer=setTimeout(poll,300);
+     if(x.closed){
+      if(x.ready||wasReady){books();return}
+      if(book.interactive&&startupRetry<1){
+       w.textContent='재생기를 다시 연결하고 있어요.';
+       await pause(1800);if(!cancelled&&epoch===token)readBook(book,resume,startupRetry+1);return;
+      }
+      fallback('Windows 재생기 조기 종료 · '+String(x.status||'원인 미확인').slice(0,80));return
+     }
+    }catch{
+     errors++;
+     if(!lostSince)lostSince=performance.now();
+     if(book.interactive?performance.now()-lostSince>=25000:errors>=4){fallback('재생기 상태 연결 실패');return}
+     if(book.interactive&&!wasReady)w.textContent='재생기 연결을 다시 확인하고 있어요.';
+    }
+    if(!cancelled&&epoch===token)pollTimer=setTimeout(poll,book.interactive&&errors?1500:300);
    }
    poll();
   }catch{fallback('재생기 연결 또는 시작 실패')}
