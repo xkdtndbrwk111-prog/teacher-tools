@@ -26,7 +26,7 @@ function inspect(){
   if(unc){uncertain.add(name(e));continue}
   for(let i=layers.length-1;i>=0;i--)bg=blend(layers[i],bg);
   fg=blend(fg,bg);let cr=contrast(fg,bg),limit=parseFloat(s.fontSize)>=24||parseFloat(s.fontSize)>=18.66&&parseInt(s.fontWeight)>=700?3:4.5;
-  checked++;if(cr+.001<limit){const key=name(e)+' '+s.color+' / '+bg.slice(0,3).map(Math.round).join(',');const prev=issues.get(key);issues.set(key,{selector:name(e),ratio:+cr.toFixed(2),limit,foreground:s.color,background:bg.slice(0,3).map(Math.round),count:(prev?.count||0)+1})}
+  checked++;if(cr+.001<limit){const key=name(e)+' '+s.color+' / '+bg.slice(0,3).map(Math.round).join(',');const prev=issues.get(key);issues.set(key,{selector:name(e),parent:name(e.parentElement),ratio:+cr.toFixed(2),limit,foreground:s.color,background:bg.slice(0,3).map(Math.round),count:(prev?.count||0)+1})}
  }
  const scrolls=[...document.querySelectorAll('body *')].filter(e=>visible(e)&&e.clientHeight>10&&['auto','scroll'].includes(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight+2).map(e=>({selector:name(e),client:e.clientHeight,scroll:e.scrollHeight,ancestors:[...function*(x){for(let n=x.parentElement;n;n=n.parentElement)if(['auto','scroll'].includes(getComputedStyle(n).overflowY)&&n.scrollHeight>n.clientHeight+2)yield name(n)}(e)]}));
  return {checked,issues:[...issues.values()].sort((a,b)=>a.ratio-b.ratio),uncertain:uncertain.size,scrolls};
@@ -48,6 +48,7 @@ function inspect(){
    for(const issue of x.issues)console.log('CONTRAST '+JSON.stringify({theme:themeLabel,label,...issue}));
   }
   for(let i=0;i<themes.length;i++){
+   if(i>0){await p.goto(origin+'/seating/');await p.waitForFunction(()=>window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting'))}
    const t=themes[i];themeLabel=t.theme==='custom'?'custom-'+(i-4):t.theme;
    await p.evaluate(t=>window.__TT_MANAGER_THEME.set(t),t);await p.waitForTimeout(100);
    if(await p.locator('#tt-manager-home-button').isVisible())await p.locator('#tt-manager-home-button').click();
@@ -65,7 +66,14 @@ function inspect(){
    await frame.locator('html[data-cm-theme="'+t.theme+'"]').waitFor({state:'attached'});
    await frame.locator('.nav[data-page="classes"]').click();await frame.locator('.class-stage-student').first().waitFor();
    await scan('grade-classes',frame);
-   await frame.locator('.class-stage-student').first().click();await frame.locator('#student-detail:not(.hidden)').waitFor();await scan('grade-student',frame);await frame.locator('#close-student-detail').click();
+   await frame.locator('.class-stage-student').first().click();await frame.locator('#student-detail:not(.hidden)').waitFor();await scan('grade-student',frame);
+   // Layout stress fixture only: add many cards to the real detail container
+   // without changing any grade record. Real app data and normal rendering
+   // were scanned immediately above.
+   await frame.locator('#personal-results').evaluate(el=>{const list=document.createElement('div');list.className='personal-subject-list';list.id='audit-long-subjects';for(let n=0;n<24;n++){const card=document.createElement('button');card.className='personal-subject-card';card.style.minHeight='120px';card.textContent='가상 교과 '+n;list.append(card)}el.append(list)});
+   const geom=await frame.locator('#student-detail').evaluate(el=>{const work=el.closest('.workspace'),list=el.querySelector('#audit-long-subjects'),cs=x=>getComputedStyle(x);el.scrollTop=el.scrollHeight;return {workOverflow:cs(work).overflowY,detailOverflow:cs(el).overflowY,listOverflow:cs(list).overflowY,listHeight:list.clientHeight,listScroll:list.scrollHeight,detailScroll:el.scrollTop}});
+   assert.equal(geom.workOverflow,'hidden');assert.equal(geom.detailOverflow,'auto');assert.equal(geom.listOverflow,'visible');assert.ok(geom.listScroll<=geom.listHeight+2);assert.ok(geom.detailScroll>0,'last subject must remain reachable');console.log('SCROLL_PASS '+JSON.stringify({theme:themeLabel,...geom}));
+   await frame.locator('#audit-long-subjects').evaluate(el=>el.remove());await frame.locator('#close-student-detail').click();
    for(const v of ['overview','assessments','grades','traits']){await frame.locator('.nav[data-page="'+v+'"]').click();await scan('grade-'+v,frame)}
    await p.locator('#tt-manager-home-button').click();await p.waitForFunction(()=>window.__TT_MANAGER_HOME.page()==='home');
    await p.locator('[data-tt-ui2-open="life"]').click();await p.waitForTimeout(150);await scan('life-entry');
