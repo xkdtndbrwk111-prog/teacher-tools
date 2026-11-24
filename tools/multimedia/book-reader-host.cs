@@ -143,10 +143,32 @@ internal sealed class BookReader : Form {
   else return;
   commandSeq=seq;Publish(manualMode!=0?"수동 저장됨":"자동 판독 중");
  }
+ // Only the interactive book uses a persistent isolated WebView2 profile.
+ // Never reuse the teacher's ordinary Edge/Chrome profile, or store it inside
+ // the per-session directory which is discarded on every new book open.
+ static string InteractiveProfilePath(string session){
+  var s=new DirectoryInfo(Path.GetFullPath(session));
+  var sessions=s.Parent;var install=sessions==null?null:sessions.Parent;
+  string expected=Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"TeacherToolsLocal"));
+  // LOCALAPPDATA is explicitly isolated by the native test runner as well.
+  string local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
+  if(!String.IsNullOrEmpty(local))expected=Path.GetFullPath(Path.Combine(local,"TeacherToolsLocal"));
+  if(install==null||!String.Equals(install.FullName,expected,StringComparison.OrdinalIgnoreCase)||
+     !String.Equals(sessions.Name,"book-reader-sessions",StringComparison.OrdinalIgnoreCase)||
+     !Regex.IsMatch(s.Name,@"^[a-f0-9]{32}$"))throw new InvalidOperationException("unexpected book profile root");
+  foreach(var d in new[]{install,sessions,s})if((d.Attributes&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("linked book profile root");
+  string profile=Path.Combine(install.FullName,"book-reader-profile");
+  if(File.Exists(profile))throw new InvalidOperationException("invalid book profile");
+  var p=Directory.CreateDirectory(profile);
+  if((p.Attributes&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("linked book profile");
+  return p.FullName;
+ }
  async Task Initialize(){
   Publish("불러오는 중");try{
-   // Shared runtime, fresh book-only profile. No screen capture or web host objects.
-   var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(dir,"profile"));
+   // No screen capture, web host objects, or ordinary browser profile access.
+   // Legal/cookie choices are made only by the teacher in the actual Canva UI.
+   string profile=interactive&&!fixture?InteractiveProfilePath(dir):Path.Combine(dir,"profile");
+   var env=await CoreWebView2Environment.CreateAsync(null,profile);
    await web.EnsureCoreWebView2Async(env);var core=web.CoreWebView2;
    core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
