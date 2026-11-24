@@ -85,9 +85,15 @@ internal sealed partial class BookReader {
   // exact design, safe hit target and absence of dialogs are the stable requirements.
   return Flag(stage,"registered")&&Flag(stage,"full")&&Flag(stage,"inStage")&&!Flag(stage,"unsafe")&&Int(stage,"editControls")==Int(stage,"harmlessShare")&&Int(stage,"harmlessShare")<=1&&Int(stage,"dialogs")==0;
  }
+ async Task<object> InspectBookmarkSignals(){
+  // Read-only metadata, including hidden thumbnail selections. Never emit text,
+  // URLs, account identifiers or raw page identifiers. Tokens are run-local aliases.
+  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return null;const alias=window.__ttPageProbeAlias||(window.__ttPageProbeAlias=new Map());const token=v=>{if(!alias.has(v))alias.set(v,alias.size+1);return alias.get(v)};const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const out=[];for(const e of document.querySelectorAll('*')){for(const a of e.attributes){if(!/^(data-(?:page|slide|artboard)(?:-id|-index|-number)?|aria-posinset|aria-setsize)$/i.test(a.name)||!/^[A-Za-z0-9_-]{1,100}$/.test(a.value))continue;const n=/^\d{1,4}$/.test(a.value)?Number(a.value):null;out.push({name:a.name,number:n,token:n===null?token(a.value):null,visible:vis(e),selected:e.getAttribute('aria-selected')==='true'||['page','true','step'].includes(e.getAttribute('aria-current'))});if(out.length>=500)break}if(out.length>=500)break}const selection=[...document.querySelectorAll('[aria-current],[aria-selected=true]')].map(e=>{const l=e.getAttribute('aria-label')||'';const m=l.match(/^(?:page|slide|페이지|슬라이드)\s*(\d{1,4})(?:\s*(?:\/|of|중)\s*(\d{1,4}))?$/i);return m?{page:Number(m[1]),total:m[2]?Number(m[2]):null,visible:vis(e)}:null}).filter(Boolean).slice(0,30);const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48),anc=[];for(let e=center;e&&anc.length<16;e=e.parentElement){const attrs=[...e.attributes].filter(a=>/^data-(?:page|slide|artboard)(?:-id|-index|-number)?$/i.test(a.name)&&/^[A-Za-z0-9_-]{1,100}$/.test(a.value)).map(a=>({name:a.name,token:token(a.value),number:/^\d{1,4}$/.test(a.value)?Number(a.value):null}));anc.push({tag:e.tagName,attrs})}const params=[];for(const [k,v] of new URLSearchParams(location.search)){if(/^(page|slide|pageIndex|slideIndex|pageId|slideId)$/i.test(k)&&/^[A-Za-z0-9_-]{1,100}$/.test(v))params.push({name:k,number:/^\d{1,4}$/.test(v)?Number(v):null,token:token(v)})}return {attributes:out,selection,centerAncestors:anc,params}})()";
+  return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
+ }
  async Task<bool> ObserveRegisteredFullscreen(){
   await Pause(1200);
-  var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);
+  var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);ProbeLog("BOOKMARK_SIGNALS",new{step=0,signals=await InspectBookmarkSignals()});
   // Read-only hit geometry; distinguish an editor toolbar outside the slide
   // from a real interactive slide. Never click editor controls or capture text.
   const string geometry=@"(()=>{const x=innerWidth*.5,y=innerHeight*.48,hit=document.elementFromPoint(x,y),r=e=>{const a=e.getBoundingClientRect();return {x:Math.round(a.x),y:Math.round(a.y),w:Math.round(a.width),h:Math.round(a.height)}};const vis=e=>{const a=e.getBoundingClientRect();return a.width>0&&a.height>0&&getComputedStyle(e).visibility!=='hidden'};const label=e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim();const editor=/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i;return {viewport:[innerWidth,innerHeight],hitAncestors:(()=>{let out=[];for(let p=hit;p&&out.length<12;p=p.parentElement)out.push({tag:p.tagName,role:p.getAttribute('role'),editable:p.isContentEditable,rect:r(p)});return out})(),controls:[...document.querySelectorAll('button,[role=button]')].filter(e=>vis(e)&&editor.test(label(e))).map(e=>({label:label(e),rect:r(e),containsHit:e.contains(hit)})),canvas:[...document.querySelectorAll('canvas')].filter(vis).map(r),sliders:[...document.querySelectorAll('[role=slider]')].filter(vis).map(e=>({rect:r(e),page:e.getAttribute('aria-valuenow'),total:e.getAttribute('aria-valuemax')}))}})()";
@@ -102,11 +108,13 @@ internal sealed partial class BookReader {
    await Pause(1100);string c=await FrameHash();int after=await Read();
    stage=await InspectFullscreenStage();observed++;if(a==b&&b!=c){changes++;if(before>0&&before==after)samePageChanges++;}
    ProbeLog("REGISTERED_CLICK",new{step=i+1,before,after,stableBefore=a==b,changedAfter=b!=c,stage});
+   ProbeLog("BOOKMARK_SIGNALS",new{step=i+1,signals=await InspectBookmarkSignals()});
   }
   foreach(byte key in new byte[]{0x27,0x25}){
    stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
    string before=await FrameHash();bool delivered=await PhysicalKey(key);await Pause(1000);string after=await FrameHash();if(delivered)keysDelivered++;if(delivered&&before!=after)keysChanged++;
    ProbeLog("REGISTERED_KEY",new{key=key==0x27?"right":"left",delivered,changed=before!=after,stage=await InspectFullscreenStage()});
+   ProbeLog("BOOKMARK_KEY_SIGNALS",new{key=key==0x27?"right":"left",signals=await InspectBookmarkSignals()});
   }
   ProbeLog("REGISTERED_RESULT",new{observed,changes,samePageChanges,keysDelivered,keysChanged,acceptance=false,reason="visual change alone is not proof of page identity or sentence reveal"});
   return observed==24&&keysDelivered==2&&changes>0;
