@@ -1357,7 +1357,74 @@ $('#pickReset').onclick=()=>{if(pickSpinning)return;pickStop();pickResetOrder()}
  const miniArtCache=Object.values(miniPortraits).map(src=>{const img=new Image();img.src=src;return img});
  function miniLoadError(message){miniNotice.hidden=false;miniNotice.dataset.state='error';$('#miniNoticeText').textContent=message;$('#miniRetry').hidden=false}
  let miniTimer=0,miniTookFullscreen=false,miniRetryCount=0,miniLoadSerial=0;
+
+ // Break cutoff: verified current timetable, independent of audible bell.
+ function miniBreakSchedule(now,clock,week,times,confirmed){
+  if(!confirmed||clock.day<1||clock.day>5||ttWeekDate(week,clock.day-1)!==clock.date||!Array.isArray(week?.rows))return {next:null,active:null};
+  const lessons=[];
+  for(const row of week.rows){
+   const subject=String(row?.cells?.[clock.day-1]||'').trim(),n=Number(String(row?.label||'').match(/\d+/)?.[0]),p=times[n-1];
+   if(!subject||/^[—–-]+$/.test(subject)||!Array.isArray(p)||p.length!==2||!p.every(t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))continue;
+   const start=Date.parse(clock.date+'T'+p[0]+':00+09:00'),end=Date.parse(clock.date+'T'+p[1]+':00+09:00');
+   if(Number.isFinite(start)&&end>start)lessons.push({start,end,period:n});
+  }
+  lessons.sort((a,b)=>a.start-b.start);
+  return {next:lessons.find(x=>x.start>now)||null,active:lessons.find(x=>now>=x.start&&now<x.end)||null};
+ }
+ let miniBreakReady=false,miniBreakRevision=0,miniBreakSignature='',miniBreakTarget=null,miniBreakDueSince=null,miniBreakLockUntil=0,miniBreakNotice=null,miniBreakNoticeTimer=0;
+ function miniBreakState(now=Date.now()){
+  return miniBreakSchedule(now,seoulClock(new Date(now)),lastWeek,periods,weekAlertConfirmed&&savedPeriodTimesConfirmed());
+ }
+ function miniBreakBlocked(){
+  const now=Date.now(),state=miniBreakState(now);
+  return now<miniBreakLockUntil||Boolean(state.next&&!state.active&&state.next.start-now<=30000);
+ }
+ function miniBreakReset(){miniBreakReady=false;miniBreakSignature='';miniBreakTarget=null;miniBreakDueSince=null;}
+ function miniBreakShow(dismissal){
+  clearTimeout(miniBreakNoticeTimer);miniBreakNotice?.remove();
+  const allowed={HOJA:'fluster',NAHANSANG:'laugh',SUMAKSAE:'dignified',GWANGGAETO_KING:'impact',MURYEONG_KING:'gentle',BANGASAYUSANG:'float',CHILJIDO_ELDER:'doze'};
+  const valid=Boolean(dismissal&&Object.hasOwn(allowed,dismissal.id)&&typeof dismissal.line==='string'&&dismissal.line.length>0&&dismissal.line.length<=100);
+  const picture=v=>typeof v==='string'&&v.length<=240000&&/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(v);
+  const panel=document.createElement('div');miniBreakNotice=panel;panel.setAttribute('role','status');
+  panel.style.cssText='position:fixed;inset:auto 0 5vh;z-index:2147483646;display:flex;justify-content:center;pointer-events:none;';
+  const inner=document.createElement('div');inner.style.cssText='display:flex;align-items:center;gap:2vw;max-width:85vw;background:#fff8e9;color:#33251d;border:4px solid #78523d;border-radius:28px;padding:1.6vw 2.5vw;box-shadow:0 10px 32px #0005;font-size:clamp(22px,3.2vw,58px);font-weight:700;';
+  const img=document.createElement('img');img.alt='';img.src=valid&&picture(dismissal.portrait)?dismissal.portrait:miniPortraits.hoja;img.style.cssText='width:clamp(100px,15vw,280px);height:clamp(100px,15vw,280px);object-fit:contain;';
+  const label=document.createElement('div');label.textContent=valid?dismissal.line:'수업 준비 시간입니다. 자리로 돌아가세요.';inner.append(img,label);panel.append(inner);document.body.append(panel);
+  const animations={fluster:[{transform:'translateX(-45px) rotate(-10deg)'},{transform:'translateX(22px) rotate(8deg)'},{transform:'none'}],laugh:[{transform:'translateY(18px)'},{transform:'translateY(-12px)'},{transform:'translateY(4px)'},{transform:'none'}],dignified:[{opacity:0,transform:'translateX(-18px)'},{opacity:1,transform:'none'}],impact:[{transform:'translateY(-35px) scale(1.15)'},{transform:'translateY(5px) scale(.94)'},{transform:'none'}],gentle:[{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'none'}],float:[{opacity:0,transform:'translateY(35px)'},{opacity:1,transform:'none'}],doze:[{transform:'rotate(0)'},{transform:'rotate(14deg)'},{transform:'rotate(2deg)'},{transform:'rotate(14deg)'}]};
+  if(valid&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){
+   img.animate?.(animations[allowed[dismissal.id]],{duration:dismissal.id==='CHILJIDO_ELDER'?1500:720,easing:'ease-out',fill:'forwards'});
+   if(dismissal.id==='CHILJIDO_ELDER'&&picture(dismissal.secondPortrait))setTimeout(()=>{if(panel.isConnected)img.src=dismissal.secondPortrait},650);
+  }
+  miniBreakNoticeTimer=setTimeout(()=>{panel.remove();if(miniBreakNotice===panel)miniBreakNotice=null},4500);
+ }
+ function miniBreakAutoClose(target,dismissal){
+  if(!miniDialog.open)return;
+  if(target)miniBreakLockUntil=Math.max(miniBreakLockUntil,target.end);
+  miniClose();miniBreakShow(dismissal);
+ }
+ function miniBreakTick(force=false){
+  if(!miniDialog.open)return;
+  const now=Date.now(),state=miniBreakState(now);
+  const target=state.active&&miniBreakTarget?.start===state.active.start?state.active:state.active?null:state.next;
+  const at=target?.start??null,audible=lessonAlertSettings.enabled&&(window.ttSound?.allow('alert')??true),signature=String(at)+'|'+audible;
+  if(miniBreakReady&&(force||signature!==miniBreakSignature)){
+   miniBreakSignature=signature;
+   miniFrame.contentWindow?.postMessage({type:'hoja-break-schedule',revision:++miniBreakRevision,classStartAt:at,audible},miniOrigin);
+  }
+  miniBreakTarget=target;
+  if(!target||target.start-now>30000){miniBreakDueSince=null;return;}
+  if(miniBreakDueSince===null)miniBreakDueSince=now;
+  // Give the current client a short chance to settle payment. Never hold the
+  // classroom in a suspended or legacy game indefinitely.
+  if(!miniBreakReady||now-miniBreakDueSince>=600)miniBreakAutoClose(target,null);
+ }
+ setInterval(miniBreakTick,200);
+ document.addEventListener('visibilitychange',()=>miniBreakTick());
+ window.addEventListener('focus',()=>miniBreakTick());
+
  function miniLoad(retry=false){
+  if(miniBreakBlocked()){miniClose();miniBreakShow(null);return}
+  miniBreakReset();
   if(window.ttRoutine?.locked?.()){window.ttRoutine.open();return}
   clearTimeout(miniTimer);if(!retry)miniRetryCount=0;
   if(!retry){miniArtIndex=1-miniArtIndex;miniArt.src=miniArtCache[miniArtIndex].src;}
@@ -1365,8 +1432,8 @@ $('#pickReset').onclick=()=>{if(pickSpinning)return;pickStop();pickResetOrder()}
   miniFrame.src=miniUrl+'&fresh='+Date.now()+'-'+(++miniLoadSerial);
   miniTimer=setTimeout(()=>miniLoadError('미니게임을 불러오지 못했습니다. 다시 시도해 주세요.'),30000)
  }
- function miniOpen(){if(window.ttRoutine?.locked?.()){window.ttRoutine.open();return}if(miniDialog.open)return;miniDialog.showModal();miniLoad();if(!document.fullscreenElement){document.documentElement.requestFullscreen().then(()=>{miniTookFullscreen=true;try{navigator.keyboard?.lock?.(['Escape']).catch(()=>{})}catch{}}).catch(()=>{})}}
- function miniClose(){clearTimeout(miniTimer);miniFrame.removeAttribute('src');if(miniDialog.open)miniDialog.close();if(miniTookFullscreen){miniTookFullscreen=false;try{navigator.keyboard?.unlock?.()}catch{}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}}
+ function miniOpen(){if(window.ttRoutine?.locked?.()){window.ttRoutine.open();return}if(miniBreakBlocked()){miniBreakShow(null);return}if(miniDialog.open)return;miniDialog.showModal();miniLoad();if(!document.fullscreenElement){document.documentElement.requestFullscreen().then(()=>{miniTookFullscreen=true;try{navigator.keyboard?.lock?.(['Escape']).catch(()=>{})}catch{}}).catch(()=>{})}}
+ function miniClose(){miniBreakReset();clearTimeout(miniTimer);miniFrame.removeAttribute('src');if(miniDialog.open)miniDialog.close();if(miniTookFullscreen){miniTookFullscreen=false;try{navigator.keyboard?.unlock?.()}catch{}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}}
  $('#openMiniGames').onclick=miniOpen;$('#miniBack').onclick=miniClose;$('#miniRetry').onclick=()=>miniLoad();
  miniDialog.addEventListener('cancel',e=>e.preventDefault());
  window.addEventListener('message',e=>{
@@ -1378,7 +1445,12 @@ $('#pickReset').onclick=()=>{if(pickSpinning)return;pickStop();pickResetOrder()}
     clearTimeout(miniTimer);miniLoadError('이전 버전의 미니게임입니다. 최신 버전으로 다시 불러와 주세요.');return
    }
    clearTimeout(miniTimer);miniNotice.hidden=true;miniFrame.focus()
-  }else if(type==='hoja-close')miniClose()
+  }else if(type==='hoja-break-ready'&&e.data.version===1){miniBreakReady=true;miniBreakTick(true)}
+  else if(type==='hoja-close'){
+   const target=miniBreakTarget;
+   if(e.data.reason==='class-start'&&target&&e.data.classStartAt===target.start&&Date.now()>=target.start-30000)miniBreakAutoClose(target,e.data.dismissal);
+   else miniClose();
+  }
  });
 
 // Editable layout: a 12x10 grid. Cards keep their DOM order; only their grid area changes.
