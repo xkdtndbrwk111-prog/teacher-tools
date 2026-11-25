@@ -59,4 +59,35 @@ try{
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.getElementById('ttWeatherMetConsent')?.checked===true);
  await page.evaluate(()=>{const c=document.getElementById('ttWeatherMetConsent');c.checked=false;c.dispatchEvent(new Event('change'));if(localStorage.getItem('tt-weather-met-consent-v1')!==null)throw Error('consent revoke')});
  console.log('PASS: school setup/search/save; two-row tools; speaker; weather placement and persistence');
+ // Lunch edit: no storage mutations until Save, retain earlier lessons and manual override.
+ await page.evaluate(()=>{
+  const check=(v,m)=>{if(!v)throw Error(m)};
+  const get=()=>readPeriodEditor();
+  const before=JSON.stringify(get().periods.slice(0,4)),old=localStorage.getItem('class-periods');
+  const end=document.getElementById('lunchEnd');
+  const edit=v=>{end.value=v;end.dispatchEvent(new Event('change'))};
+  edit('12:50');
+  check(JSON.stringify(get().periods.slice(0,4))===before,'morning unchanged');
+  check(JSON.stringify(get().periods.slice(4))===JSON.stringify([['12:50','13:30'],['13:40','14:20'],['14:30','15:10']]),'recomputed afternoon');
+  check(localStorage.getItem('class-periods')===old,'preview not saved');
+  const draft=JSON.stringify(get().periods);
+  edit('00:50');check(JSON.stringify(get().periods)===draft,'AM input must not overwrite');
+  edit('22:30');check(JSON.stringify(get().periods)===draft,'midnight overflow must not overwrite');
+  edit('12:50');
+  document.getElementById('saveLessonPeriods').click();
+  check(JSON.parse(localStorage.getItem('class-lunch-settings')).end==='12:50','saved lunch');
+  check(JSON.parse(localStorage.getItem('class-periods'))[4][0]==='12:50','saved period');
+  edit('12:40');
+  document.getElementById('settings').dispatchEvent(new Event('close'));
+  check(get().lunch.end==='12:50'&&get().periods[4][0]==='12:50','cancel preview restores saved');
+  // Later direct period edits still work without forced regeneration on Save.
+  document.querySelector('[data-period-end="4"]').value='13:25';
+  document.getElementById('saveLessonPeriods').click();
+  check(JSON.parse(localStorage.getItem('class-periods'))[4][1]==='13:25','manual override');
+ });
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>document.querySelector('[data-period-start="4"]')?.value==='12:50');
+ await page.evaluate(()=>{if(document.querySelector('[data-period-end="4"]').value!=='13:25'||document.getElementById('lunchEnd').value!=='12:50')throw Error('saved schedule reload')});
+ console.log('PASS: lunch edit, morning unchanged, 40/10, invalid input, save/cancel/manual override/reload');
+
 }finally{await browser?.close();server.close()}})().catch(e=>{console.error(e);process.exit(1)});
