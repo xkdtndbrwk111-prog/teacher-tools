@@ -1,0 +1,17 @@
+name: HOJA WebView2 phase 1 isolated Windows lab
+on:
+  pull_request:
+    paths: ['tools/webview-lab/**','.github/workflows/hoja-webview-lab.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compile native WinForms host and verify actual isolated board
+        shell: powershell
+        run: tools/webview-lab/build-test.ps1
