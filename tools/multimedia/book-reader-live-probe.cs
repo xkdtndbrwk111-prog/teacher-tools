@@ -122,8 +122,33 @@ internal sealed partial class BookReader {
   var prop=raw as Dictionary<string,object>;object value;
   return prop!=null&&prop.TryGetValue("value",out value)?Convert.ToString(value,System.Globalization.CultureInfo.InvariantCulture):null;
  }
+ // Find the semantic control even when Canva auto-hides its toolbar.
+ async Task<object> InspectSliderDom(){
+  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return [];return [...document.querySelectorAll('[role=slider],input[type=range]')].map(e=>{const r=e.getBoundingClientRect(),n=v=>v!=null&&/^\d{1,4}$/.test(String(v))?Number(v):null;return {tag:e.tagName,role:e.getAttribute('role'),nativeRange:e.tagName==='INPUT'&&e.type==='range',value:n(e.getAttribute('aria-valuenow')??e.value),min:n(e.getAttribute('aria-valuemin')??e.min),max:n(e.getAttribute('aria-valuemax')??e.max),visible:r.width>0&&r.height>0,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',tabIndex:e.tabIndex}})})()";
+  return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
+ }
+ async Task<int> ReadExactSlider(){
+  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return 0;const a=[...document.querySelectorAll('[role=slider],input[type=range]')].filter(e=>Number(e.getAttribute('aria-valuemin')??e.min)===1&&Number(e.getAttribute('aria-valuemax')??e.max)===394);if(a.length!==1)return 0;const v=Number(a[0].getAttribute('aria-valuenow')??a[0].value);return Number.isInteger(v)&&v>=1&&v<=394?v:0})()";
+  int p;return int.TryParse(await web.CoreWebView2.ExecuteScriptAsync(js),out p)?p:0;
+ }
+ async Task TestExactSeek(){
+  var core=web.CoreWebView2;
+  int initial=await ReadExactSlider();ProbeLog("DIRECT_SLIDER",new{initial,dom=await InspectSliderDom()});
+  if(initial<1){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="no-unique-394-page-control"});return;}
+  const string focus=@"(()=>{const a=[...document.querySelectorAll('[role=slider],input[type=range]')].filter(e=>Number(e.getAttribute('aria-valuemin')??e.min)===1&&Number(e.getAttribute('aria-valuemax')??e.max)===394&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');if(a.length!==1||a[0].tabIndex<0)return false;a[0].focus({preventScroll:true});return document.activeElement===a[0]})()";
+  if(await core.ExecuteScriptAsync(focus)!="true"){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="official-slider-not-focusable"});return;}
+  for(int i=0;i<4;i++){
+   int before=await ReadExactSlider();bool right=i<2;string key=right?"ArrowRight":"ArrowLeft";int vk=right?39:37;
+   await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyDown",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
+   await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyUp",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
+   await Pause(1000);int after=await ReadExactSlider();
+   ProbeLog("DIRECT_SEEK_STEP",new{before,after,expected=before+(right?1:-1),ok=after==before+(right?1:-1)});
+   if(after!=before+(right?1:-1))break;
+  }
+  await core.ExecuteScriptAsync("document.activeElement&&document.activeElement.blur()");
+ }
  async Task LogSourceState(int step,string action){
-  ProbeLog("SOURCE_PAGE_STATE",new{step,action,state=await InspectSourcePageState(),accessibility=await InspectAccessibilityPageState()});
+  ProbeLog("SOURCE_PAGE_STATE",new{step,action,state=await InspectSourcePageState(),accessibility=await InspectAccessibilityPageState(),domSlider=await InspectSliderDom(),directPage=await ReadExactSlider()});
  }
  async Task<bool> ObserveRegisteredFullscreen(){
   await Pause(1200);
@@ -146,6 +171,7 @@ internal sealed partial class BookReader {
    if(await PhysicalKey(key)){keysDelivered++;await Pause(900);await LogSourceState(observed+keysDelivered,key==0x27?"right":"left");}
   }
   ProbeLog("SOURCE_RESULT",new{observed,keysDelivered,acceptance=false,reason="candidate state requires independent mapping"});
+  if(observed==16&&keysDelivered==4&&SafeStage(await InspectFullscreenStage()))await TestExactSeek();
   return observed==16&&keysDelivered==4;
  }
  async Task<int> RunClickProbe(){
