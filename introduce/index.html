@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>공작소 도구 전시관 — 역사보리꼬리 공작소</title>
+  <meta name="description" content="역사보리꼬리 공작소의 모든 도구를 하나의 공간에서 탐험하는 인터랙티브 전시관">
+  <link rel="icon" type="image/svg+xml" href="../assets/hub/favicon.svg">
+  <link rel="stylesheet" href="./introduce.css?v=3">
+</head>
+<body>
+  <a class="skip-link" href="#map">기능 지도로 건너뛰기</a>
+
+  <nav class="topnav" aria-label="전시관 내비게이션">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="../" title="공작소 메인 홈페이지로 돌아가기">← 공작소</a>
+      <ul class="topnav-list" id="navList">
+        <li><a href="#/" data-nav="home">홈</a></li>
+        <!-- 제품 링크는 data.js의 PRODUCTS 순서로 생성 -->
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <!-- 첫 화면: 궤도 → 스크롤에 따라 그리드로 정렬 -->
+    <section class="hero" id="hero" aria-labelledby="heroTitle">
+      <div class="hero-sticky">
+        <div class="hero-copy">
+          <p class="eyebrow">역사보리꼬리 공작소</p>
+          <h1 id="heroTitle">교실의 하루를<br>조금 더 즐겁게.</h1>
+          <p class="hero-sub">하나씩 사용해도 편리하게. 함께하면 더욱 풍성하게.</p>
+        </div>
+        <div class="orbit" id="orbit" aria-label="공작소 프로그램"></div>
+        <p class="hero-scroll-hint" aria-hidden="true">스크롤하여 기능 지도 열기 ↓</p>
+      </div>
+    </section>
+
+    <!-- 기능 지도 -->
+    <section class="map-section" id="map" aria-labelledby="mapTitle">
+      <header class="section-head">
+        <h2 id="mapTitle">기능 지도</h2>
+        <p>모든 프로그램의 기능과 연결을 한 공간에서. 노드를 눌러 자세히 보고, 연결선의 표시를 눌러 이어진 기능으로 이동하세요.</p>
+      </header>
+
+      <div class="map-frame">
+        <div class="map-toolbar" role="toolbar" aria-label="지도 조작">
+          <div class="map-chips" id="mapChips"></div>
+          <div class="map-zoom">
+            <button type="button" id="zoomOut" aria-label="축소">−</button>
+            <button type="button" id="zoomIn" aria-label="확대">+</button>
+            <button type="button" id="zoomFit" class="fit">전체 보기</button>
+          </div>
+        </div>
+
+        <div class="map-viewport" id="viewport" tabindex="0"
+             aria-label="기능 지도. 방향키로 이동, +와 −로 확대·축소, 0으로 전체 보기">
+          <div class="map-world" id="world">
+            <svg class="map-edges" id="edges" aria-hidden="true"></svg>
+            <div class="map-nodes" id="nodes"></div>
+          </div>
+        </div>
+        <p class="map-hint" id="mapHint">드래그로 이동 · <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + 스크롤 또는 핀치로 확대</p>
+        <div class="map-legend" aria-label="연결선 범례">
+          <span><i class="lg lg-coin"></i>학생 코인</span>
+          <span><i class="lg lg-roster"></i>명단 전달 (화살표 = 전달 방향)</span>
+          <span><i class="lg lg-theme"></i>테마 공유</span>
+          <span><i class="lg lg-island"></i>독립 프로그램</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 제품별 소개(스크롤텔링 + One More Thing) -->
+    <div id="products"></div>
+
+    <footer class="site-foot">
+      <p>각 프로그램은 단독으로 사용할 수 있으며, 연동은 선택 사항입니다.</p>
+      <p><a href="../">역사보리꼬리 공작소 홈으로</a></p>
+    </footer>
+  </main>
+
+  <!-- 기능 상세: 지도가 확대되며 들어가는 공간 -->
+  <div class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="detailTitle" hidden>
+    <div class="detail-card" id="detailCard">
+      <button type="button" class="detail-close" id="detailClose" aria-label="지도로 돌아가기">← 지도</button>
+      <div class="detail-track" id="detailTrack"></div>
+      <div class="detail-pager">
+        <button type="button" id="detailPrev" aria-label="이전 기능">‹</button>
+        <span id="detailCount"></span>
+        <button type="button" id="detailNext" aria-label="다음 기능">›</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./data.js?v=2"></script>
+  <script src="./introduce.js?v=2"></script>
+</body>
+</html>

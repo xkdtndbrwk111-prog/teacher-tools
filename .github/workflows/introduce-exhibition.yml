@@ -1,0 +1,32 @@
+name: Introduce exhibition smoke
+on:
+  pull_request:
+    paths:
+      - 'introduce/**'
+      - 'tests/introduce-*.cjs'
+      - 'index.html'
+      - 'hub.css'
+      - '.github/workflows/introduce-exhibition.yml'
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node --check introduce/data.js
+          node --check introduce/introduce.js
+          node --test tests/introduce-contract.test.cjs
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: npm install --prefix /tmp/introduce-playwright --no-audit --no-fund --no-package-lock playwright@1.55.0
+      - run: NODE_PATH=/tmp/introduce-playwright/node_modules node tests/introduce-browser.cjs
