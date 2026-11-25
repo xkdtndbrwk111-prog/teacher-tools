@@ -91,6 +91,34 @@ internal sealed partial class BookReader {
   const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return null;const alias=window.__ttPageProbeAlias||(window.__ttPageProbeAlias=new Map());const token=v=>{if(!alias.has(v))alias.set(v,alias.size+1);return alias.get(v)};const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const out=[];for(const e of document.querySelectorAll('*')){for(const a of e.attributes){if(!/^(data-(?:page|slide|artboard)(?:-id|-index|-number)?|aria-posinset|aria-setsize)$/i.test(a.name)||!/^[A-Za-z0-9_-]{1,100}$/.test(a.value))continue;const n=/^\d{1,4}$/.test(a.value)?Number(a.value):null;out.push({name:a.name,number:n,token:n===null?token(a.value):null,visible:vis(e),selected:e.getAttribute('aria-selected')==='true'||['page','true','step'].includes(e.getAttribute('aria-current'))});if(out.length>=500)break}if(out.length>=500)break}const selection=[...document.querySelectorAll('[aria-current],[aria-selected=true]')].map(e=>{const l=e.getAttribute('aria-label')||'';const m=l.match(/^(?:page|slide|페이지|슬라이드)\s*(\d{1,4})(?:\s*(?:\/|of|중)\s*(\d{1,4}))?$/i);return m?{page:Number(m[1]),total:m[2]?Number(m[2]):null,visible:vis(e)}:null}).filter(Boolean).slice(0,30);const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48),anc=[];for(let e=center;e&&anc.length<16;e=e.parentElement){const attrs=[...e.attributes].filter(a=>/^data-(?:page|slide|artboard)(?:-id|-index|-number)?$/i.test(a.name)&&/^[A-Za-z0-9_-]{1,100}$/.test(a.value)).map(a=>({name:a.name,token:token(a.value),number:/^\d{1,4}$/.test(a.value)?Number(a.value):null}));anc.push({tag:e.tagName,attrs})}const params=[];for(const [k,v] of new URLSearchParams(location.search)){if(/^(page|slide|pageIndex|slideIndex|pageId|slideId)$/i.test(k)&&/^[A-Za-z0-9_-]{1,100}$/.test(v))params.push({name:k,number:/^\d{1,4}$/.test(v)?Number(v):null,token:token(v)})}return {attributes:out,selection,centerAncestors:anc,params}})()";
   return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
  }
+ // Research only: in-memory semantic fingerprints, no book strings, images,
+ // source URLs, or hashes in logs or files. A match is a hypothesis, not acceptance.
+ readonly List<HashSet<string>> originalFingerprints=new List<HashSet<string>>();
+ async Task<HashSet<string>> PageFingerprint(){
+  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return [];const root=document.fullscreenElement||document.body;const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&r.right>innerWidth*.12&&r.left<innerWidth*.88&&r.bottom>innerHeight*.12&&r.top<innerHeight*.88&&s.visibility!=='hidden'&&s.display!=='none'&&s.opacity!=='0'&&!e.closest('button,[role=button],a,input,textarea,[contenteditable=true],[role=textbox],nav,header,footer')};const out=new Set();const add=(k,v)=>{v=v.normalize('NFKC').replace(/\s+/g,' ').trim();if(v.length<4||v.length>3000)return;let a=2166136261,b=5381;for(let i=0;i<v.length;i++){a=Math.imul(a^v.charCodeAt(i),16777619);b=Math.imul(b,33)^v.charCodeAt(i)}out.add(k+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16))};for(const e of root.querySelectorAll('p,span,[role=img],img')){if(!visible(e))continue;if(e.tagName==='IMG'){try{const u=new URL(e.currentSrc||e.src);if(u.protocol==='https:'&&/\.canva\.com$|\.canva\.cn$|\.canva-public\.com$/.test(u.hostname))add('image',u.pathname)}catch{}continue}if(e.children.length===0){const t=e.textContent||'';add('text',t);for(const w of t.split(/\s+/))if(w.length>=4)add('word',w)}}return [...out].slice(0,1000)})()";
+  var values=Json.Deserialize<string[]>(await web.CoreWebView2.ExecuteScriptAsync(js));
+  return new HashSet<string>(values??new string[0],StringComparer.Ordinal);
+ }
+ async Task CompareKnownPublicPages(){
+  var core=web.CoreWebView2;
+  if(await core.ExecuteScriptAsync("!!document.fullscreenElement")=="true"){ProbeLog("REFERENCE_BLOCKED",new{reason="fullscreen-not-exited"});return;}
+  core.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
+  await Pause(5000);var ui=await PrepareUi("public-reference");
+  if(Str(ui,"route")!="view"||Int(ui,"dialogs")!=0){ProbeLog("REFERENCE_BLOCKED",new{reason="route-or-dialog"});return;}
+  var refs=new Dictionary<int,HashSet<string>>();
+  for(int i=1;i<=30;i++){
+   int p=await Read();if(p!=i){ProbeLog("REFERENCE_BLOCKED",new{reason="page-read-mismatch",expected=i,observed=p});break;}
+   await Pause(600);if(await Read()!=p)break;refs[p]=await PageFingerprint();
+   if(i==30)break;if(!await Step(true)){ProbeLog("REFERENCE_BLOCKED",new{reason="no-exact-next-control",page=p});break;}
+   for(int retry=0;retry<12;retry++){await Pause(200);if(await Read()==p+1)break;}
+  }
+  var counts=new List<object>();foreach(var r in refs)counts.Add(new{page=r.Key,signals=r.Value.Count});ProbeLog("REFERENCE_COUNTS",counts);
+  for(int i=0;i<originalFingerprints.Count;i++){
+   var f=originalFingerprints[i];int best=0,second=0,page=0;
+   foreach(var r in refs){int score=0;foreach(string v in f)if(r.Value.Contains(v))score++;if(score>best){second=best;best=score;page=r.Key;}else if(score>second)second=score;}
+   ProbeLog("REFERENCE_MATCH",new{step=i,signals=f.Count,bestPage=page,bestOverlap=best,runnerUpOverlap=second,referenceCount=refs.Count,acceptance=false});
+  }
+ }
  async Task<bool> ObserveRegisteredFullscreen(){
   await Pause(1200);
   var stage=await InspectFullscreenStage();ProbeLog("REGISTERED_STAGE",stage);ProbeLog("BOOKMARK_SIGNALS",new{step=0,signals=await InspectBookmarkSignals()});
@@ -100,6 +128,7 @@ internal sealed partial class BookReader {
   ProbeLog("REGISTERED_STAGE_GEOMETRY",Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(geometry)));
   if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return false;}
   int observed=0,changes=0,samePageChanges=0,keysDelivered=0,keysChanged=0;
+  originalFingerprints.Add(await PageFingerprint());
   for(int i=0;i<24;i++){
    stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="unsafe-next-click",stage});break;}
    await Pause(800);string a=await FrameHash();await Pause(650);string b=await FrameHash();int before=await Read();
@@ -109,6 +138,7 @@ internal sealed partial class BookReader {
    stage=await InspectFullscreenStage();observed++;if(a==b&&b!=c){changes++;if(before>0&&before==after)samePageChanges++;}
    ProbeLog("REGISTERED_CLICK",new{step=i+1,before,after,stableBefore=a==b,changedAfter=b!=c,stage});
    ProbeLog("BOOKMARK_SIGNALS",new{step=i+1,signals=await InspectBookmarkSignals()});
+   if(SafeStage(stage))originalFingerprints.Add(await PageFingerprint());
   }
   foreach(byte key in new byte[]{0x27,0x25}){
    stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
@@ -142,6 +172,7 @@ internal sealed partial class BookReader {
   if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
   await Pause(500);
   ProbeLog("REGISTERED_INPUT_RESULT",new{inputOk,fullscreenExited=!Flag(await InspectPublicUi(),"fullscreen"),animationAcceptance=false});
+  if(inputOk)await CompareKnownPublicPages();
   return inputOk?0:2;
  }
  static int RunLiveProbe(string folder){
