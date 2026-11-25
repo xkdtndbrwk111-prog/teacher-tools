@@ -243,8 +243,15 @@ internal sealed partial class BookReader {
   if(Environment.GetEnvironmentVariable("TT_LIVE_LANGUAGE")=="ko-KR"){
    // Fresh anonymous Korean locale, no authentication or terms acceptance.
    // Only cookie preference controls and the official Present button were used.
-   if(!SafeStage(await InspectFullscreenStage()))return 2;
-   int first=await ReadInteractivePage();int samePage=0,advanced=0,invalid=0;
+   // Fullscreen is not the same as a ready presentation. Require the actual
+   // initial bookmark and removal of the native loading cover before physical clicks.
+   var readyDeadline=DateTime.UtcNow.AddSeconds(30);
+   while(DateTime.UtcNow<readyDeadline&&!closed&&(startupCoverActive||!interactiveBookmarkValid||saved!=requested||await ReadInteractivePage()!=requested))await Pause(400);
+   int first=await ReadInteractivePage();
+   bool readyToRead=!startupCoverActive&&interactiveBookmarkValid&&saved==requested&&first==requested&&SafeStage(await InspectFullscreenStage());
+   ProbeLog("KO_READER_READY",new{readyToRead,first,saved,requested,startupCoverActive,interactiveBookmarkValid});
+   if(!readyToRead)return 2;
+   int samePage=0,advanced=0,invalid=0;
    for(int i=0;i<6;i++){
     if(!SafeStage(await InspectFullscreenStage())||!await PhysicalClick(.5,.48)){invalid++;break;}
     await Pause(1000);int p=await ReadInteractivePage();
@@ -252,6 +259,18 @@ internal sealed partial class BookReader {
     first=p;
    }
    bool ok=invalid==0&&samePage>0&&advanced>0;
+   if(ok){
+    // Exercise the real keyboard path (not just a direct handler call) after
+    // the prior presentation click test, with the host in immersive layout.
+    var layout=ReadFile("layout.json");if(layout==null)return 2;
+    layout["immersive"]=1;File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
+    await Pause(500);SetForegroundWindow(Handle);web.Focus();await Pause(200);
+    bool delivered=await PhysicalKey(0x1B);await Pause(500);
+    bool remainsFull=Flag(await InspectPublicUi(),"fullscreen");
+    bool escapeOk=delivered&&immersive&&exitFull&&remainsFull;
+    ProbeLog("KO_PHYSICAL_ESCAPE",new{delivered,immersive,exitFull,remainsFull,escapeOk});
+    ok=ok&&escapeOk;
+   }
    ProbeLog("ANONYMOUS_KO_RESULT",new{samePage,advanced,invalid,ok,ui=await InspectPublicUi()});
    return ok?0:2;
   }
