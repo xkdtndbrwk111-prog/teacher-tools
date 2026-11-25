@@ -11,6 +11,7 @@ internal sealed class Lab : Form {
     const string Origin = "http://127.0.0.1:17449";
     readonly WebView2 view = new WebView2();
     readonly string profile, result;
+    string fixture;
     readonly Timer watchdog = new Timer();
     Rectangle previous;
     bool immersive, finished;
@@ -18,6 +19,7 @@ internal sealed class Lab : Form {
     internal int ExitCode { get { return exitCode; } }
     internal Lab(string profile, string result) {
         this.profile=profile; this.result=result;
+        fixture=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mini-fixture.html"));
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
         view.Dock=DockStyle.Fill; Controls.Add(view);
@@ -29,6 +31,9 @@ internal sealed class Lab : Form {
     static bool Local(string raw) {
         Uri u;
         return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="http" && u.Host=="127.0.0.1" && u.Port==17449 && String.IsNullOrEmpty(u.UserInfo);
+    }
+    static bool GameFixture(string raw) {
+        Uri u; return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="https" && u.Host=="xkdtndbrwk111-prog.github.io" && u.Port==443 && String.IsNullOrEmpty(u.UserInfo) && u.AbsolutePath=="/hoja-minigames/" && u.Query.StartsWith("?mode=board&embed=dashboard&coin=4&fresh=",StringComparison.Ordinal);
     }
     static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
@@ -64,12 +69,15 @@ internal sealed class Lab : Form {
         core.Settings.IsWebMessageEnabled=false;
         core.Settings.AreHostObjectsAllowed=false;
         core.NavigationStarting+=(s,e)=>{if(!Local(e.Uri))e.Cancel=true;};
+        core.FrameNavigationStarting+=(s,e)=>{if(!Local(e.Uri)&&!GameFixture(e.Uri)&&e.Uri!="about:blank")e.Cancel=true;};
         core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
         core.PermissionRequested+=(s,e)=>{e.State=CoreWebView2PermissionState.Deny;};
         core.DownloadStarting+=(s,e)=>{e.Cancel=true;};
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
         core.WebResourceRequested+=(s,e)=>{
-            if(!Allowed(e.Request.Uri,e.Request.Method))
+            if(GameFixture(e.Request.Uri)&&e.Request.Method=="GET"){
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(fixture)),200,"OK","Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'");
+            }else if(!Allowed(e.Request.Uri,e.Request.Method))
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
         core.ProcessFailed+=(s,e)=>Fail("renderer failure: "+e.ProcessFailedKind);
@@ -83,12 +91,50 @@ internal sealed class Lab : Form {
         Require(await core.ExecuteScriptAsync("localStorage.setItem('hoja-webview-lab','persist');localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage write");
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
+        await VerifyGame(core);
         Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
         SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block");
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin");
+    }
+    async Task<string> WaitResult(CoreWebView2 core,string expression) {
+        for(int i=0;i<100;i++){
+            string value=await core.ExecuteScriptAsync(expression);
+            if(value!="\"\""&&value!="null")return value;
+            await Task.Delay(200);
+        }
+        return "timeout";
+    }
+    async Task VerifyGame(CoreWebView2 core) {
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const C=TTCoins,s=await C.snapshot(true),old=await C.snapshot(true),cls=s.roster.cls,at=new Date().toISOString();
+          if(cls!=='LAB_CLASS'||s.roster.students[0].id!=='lab1')throw Error('roster');
+          const g=C.grant(C.stateOf(s.events,cls),{cls,students:[s.roster.students[0]],amount:4,source:'lab',at});
+          await C.commit(s,g.events);
+          let rejected=false;try{await C.commit(old,g.events)}catch(e){rejected=e.message.includes('다른 코인 작업')}
+          if(!rejected||C.balanceOf(C.stateOf((await C.snapshot()).events,cls),'lab1')!==14)throw Error('grant/revision');
+          document.documentElement.dataset.labGrant='ok';
+        }catch(e){document.documentElement.dataset.labGrant='error:'+e.message}})()");
+        string grant=await WaitResult(core,"document.documentElement.dataset.labGrant||''");
+        Require(grant=="\"ok\"","grant and stale revision: "+grant);
+        await core.ExecuteScriptAsync(@"window.labGameResult='';
+          addEventListener('message',e=>{if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type==='lab-result')window.labGameResult=e.data.result});
+          for(const d of document.querySelectorAll('dialog[open]'))d.close();
+          document.getElementById('openMiniGames').click()");
+        string response=await WaitResult(core,"window.labGameResult||''");
+        Require(response=="\"ok\"","actual board mini protocol: "+response);
+        Require(await core.ExecuteScriptAsync("document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden")=="true","mini visible and ready");
+        await core.ExecuteScriptAsync(@"window.postMessage({type:'hoja-coin-spend',sessionId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',coinUnit:2,classId:'LAB_CLASS',ids:['lab1'],game:'lab',txId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},location.origin)");
+        await Task.Delay(500);
+        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await TTCoins.snapshot();const e=s.events.filter(x=>x.cls==='LAB_CLASS');const balance=TTCoins.balanceOf(TTCoins.stateOf(e,'LAB_CLASS'),'lab1');document.documentElement.dataset.labLedger=balance===14&&e.filter(x=>x.type==='spend').length===1&&e.filter(x=>x.type==='refund').length===1?'ok':'bad'}catch(e){document.documentElement.dataset.labLedger='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labLedger||''")=="\"ok\"","single spend/refund and forged origin rejection");
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","mini close");
+        await core.ExecuteScriptAsync("window.labGameResult='';document.getElementById('openMiniGames').click()");
+        Require(await WaitResult(core,"window.labGameResult||''")=="\"ok\"","mini reopen");
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
     }
     void Fail(string why){Finish(1,"FAIL: "+why);}
     void Finish(int code,string message){

@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Isolated mini V4 protocol peer</title><script>
+'use strict';
+const origin='http://127.0.0.1:17449',sid='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',tx='11111111-2222-4333-8444-555555555555';
+const send=x=>parent.postMessage({...x,sessionId:sid},origin);
+let stage=0;
+function finish(result){send({type:'lab-result',result});}
+function spend(req){send({type:'hoja-coin-spend',coinUnit:2,classId:'LAB_CLASS',ids:['lab1'],game:'lab',txId:tx,req});}
+function refund(){send({type:'hoja-coin-refund',classId:'LAB_CLASS',charge:tx});}
+addEventListener('message',e=>{
+ if(e.origin!==origin||e.source!==parent||e.data?.sessionId!==sid)return;
+ const d=e.data;
+ if(d.type==='hoja-roster'&&stage===0){
+  if(d.version!==4||d.coinUnit!==2||!d.enabled||d.classId!=='LAB_CLASS'||d.students?.find(x=>x.id==='lab1')?.balance!==14)return finish('roster');
+  if(Number(new URL(location.href).searchParams.get('fresh').split('-').at(-1))>1){stage=9;return finish('ok')}
+  stage=1;spend('one');
+ }else if(d.type==='hoja-coin-result'&&stage===1&&d.req==='one'){
+  if(!d.ok||d.price!==2||d.balances?.lab1!==12)return finish('spend');stage=2;spend('two');
+ }else if(d.type==='hoja-coin-result'&&stage===2&&d.req==='two'){
+  if(!d.ok||d.balances?.lab1!==12)return finish('duplicate');stage=3;refund();
+ }else if(d.type==='hoja-refund-result'&&stage===3){
+  if(!d.ok||d.balances?.lab1!==14)return finish('refund');stage=4;refund();
+ }else if(d.type==='hoja-refund-result'&&stage===4){
+  if(!d.ok||d.balances?.lab1!==14)return finish('duplicate refund');stage=9;finish('ok');
+ }
+});
+send({type:'hoja-ready',coinProtocol:4,readyReq:'lab'});
+</script>

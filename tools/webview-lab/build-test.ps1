@@ -18,12 +18,15 @@ $win=Join-Path $core.Directory.FullName 'Microsoft.Web.WebView2.WinForms.dll'
 $loader=Get-ChildItem (Join-Path $root 'sdk') -Recurse -Filter WebView2Loader.dll | Where-Object {$_.FullName -match '[\\/]x64[\\/]'} | Select-Object -First 1
 if(!$loader -or !(Test-Path $win)){throw 'Missing WebView2 dependencies'}
 Copy-Item $core.FullName,$win,$loader.FullName $out
+Copy-Item (Join-Path $PSScriptRoot 'mini-fixture.html') $out
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$out\HOJA-WebView-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
 $utf8=New-Object Text.UTF8Encoding($false)
-[IO.File]::WriteAllText((Join-Path $runtime 'coins.log'),'{"type":"LAB_SENTINEL"}'+[Environment]::NewLine,$utf8)
-[IO.File]::WriteAllText((Join-Path $runtime 'seating.json'),'{"students":[{"name":"LAB_STUDENT"}],"assignments":{},"layout":{}}',$utf8)
+$at=[DateTime]::UtcNow.ToString('o')
+$seed=@('{"type":"LAB_SENTINEL"}',(@{type='setting';cls='LAB_CLASS';at=$at;enabled=$true;weeklyOn=$false;cap=20}|ConvertTo-Json -Compress),(@{type='grant';cls='LAB_CLASS';at=$at;id='lab1';name='LAB_STUDENT';amount=5;source='lab-seed'}|ConvertTo-Json -Compress))
+[IO.File]::WriteAllText((Join-Path $runtime 'coins.log'),($seed -join [Environment]::NewLine)+[Environment]::NewLine,$utf8)
+[IO.File]::WriteAllText((Join-Path $runtime 'seating.json'),'{"classId":"LAB_CLASS","className":"LAB_CLASS","students":[{"id":"lab1","name":"LAB_STUDENT"}],"assignments":[{"studentId":"lab1","seatId":"s1"}],"layout":{"rows":1,"cols":1}}',$utf8)
 $before=(Get-FileHash (Join-Path $runtime 'coins.log')).Hash
 $seatBefore=(Get-FileHash (Join-Path $runtime 'seating.json')).Hash
 $server=$null;$hostProc=$null
@@ -49,8 +52,10 @@ try{
  if(!(Test-Path $result)){throw ('Native host no result; exit '+$hostProc.ExitCode)}
  Get-Content $result
  if($hostProc.ExitCode -ne 0){throw 'Native host failed'}
- if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $before -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected isolated data mutation'}
- Write-Host "PASS isolated data unchanged; host bytes=$((Get-ChildItem $out -File | Measure-Object Length -Sum).Sum)"
+ $events=@(Get-Content (Join-Path $runtime 'coins.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
+ if($events.Count -ne 6 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 1 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 1){throw 'Unexpected ledger contents'}
+ if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation'}
+ Write-Host "PASS isolated ledger: exact grant/spend/refund once; seat file unchanged; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
  if($hostProc -and !$hostProc.HasExited){$hostProc.Kill();$hostProc.WaitForExit()}
  if($server -and !$server.HasExited){$server.Kill();$server.WaitForExit()}
