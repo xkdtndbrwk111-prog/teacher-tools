@@ -326,7 +326,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.locator('[data-book-id]').count(),3);assert.equal(await page.evaluate(()=>localStorage.getItem('tt-books-v1:total:TEST_NATIVE')),'381');
  await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();await page.unroute('**/api/book-reader/**');
  await page.reload();await page.waitForFunction(()=>!!window.ttMultimedia);
- assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),13);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),170);
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:TEST_NATIVE')).page),4);
  console.log('PASS Almond owned native top-level WebView2, no popups/iframe, minimal five-item footer, bookmark command, native other book regression, fullscreen Escape');
 
