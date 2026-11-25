@@ -1,0 +1,70 @@
+name: HOJA native universal installer candidate
+on:
+  pull_request:
+    paths:
+      - tools/manual-installer/native-installer.cs
+      - .github/workflows/hoja-native-installer-candidate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Compile reproducible native EXE
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $pf=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $vswhere=Join-Path $pf 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs=& $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath
+          $csc=Join-Path $vs 'MSBuild\Current\Bin\Roslyn\csc.exe'
+          $ref=Join-Path $pf 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          $src=(Resolve-Path tools/manual-installer/native-installer.cs).Path
+          $root=(Get-Location).Path
+          $refs=@('mscorlib','System','System.Core','System.Drawing','System.Windows.Forms','System.Web.Extensions','System.Management','Microsoft.CSharp') | ForEach-Object { '/reference:'+(Join-Path $ref ($_+'.dll')) }
+          foreach($folder in @('native-candidate','native-repeat')){
+            New-Item -ItemType Directory $folder | Out-Null
+            $out=Join-Path (Resolve-Path $folder).Path 'HOJA_Board_Installer.exe'
+            & $csc /nologo /noconfig /nostdlib+ /target:winexe /platform:anycpu /optimize+ /deterministic+ /codepage:65001 "/pathmap:$root=/_/" "/out:$out" $refs $src
+            if($LASTEXITCODE -ne 0){throw 'Compiler failed'}
+          }
+          $hash=(Get-FileHash native-candidate/HOJA_Board_Installer.exe).Hash
+          if($hash -ne (Get-FileHash native-repeat/HOJA_Board_Installer.exe).Hash){throw 'Non-reproducible binary'}
+          Write-Host "INSTALLER SHA256 $hash"
+          Get-AuthenticodeSignature native-candidate/HOJA_Board_Installer.exe | Select-Object Status
+      - name: Native install, repair, preserve data, reject downgrade and locks
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('hoja-native-installer-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory $env:LOCALAPPDATA | Out-Null
+          $exe=(Resolve-Path native-candidate/HOJA_Board_Installer.exe).Path
+          function Run-Installer { (Start-Process $exe -ArgumentList '--quiet','--no-shortcut' -Wait -PassThru).ExitCode }
+          if((Run-Installer) -ne 0){throw 'Native clean install failed'}
+          $dest=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          $releasePath=Join-Path $dest 'release.json'
+          $r=Get-Content $releasePath -Raw | ConvertFrom-Json
+          if([version]$r.version -lt [version]'1.66.42' -or $r.channel -ne 'stable'){throw 'Wrong release'}
+          $sentinel=Join-Path $dest 'school.json'
+          if(Test-Path $sentinel){throw 'Unexpected user data'}
+          [IO.File]::WriteAllText($sentinel,'{"test":"preserve"}')
+          $h=(Get-FileHash $sentinel).Hash
+          if((Run-Installer) -ne 0){throw 'Native same-version repair failed'}
+          if((Get-FileHash $sentinel).Hash -ne $h){throw 'User data changed'}
+          $lock=[IO.File]::Open((Join-Path $dest 'r8-update.lock'),'Open','ReadWrite','None')
+          try{if((Run-Installer) -eq 0){throw 'Concurrent update lock ignored'}}finally{$lock.Dispose()}
+          $r.version='9999.0.0'
+          $r|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $releasePath
+          $h2=(Get-FileHash $releasePath).Hash
+          if((Run-Installer) -eq 0){throw 'Downgrade accepted'}
+          if((Get-FileHash $releasePath).Hash -ne $h2){throw 'Release changed on downgrade rejection'}
+          Write-Host 'PASS: native install, same-version repair, sentinel, lock, downgrade'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-native-installer-candidate
+          path: native-candidate/HOJA_Board_Installer.exe
+          if-no-files-found: error
+          retention-days: 30

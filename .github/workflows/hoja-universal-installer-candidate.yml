@@ -1,0 +1,63 @@
+name: HOJA universal installer candidate
+on:
+  pull_request:
+    paths:
+      - tools/manual-installer/build-universal.py
+      - .github/workflows/hoja-universal-installer-candidate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build immutable installer twice
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python tools/manual-installer/build-universal.py --out candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+          python tools/manual-installer/build-universal.py --out repeat
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate repeat build failed' }
+          if ((Get-FileHash candidate/HOJA_Board_Installer.zip).Hash -ne (Get-FileHash repeat/HOJA_Board_Installer.zip).Hash) { throw 'Non-reproducible package' }
+          Expand-Archive candidate/HOJA_Board_Installer.zip -DestinationPath candidate-expanded
+          $tokens=$null; $errors=$null
+          $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path candidate-expanded/INSTALL_HOJA_BOARD.ps1).Path,[ref]$tokens,[ref]$errors)
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+      - name: Verify signed feed install and same-version repair with sentinel user data
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('hoja-universal-test-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA | Out-Null
+          $installer=(Resolve-Path candidate-expanded/INSTALL_HOJA_BOARD.ps1).Path
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -NoShortcut
+          if ($LASTEXITCODE -ne 0) { throw 'Clean install failed' }
+          $dest=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          $release=Get-Content (Join-Path $dest 'release.json') -Raw | ConvertFrom-Json
+          if ([version]$release.version -lt [version]'1.66.42' -or $release.channel -ne 'stable') { throw 'Unexpected installed release' }
+          $sentinel=Join-Path $dest 'school.json'
+          if (Test-Path -LiteralPath $sentinel) { throw 'Signed inventory unexpectedly contains user data' }
+          [IO.File]::WriteAllText($sentinel,'{"test":"preserve"}')
+          $before=(Get-FileHash -LiteralPath $sentinel).Hash
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -NoShortcut
+          if ($LASTEXITCODE -ne 0) { throw 'Repair failed' }
+          if ((Get-FileHash -LiteralPath $sentinel).Hash -ne $before) { throw 'User data changed' }
+          # An installed newer version must never be overwritten by the signed feed.
+          $releasePath=Join-Path $dest 'release.json'
+          $release.version='9999.0.0'
+          $release | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $releasePath
+          $before=(Get-FileHash -LiteralPath $releasePath).Hash
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -NoShortcut
+          if ($LASTEXITCODE -eq 0) { throw 'Downgrade accepted' }
+          if ((Get-FileHash -LiteralPath $releasePath).Hash -ne $before) { throw 'Downgrade mutated release' }
+          $global:LASTEXITCODE=0
+          Write-Host 'PASS: clean install, repair, user data preservation, downgrade rejection'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-universal-installer-candidate
+          path: candidate/HOJA_Board_Installer.zip
+          if-no-files-found: error
+          retention-days: 30
