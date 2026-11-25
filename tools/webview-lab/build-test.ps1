@@ -8,6 +8,13 @@ $runtime=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
 $out=Join-Path $root 'out'
 New-Item -ItemType Directory -Path $runtime,$out | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '../../runtime-src/system/*') $runtime -Recurse
+# Diagnostic only: log the swallowed roster exception in the isolated copy, without changing API behavior.
+$serverPath=Join-Path $runtime 'server.ps1'
+$serverText=[IO.File]::ReadAllText($serverPath)
+$oldCatch='}catch{$status=''400 Bad Request'';$body=''{"error":"roster rejected"}''}'
+$newCatch='}catch{[Console]::Error.WriteLine("LAB roster exception: "+$_.Exception.ToString()+" at "+$_.InvocationInfo.PositionMessage);$status=''400 Bad Request'';$body=''{"error":"roster rejected"}''}'
+if($serverText.IndexOf($oldCatch) -lt 0 -or $serverText.IndexOf($oldCatch) -ne $serverText.LastIndexOf($oldCatch)){throw 'Roster diagnostic anchor missing or ambiguous'}
+[IO.File]::WriteAllText($serverPath,$serverText.Replace($oldCatch,$newCatch),[Text.UTF8Encoding]::new($true))
 $version='1.0.2903.40'
 $zip=Join-Path $root 'sdk.zip'
 Invoke-WebRequest -UseBasicParsing -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$version/microsoft.web.webview2.$version.nupkg" -OutFile $zip
@@ -53,7 +60,7 @@ try{
  if(!(Test-Path $readyPath)){throw 'Manager handshake timed out'}
  if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation before Phase 2B'}
  node (Join-Path $PSScriptRoot 'manager-test.cjs') $root
- if($LASTEXITCODE -ne 0){throw 'Chrome manager test failed'}
+ if($LASTEXITCODE -ne 0){Get-Content (Join-Path $root 'server-err.log') -ErrorAction SilentlyContinue;throw 'Chrome manager test failed'}
  if(!$hostProc.WaitForExit(30000)){throw 'Native host timed out'}
  if(!(Test-Path $result)){throw ('Native host no result; exit '+$hostProc.ExitCode)}
  Get-Content $result
