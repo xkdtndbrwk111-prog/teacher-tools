@@ -192,12 +192,42 @@ internal sealed partial class BookReader {
   if(ok)await LogSourceState(target,"resume");
   return ok;
  }
+ // Enumerate only UI controls related to presentation/authentication, never slide text.
+ async Task<object> InspectLocalizedControls(){
+  const string js=@"(()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight&&s.visibility!=='hidden'&&s.display!=='none'};const rx=/발표|프레젠테이션|전체\s*화면|슬라이드\s*쇼|로그인|회원\s*가입|약관|쿠키|present|slideshow|full.?screen|sign.?in|log.?in|sign.?up|terms|cookie/i;const a=[];for(const e of document.querySelectorAll('button,[role=button],[role=menuitem],a[role=button],input[type=button]')){if(!vis(e))continue;const labels=[e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-tooltip'),e.innerText].map(x=>(x||'').trim().replace(/\s+/g,' ')).filter(x=>x.length>0&&x.length<=70&&rx.test(x));if(!labels.length)continue;const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);a.push({labels:[...new Set(labels)],role:e.getAttribute('role')||e.tagName,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',hasPopup:e.getAttribute('aria-haspopup'),hit:!!h&&(e===h||e.contains(h))});if(a.length>=30)break;}return {ready:document.readyState,count:document.querySelectorAll('button,[role=button]').length,controls:a}})()";
+  return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
+ }
+ async Task<object> InspectLocalizedAxControls(){
+  try{
+   var raw=await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Accessibility.getFullAXTree","{}");
+   var root=Json.Deserialize<Dictionary<string,object>>(raw);var output=new List<object>();
+   foreach(object x in (System.Collections.IEnumerable)root["nodes"]){
+    var n=x as Dictionary<string,object>;if(n==null||Flag(n,"ignored")||!n.ContainsKey("role")||!n.ContainsKey("name"))continue;
+    var role=n["role"] as Dictionary<string,object>;var name=n["name"] as Dictionary<string,object>;if(role==null||name==null)continue;
+    string kind=Str(role,"value"),label=Str(name,"value");
+    if(kind!="button"&&kind!="menuitem"&&kind!="menuitemradio"&&kind!="menuitemcheckbox"&&kind!="link")continue;
+    if(label.Length==0||label.Length>70||!System.Text.RegularExpressions.Regex.IsMatch(label,@"발표|프레젠테이션|전체\s*화면|슬라이드\s*쇼|로그인|회원\s*가입|약관|쿠키|present|slideshow|full.?screen|sign.?in|log.?in|sign.?up|terms|cookie",System.Text.RegularExpressions.RegexOptions.IgnoreCase))continue;
+    output.Add(new{role=kind,label});if(output.Count>=30)break;
+   }
+   return output;
+  }catch{return new object[0];}
+ }
  async Task<int> RunClickProbe(){
   // Production navigation is exercised first: the exact registered short URL.
   var deadline=DateTime.UtcNow.AddSeconds(55);
   while((web.CoreWebView2==null||!slotVisible||navigationMode=="pending")&&DateTime.UtcNow<deadline)await Pause(400);
   if(web.CoreWebView2==null||!slotVisible){ProbeLog("WINDOWS_BLOCKED",new{reason="no-window-or-WebView2"});return 2;}
   var ui=await PrepareUi("registered-short-link");
+  if(Environment.GetEnvironmentVariable("TT_LIVE_LANGUAGE")=="ko-KR"){
+   // The original probe sampled once after 4.5 seconds. Observe the entire
+   // bounded startup window before classifying the localized route as blocked.
+   for(int i=0;i<12;i++){
+    ProbeLog("KO_STARTUP_STATE",new{elapsedStep=i,ui,controls=await InspectLocalizedControls(),ax=await InspectLocalizedAxControls(),presentAttempts});
+    if(Flag(ui,"fullscreen")||Flag(ui,"loginDialog")||Flag(ui,"legalDialog")||Str(ui,"route")=="auth")break;
+    if(Int(ui,"dialogs")>0&&(ui["manage"]!=null||ui["reject"]!=null))ui=await PrepareUi("ko-cookie-options");
+    else{await Pause(2500);ui=await InspectPublicUi();}
+   }
+  }
   if(!Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"dialogs")==0&&await ClickControl(ui,"present")){
    await Pause(3000);ui=await InspectPublicUi();ProbeLog("WINDOWS_AFTER_PRESENT",new{phase="registered-short-link",ui});
    if(!Convert.ToBoolean(ui["fullscreen"])&&Int(ui,"slider")==0&&ui["manage"]==null&&ui["reject"]==null&&ui["saveCookie"]==null&&await ClickControl(ui,"present")){
