@@ -261,11 +261,16 @@ internal sealed partial class BookReader {
     var layout=ReadFile("layout.json");if(layout==null)return 2;
     layout["immersive"]=1;File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
     await Pause(500);SetForegroundWindow(Handle);web.Focus();await Pause(200);
-    bool delivered=await PhysicalKey(0x1B);await Pause(500);
+    int beforeRestore=await ReadInteractivePage();
+    bool delivered=await PhysicalKey(0x77);await Pause(500);
     bool remainsFull=Flag(await InspectPublicUi(),"fullscreen");
-    bool escapeOk=delivered&&immersive&&exitFull&&remainsFull;
-    ProbeLog("KO_PHYSICAL_ESCAPE",new{delivered,immersive,exitFull,remainsFull,escapeOk});
-    ok=ok&&escapeOk;
+    bool signalOk=delivered&&immersive&&exitFull&&remainsFull&&beforeRestore>0&&await ReadInteractivePage()==beforeRestore;
+    layout["immersive"]=0;layout["h"]=Math.Max(100,Int(layout,"h")-64);File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
+    await Pause(800);
+    int afterRestore=await ReadInteractivePage();
+    bool restoredOk=signalOk&&!immersive&&Flag(await InspectPublicUi(),"fullscreen")&&afterRestore==beforeRestore;
+    ProbeLog("KO_PHYSICAL_F8",new{delivered,signalOk,remainsFull,beforeRestore,afterRestore,restoredOk});
+    ok=ok&&restoredOk;
    }
    ProbeLog("ANONYMOUS_KO_RESULT",new{samePage,advanced,invalid,ok,ui=await InspectPublicUi()});
    return ok?0:2;
