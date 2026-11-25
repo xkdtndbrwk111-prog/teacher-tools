@@ -263,7 +263,10 @@ internal sealed partial class BookReader {
      reader=new BookReader(session,config,false);reader.ShowForBoard();tick.Start();watchdog.Start();
      code=resume>0?await reader.RunRestartProbe(resume):await reader.RunClickProbe();
     }catch(Exception ex){ProbeLog("WINDOWS_BLOCKED",new{reason=ex.GetType().Name});code=2;}
-    finally{tick.Stop();watchdog.Stop();if(reader!=null&&!reader.IsDisposed){reader.timer.Stop();for(int i=0;i<30&&reader.busy;i++)await Task.Delay(100);reader.Close();}if(reader!=null){var final=reader.ReadFile("state.json");ProbeLog("FINAL_STATE",new{closed=Flag(final,"closed"),bookmarkValid=Flag(final,"bookmarkValid"),saved=final==null?0:Int(final,"saved"),page=final==null?0:Int(final,"page")});}ownerForm.Close();}
+    // C# 5 compiler cannot await in finally; use a separate guarded cleanup block.
+    try{if(reader!=null&&!reader.IsDisposed){reader.timer.Stop();for(int i=0;i<30&&reader.busy;i++)await Task.Delay(100);if(reader.busy)code=2;reader.Close();}if(reader!=null){var final=reader.ReadFile("state.json");ProbeLog("FINAL_STATE",new{closed=Flag(final,"closed"),bookmarkValid=Flag(final,"bookmarkValid"),saved=final==null?0:Int(final,"saved"),page=final==null?0:Int(final,"page")});}}
+    catch(Exception ex){ProbeLog("WINDOWS_BLOCKED",new{reason="cleanup-"+ex.GetType().Name});code=2;}
+    finally{tick.Stop();watchdog.Stop();if(reader!=null&&!reader.IsDisposed)reader.Close();ownerForm.Close();}
    };
    Application.Run(ownerForm);tick.Dispose();watchdog.Dispose();if(reader!=null)reader.Dispose();
   }
