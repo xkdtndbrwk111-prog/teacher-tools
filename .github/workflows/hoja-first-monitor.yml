@@ -1,0 +1,43 @@
+name: First install monitor selection verification
+on:
+  pull_request:
+    paths: ['tools/manual-installer/**','.github/workflows/hoja-first-monitor.yml','runtime-src/system/release.json']
+  push:
+    branches: [main]
+    paths: ['tools/manual-installer/**','.github/workflows/hoja-first-monitor.yml','runtime-src/system/release.json']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: First-install display selection and preservation
+        shell: powershell
+        run: |
+          & tools/manual-installer/test-first-monitor.ps1
+          if(-not $?) {throw 'First monitor test failed'}
+      - name: Verify unchanged current installer and generate next installer
+        shell: pwsh
+        run: |
+          @'
+          import sys,pathlib,json,hashlib,zipfile,io,os
+          sys.path.insert(0,'tools/manual-installer')
+          import publish as p
+          m=json.loads((p.WEB/'release.json').read_text(encoding='utf-8'))
+          b=p.build(m['version'],m['signedManifestSha256'],m['feedSnapshotCommit'])
+          assert hashlib.sha256(b).hexdigest()==m['sha256']
+          c=p.build('1.66.41','a'*64,'b'*40)
+          z=zipfile.ZipFile(io.BytesIO(c))
+          s=z.read('INSTALL_HOJA_BOARD.ps1').decode('utf-8-sig')
+          assert 'Initialize-HojaFirstDisplay -InstallDir' in s and 'release.json' in s and 'not $_.existed' in s
+          pathlib.Path(os.environ['RUNNER_TEMP'],'first-install.ps1').write_bytes(z.read('INSTALL_HOJA_BOARD.ps1'))
+          print('PASS immutable previous installer and next installer generation')
+          '@ | python -
+          if($LASTEXITCODE -ne 0){throw 'Installer generation failed'}
+          $tokens=$null;$errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$env:RUNNER_TEMP/first-install.ps1",[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw ($errors|Out-String)}
