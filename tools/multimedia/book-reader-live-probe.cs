@@ -174,6 +174,24 @@ internal sealed partial class BookReader {
   if(observed==16&&keysDelivered==4&&SafeStage(await InspectFullscreenStage()))await TestExactSeek();
   return observed==16&&keysDelivered==4;
  }
+ async Task<bool> VerifyLiveBookmarkResume(){
+  timer.Stop();
+  for(int i=0;i<30&&busy;i++)await Pause(100);
+  if(busy||!SafeStage(await InspectFullscreenStage()))return false;
+  int prior=await ReadInteractivePage();if(prior<1)return false;
+  saved=prior;seekTarget=125;interactiveBookmarkValid=false;interactiveSeekFocused=false;interactiveSeekFailed=false;
+  interactiveSeekExpected=0;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;previous=0;stable=0;
+  var deadline=DateTime.UtcNow.AddSeconds(50);
+  while(DateTime.UtcNow<deadline&&!interactiveBookmarkValid&&!interactiveSeekFailed){
+   await UpdateInteractiveBookmark();
+   if(!interactiveBookmarkValid&&saved!=prior){ProbeLog("LIVE_RESUME_FAIL",new{reason="premature-overwrite",prior,saved});return false;}
+   await Pause(350);
+  }
+  int actual=await ReadInteractivePage();bool ok=interactiveBookmarkValid&&saved==125&&actual==125&&detected==125;
+  ProbeLog("LIVE_RESUME_RESULT",new{prior,target=125,actual,saved,confirmed=interactiveBookmarkValid,keys=interactiveSeekKeys,ok});
+  if(ok)await LogSourceState(125,"resume");
+  return ok;
+ }
  async Task<int> RunClickProbe(){
   // Production navigation is exercised first: the exact registered short URL.
   var deadline=DateTime.UtcNow.AddSeconds(55);
@@ -193,6 +211,7 @@ internal sealed partial class BookReader {
   bool registeredFull=Str(ui,"route")=="edit"&&Convert.ToBoolean(ui["fullscreen"]);
   if(!registeredFull){ProbeLog("REGISTERED_BLOCKED",new{reason="registered-fullscreen-not-entered",ui});return 2;}
   bool inputOk=await ObserveRegisteredFullscreen();
+  if(inputOk)inputOk=await VerifyLiveBookmarkResume();
   // The public-view comparison was already recorded; do not obscure an original-link failure.
   if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
   await Pause(500);

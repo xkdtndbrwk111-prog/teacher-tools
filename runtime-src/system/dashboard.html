@@ -11117,13 +11117,8 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   if(book.interactive){
    pageInput=document.createElement('input');pageInput.type='number';pageInput.className='mm-book-page';
    pageInput.min='1';pageInput.max=String(bookPages(book));pageInput.step='1';
-   pageInput.value=String(bookMark(book)||1);pageInput.setAttribute('aria-label','현재 페이지 (직접 입력)');
-   pageInput.title='현재 페이지를 입력하면 자동 저장됩니다. Canva의 실제 페이지는 자동 추적하지 않습니다.';
-   pageInput.addEventListener('change',()=>{
-    const n=Number(pageInput.value);
-    try{saveBookMark(book,n);pageInput.removeAttribute('aria-invalid');if(session)command={seq:++seq,kind:'manual',page:n}}
-    catch{pageInput.value=String(bookMark(book)||1);pageInput.setAttribute('aria-invalid','true')}
-   });
+   pageInput.value=String(resume&&bookMark(book)||1);pageInput.readOnly=true;pageInput.setAttribute('aria-label','현재 페이지');
+   pageInput.title='Canva의 실제 페이지를 자동으로 읽고 북마크에 저장합니다.';
    actions.replaceChildren(pageInput);
   }
   const statusHome=status.parentNode,statusNext=status.nextSibling;actions.before(status);
@@ -11201,7 +11196,8 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
      if(command&&Number(x.ack)>=command.seq)command=null;
      if(!book.interactive&&!dialog.classList.contains('mm-full'))command=null;
      if(x.ready&&Number.isInteger(x.total)&&x.total>=1&&x.total<=4095)rememberBookPages(book,x.total);
-     if(!book.interactive&&Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
+     if((!book.interactive||x.bookmarkValid===true)&&Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
+     if(book.interactive&&pageInput){pageInput.max=String(bookPages(book));if(Number.isInteger(x.page)&&x.page>=1&&x.page<=bookPages(book))pageInput.value=String(x.page);pageInput.title=String(x.status||'페이지 확인 중').slice(0,160);}
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
      if(x.ready){wasReady=true;w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
      else if(book.interactive){

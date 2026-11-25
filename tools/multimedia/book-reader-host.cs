@@ -37,6 +37,8 @@ internal sealed partial class BookReader : Form {
  readonly Rectangle screenArea, workingArea;
  int saved,detected,previous,stable,waitingFor,steps,manualMode;
  bool ready,busy,closed,fixture;
+ bool interactiveBookmarkValid,interactiveSeekFocused,interactiveSeekFailed;
+ DateTime interactiveSeekAt=DateTime.MinValue; int interactiveSeekExpected,interactiveSeekKeys;
  DateTime seekStart=DateTime.UtcNow,waitingSince=DateTime.UtcNow;
  string lastState="", lastStatus="불러오는 중", placementStatus="initial";
  int ownerError;
@@ -129,7 +131,7 @@ internal sealed partial class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid});}
  void Publish(string status){
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
@@ -138,6 +140,7 @@ internal sealed partial class BookReader : Form {
   var d=ReadFile("command.json");if(d==null)return;
   long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
   string kind=Str(d,"kind");int p=Int(d,"page");
+  if(interactive){commandSeq=seq;return;}
   if(kind=="manual"&&p>=1&&p<=(actualPages>0?actualPages:pages)){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
   else if((kind=="prev"||kind=="next")&&immersive&&!interactive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
@@ -179,7 +182,7 @@ internal sealed partial class BookReader : Form {
      if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal))){e.Cancel=true;if(interactive){ready=false;navigationMode="blocked";Publish("Canva 재생 주소 차단");}}
     };
    core.NavigationCompleted+=(s,e)=>{
-     ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;
+     ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;interactiveBookmarkValid=false;stable=0;previous=0;if(interactive&&seekTarget>0){interactiveSeekFocused=false;interactiveSeekExpected=0;interactiveSeekFailed=false;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;}
      if(interactive){
       if(fixture)navigationMode="fixture";
       else{Uri target; bool direct=Uri.TryCreate(core.Source,UriKind.Absolute,out target)&&AllowedInteractiveNavigation(core.Source)&&(target.Host=="www.canva.com"||target.Host=="canva.com")&&target.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal);navigationMode=direct?"direct":(navigationMode=="blocked"?"blocked":"not-presentation");ready=ready&&direct;}
@@ -246,10 +249,82 @@ internal sealed partial class BookReader : Form {
   await Task.Delay(300);
   if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'")!="true")throw new InvalidOperationException("fixture trusted Present input not delivered");
   if(await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("fixture browser presentation not entered");
+  await VerifyInteractiveBookmarkFixture();
   await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
   Console.WriteLine("HOST OFFICIAL PRESENT INPUT FIXTURE PASS");
  }
 
+ // Read Canva's native page input, not a screenshot or a private component.
+ // The exact registered book and range disambiguate the volume/other sliders.
+ const string InteractiveSliderPrefix=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return FAIL;if(!document.fullscreenElement||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return FAIL;const a=[...document.querySelectorAll('input[type=range]')].filter(e=>Number(e.min)===1&&Number(e.max)===TOTAL&&Number(e.step||1)===1&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');if(a.length!==1)return FAIL;const el=a[0],v=Number(el.value);if(!Number.isInteger(v)||v<1||v>TOTAL)return FAIL;";
+ string InteractiveScript(string tail,string fail){return InteractiveSliderPrefix.Replace("LAB",fixture?"true":"false").Replace("TOTAL",pages.ToString(System.Globalization.CultureInfo.InvariantCulture)).Replace("FAIL",fail)+tail+"})()";}
+ async Task<int> ReadInteractivePage(){
+  int p;var raw=await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript("return v;","0"));
+  if(!int.TryParse(raw,out p)||p<1||p>pages)return 0;actualPages=pages;return p;
+ }
+ async Task<bool> FocusInteractiveSlider(bool focus){
+  string tail=focus?"if(el.tabIndex<0)return false;el.focus({preventScroll:true});return document.activeElement===el;":"return document.activeElement===el;";
+  return await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript(tail,"false"))=="true";
+ }
+ async Task InteractiveSliderKey(bool next){
+  var core=web.CoreWebView2;string key=next?"ArrowRight":"ArrowLeft";int vk=next?39:37;
+  await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyDown",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
+  await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyUp",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
+ }
+ async Task ReleaseInteractiveSlider(){
+  if(interactiveSeekFocused){try{await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript("if(document.activeElement===el)el.blur();return true;","false"));}catch{}interactiveSeekFocused=false;}
+ }
+ async Task UpdateInteractiveBookmark(){
+  int p=await ReadInteractivePage();
+  if(p==0){interactiveBookmarkValid=false;detected=0;previous=0;stable=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
+  detected=p;if(p==previous)stable++;else{previous=p;stable=1;}
+  if(seekTarget<0)seekTarget=requested;
+  if(seekTarget>0){
+   interactiveBookmarkValid=false;
+   if(p==seekTarget){
+    if(stable<2){Publish("이어 읽기 위치 확인 중");return;}
+    seekTarget=0;interactiveSeekExpected=0;await ReleaseInteractiveSlider();if(!fixture&&web.CanFocus)web.Focus();
+   }else{
+    if(interactiveSeekAt==DateTime.MinValue)interactiveSeekAt=DateTime.UtcNow;
+    if((DateTime.UtcNow-interactiveSeekAt).TotalSeconds>45||interactiveSeekKeys>pages+16)interactiveSeekFailed=true;
+    if(interactiveSeekExpected!=0&&p!=interactiveSeekExpected){
+     if((DateTime.UtcNow-waitingSince).TotalSeconds<2){Publish(seekTarget+"쪽 이동 중");return;}
+     interactiveSeekFailed=true;
+    }
+    if(interactiveSeekFailed){await ReleaseInteractiveSlider();Publish("이어 읽기 위치로 직접 이동 · 기존 북마크 유지");return;}
+    if(stable<2)return;
+    if(!await FocusInteractiveSlider(!interactiveSeekFocused)){interactiveSeekFailed=true;await ReleaseInteractiveSlider();Publish("이어 읽기 위치로 직접 이동 · 기존 북마크 유지");return;}
+    interactiveSeekFocused=true;int count=Math.Min(12,Math.Abs(seekTarget-p));bool next=p<seekTarget;int issued=0;
+    for(int i=0;i<count;i++){
+     if(closed||!await FocusInteractiveSlider(false)){interactiveSeekFailed=true;break;}
+     await InteractiveSliderKey(next);issued++;interactiveSeekKeys++;
+    }
+    interactiveSeekExpected=p+(next?issued:-issued);waitingSince=DateTime.UtcNow;previous=0;stable=0;
+    Publish(seekTarget+"쪽 이동 중");return;
+   }
+  }
+  if(stable<2)return;
+  saved=p;interactiveBookmarkValid=true;Publish("자동 저장됨");
+ }
+ async Task VerifyInteractiveBookmarkFixture(){
+  var core=web.CoreWebView2;
+  await core.ExecuteScriptAsync("(()=>{const r=document.createElement('input');r.type='range';r.min='1';r.max='"+pages+"';r.step='1';r.value='1';r.style.cssText='position:fixed;top:240px;left:20px;width:300px';document.body.append(r);const noise=document.createElement('input');noise.type='range';noise.min='0';noise.max='100';document.body.append(noise);return true})()");
+  if(await ReadInteractivePage()!=1)throw new InvalidOperationException("native range read");
+  for(int i=0;i<30&&(!interactiveBookmarkValid||saved!=requested);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
+  if(!interactiveBookmarkValid||saved!=requested||detected!=requested)throw new InvalidOperationException("interactive resume failed");
+  await core.ExecuteScriptAsync("document.getElementById('reveal-surface').click()");
+  await UpdateInteractiveBookmark();await UpdateInteractiveBookmark();if(saved!=requested)throw new InvalidOperationException("animation changed bookmark");
+  if(!await FocusInteractiveSlider(true))throw new InvalidOperationException("slider focus");
+  await InteractiveSliderKey(true);await Task.Delay(180);await UpdateInteractiveBookmark();await UpdateInteractiveBookmark();
+  if(!interactiveBookmarkValid||saved!=requested+1)throw new InvalidOperationException("auto bookmark failed");
+  await core.ExecuteScriptAsync("(()=>{const r=document.querySelector('input[type=range][min=\"1\"]');const copy=r.cloneNode();copy.id='ambiguous';document.body.append(copy);return true})()");
+  await UpdateInteractiveBookmark();if(interactiveBookmarkValid||saved!=requested+1)throw new InvalidOperationException("ambiguous range overwrote mark");
+  await core.ExecuteScriptAsync("document.getElementById('ambiguous').remove()");
+  if(!await FocusInteractiveSlider(true))throw new InvalidOperationException("slider refocus");
+  await InteractiveSliderKey(false);await Task.Delay(180);await UpdateInteractiveBookmark();await UpdateInteractiveBookmark();
+  if(!interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("backward bookmark failed");
+  Console.WriteLine("HOST INTERACTIVE AUTO BOOKMARK AND RESUME FIXTURE PASS");
+ }
  int seekTarget=-1;
  async Task Poll(){
   if(closed||busy)return;
@@ -260,11 +335,8 @@ internal sealed partial class BookReader : Form {
    await Command();
    if(!fixture&&!slotVisible)return;
    if(interactive){
-    // Canva owns native clicks and arrow keys; never synthesize animation clicks.
-    // Its DOM is not a reliable bookmark source; manual page changes are authoritative.
-    detected=saved>0?saved:requested;
-    if(!fixture){await TryEnterPresentation();Publish(presentationConfirmed?"Canva 전체 화면 · 페이지 수동 기록":"Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}
-    else Publish("Canva 직접 재생 · 페이지 수동 기록");
+    // Native Canva owns presentation clicks. Only the official page slider is used for startup resume.
+    if(!fixture){await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}return;}
     if(fixture){
      // Verify pointer and keyboard events on a real top-level WebView2 fixture.
      if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");

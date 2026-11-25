@@ -75,8 +75,16 @@ New-Item -ItemType Directory -Force $interactive | Out-Null
 & "$out\BookReader.exe" --self-test $interactive
 if($LASTEXITCODE -ne 0){throw 'Native interactive Canva fixture failed'}
 $interactiveState=Get-Content -Raw (Join-Path $interactive 'state.json') | ConvertFrom-Json
-if($interactiveState.saved -ne 7 -or $interactiveState.page -ne 7 -or !$interactiveState.closed -or $interactiveState.cleanControls){throw 'Interactive fixture unexpectedly sought or overlaid Canva navigation'}
-Write-Host 'PASS interactive top-level clickable Canva-host fixture without navigation overlay'
+if($interactiveState.saved -ne 7 -or $interactiveState.page -ne 7 -or !$interactiveState.closed -or !$interactiveState.bookmarkValid -or $interactiveState.cleanControls){throw 'Interactive auto bookmark/resume fixture failed'}
+Write-Host 'PASS interactive top-level clickable Canva-host fixture with automatic bookmark and resume'
+$far=Join-Path $root 'fixture-interactive-far'
+New-Item -ItemType Directory -Force $far | Out-Null
+[IO.File]::WriteAllText((Join-Path $far 'request.json'),(ConvertTo-Json -Compress @{url='https://canva.link/9qxk3zuhh93ts2s';title='Almond';interactive=1;pages=394;start=125;saved=125}),[Text.UTF8Encoding]::new($false))
+& "$out\BookReader.exe" --self-test $far
+if($LASTEXITCODE -ne 0){throw 'Interactive far bookmark resume fixture failed'}
+$farState=Get-Content -Raw (Join-Path $far 'state.json') | ConvertFrom-Json
+if($farState.saved -ne 125 -or $farState.page -ne 125 -or !$farState.closed -or !$farState.bookmarkValid){throw 'Interactive far resume state invalid'}
+Write-Host 'PASS interactive far page 125 resume'
 
 # Regression: a Canva book grows after registration (declared 5, live slider 6).
 $growing=Join-Path $root 'fixture-growing-total'

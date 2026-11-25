@@ -919,7 +919,7 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
-   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
+   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.bookmarkValid=($x.bookmarkValid -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
    foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
    if($x.navigationMode -cin @('pending','direct','blocked','not-presentation','fixture')){$d.navigationMode=[string]$x.navigationMode}
