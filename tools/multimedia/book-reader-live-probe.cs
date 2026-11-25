@@ -230,7 +230,11 @@ internal sealed partial class BookReader {
     if(busy){await Pause(150);continue;}
     int p=await ReadInteractivePage();checks++;
     if(p==target&&detected==target&&saved==target&&checks>=2){
-     timer.Stop();ProbeLog("RESTART_RESULT",new{target,actual=p,saved,detected,checks,keys=interactiveSeekKeys,confirmed=true,ok=true});
+     timer.Stop();
+     for(int i=0;i<30&&busy;i++)await Pause(100);
+     if(busy||closed||!interactiveBookmarkValid||await ReadInteractivePage()!=target||saved!=target||detected!=target){ProbeLog("RESTART_FAIL",new{reason="final-state-unstable",saved,detected});return 2;}
+     Publish("자동 저장됨");
+     ProbeLog("RESTART_RESULT",new{target,actual=p,saved,detected,checks,keys=interactiveSeekKeys,confirmed=true,ok=true});
      return 0;
     }
     if(p!=target){ProbeLog("RESTART_FAIL",new{reason="different-confirmed-page",p,target});return 2;}
@@ -259,7 +263,7 @@ internal sealed partial class BookReader {
      reader=new BookReader(session,config,false);reader.ShowForBoard();tick.Start();watchdog.Start();
      code=resume>0?await reader.RunRestartProbe(resume):await reader.RunClickProbe();
     }catch(Exception ex){ProbeLog("WINDOWS_BLOCKED",new{reason=ex.GetType().Name});code=2;}
-    finally{tick.Stop();watchdog.Stop();if(reader!=null&&!reader.IsDisposed)reader.Close();ownerForm.Close();}
+    finally{tick.Stop();watchdog.Stop();if(reader!=null&&!reader.IsDisposed){reader.timer.Stop();for(int i=0;i<30&&reader.busy;i++)await Task.Delay(100);reader.Close();}if(reader!=null){var final=reader.ReadFile("state.json");ProbeLog("FINAL_STATE",new{closed=Flag(final,"closed"),bookmarkValid=Flag(final,"bookmarkValid"),saved=final==null?0:Int(final,"saved"),page=final==null?0:Int(final,"page")});}ownerForm.Close();}
    };
    Application.Run(ownerForm);tick.Dispose();watchdog.Dispose();if(reader!=null)reader.Dispose();
   }

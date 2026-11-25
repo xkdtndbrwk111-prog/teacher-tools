@@ -32,5 +32,6 @@ try{
 $second=@(Get-ChildItem -LiteralPath $sessions -Directory | Where-Object {$_.FullName -ne $first[0].FullName})
 if($second.Count -ne 1){throw 'Second session count invalid'}
 $state=Get-Content -Raw (Join-Path $second[0].FullName 'state.json') | ConvertFrom-Json
+Write-Host ('RESTART_FINAL_STATE '+(ConvertTo-Json -Compress @{closed=$state.closed;bookmarkValid=$state.bookmarkValid;saved=$state.saved;page=$state.page}))
 if(!$state.closed -or !$state.bookmarkValid -or $state.saved -ne 125 -or $state.page -ne 125){throw 'Actual process restart final state invalid'}
 Write-Host 'PASS actual new Windows host process restores persisted page 125'

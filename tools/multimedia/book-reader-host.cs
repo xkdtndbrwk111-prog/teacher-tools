@@ -133,6 +133,7 @@ internal sealed partial class BookReader : Form {
  }
  string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid});}
  void Publish(string status){
+  if(closed&&status!="종료")return;
   lastStatus=status;string data=State(status);if(data==lastState)return;
   try{string p=Path.Combine(dir,"state.json"),tmp=p+".tmp";File.WriteAllText(tmp,data,Utf8);if(File.Exists(p))File.Replace(tmp,p,null);else File.Move(tmp,p);lastState=data;}catch{}
  }
@@ -178,10 +179,12 @@ internal sealed partial class BookReader : Form {
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
    core.DownloadStarting+=(s,e)=>e.Cancel=true;
    core.NavigationStarting+=(s,e)=>{
+     if(closed){e.Cancel=true;return;}
      // Allow only this exact Canva share target and redirects within the same design.
      if(!fixture&&!(interactive?AllowedInteractiveNavigation(e.Uri):String.Equals(e.Uri,url,StringComparison.Ordinal))){e.Cancel=true;if(interactive){ready=false;navigationMode="blocked";Publish("Canva 재생 주소 차단");}}
     };
    core.NavigationCompleted+=(s,e)=>{
+     if(closed)return;
      ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;interactiveBookmarkValid=false;stable=0;previous=0;if(interactive&&seekTarget>0){interactiveSeekFocused=false;interactiveSeekExpected=0;interactiveSeekFailed=false;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;}
      if(interactive){
       if(fixture)navigationMode="fixture";
@@ -276,6 +279,7 @@ internal sealed partial class BookReader : Form {
  }
  async Task UpdateInteractiveBookmark(){
   int p=await ReadInteractivePage();
+  if(closed)return;
   if(p==0){interactiveBookmarkValid=false;detected=0;previous=0;stable=0;Publish("페이지 정보 없음 · 기존 북마크 유지");return;}
   detected=p;if(p==previous)stable++;else{previous=p;stable=1;}
   if(seekTarget<0)seekTarget=requested;
@@ -304,6 +308,7 @@ internal sealed partial class BookReader : Form {
    }
   }
   if(stable<2)return;
+  if(closed)return;
   saved=p;interactiveBookmarkValid=true;Publish("자동 저장됨");
  }
  async Task VerifyInteractiveBookmarkFixture(){
