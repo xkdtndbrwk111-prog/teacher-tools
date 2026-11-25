@@ -83,6 +83,27 @@ def build(version, manifest_sha, commit):
     cmd = src["호자보드 설치.cmd"].replace(OLD_VERSION, version)
     note = src["설치가 안되면 열어보세요.txt"].replace(OLD_VERSION, version)
     assert "차단 해제" in note and "호자보드.lnk" in script
+
+    # V1.66.40 and earlier published packages remain byte-for-byte immutable.
+    if tuple(map(int, version.split("."))) >= (1, 66, 41):
+        helper = (ROOT / "tools/manual-installer/first-monitor.ps1").read_text(encoding="utf-8-sig")
+        function_anchor = "function Update-HojaShortcut {"
+        call_anchor = "    Update-HojaShortcut\n"
+        assert script.count(function_anchor) == 1 and script.count(call_anchor) == 1
+        script = script.replace(function_anchor, helper.rstrip() + "\n\n" + function_anchor)
+        script = script.replace(call_anchor, call_anchor + """    # The transaction's original release.json inventory distinguishes a clean install.
+    if (!$NoShortcut -and @($records | Where-Object { $_.name -ceq 'release.json' -and -not $_.existed }).Count -eq 1) {
+        try {
+            $firstDisplay = Initialize-HojaFirstDisplay -InstallDir $Destination
+            if ($firstDisplay -eq 'selected' -or $firstDisplay -eq 'preserved') {
+                $exe = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+                Start-Process -FilePath $exe -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $Destination 'launch.ps1') + '"') -WorkingDirectory $Destination -WindowStyle Hidden
+            }
+        } catch {
+            Write-Host ('Monitor setup or first launch was not completed; use the desktop shortcut: ' + $_.Exception.Message) -ForegroundColor Yellow
+        }
+    }
+""")
     assets = {
         "호자보드 설치.cmd": cmd,
         "INSTALL_HOJA_BOARD.ps1": script,
