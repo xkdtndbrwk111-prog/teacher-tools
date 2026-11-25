@@ -93,6 +93,39 @@ internal sealed partial class BookReader {
  }
  // Research only: in-memory semantic fingerprints, no book strings, images,
  // source URLs, or hashes in logs or files. A match is a hypothesis, not acceptance.
+ // Low-resolution visual features stay in process memory only. Compare
+ // tile distances with the largest 25% omitted to tolerate revealed text.
+ readonly List<byte[]> originalVisuals=new List<byte[]>();
+ async Task<byte[]> VisualFingerprint(){
+  using(var ms=new MemoryStream()){
+   await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,ms);
+   ms.Position=0;
+   using(var src=new Bitmap(ms))using(var scaled=new Bitmap(64,36)){
+    using(var g=Graphics.FromImage(scaled)){
+     g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+     var crop=new Rectangle(src.Width/10,src.Height/10,src.Width*8/10,src.Height*8/10);
+     g.DrawImage(src,new Rectangle(0,0,64,36),crop,GraphicsUnit.Pixel);
+    }
+    byte[] v=new byte[64*36*3];int k=0;
+    for(int y=0;y<36;y++)for(int x=0;x<64;x++){var p=scaled.GetPixel(x,y);v[k++]=p.R;v[k++]=p.G;v[k++]=p.B;}
+    return v;
+   }
+  }
+ }
+ static double VisualDistance(byte[] a,byte[] b){
+  var tiles=new List<double>();
+  for(int ty=0;ty<6;ty++)for(int tx=0;tx<8;tx++){
+   int sum=0;
+   for(int y=ty*6;y<ty*6+6;y++)for(int x=tx*8;x<tx*8+8;x++){
+    int i=(y*64+x)*3;for(int c=0;c<3;c++)sum+=Math.Abs((int)a[i+c]-b[i+c]);
+   }
+   tiles.Add(sum/144.0);
+  }
+  tiles.Sort();double score=0;for(int i=0;i<36;i++)score+=tiles[i];return score/36;
+ }
+ async Task RecordOriginalFingerprint(){
+  originalFingerprints.Add(await PageFingerprint());originalVisuals.Add(await VisualFingerprint());
+ }
  readonly List<HashSet<string>> originalFingerprints=new List<HashSet<string>>();
  async Task<HashSet<string>> PageFingerprint(){
   const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return [];const root=document.fullscreenElement||document.body;const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&r.right>innerWidth*.12&&r.left<innerWidth*.88&&r.bottom>innerHeight*.12&&r.top<innerHeight*.88&&s.visibility!=='hidden'&&s.display!=='none'&&s.opacity!=='0'&&!e.closest('button,[role=button],a,input,textarea,[contenteditable=true],[role=textbox],nav,header,footer')};const out=new Set();const add=(k,v)=>{v=v.normalize('NFKC').replace(/\s+/g,' ').trim();if(v.length<4||v.length>3000)return;let a=2166136261,b=5381;for(let i=0;i<v.length;i++){a=Math.imul(a^v.charCodeAt(i),16777619);b=Math.imul(b,33)^v.charCodeAt(i)}out.add(k+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16))};for(const e of root.querySelectorAll('p,span,[role=img],img')){if(!visible(e))continue;if(e.tagName==='IMG'){try{const u=new URL(e.currentSrc||e.src);if(u.protocol==='https:'&&/\.canva\.com$|\.canva\.cn$|\.canva-public\.com$/.test(u.hostname))add('image',u.pathname)}catch{}continue}if(e.children.length===0){const t=e.textContent||'';add('text',t);for(const w of t.split(/\s+/))if(w.length>=4)add('word',w)}}return [...out].slice(0,1000)})()";
@@ -105,10 +138,12 @@ internal sealed partial class BookReader {
   core.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
   await Pause(5000);var ui=await PrepareUi("public-reference");
   if(Str(ui,"route")!="view"||Int(ui,"dialogs")!=0){ProbeLog("REFERENCE_BLOCKED",new{reason="route-or-dialog"});return;}
-  var refs=new Dictionary<int,HashSet<string>>();
+  if(!Flag(ui,"fullscreen")&&await ClickControl(ui,"present")){await Pause(3000);ui=await InspectPublicUi();}
+  bool aligned=Flag(ui,"fullscreen");ProbeLog("VISUAL_REFERENCE_MODE",new{aligned});
+  var refs=new Dictionary<int,HashSet<string>>();var visuals=new Dictionary<int,byte[]>();
   for(int i=1;i<=30;i++){
    int p=await Read();if(p!=i){ProbeLog("REFERENCE_BLOCKED",new{reason="page-read-mismatch",expected=i,observed=p});break;}
-   await Pause(600);if(await Read()!=p)break;refs[p]=await PageFingerprint();
+   await Pause(600);if(await Read()!=p)break;refs[p]=await PageFingerprint();if(aligned)visuals[p]=await VisualFingerprint();
    if(i==30)break;if(!await Step(true)){ProbeLog("REFERENCE_BLOCKED",new{reason="no-exact-next-control",page=p});break;}
    for(int retry=0;retry<12;retry++){await Pause(200);if(await Read()==p+1)break;}
   }
@@ -117,6 +152,7 @@ internal sealed partial class BookReader {
    var f=originalFingerprints[i];int best=0,second=0,page=0;
    foreach(var r in refs){int score=0;foreach(string v in f)if(r.Value.Contains(v))score++;if(score>best){second=best;best=score;page=r.Key;}else if(score>second)second=score;}
    ProbeLog("REFERENCE_MATCH",new{step=i,signals=f.Count,bestPage=page,bestOverlap=best,runnerUpOverlap=second,referenceCount=refs.Count,acceptance=false});
+   if(i<originalVisuals.Count&&visuals.Count>0){double first=double.MaxValue,next=double.MaxValue;int visualPage=0;foreach(var v in visuals){double d=VisualDistance(originalVisuals[i],v.Value);if(d<first){next=first;first=d;visualPage=v.Key;}else if(d<next)next=d;}ProbeLog("VISUAL_MATCH",new{step=i,visualPage,distance=Math.Round(first,3),runnerUp=Math.Round(next,3),semanticPage=page,semanticOverlap=best,semanticRunnerUp=second,acceptance=false});}
   }
  }
  async Task<bool> ObserveRegisteredFullscreen(){
@@ -128,7 +164,7 @@ internal sealed partial class BookReader {
   ProbeLog("REGISTERED_STAGE_GEOMETRY",Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(geometry)));
   if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return false;}
   int observed=0,changes=0,samePageChanges=0,keysDelivered=0,keysChanged=0;
-  originalFingerprints.Add(await PageFingerprint());
+  await RecordOriginalFingerprint();
   for(int i=0;i<24;i++){
    stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="unsafe-next-click",stage});break;}
    await Pause(800);string a=await FrameHash();await Pause(650);string b=await FrameHash();int before=await Read();
@@ -138,7 +174,7 @@ internal sealed partial class BookReader {
    stage=await InspectFullscreenStage();observed++;if(a==b&&b!=c){changes++;if(before>0&&before==after)samePageChanges++;}
    ProbeLog("REGISTERED_CLICK",new{step=i+1,before,after,stableBefore=a==b,changedAfter=b!=c,stage});
    ProbeLog("BOOKMARK_SIGNALS",new{step=i+1,signals=await InspectBookmarkSignals()});
-   if(SafeStage(stage))originalFingerprints.Add(await PageFingerprint());
+   if(SafeStage(stage))await RecordOriginalFingerprint();
   }
   foreach(byte key in new byte[]{0x27,0x25}){
    stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
