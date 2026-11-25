@@ -1,0 +1,18 @@
+name: V1.66.43 compact UI regression
+on:
+  pull_request:
+    paths: ['runtime-src/system/**','tools/v16643/**','.github/workflows/v16643-compact-ui.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          npm install --prefix /tmp/tt-v16643 --no-audit --no-fund --no-package-lock playwright@1.55.0
+          /tmp/tt-v16643/node_modules/.bin/playwright install chromium
+          NODE_PATH=/tmp/tt-v16643/node_modules node tools/v16643/compact-ui.cjs
