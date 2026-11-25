@@ -39,6 +39,7 @@ internal sealed partial class BookReader : Form {
  bool ready,busy,closed,fixture;
  bool interactiveBookmarkValid,interactiveSeekFocused,interactiveSeekFailed;
  DateTime interactiveSeekAt=DateTime.MinValue; int interactiveSeekExpected,interactiveSeekKeys;
+ bool interactiveFastDisabled,interactiveFastPending;int interactiveFastFrom,interactiveFastKeys;
  DateTime seekStart=DateTime.UtcNow,waitingSince=DateTime.UtcNow;
  string lastState="", lastStatus="불러오는 중", placementStatus="initial";
  int ownerError;
@@ -185,7 +186,7 @@ internal sealed partial class BookReader : Form {
     };
    core.NavigationCompleted+=(s,e)=>{
      if(closed)return;
-     ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;interactiveBookmarkValid=false;stable=0;previous=0;if(interactive&&seekTarget>0){interactiveSeekFocused=false;interactiveSeekExpected=0;interactiveSeekFailed=false;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;}
+     ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;interactiveBookmarkValid=false;stable=0;previous=0;if(interactive&&seekTarget>0){interactiveSeekFocused=false;interactiveSeekExpected=0;interactiveSeekFailed=false;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;interactiveFastPending=false;interactiveFastDisabled=false;interactiveFastKeys=0;}
      if(interactive){
       if(fixture)navigationMode="fixture";
       else{Uri target; bool direct=Uri.TryCreate(core.Source,UriKind.Absolute,out target)&&AllowedInteractiveNavigation(core.Source)&&(target.Host=="www.canva.com"||target.Host=="canva.com")&&target.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal);navigationMode=direct?"direct":(navigationMode=="blocked"?"blocked":"not-presentation");ready=ready&&direct;}
@@ -269,8 +270,9 @@ internal sealed partial class BookReader : Form {
   string tail=focus?"if(el.tabIndex<0)return false;el.focus({preventScroll:true});return document.activeElement===el;":"return document.activeElement===el;";
   return await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript(tail,"false"))=="true";
  }
- async Task InteractiveSliderKey(bool next){
-  var core=web.CoreWebView2;string key=next?"ArrowRight":"ArrowLeft";int vk=next?39:37;
+ async Task InteractiveSliderKey(bool next){await InteractiveSliderInput(next?"ArrowRight":"ArrowLeft",next?39:37);}
+ async Task InteractiveSliderInput(string key,int vk){
+  var core=web.CoreWebView2;
   await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyDown",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
   await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyUp",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
  }
@@ -287,10 +289,21 @@ internal sealed partial class BookReader : Form {
    interactiveBookmarkValid=false;
    if(p==seekTarget){
     if(stable<2){Publish("이어 읽기 위치 확인 중");return;}
-    seekTarget=0;interactiveSeekExpected=0;await ReleaseInteractiveSlider();if(!fixture&&web.CanFocus)web.Focus();
+    seekTarget=0;interactiveSeekExpected=0;interactiveFastPending=false;await ReleaseInteractiveSlider();if(!fixture&&web.CanFocus)web.Focus();
    }else{
     if(interactiveSeekAt==DateTime.MinValue)interactiveSeekAt=DateTime.UtcNow;
-    if((DateTime.UtcNow-interactiveSeekAt).TotalSeconds>45||interactiveSeekKeys>pages+16)interactiveSeekFailed=true;
+    if((DateTime.UtcNow-interactiveSeekAt).TotalSeconds>90||interactiveSeekKeys>pages+16)interactiveSeekFailed=true;
+    // PageUp/PageDown are native range inputs. Observe their actual effect;
+    // never assume a jump size or save any intermediate page.
+    if(interactiveFastPending){
+     if(!await FocusInteractiveSlider(false)){interactiveSeekFailed=true;}
+     else if(p==interactiveFastFrom&&(DateTime.UtcNow-waitingSince).TotalSeconds<2){Publish(seekTarget+"쪽 이동 중");return;}
+     else if(stable<2)return;
+     else if(p==interactiveFastFrom){interactiveFastDisabled=true;}
+     else if((seekTarget>interactiveFastFrom&&p>interactiveFastFrom&&p<=seekTarget)||(seekTarget<interactiveFastFrom&&p<interactiveFastFrom&&p>=seekTarget)){}
+     else{interactiveSeekFailed=true;}
+     interactiveFastPending=false;interactiveSeekExpected=0;
+    }
     if(interactiveSeekExpected!=0&&p!=interactiveSeekExpected){
      if((DateTime.UtcNow-waitingSince).TotalSeconds<2){Publish(seekTarget+"쪽 이동 중");return;}
      interactiveSeekFailed=true;
@@ -298,7 +311,15 @@ internal sealed partial class BookReader : Form {
     if(interactiveSeekFailed){await ReleaseInteractiveSlider();Publish("이어 읽기 위치로 직접 이동 · 기존 북마크 유지");return;}
     if(stable<2)return;
     if(!await FocusInteractiveSlider(!interactiveSeekFocused)){interactiveSeekFailed=true;await ReleaseInteractiveSlider();Publish("이어 읽기 위치로 직접 이동 · 기존 북마크 유지");return;}
-    interactiveSeekFocused=true;int count=Math.Min(12,Math.Abs(seekTarget-p));bool next=p<seekTarget;int issued=0;
+    interactiveSeekFocused=true;
+    // Leave ample distance for a standard range large step (usually 10%).
+    // No-effect fallback uses the previously verified arrow-only algorithm.
+    if(!interactiveFastDisabled&&Math.Abs(seekTarget-p)>=Math.Max(50,(pages+9)/10+2)){
+     interactiveFastPending=true;interactiveFastFrom=p;interactiveFastKeys++;interactiveSeekKeys++;waitingSince=DateTime.UtcNow;previous=0;stable=0;
+     await InteractiveSliderInput(p<seekTarget?"PageUp":"PageDown",p<seekTarget?33:34);
+     Publish(seekTarget+"쪽 이동 중");return;
+    }
+    int count=Math.Min(12,Math.Abs(seekTarget-p));bool next=p<seekTarget;int issued=0;
     for(int i=0;i<count;i++){
      if(closed||!await FocusInteractiveSlider(false)){interactiveSeekFailed=true;break;}
      await InteractiveSliderKey(next);issued++;interactiveSeekKeys++;
