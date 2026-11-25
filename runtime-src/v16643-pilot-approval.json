@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "version": "1.66.43",
+  "previous_version": "1.66.42",
+  "previous_payload_sha": "0424e65c5b5888445f84644ad9f29fb1541bf67ecbaa324420f7443c833716cf",
+  "source_sha": "17f774223c83bb98463b6551cc75cde83a6b20ed",
+  "review_sha": "89d9e3667efc5c092187986f9d0b14fb5d2d6571",
+  "artifact_id": 15019953778,
+  "archive_sha": "473d408abb7f52ca41a4a784c547305fa90ba7e0480de5d0814c26a97565a5ba",
+  "payload_sha": "a7683405ced542513b6fa707b1a95bcf00977b64b3d1a012d0ad693f606724c8",
+  "main_runs": {
+    "R8 source-driven build": 45611974853,
+    "V1.66.9 common badge browser regression": 45611974919,
+    "V1.66.8 education activities browser regression": 45611974742,
+    "R8 native Windows verification": 45611974484,
+    "Tournament host bridge review": 45611974434,
+    "QR square widget and integer fit checks": 45611974584,
+    "V1.66.6 browser text contrast": 45611974579,
+    "V1.66.7 theme font shadow and icon regressions": 45611974744,
+    "pages build and deployment": 45611974240,
+    "R8 native R7 integration checks": 45611974596
+  },
+  "review_runs": {
+    "Classroom UI2 home and HUD candidate": 45610692947,
+    "Multimedia candidate browser review": 45610693278,
+    "Daily lesson alert mute checks": 45610692937,
+    "Tournament host bridge review": 45610692932,
+    "R8 source-driven build": 45610692988,
+    "V1.66.7 theme font shadow and icon regressions": 45610693416,
+    "R8 native R7 integration checks": 45610692952,
+    "V1.66.43 compact UI regression": 45610693164,
+    "V1.66.6 browser text contrast": 45610693177,
+    "V1.66.9 common badge browser regression": 45610692934,
+    "Routine integer coin candidate checks": 45610692983,
+    "V1.66.8 education activities browser regression": 45610693174,
+    "QR square widget and integer fit checks": 45610692933,
+    "R8 native Windows verification": 45610693040
+  },
+  "authorization": "Owner explicitly requested deployment of compact school dialog, two-row horizontal tools, speaker layout, weather consent placement and lunch schedule adjustment only. Exact candidate; all listed CI must pass before release. BookReader unchanged; SAC and physical display checks remain pending. Independent signature verification required.",
+  "field_gate": false,
+  "field_status": "pending_after_owner_pilot",
+  "scope": "exact_v16643_compact_ui_lunch_owner_field_test_only"
+}
