@@ -88,7 +88,8 @@ def build(version, manifest_sha, commit):
     if tuple(map(int, version.split("."))) >= (1, 66, 41):
         helper = (ROOT / "tools/manual-installer/first-monitor.ps1").read_text(encoding="utf-8-sig")
         function_anchor = "function Update-HojaShortcut {"
-        call_anchor = "    Update-HojaShortcut\n"
+        newline = "\r\n" if "\r\n" in script else "\n"
+        call_anchor = "    Update-HojaShortcut" + newline
         assert script.count(function_anchor) == 1 and script.count(call_anchor) == 1
         script = script.replace(function_anchor, helper.rstrip() + "\n\n" + function_anchor)
         script = script.replace(call_anchor, call_anchor + """    # The transaction's original release.json inventory distinguishes a clean install.
@@ -115,6 +116,8 @@ def build(version, manifest_sha, commit):
         for name, content in assets.items():
             info = zipfile.ZipInfo(name, date_time=(2024, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
+            # Match the historical Linux publisher on all platforms.
+            info.create_system = 3
             info.flag_bits |= 0x800
             z.writestr(info, content.encode("utf-8-sig"), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     output = memory.getvalue()
