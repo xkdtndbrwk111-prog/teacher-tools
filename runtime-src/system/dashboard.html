@@ -10831,7 +10831,10 @@ body{
 #ttMediaDialog.mm-book-interactive .mm-foot .mm-actions{flex:0 0 auto;min-width:0}
 #ttMediaDialog.mm-book-interactive .mm-book-page{width:65px;min-height:40px}
 #ttMediaDialog.mm-book-interactive .mm-volume{margin-left:auto}
-#ttMediaDialog.mm-book-interactive.mm-full .mm-foot{display:flex!important;background:var(--tt-modal-panel,var(--panel));padding:4px 8px!important}
+#ttMediaDialog.mm-book-interactive.mm-playing.mm-full{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;inset:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;gap:0!important;background:#111!important}
+#ttMediaDialog.mm-book-interactive.mm-full .mm-foot,#ttMediaDialog.mm-book-interactive.mm-full .mm-head,#ttMediaDialog.mm-book-interactive.mm-full .mm-status{display:none!important}
+#ttMediaDialog.mm-book-interactive.mm-full .mm-stage{padding:0!important;gap:0!important;overflow:hidden}
+#ttMediaDialog.mm-book-interactive.mm-full .mm-display{border:0!important;border-radius:0!important;margin:0!important}
 #ttMediaDialog [hidden]{display:none!important}
 @media(max-width:700px){#ttMediaDialog .mm-input{grid-template-columns:1fr}#ttMediaDialog .mm-volume{margin-left:0}}
 </style>

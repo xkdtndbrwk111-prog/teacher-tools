@@ -205,7 +205,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   localStorage.setItem('tt-books-v1:mark:TEST_NATIVE',JSON.stringify({page:5,at:Date.now()}));
  });
  // Native WebView2 loads the shortlink itself. Browser regression must never open a popup or blocked iframe.
- let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7,almondValid=true,failAlmondOpen=true,almondOpenIds=[],almondStatusFailures=4,almondSeek=0;
+ let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7,almondValid=true,failAlmondOpen=true,almondOpenIds=[],almondStatusFailures=4,almondSeek=0,almondExitFull=false;
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
@@ -226,7 +226,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
    if(almondStatusFailures>0){almondStatusFailures--;return route.fulfill({status:503,json:{error:'temporary'}});}
    if(a.command&&a.command.seq>almondAck){assert.equal(a.command.kind,'seek');almondAck=a.command.seq;almondSeek=a.command.page;almondValid=false;}
-   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:394,manual:false,bookmarkValid:almondValid,ack:almondAck,status:'Canva 직접 재생'}});
+   return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:394,manual:false,bookmarkValid:almondValid,ack:almondAck,exitFull:almondExitFull,status:'Canva 직접 재생'}});
   }
   assert.equal(u.searchParams.get('session'),session);
   if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
@@ -271,6 +271,12 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.locator('iframe').count(),0,'no blocked Canva iframe');
  assert.equal(await dlg.locator('.mm-stage').isVisible(),true,'native reader requires a visible placement slot');
  assert.equal(await dlg.locator('#ttMediaStatus').isVisible(),false,'minimal book footer hides status');
+ assert.equal(await dlg.evaluate(d=>d.classList.contains('mm-full')),true,'interactive reader starts immersive');
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),false,'interactive immersive must hide all host controls');
+ const fullSlot=await dlg.locator('.mm-book-slot').boundingBox();const vp=page.viewportSize();
+ assert.ok(fullSlot.x<=1&&fullSlot.y<=1&&fullSlot.width>=vp.width-2&&fullSlot.height>=vp.height-2,'book slot fills the viewport');
+ almondExitFull=true;await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));almondExitFull=false;
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),true,'native Escape signal restores controls');
  assert.equal(await dlg.locator('.mm-foot .mm-footer-title').innerText(),'아몬드');
  assert.equal(await dlg.locator('.mm-foot .mm-actions input').count(),1);
  assert.equal(await dlg.locator('.mm-foot .mm-actions button').count(),0);
@@ -291,7 +297,9 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await pageField.press('Enter');await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-page')?.title.includes('170쪽 이동 중'));
  await page.waitForTimeout(650);assert.equal(almondSeek,170);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),13,'pending seek preserves confirmed mark');
  almondPage=170;almondValid=true;await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===170);
- assert.equal(await dlg.evaluate(d=>d.classList.contains('mm-full')),true,'interactive reader starts fullscreen layout');
+ await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
+ assert.equal(await dlg.evaluate(d=>d.classList.contains('mm-full')),true,'interactive reader returns to immersive layout');
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),false);
  assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'Canva owns interactive arrow keys');
  await page.keyboard.press('Escape');
  await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
