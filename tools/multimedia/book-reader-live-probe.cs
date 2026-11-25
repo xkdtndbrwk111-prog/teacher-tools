@@ -91,69 +91,39 @@ internal sealed partial class BookReader {
   const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return null;const alias=window.__ttPageProbeAlias||(window.__ttPageProbeAlias=new Map());const token=v=>{if(!alias.has(v))alias.set(v,alias.size+1);return alias.get(v)};const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const out=[];for(const e of document.querySelectorAll('*')){for(const a of e.attributes){if(!/^(data-(?:page|slide|artboard)(?:-id|-index|-number)?|aria-posinset|aria-setsize)$/i.test(a.name)||!/^[A-Za-z0-9_-]{1,100}$/.test(a.value))continue;const n=/^\d{1,4}$/.test(a.value)?Number(a.value):null;out.push({name:a.name,number:n,token:n===null?token(a.value):null,visible:vis(e),selected:e.getAttribute('aria-selected')==='true'||['page','true','step'].includes(e.getAttribute('aria-current'))});if(out.length>=500)break}if(out.length>=500)break}const selection=[...document.querySelectorAll('[aria-current],[aria-selected=true]')].map(e=>{const l=e.getAttribute('aria-label')||'';const m=l.match(/^(?:page|slide|페이지|슬라이드)\s*(\d{1,4})(?:\s*(?:\/|of|중)\s*(\d{1,4}))?$/i);return m?{page:Number(m[1]),total:m[2]?Number(m[2]):null,visible:vis(e)}:null}).filter(Boolean).slice(0,30);const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48),anc=[];for(let e=center;e&&anc.length<16;e=e.parentElement){const attrs=[...e.attributes].filter(a=>/^data-(?:page|slide|artboard)(?:-id|-index|-number)?$/i.test(a.name)&&/^[A-Za-z0-9_-]{1,100}$/.test(a.value)).map(a=>({name:a.name,token:token(a.value),number:/^\d{1,4}$/.test(a.value)?Number(a.value):null}));anc.push({tag:e.tagName,attrs})}const params=[];for(const [k,v] of new URLSearchParams(location.search)){if(/^(page|slide|pageIndex|slideIndex|pageId|slideId)$/i.test(k)&&/^[A-Za-z0-9_-]{1,100}$/.test(v))params.push({name:k,number:/^\d{1,4}$/.test(v)?Number(v):null,token:token(v)})}return {attributes:out,selection,centerAncestors:anc,params}})()";
   return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
  }
- // Research only: in-memory semantic fingerprints, no book strings, images,
- // source URLs, or hashes in logs or files. A match is a hypothesis, not acceptance.
- // Low-resolution visual features stay in process memory only. Compare
- // tile distances with the largest 25% omitted to tolerate revealed text.
- readonly List<byte[]> originalVisuals=new List<byte[]>();
- async Task<byte[]> VisualFingerprint(){
-  using(var ms=new MemoryStream()){
-   await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,ms);
-   ms.Position=0;
-   using(var src=new Bitmap(ms))using(var scaled=new Bitmap(64,36)){
-    using(var g=Graphics.FromImage(scaled)){
-     g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-     var crop=new Rectangle(src.Width/10,src.Height/10,src.Width*8/10,src.Height*8/10);
-     g.DrawImage(src,new Rectangle(0,0,64,36),crop,GraphicsUnit.Pixel);
-    }
-    byte[] v=new byte[64*36*3];int k=0;
-    for(int y=0;y<36;y++)for(int x=0;x<64;x++){var p=scaled.GetPixel(x,y);v[k++]=p.R;v[k++]=p.G;v[k++]=p.B;}
-    return v;
+ // Read-only source state diagnostics. No visual fingerprints, credentials,
+ // raw IDs, request bodies, script contents or design content are collected.
+ async Task<object> InspectSourcePageState(){
+  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return null;const ids=window.__ttSourceProbeAliases||(window.__ttSourceProbeAliases=new Map());const alias=v=>{if(!ids.has(v))ids.set(v,ids.size+1);return ids.get(v)};const keys=/^(?:(?:current|active|selected|presented|presenting|displayed|visible|focused|target|initial|previous|next)?(?:page|slide|artboard)(?:id|index|number|count|total|position|key)?|(?:current|active|selected|presented|presenting|displayed)?(?:animation|reveal|build|step)(?:index|number|count|id|position)?|totalPages|totalSlides|pageCount|slideCount)$/i;const containers=/^(?:presentation|presenter|present|slideshow|viewer|navigation|page|slide|artboard|currentPage|activePage|currentSlide|activeSlide|state|value|data|model|props|context|selection|controller|store|snapshot|memoizedState|memoizedProps|baseState|presentationState|pageState|slideState|animationState)$/i;const data=(o,k)=>{try{const d=Object.getOwnPropertyDescriptor(o,k);return d&&'value'in d?d.value:undefined}catch{return undefined}};const own=o=>{try{return Object.getOwnPropertyNames(o).slice(0,100)}catch{return []}};const results=[],seen=new WeakSet();let budget=1800;function scan(o,path,depth){if(!o||typeof o!=='object'||depth<0||budget--<1||seen.has(o)||Array.isArray(o)||o instanceof Node)return;seen.add(o);for(const k of own(o)){if(!keys.test(k)&&!containers.test(k))continue;const v=data(o,k);if(keys.test(k)){if(Number.isInteger(v)&&v>=-1&&v<=4095)results.push({path:path+'.'+k,value:v});else if(typeof v==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(v))results.push({path:path+'.'+k,alias:alias(v)});}if(v&&typeof v==='object'&&depth>0)scan(v,path+'.'+k,depth-1);if(results.length>=160)return;}}const center=document.elementFromPoint(innerWidth*.5,innerHeight*.48),nodes=[];for(let e=center;e&&nodes.length<28;e=e.parentElement)nodes.push(e);for(const e of [document.fullscreenElement,document.body,document.documentElement])if(e&&!nodes.includes(e))nodes.push(e);const fibers=new Set();for(const e of nodes)for(const k of own(e)){if(!/^__react(?:Fiber|InternalInstance|Container)\$/.test(k))continue;let f=data(e,k);for(let j=0;f&&j<45;j++,f=data(f,'return'))fibers.add(f)}let i=0;for(const f of fibers){const t=data(f,'type'),name=typeof t==='function'?data(t,'name'):t&&typeof t==='object'?data(t,'displayName'):null;const label=typeof name==='string'&&/^[A-Za-z0-9_$]{1,80}$/.test(name)?name:'component';const path='fiber['+(i++)+']:'+label;scan(data(f,'memoizedProps'),path+'.props',4);scan(data(f,'memoizedState'),path+'.state',4);let hook=data(f,'memoizedState');for(let j=0;hook&&typeof hook==='object'&&j<36;j++,hook=data(hook,'next')){scan(data(hook,'memoizedState'),path+'.hook['+j+']',4);scan(data(hook,'baseState'),path+'.base['+j+']',3)}if(results.length>=160||budget<1)break;}for(const k of own(window)){if(/^(?:presentationState|presenterState|slideState|pageState|presentationStore|presenterStore|viewerState|__INITIAL_STATE__|__PRELOADED_STATE__)$/i.test(k))scan(data(window,k),'window.'+k,4)}const resourceHints=[];for(const e of performance.getEntriesByType('resource').slice(-120)){try{const u=new URL(e.name);if(!/(^|\.)canva\.com$/.test(u.hostname))continue;const fields=[];for(const [k,v] of u.searchParams){if(!/^(?:page|slide|artboard)(?:Id|Index|Number)?$/i.test(k)||!/^[A-Za-z0-9_-]{1,80}$/.test(v))continue;fields.push({key:k,value:/^\d{1,4}$/.test(v)?Number(v):null,alias:/^\d{1,4}$/.test(v)?null:alias(v)})}if(fields.length)resourceHints.push({type:e.initiatorType,fields})}catch{}}return {fibers:fibers.size,candidates:results.slice(0,160),resourceHints:resourceHints.slice(-20)}})()";
+  return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
+ }
+ async Task<object> InspectAccessibilityPageState(){
+  try{
+   var raw=await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Accessibility.getFullAXTree","{\"depth\":16}");
+   var serializer=new System.Web.Script.Serialization.JavaScriptSerializer{MaxJsonLength=16000000,RecursionLimit=100};
+   var root=serializer.DeserializeObject(raw) as Dictionary<string,object>;
+   var result=new List<object>();
+   if(root==null||!root.ContainsKey("nodes"))return result;
+   var nodes=root["nodes"] as System.Collections.IEnumerable;
+   if(nodes==null)return result;
+   foreach(object v in nodes){
+    var node=v as Dictionary<string,object>;if(node==null)continue;
+    string role=AxString(node,"role"),name=AxString(node,"name"),value=AxString(node,"value");
+    var m=System.Text.RegularExpressions.Regex.Match(name??"", @"^(?:Page|Slide|페이지|슬라이드)\s*(\d{1,4})(?:\s*(?:/|of|중)\s*(\d{1,4}))?$",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    if(m.Success)result.Add(new{role,page=int.Parse(m.Groups[1].Value),total=m.Groups[2].Success?int.Parse(m.Groups[2].Value):0});
+    else if(role=="slider"&&System.Text.RegularExpressions.Regex.IsMatch(value??"", @"^\d{1,4}$"))result.Add(new{role,page=int.Parse(value),total=0});
+    if(result.Count>=50)break;
    }
-  }
+   return result;
+  }catch(Exception ex){return new{error=ex.GetType().Name};}
  }
- static double VisualDistance(byte[] a,byte[] b){
-  var tiles=new List<double>();
-  for(int ty=0;ty<6;ty++)for(int tx=0;tx<8;tx++){
-   int sum=0;
-   for(int y=ty*6;y<ty*6+6;y++)for(int x=tx*8;x<tx*8+8;x++){
-    int i=(y*64+x)*3;for(int c=0;c<3;c++)sum+=Math.Abs((int)a[i+c]-b[i+c]);
-   }
-   tiles.Add(sum/144.0);
-  }
-  tiles.Sort();double score=0;for(int i=0;i<36;i++)score+=tiles[i];return score/36;
+ static string AxString(Dictionary<string,object> node,string key){
+  object raw;if(!node.TryGetValue(key,out raw))return null;
+  var prop=raw as Dictionary<string,object>;object value;
+  return prop!=null&&prop.TryGetValue("value",out value)?Convert.ToString(value,System.Globalization.CultureInfo.InvariantCulture):null;
  }
- async Task RecordOriginalFingerprint(){
-  originalFingerprints.Add(await PageFingerprint());originalVisuals.Add(await VisualFingerprint());
- }
- readonly List<HashSet<string>> originalFingerprints=new List<HashSet<string>>();
- async Task<HashSet<string>> PageFingerprint(){
-  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return [];const root=document.fullscreenElement||document.body;const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&r.right>innerWidth*.12&&r.left<innerWidth*.88&&r.bottom>innerHeight*.12&&r.top<innerHeight*.88&&s.visibility!=='hidden'&&s.display!=='none'&&s.opacity!=='0'&&!e.closest('button,[role=button],a,input,textarea,[contenteditable=true],[role=textbox],nav,header,footer')};const out=new Set();const add=(k,v)=>{v=v.normalize('NFKC').replace(/\s+/g,' ').trim();if(v.length<4||v.length>3000)return;let a=2166136261,b=5381;for(let i=0;i<v.length;i++){a=Math.imul(a^v.charCodeAt(i),16777619);b=Math.imul(b,33)^v.charCodeAt(i)}out.add(k+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16))};for(const e of root.querySelectorAll('p,span,[role=img],img')){if(!visible(e))continue;if(e.tagName==='IMG'){try{const u=new URL(e.currentSrc||e.src);if(u.protocol==='https:'&&/\.canva\.com$|\.canva\.cn$|\.canva-public\.com$/.test(u.hostname))add('image',u.pathname)}catch{}continue}if(e.children.length===0){const t=e.textContent||'';add('text',t);for(const w of t.split(/\s+/))if(w.length>=4)add('word',w)}}return [...out].slice(0,1000)})()";
-  var values=Json.Deserialize<string[]>(await web.CoreWebView2.ExecuteScriptAsync(js));
-  return new HashSet<string>(values??new string[0],StringComparer.Ordinal);
- }
- async Task CompareKnownPublicPages(){
-  var core=web.CoreWebView2;
-  if(await core.ExecuteScriptAsync("!!document.fullscreenElement")=="true"){ProbeLog("REFERENCE_BLOCKED",new{reason="fullscreen-not-exited"});return;}
-  core.Navigate("https://www.canva.com/design/DAHbOZ_XOJI/h3UEZISrHVAyXQuw06aOTw/view");
-  await Pause(5000);var ui=await PrepareUi("public-reference");
-  if(Str(ui,"route")!="view"||Int(ui,"dialogs")!=0){ProbeLog("REFERENCE_BLOCKED",new{reason="route-or-dialog"});return;}
-  if(!Flag(ui,"fullscreen")&&await ClickControl(ui,"present")){await Pause(3000);ui=await InspectPublicUi();}
-  bool aligned=Flag(ui,"fullscreen");ProbeLog("VISUAL_REFERENCE_MODE",new{aligned});
-  var refs=new Dictionary<int,HashSet<string>>();var visuals=new Dictionary<int,byte[]>();
-  for(int i=1;i<=30;i++){
-   int p=await Read();if(p!=i){ProbeLog("REFERENCE_BLOCKED",new{reason="page-read-mismatch",expected=i,observed=p});break;}
-   await Pause(600);if(await Read()!=p)break;refs[p]=await PageFingerprint();if(aligned)visuals[p]=await VisualFingerprint();
-   if(i==30)break;if(!await Step(true)){ProbeLog("REFERENCE_BLOCKED",new{reason="no-exact-next-control",page=p});break;}
-   for(int retry=0;retry<12;retry++){await Pause(200);if(await Read()==p+1)break;}
-  }
-  var counts=new List<object>();foreach(var r in refs)counts.Add(new{page=r.Key,signals=r.Value.Count});ProbeLog("REFERENCE_COUNTS",counts);
-  for(int i=0;i<originalFingerprints.Count;i++){
-   var f=originalFingerprints[i];int best=0,second=0,page=0;
-   foreach(var r in refs){int score=0;foreach(string v in f)if(r.Value.Contains(v))score++;if(score>best){second=best;best=score;page=r.Key;}else if(score>second)second=score;}
-   ProbeLog("REFERENCE_MATCH",new{step=i,signals=f.Count,bestPage=page,bestOverlap=best,runnerUpOverlap=second,referenceCount=refs.Count,acceptance=false});
-   if(i<originalVisuals.Count&&visuals.Count>0){double first=double.MaxValue,next=double.MaxValue;int visualPage=0;foreach(var v in visuals){double d=VisualDistance(originalVisuals[i],v.Value);if(d<first){next=first;first=d;visualPage=v.Key;}else if(d<next)next=d;}ProbeLog("VISUAL_MATCH",new{step=i,visualPage,distance=Math.Round(first,3),runnerUp=Math.Round(next,3),semanticPage=page,semanticOverlap=best,semanticRunnerUp=second,acceptance=false});}
-  }
+ async Task LogSourceState(int step,string action){
+  ProbeLog("SOURCE_PAGE_STATE",new{step,action,state=await InspectSourcePageState(),accessibility=await InspectAccessibilityPageState()});
  }
  async Task<bool> ObserveRegisteredFullscreen(){
   await Pause(1200);
@@ -163,27 +133,20 @@ internal sealed partial class BookReader {
   const string geometry=@"(()=>{const x=innerWidth*.5,y=innerHeight*.48,hit=document.elementFromPoint(x,y),r=e=>{const a=e.getBoundingClientRect();return {x:Math.round(a.x),y:Math.round(a.y),w:Math.round(a.width),h:Math.round(a.height)}};const vis=e=>{const a=e.getBoundingClientRect();return a.width>0&&a.height>0&&getComputedStyle(e).visibility!=='hidden'};const label=e=>(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim();const editor=/^(edit|delete|add page|duplicate|share|publish|save|편집|삭제|페이지 추가|복제|공유|게시|저장)$/i;return {viewport:[innerWidth,innerHeight],hitAncestors:(()=>{let out=[];for(let p=hit;p&&out.length<12;p=p.parentElement)out.push({tag:p.tagName,role:p.getAttribute('role'),editable:p.isContentEditable,rect:r(p)});return out})(),controls:[...document.querySelectorAll('button,[role=button]')].filter(e=>vis(e)&&editor.test(label(e))).map(e=>({label:label(e),rect:r(e),containsHit:e.contains(hit)})),canvas:[...document.querySelectorAll('canvas')].filter(vis).map(r),sliders:[...document.querySelectorAll('[role=slider]')].filter(vis).map(e=>({rect:r(e),page:e.getAttribute('aria-valuenow'),total:e.getAttribute('aria-valuemax')}))}})()";
   ProbeLog("REGISTERED_STAGE_GEOMETRY",Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(geometry)));
   if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="no-confirmed-safe-fullscreen-stage"});return false;}
-  int observed=0,changes=0,samePageChanges=0,keysDelivered=0,keysChanged=0;
-  await RecordOriginalFingerprint();
-  for(int i=0;i<24;i++){
+  int observed=0,keysDelivered=0;
+  await LogSourceState(0,"initial");
+  for(int i=0;i<16;i++){
    stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="unsafe-next-click",stage});break;}
-   await Pause(800);string a=await FrameHash();await Pause(650);string b=await FrameHash();int before=await Read();
-   stage=await InspectFullscreenStage();if(!SafeStage(stage)){ProbeLog("REGISTERED_BLOCKED",new{reason="target-changed-before-click"});break;}
    if(!await PhysicalClick(.5,.48)){ProbeLog("REGISTERED_BLOCKED",new{reason="click-delivery"});break;}
-   await Pause(1100);string c=await FrameHash();int after=await Read();
-   stage=await InspectFullscreenStage();observed++;if(a==b&&b!=c){changes++;if(before>0&&before==after)samePageChanges++;}
-   ProbeLog("REGISTERED_CLICK",new{step=i+1,before,after,stableBefore=a==b,changedAfter=b!=c,stage});
-   ProbeLog("BOOKMARK_SIGNALS",new{step=i+1,signals=await InspectBookmarkSignals()});
-   if(SafeStage(stage))await RecordOriginalFingerprint();
+   await Pause(900);observed++;
+   await LogSourceState(i+1,"click");
   }
-  foreach(byte key in new byte[]{0x27,0x25}){
+  foreach(byte key in new byte[]{0x27,0x25,0x25,0x27}){
    stage=await InspectFullscreenStage();if(!SafeStage(stage))break;
-   string before=await FrameHash();bool delivered=await PhysicalKey(key);await Pause(1000);string after=await FrameHash();if(delivered)keysDelivered++;if(delivered&&before!=after)keysChanged++;
-   ProbeLog("REGISTERED_KEY",new{key=key==0x27?"right":"left",delivered,changed=before!=after,stage=await InspectFullscreenStage()});
-   ProbeLog("BOOKMARK_KEY_SIGNALS",new{key=key==0x27?"right":"left",signals=await InspectBookmarkSignals()});
+   if(await PhysicalKey(key)){keysDelivered++;await Pause(900);await LogSourceState(observed+keysDelivered,key==0x27?"right":"left");}
   }
-  ProbeLog("REGISTERED_RESULT",new{observed,changes,samePageChanges,keysDelivered,keysChanged,acceptance=false,reason="visual change alone is not proof of page identity or sentence reveal"});
-  return observed==24&&keysDelivered==2&&changes>0;
+  ProbeLog("SOURCE_RESULT",new{observed,keysDelivered,acceptance=false,reason="candidate state requires independent mapping"});
+  return observed==16&&keysDelivered==4;
  }
  async Task<int> RunClickProbe(){
   // Production navigation is exercised first: the exact registered short URL.
@@ -208,7 +171,6 @@ internal sealed partial class BookReader {
   if(GetForegroundWindow()==Handle)await PhysicalKey(0x1B);
   await Pause(500);
   ProbeLog("REGISTERED_INPUT_RESULT",new{inputOk,fullscreenExited=!Flag(await InspectPublicUi(),"fullscreen"),animationAcceptance=false});
-  if(inputOk)await CompareKnownPublicPages();
   return inputOk?0:2;
  }
  static int RunLiveProbe(string folder){
