@@ -13,6 +13,8 @@ internal sealed class Lab : Form {
     readonly string profile, result;
     string fixture;
     readonly Timer watchdog = new Timer();
+    readonly Timer heartbeat = new Timer();
+    string modeFile;
     Rectangle previous;
     bool immersive, finished;
     int exitCode = 1;
@@ -23,7 +25,7 @@ internal sealed class Lab : Form {
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
         view.Dock=DockStyle.Fill; Controls.Add(view);
-        watchdog.Interval=90000; watchdog.Tick+=(s,e)=>Fail("timeout");
+        watchdog.Interval=180000; watchdog.Tick+=(s,e)=>Fail("timeout");
         Shown+=async (s,e)=>{watchdog.Start();try{await Run();}catch(Exception ex){Fail(ex.GetType().Name+": "+ex.Message);}};
         KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.F11){SetImmersive(!immersive);e.SuppressKeyPress=true;}else if(e.KeyCode==Keys.Escape && immersive){SetImmersive(false);e.SuppressKeyPress=true;}};
@@ -38,9 +40,10 @@ internal sealed class Lab : Form {
     static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
-        if(method=="POST")return p=="/api/coins" || p=="/api/seating";
+        if(method=="POST")return p=="/api/coins" || p=="/api/seating" || p=="/api/presentation/ack";
         if(method!="GET" && method!="HEAD")return false;
-        if(p.StartsWith("/api/",StringComparison.Ordinal))return p=="/api/coins"||p=="/api/seating"||p=="/api/board-status"||p=="/api/theme";
+        if(p.StartsWith("/api/",StringComparison.Ordinal))return p=="/api/coins"||p=="/api/seating"||p=="/api/board-status"||p=="/api/theme"||p=="/api/presentation/poll";
+        if(p.StartsWith("/presentation/",StringComparison.Ordinal))return !p.Contains("..") && System.Text.RegularExpressions.Regex.IsMatch(p,@"^/presentation/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+\.(?:html|css|js|mjs|png|svg|txt)$");
         return p=="/"||p=="/index.html"||p=="/health"||
             p.EndsWith(".js",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".css",StringComparison.OrdinalIgnoreCase)||
             p.EndsWith(".png",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".webp",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".ico",StringComparison.OrdinalIgnoreCase);
@@ -92,12 +95,13 @@ internal sealed class Lab : Form {
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
         await VerifyGame(core);
+        await VerifyManager(core);
         Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
         SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin");
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; Chrome manager seating and offline seating/PE presentation");
     }
     async Task<string> WaitResult(CoreWebView2 core,string expression) {
         for(int i=0;i<100;i++){
@@ -136,9 +140,39 @@ internal sealed class Lab : Form {
         Require(await WaitResult(core,"window.labGameResult||''")=="\"ok\"","mini reopen");
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
     }
+    void PublishMode() {
+        string tmp=modeFile+".tmp";
+        string json="{\"mode\":\"window\",\"release\":\"2026-11-25-V1.66.43-STABLE-PILOT\",\"window\":"+Handle.ToInt64()+",\"pid\":"+System.Diagnostics.Process.GetCurrentProcess().Id+"}";
+        File.WriteAllText(tmp,json,new System.Text.UTF8Encoding(false));
+        if(File.Exists(modeFile))File.Replace(tmp,modeFile,null);else File.Move(tmp,modeFile);
+    }
+    async Task VerifyManager(CoreWebView2 core) {
+        string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT");
+        modeFile=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","board-mode.json");
+        Require(!File.Exists(modeFile),"unexpected existing board mode");
+        PublishMode();
+        heartbeat.Interval=3000;heartbeat.Tick+=(s,e)=>{try{PublishMode();}catch(Exception ex){Fail("heartbeat: "+ex.Message);}};
+        heartbeat.Start();
+        File.WriteAllText(Path.Combine(root,"manager.ready"),"ready");
+        bool closeObserved=false;
+        for(int i=0;i<480;i++){
+            if(File.Exists(Path.Combine(root,"manager.close"))&&!closeObserved){
+                Require(await core.ExecuteScriptAsync("document.getElementById('ttPresentation').open&&document.getElementById('ttPresentationLoading').hidden&&document.getElementById('ttPresentation').dataset.kind==='pe'")=="true","actual PE dialog ready");
+                await core.ExecuteScriptAsync("document.getElementById('ttPresentationClose').click()");
+                closeObserved=true;
+            }
+            if(File.Exists(Path.Combine(root,"manager.done")))break;
+            await Task.Delay(200);
+        }
+        Require(closeObserved&&File.Exists(Path.Combine(root,"manager.done")),"Chrome manager handshake");
+        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await (await fetch('/api/seating')).json();document.documentElement.dataset.labManager=s.classId==='LAB_CLASS_2'&&s.students.length===2&&s.students.some(x=>x.id==='m2'&&x.name==='LAB_MANAGER_TWO')&&s.assignments.length===2?'ok':'bad'}catch(e){document.documentElement.dataset.labManager='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labManager||''")=="\"ok\"","WebView2 reads real manager seating");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('ttPresentation').open")=="true","presentation closed");
+        heartbeat.Stop();File.Delete(modeFile);modeFile=null;
+    }
     void Fail(string why){Finish(1,"FAIL: "+why);}
     void Finish(int code,string message){
-        if(finished)return;finished=true;exitCode=code;watchdog.Stop();
+        if(finished)return;finished=true;exitCode=code;watchdog.Stop();heartbeat.Stop();if(modeFile!=null&&File.Exists(modeFile))File.Delete(modeFile);
         File.WriteAllText(result,message);Close();
     }
     [STAThread] static int Main(string[] args){

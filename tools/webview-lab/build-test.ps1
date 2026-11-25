@@ -48,14 +48,23 @@ try{
  $result=Join-Path $root 'result.txt'
  $profile=Join-Path $root 'profile'
  $hostProc=Start-Process -FilePath (Join-Path $out 'HOJA-WebView-Lab.exe') -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
- if(!$hostProc.WaitForExit(110000)){throw 'Native host timed out'}
+ $readyPath=Join-Path $root 'manager.ready'
+ for($i=0;$i -lt 240 -and !(Test-Path $readyPath);$i++){if($hostProc.HasExited){throw ('Native host exited: '+(Get-Content $result -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+ if(!(Test-Path $readyPath)){throw 'Manager handshake timed out'}
+ if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation before Phase 2B'}
+ node (Join-Path $PSScriptRoot 'manager-test.cjs') $root
+ if($LASTEXITCODE -ne 0){throw 'Chrome manager test failed'}
+ if(!$hostProc.WaitForExit(30000)){throw 'Native host timed out'}
  if(!(Test-Path $result)){throw ('Native host no result; exit '+$hostProc.ExitCode)}
  Get-Content $result
  if($hostProc.ExitCode -ne 0){throw 'Native host failed'}
  $events=@(Get-Content (Join-Path $runtime 'coins.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
  if($events.Count -ne 6 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 1 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 1){throw 'Unexpected ledger contents'}
- if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation'}
- Write-Host "PASS isolated ledger: exact grant/spend/refund once; seat file unchanged; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
+ $finalSeat=Get-Content (Join-Path $runtime 'seating.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+ if($finalSeat.classId -ne 'LAB_CLASS_2' -or @($finalSeat.students).Count -ne 2 -or @($finalSeat.assignments).Count -ne 2){throw 'Unexpected manager seating'}
+ $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
+ if($offline.wallpaper){throw 'Closed host still reports connected'}
+ Write-Host "PASS isolated ledger: exact grant/spend/refund once; Phase 2A seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
  if($hostProc -and !$hostProc.HasExited){$hostProc.Kill();$hostProc.WaitForExit()}
  if($server -and !$server.HasExited){$server.Kill();$server.WaitForExit()}
