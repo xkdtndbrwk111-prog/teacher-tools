@@ -230,7 +230,7 @@ internal sealed partial class BookReader : Form {
  // without moving the teacher's physical pointer or injecting a click overlay.
  // Never click the public view's generic fullscreen control: it is not proof
  // of interactive sentence animation, and never click consent/login/edit UI.
- const string PresentProbe=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return {allowed:false};if(document.fullscreenElement)return {allowed:true,full:true};const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};if([...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(visible))return {allowed:false,dialog:true};const labels=/^(present|present full screen|present fullscreen|전체 화면으로 발표|전체 화면 발표|전체 화면 프레젠테이션|발표|프레젠테이션)$/i;const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&labels.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()));if(a.length!==1)return {allowed:true};const r=a[0].getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);return {allowed:true,hit:!!h&&(a[0]===h||a[0].contains(h)),x,y}})()";
+ const string PresentProbe=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return {allowed:false};if(document.fullscreenElement)return {allowed:true,full:true};const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};if([...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(visible))return {allowed:false,dialog:true};const labels=/^(present|present full screen|present fullscreen|전체 화면으로 발표|전체 화면 발표|전체 화면 프레젠테이션|발표|프레젠테이션)$/i;const a=[...document.querySelectorAll('button,[role=button]')].filter(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true'&&e.getAttribute('aria-expanded')!=='true'&&[e.getAttribute('aria-label'),e.getAttribute('title'),e.innerText].some(t=>labels.test((t||'').trim()))).map(e=>{const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);return {e,x,y,hit:!!h&&(e===h||e.contains(h))}}).filter(c=>c.hit);const unique=a.filter(c=>!a.some(d=>d!==c&&c.e.contains(d.e)));if(unique.length!==1)return {allowed:true};return {allowed:true,hit:true,x:unique[0].x,y:unique[0].y}})()";
  static bool Flag(Dictionary<string,object> d,string k){return d!=null&&d.ContainsKey(k)&&d[k] is bool&&(bool)d[k];}
  async Task<bool> PresentInput(bool lab){
   var core=web.CoreWebView2;
@@ -260,6 +260,18 @@ internal sealed partial class BookReader : Form {
   if(await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("fixture browser presentation not entered");
   await VerifyInteractiveBookmarkFixture();
   await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
+  // A signed-in editor can expose visible text independently of its accessible name,
+  // a split dropdown next to it, and a hidden/offscreen duplicate control.
+  await core.ExecuteScriptAsync("(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==='전체 화면 프레젠테이션');b.setAttribute('aria-label','프레젠테이션 시작 메뉴');b.textContent='프레젠테이션';const d=document.createElement('button');d.textContent='▼';d.setAttribute('aria-label','프레젠테이션 옵션');d.style.cssText='position:fixed;left:205px;top:100px;width:45px;height:60px';d.onclick=()=>document.body.dataset.wrong='yes';document.body.append(d);const clone=b.cloneNode(true);clone.style.left='-9999px';document.body.append(clone);delete document.body.dataset.presented;return true})()");
+  await Task.Delay(300);
+  await core.ExecuteScriptAsync("(()=>{const d=document.createElement('div');d.id='login-test-dialog';d.setAttribute('role','dialog');d.style.cssText='position:fixed;left:300px;top:100px;width:200px;height:100px';d.textContent='로그인';document.body.append(d);return true})()");
+  if(await PresentInput(true))throw new InvalidOperationException("dialog must block automatic Present");
+  await core.ExecuteScriptAsync("document.getElementById('login-test-dialog').remove()");
+  if(!await PresentInput(true))throw new InvalidOperationException("editor split Present input missing");
+  await Task.Delay(300);
+  if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'&&!document.body.dataset.wrong&&!!document.fullscreenElement")!="true")throw new InvalidOperationException("editor primary Present not entered");
+  await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
+  Console.WriteLine("HOST EDITOR SPLIT PRESENT AND DIALOG GUARD FIXTURE PASS");
   Console.WriteLine("HOST OFFICIAL PRESENT INPUT FIXTURE PASS");
  }
 
