@@ -218,12 +218,34 @@ internal sealed partial class BookReader {
   ProbeLog("REGISTERED_INPUT_RESULT",new{inputOk,fullscreenExited=!Flag(await InspectPublicUi(),"fullscreen"),animationAcceptance=false});
   return inputOk?0:2;
  }
+ // A second OS process uses the actual saved state from the first process.
+ // No assignment to detected/saved/seekTarget: the ordinary Poll owns resume.
+ async Task<int> RunRestartProbe(int target){
+  var deadline=DateTime.UtcNow.AddSeconds(110);
+  int checks=0;bool hadValid=false;
+  while(DateTime.UtcNow<deadline&&!closed){
+   if(saved!=target){ProbeLog("RESTART_FAIL",new{reason="saved-page-overwritten",saved,target});return 2;}
+   if(interactiveBookmarkValid&&presentationConfirmed){
+    hadValid=true;
+    if(busy){await Pause(150);continue;}
+    int p=await ReadInteractivePage();checks++;
+    if(p==target&&detected==target&&saved==target&&checks>=2){
+     timer.Stop();ProbeLog("RESTART_RESULT",new{target,actual=p,saved,detected,checks,keys=interactiveSeekKeys,confirmed=true,ok=true});
+     return 0;
+    }
+    if(p!=target){ProbeLog("RESTART_FAIL",new{reason="different-confirmed-page",p,target});return 2;}
+   }
+   await Pause(400);
+  }
+  ProbeLog("RESTART_FAIL",new{reason="timeout-or-closed",target,saved,detected,hadValid,presentationConfirmed,navigationMode});return 2;
+ }
  static int RunLiveProbe(string folder){
   if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true")return 2;
   folder=Path.GetFullPath(folder);
   string install=Path.Combine(folder,"TeacherToolsLocal"),sessions=Path.Combine(install,"book-reader-sessions"),session=Path.Combine(sessions,Guid.NewGuid().ToString("N"));
   Directory.CreateDirectory(session);Environment.SetEnvironmentVariable("LOCALAPPDATA",folder);
   File.WriteAllText(Path.Combine(session,"lease"),"1");
+  int resume=0;int.TryParse(Environment.GetEnvironmentVariable("TT_LIVE_RESUME_PAGE"),out resume);if(resume<0||resume>394)return 2;
   int code=2;BookReader reader=null;
   using(var ownerForm=new Form{Text="Disposable CI owner",StartPosition=FormStartPosition.CenterScreen,WindowState=FormWindowState.Maximized}){
    var tick=new Timer{Interval=900};tick.Tick+=(s,e)=>File.SetLastWriteTimeUtc(Path.Combine(session,"lease"),DateTime.UtcNow);
@@ -233,9 +255,9 @@ internal sealed partial class BookReader {
      await Task.Delay(300);
      int w=ownerForm.ClientSize.Width,h=ownerForm.ClientSize.Height;
      File.WriteAllText(Path.Combine(session,"layout.json"),Json.Serialize(new{vw=w,vh=h,x=8,y=8,w=w-16,h=h-16,visible=1,immersive=0}),Utf8);
-     var config=new Dictionary<string,object>{{"url",AlmondShareUrl},{"title","Disposable CI Almond click probe"},{"interactive",1},{"pages",394},{"start",1},{"saved",1},{"owner",ownerForm.Handle.ToInt64()},{"ownerPid",System.Diagnostics.Process.GetCurrentProcess().Id}};
+     var config=new Dictionary<string,object>{{"url",AlmondShareUrl},{"title","Disposable CI Almond click probe"},{"interactive",1},{"pages",394},{"start",resume>0?resume:1},{"saved",resume>0?resume:1},{"owner",ownerForm.Handle.ToInt64()},{"ownerPid",System.Diagnostics.Process.GetCurrentProcess().Id}};
      reader=new BookReader(session,config,false);reader.ShowForBoard();tick.Start();watchdog.Start();
-     code=await reader.RunClickProbe();
+     code=resume>0?await reader.RunRestartProbe(resume):await reader.RunClickProbe();
     }catch(Exception ex){ProbeLog("WINDOWS_BLOCKED",new{reason=ex.GetType().Name});code=2;}
     finally{tick.Stop();watchdog.Stop();if(reader!=null&&!reader.IsDisposed)reader.Close();ownerForm.Close();}
    };
