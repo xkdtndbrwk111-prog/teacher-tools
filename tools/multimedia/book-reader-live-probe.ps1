@@ -35,3 +35,15 @@ $state=Get-Content -Raw (Join-Path $second[0].FullName 'state.json') | ConvertFr
 Write-Host ('RESTART_FINAL_STATE '+(ConvertTo-Json -Compress @{closed=$state.closed;bookmarkValid=$state.bookmarkValid;saved=$state.saved;page=$state.page}))
 if(!$state.closed -or !$state.bookmarkValid -or $state.saved -ne 125 -or $state.page -ne 125){throw 'Actual process restart final state invalid'}
 Write-Host 'PASS actual new Windows host process restores persisted page 125'
+
+
+# Fresh Korean-language profile: diagnostic only; never accepts terms or signs in.
+$ko=Join-Path $env:RUNNER_TEMP ('tt-live-ko-'+[guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $ko | Out-Null
+$env:TT_LIVE_LANGUAGE='ko-KR'
+try{
+ & $exe --live-probe $ko
+ $code=$LASTEXITCODE
+ Write-Host "WINDOWS_ANONYMOUS_KO_EXIT=$code"
+ if($code -ne 0){throw 'Fresh Korean locale anonymous presentation not verified'}
+}finally{Remove-Item Env:TT_LIVE_LANGUAGE -ErrorAction SilentlyContinue}

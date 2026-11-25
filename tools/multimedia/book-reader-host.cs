@@ -174,7 +174,12 @@ internal sealed partial class BookReader : Form {
    // No screen capture, web host objects, or ordinary browser profile access.
    // Legal/cookie choices are made only by the teacher in the actual Canva UI.
    string profile=interactive&&!fixture?InteractiveProfilePath(dir):Path.Combine(dir,"profile");
-   var env=await CoreWebView2Environment.CreateAsync(null,profile);
+   CoreWebView2EnvironmentOptions options=null;
+#if TT_LIVE_PROBE
+   // CI-only locale reproduction; never alter an installed teacher's language.
+   if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true"&&Environment.GetEnvironmentVariable("TT_LIVE_LANGUAGE")=="ko-KR")options=new CoreWebView2EnvironmentOptions{Language="ko-KR"};
+#endif
+   var env=await CoreWebView2Environment.CreateAsync(null,profile,options);
    await web.EnsureCoreWebView2Async(env);var core=web.CoreWebView2;
    core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
    core.NewWindowRequested+=(s,e)=>e.Handled=true;core.PermissionRequested+=(s,e)=>e.State=CoreWebView2PermissionState.Deny;
