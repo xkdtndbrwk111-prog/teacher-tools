@@ -1,0 +1,42 @@
+name: R8 V1.66.40 owner operational pilot
+on:
+  push:
+    branches: [main]
+    paths: ['runtime-src/v16640-pilot-approval.json']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      artifact_id: ${{ steps.check.outputs.artifact_id }}
+      archive_sha: ${{ steps.check.outputs.archive_sha }}
+      payload_sha: ${{ steps.check.outputs.payload_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact owner pilot and all exact successful main and candidate runs
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/r8-publisher/check-v16640-pilot.py
+  publish:
+    needs: verify-pilot
+    permissions:
+      contents: write
+      actions: write
+      pages: write
+    uses: ./.github/workflows/r8-v16640-signed-release.yml
+    secrets:
+      TT_SIGNING_PFX_B64: ${{ secrets.TT_SIGNING_PFX_B64 }}
+      TT_SIGNING_PFX_PASSWORD: ${{ secrets.TT_SIGNING_PFX_PASSWORD }}
+    with:
+      artifact_id: ${{ needs.verify-pilot.outputs.artifact_id }}
+      archive_sha: ${{ needs.verify-pilot.outputs.archive_sha }}
+      payload_sha: ${{ needs.verify-pilot.outputs.payload_sha }}
+      field_gate: false
+      owner_pilot_16640: true
