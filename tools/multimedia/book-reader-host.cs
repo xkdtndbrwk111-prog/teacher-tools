@@ -22,6 +22,11 @@ internal sealed partial class BookReader : Form {
  int presentAttempts; DateTime presentRetry=DateTime.MinValue; bool presentationConfirmed;
  const string PageScript="(()=>{if(location.origin!=='https://www.canva.com')return null;const a=[...document.querySelectorAll('[role=slider][aria-valuenow][aria-valuemin][aria-valuemax]')].filter(e=>e.getClientRects().length>0&&e.getAttribute('aria-valuemin')==='1');if(a.length!==1)return null;return {page:Number(a[0].getAttribute('aria-valuenow')),total:Number(a[0].getAttribute('aria-valuemax'))}})()";
  readonly WebView2 web=new WebView2();
+ readonly Panel startupCover=new Panel();
+ readonly Label startupText=new Label();
+ readonly Button startupManual=new Button();
+ bool startupCoverActive;
+ DateTime startupCoverAt=DateTime.UtcNow;
  readonly Timer placement=new Timer();
  readonly IntPtr owner;
  readonly int ownerPid;
@@ -69,6 +74,12 @@ internal sealed partial class BookReader : Form {
   Bounds=fixture?workingArea:new Rectangle(-30000,-30000,320,180);
   BackColor=Color.FromArgb(17,17,17);ShowInTaskbar=false;KeyPreview=true;
   Controls.Add(web);web.Dock=DockStyle.Fill;
+  if(interactive){
+   startupCover.Dock=DockStyle.Fill;startupCover.BackColor=Color.FromArgb(24,24,24);
+   startupText.Dock=DockStyle.Fill;startupText.TextAlign=ContentAlignment.MiddleCenter;startupText.ForeColor=Color.White;startupText.Font=new Font("Malgun Gothic",20);startupText.Text="책을 펼치는 중…";
+   startupManual.Dock=DockStyle.Bottom;startupManual.Height=44;startupManual.Text="직접 열기";startupManual.Click+=(sender,args)=>DismissStartupCover();
+   startupCover.Controls.Add(startupText);startupCover.Controls.Add(startupManual);Controls.Add(startupCover);startupCover.BringToFront();startupCoverActive=true;
+  }
   timer.Interval=350;timer.Tick+=async(s,e)=>await Poll();
   placement.Interval=120;placement.Tick+=(s,e)=>Place();
   Shown+=async(s,e)=>{shownOnce=true;Place();if(!fixture)placement.Start();await Initialize();};
@@ -132,6 +143,12 @@ internal sealed partial class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
+ void DismissStartupCover(){if(!startupCoverActive)return;startupCoverActive=false;startupCover.Visible=false;if(!closed&&web.CanFocus)web.Focus();}
+ void UpdateStartupCover(){
+  if(!startupCoverActive)return;
+  if(interactiveBookmarkValid||interactiveSeekFailed||(!presentationConfirmed&&(DateTime.UtcNow-startupCoverAt).TotalSeconds>15)||(DateTime.UtcNow-startupCoverAt).TotalSeconds>105){DismissStartupCover();return;}
+  startupText.Text=presentationConfirmed?requested+"쪽을 펼치는 중…":"책을 펼치는 중…";
+ }
  string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid});}
  void Publish(string status){
   if(closed&&status!="종료")return;
@@ -194,7 +211,7 @@ internal sealed partial class BookReader : Form {
      ready=e.IsSuccess;seekStart=DateTime.UtcNow;presentAttempts=0;presentRetry=DateTime.MinValue;presentationConfirmed=false;interactiveBookmarkValid=false;stable=0;previous=0;if(interactive&&seekTarget>0){interactiveSeekFocused=false;interactiveSeekExpected=0;interactiveSeekFailed=false;interactiveSeekAt=DateTime.MinValue;interactiveSeekKeys=0;interactiveFastPending=false;interactiveFastDisabled=false;interactiveFastKeys=0;}
      if(interactive){
       if(fixture)navigationMode="fixture";
-      else{Uri target; bool direct=Uri.TryCreate(core.Source,UriKind.Absolute,out target)&&AllowedInteractiveNavigation(core.Source)&&(target.Host=="www.canva.com"||target.Host=="canva.com")&&target.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal);navigationMode=direct?"direct":(navigationMode=="blocked"?"blocked":"not-presentation");ready=ready&&direct;}
+      else{Uri target; bool direct=Uri.TryCreate(core.Source,UriKind.Absolute,out target)&&AllowedInteractiveNavigation(core.Source)&&(target.Host=="www.canva.com"||target.Host=="canva.com")&&target.AbsolutePath.StartsWith("/design/DAHbOZ_XOJI/",StringComparison.Ordinal);navigationMode=direct?"direct":(navigationMode=="blocked"?"blocked":"not-presentation");ready=ready&&direct;if(!direct)DismissStartupCover();}
      }
      if(ready&&interactive&&!fixture)BeginInvoke(new Action(()=>{if(!closed&&web.CanFocus)web.Focus();}));
      Publish(ready?(interactive?"Canva 클릭형 책 준비됨":"페이지 판독 중"):"책 연결 실패");
@@ -235,6 +252,7 @@ internal sealed partial class BookReader : Form {
  async Task<bool> PresentInput(bool lab){
   var core=web.CoreWebView2;
   var d=Json.Deserialize<Dictionary<string,object>>(await core.ExecuteScriptAsync(PresentProbe.Replace("LAB",lab?"true":"false")));
+  if(Flag(d,"dialog"))DismissStartupCover();
   if(!Flag(d,"allowed")||!Flag(d,"hit")||Flag(d,"full"))return false;
   double x=Convert.ToDouble(d["x"]),y=Convert.ToDouble(d["y"]);
   if(x<0||y<0||x>web.Width*4||y>web.Height*4)return false;
@@ -254,11 +272,15 @@ internal sealed partial class BookReader : Form {
  async Task VerifyPresentInputFixture(){
   var core=web.CoreWebView2;
   await core.ExecuteScriptAsync("(()=>{const b=document.createElement('button');b.setAttribute('aria-label','전체 화면 프레젠테이션');b.textContent='전체 화면 프레젠테이션';b.style.cssText='position:fixed;left:20px;top:100px;width:180px;height:60px';b.onclick=()=>{document.body.dataset.presented='yes';document.documentElement.requestFullscreen().catch(()=>{})};document.body.append(b);return true})()");
+  if(!startupCoverActive||!startupCover.Visible)throw new InvalidOperationException("startup cover missing");
   if(!await PresentInput(true))throw new InvalidOperationException("fixture official Present input missing");
   await Task.Delay(300);
   if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'")!="true")throw new InvalidOperationException("fixture trusted Present input not delivered");
   if(await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("fixture browser presentation not entered");
   await VerifyInteractiveBookmarkFixture();
+  if(!startupCoverActive)throw new InvalidOperationException("startup cover dismissed before confirmed resume");
+  UpdateStartupCover();if(startupCoverActive||startupCover.Visible)throw new InvalidOperationException("startup cover not dismissed after resume");
+  Console.WriteLine("HOST STARTUP COVER AND RESUME FIXTURE PASS");
   await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
   // A signed-in editor can expose visible text independently of its accessible name,
   // a split dropdown next to it, and a hidden/offscreen duplicate control.
@@ -372,6 +394,7 @@ internal sealed partial class BookReader : Form {
  async Task Poll(){
   if(closed||busy)return;
   if(!fixture&&(File.Exists(Path.Combine(dir,"stop"))||DateTime.UtcNow-File.GetLastWriteTimeUtc(Path.Combine(dir,"lease"))>TimeSpan.FromSeconds(35))){Close();return;}
+  UpdateStartupCover();
   if(!ready)return;
   busy=true;
   try{
@@ -379,7 +402,7 @@ internal sealed partial class BookReader : Form {
    if(!fixture&&!slotVisible)return;
    if(interactive){
     // Native Canva owns presentation clicks. Only the official page slider is used for startup resume.
-    if(!fixture){await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}return;}
+    if(!fixture){await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}UpdateStartupCover();return;}
     if(fixture){
      // Verify pointer and keyboard events on a real top-level WebView2 fixture.
      if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");

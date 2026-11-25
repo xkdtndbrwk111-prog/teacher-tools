@@ -11106,7 +11106,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
  function encodeBookRequest(x){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(x))))}
  async function readBook(book,resume,startupRetry=0){
   reset('book',book.title,true);
-  if(book.interactive)dialog.classList.add('mm-book-interactive');
+  if(book.interactive){dialog.classList.add('mm-book-interactive');if(!dialog.classList.contains('mm-full')){dialog.classList.add('mm-full');syncFull();}}
   const token=epoch,w=wrapper('mm-display mm-book-slot');w.textContent='책을 불러오는 중…';
   let session='',cancelled=false,pollTimer=0,errors=0,seq=0,command=null;
   const openId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
