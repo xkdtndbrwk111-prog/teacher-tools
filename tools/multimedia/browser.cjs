@@ -276,7 +276,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  const fullSlot=await dlg.locator('.mm-book-slot').boundingBox();const vp=page.viewportSize();
  assert.ok(fullSlot.x<=1&&fullSlot.y<=1&&fullSlot.width>=vp.width-2&&fullSlot.height>=vp.height-2,'book slot fills the viewport');
  almondExitFull=true;await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));almondExitFull=false;
- assert.equal(await dlg.locator('.mm-foot').isVisible(),true,'native F8 restore signal restores controls');
+ assert.equal(await dlg.locator('.mm-foot').isVisible(),true,'native Escape restore signal restores controls');
  assert.equal(await dlg.locator('.mm-foot .mm-footer-title').innerText(),'아몬드');
  assert.equal(await dlg.locator('.mm-foot .mm-actions input').count(),1);
  assert.equal(await dlg.locator('.mm-foot .mm-actions button').count(),0);
@@ -301,7 +301,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.evaluate(d=>d.classList.contains('mm-full')),true,'interactive reader returns to immersive layout');
  assert.equal(await dlg.locator('.mm-foot').isVisible(),false);
  assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'Canva owns interactive arrow keys');
- await page.keyboard.press('F8');
+ await page.keyboard.press('Escape');
  await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));
  await dlg.getByRole('button',{name:'닫기 ✕',exact:true}).click();
  await dlg.waitFor({state:'hidden'});

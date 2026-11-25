@@ -33,6 +33,8 @@ internal sealed partial class BookReader : Form {
  bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls;
  long commandSeq;
  bool immersiveApplied;
+ bool escapeRestorePending;
+ DateTime escapeRestoreAt;
  Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
@@ -145,14 +147,26 @@ internal sealed partial class BookReader : Form {
   }
  }
  void InteractiveRestoreControls(object sender,KeyEventArgs e){
-  if(!interactive||!immersive||closed||(e.KeyCode!=Keys.F8&&e.KeyCode!=Keys.Escape)||e.Modifiers!=Keys.None)return;
-  e.Handled=true;e.SuppressKeyPress=true;
-  // F8 is the board-only shortcut. Escape retains the browser's own fullscreen exit behavior.
-  // No global hooks or interception of the browser's protected fullscreen escape.
-  exitFull=true;Publish(lastStatus);
+  if(!interactive||!immersive||closed||e.KeyCode!=Keys.Escape||e.Modifiers!=Keys.None)return;
+  // Respect WebView2's native Escape behavior. If its presentation closes,
+  // recover through the official Present control after the board layout shrinks.
+  if(exitFull||escapeRestorePending)return;
+  exitFull=true;escapeRestorePending=presentationConfirmed;escapeRestoreAt=DateTime.UtcNow;Publish(lastStatus);
+ }
+ async Task<bool> RestorePresentationAfterEscape(){
+  if(!escapeRestorePending)return false;
+  if(immersive||(DateTime.UtcNow-escapeRestoreAt).TotalMilliseconds<650)return true;
+  escapeRestorePending=false;
+  if(await web.CoreWebView2.ExecuteScriptAsync("!!document.fullscreenElement")=="true")return false;
+  int target=seekTarget>0?seekTarget:saved;
+  presentationConfirmed=false;presentAttempts=0;presentRetry=DateTime.MinValue;
+  if(target>0)await BeginInteractiveSeek(target);
+  else{interactiveBookmarkValid=false;previous=0;stable=0;}
+  Publish("Canva 발표 모드 복원 중 · 기존 북마크 유지");
+  return false;
  }
  void DismissStartupCover(){if(!startupCoverActive)return;startupCoverActive=false;startupCover.Visible=false;if(!closed&&web.CanFocus)web.Focus();}
- static string StartupMessage(bool presenting,int page){return (presenting?page+"쪽 펼치는 중…":"책 펼치는 중…")+"\n\n조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: F8";}
+ static string StartupMessage(bool presenting,int page){return (presenting?page+"쪽 펼치는 중…":"책 펼치는 중…")+"\n\n조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: ESC";}
  void UpdateStartupCover(){
   if(!startupCoverActive)return;
   if(interactiveBookmarkValid||interactiveSeekFailed||(!presentationConfirmed&&(DateTime.UtcNow-startupCoverAt).TotalSeconds>15)||(DateTime.UtcNow-startupCoverAt).TotalSeconds>105){DismissStartupCover();return;}
@@ -282,7 +296,7 @@ internal sealed partial class BookReader : Form {
   var core=web.CoreWebView2;
   await core.ExecuteScriptAsync("(()=>{const b=document.createElement('button');b.setAttribute('aria-label','전체 화면 프레젠테이션');b.textContent='전체 화면 프레젠테이션';b.style.cssText='position:fixed;left:20px;top:100px;width:180px;height:60px';b.onclick=()=>{document.body.dataset.presented='yes';document.documentElement.requestFullscreen().catch(()=>{})};document.body.append(b);return true})()");
   if(!startupCoverActive||!startupCover.Visible)throw new InvalidOperationException("startup cover missing");
-  if(startupText.Text!=StartupMessage(false,requested)||!StartupMessage(true,170).StartsWith("170쪽 펼치는 중…\n\n")||!StartupMessage(true,170).EndsWith("조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: F8"))throw new InvalidOperationException("startup wait notice missing");
+  if(startupText.Text!=StartupMessage(false,requested)||!StartupMessage(true,170).StartsWith("170쪽 펼치는 중…\n\n")||!StartupMessage(true,170).EndsWith("조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: ESC"))throw new InvalidOperationException("startup wait notice missing");
   if(!await PresentInput(true))throw new InvalidOperationException("fixture official Present input missing");
   await Task.Delay(300);
   if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'")!="true")throw new InvalidOperationException("fixture trusted Present input not delivered");
@@ -290,10 +304,10 @@ internal sealed partial class BookReader : Form {
   await VerifyInteractiveBookmarkFixture();
   if(!startupCoverActive)throw new InvalidOperationException("startup cover dismissed before confirmed resume");
   UpdateStartupCover();if(startupCoverActive||startupCover.Visible)throw new InvalidOperationException("startup cover not dismissed after resume");
-  immersive=true;exitFull=false;var restore=new KeyEventArgs(Keys.F8);InteractiveRestoreControls(web,restore);
-  if(!restore.Handled||!exitFull||await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("interactive F8 must restore board controls without exiting Canva");
-  immersive=false;exitFull=false;
-  Console.WriteLine("HOST INTERACTIVE F8 AND WAIT NOTICE FIXTURE PASS");
+  immersive=true;exitFull=false;var restore=new KeyEventArgs(Keys.Escape);InteractiveRestoreControls(web,restore);
+  if(!exitFull||await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("interactive Escape must request board controls");
+  immersive=false;exitFull=false;escapeRestorePending=false;
+  Console.WriteLine("HOST INTERACTIVE ESCAPE AND WAIT NOTICE FIXTURE PASS");
   Console.WriteLine("HOST STARTUP COVER AND RESUME FIXTURE PASS");
   await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
   // A signed-in editor can expose visible text independently of its accessible name,
@@ -446,7 +460,7 @@ internal sealed partial class BookReader : Form {
    if(!fixture&&!slotVisible)return;
    if(interactive){
     // Native Canva owns presentation clicks. Only the official page slider is used for startup resume.
-    if(!fixture){await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}UpdateStartupCover();return;}
+    if(!fixture){if(await RestorePresentationAfterEscape())return;await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}UpdateStartupCover();return;}
     if(fixture){
      // Verify pointer and keyboard events on a real top-level WebView2 fixture.
      if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");

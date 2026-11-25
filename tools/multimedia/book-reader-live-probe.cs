@@ -262,14 +262,22 @@ internal sealed partial class BookReader {
     layout["immersive"]=1;File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
     await Pause(500);SetForegroundWindow(Handle);web.Focus();await Pause(200);
     int beforeRestore=await ReadInteractivePage();
-    bool delivered=await PhysicalKey(0x77);await Pause(500);
-    bool remainsFull=Flag(await InspectPublicUi(),"fullscreen");
-    bool signalOk=delivered&&immersive&&exitFull&&remainsFull&&beforeRestore>0&&await ReadInteractivePage()==beforeRestore;
+    var stableDeadline=DateTime.UtcNow.AddSeconds(8);
+    while(DateTime.UtcNow<stableDeadline&&(!interactiveBookmarkValid||saved!=beforeRestore))await Pause(250);
+    bool confirmedBefore=beforeRestore>0&&interactiveBookmarkValid&&saved==beforeRestore;
+    bool delivered=await PhysicalKey(0x1B);await Pause(500);
+    bool initiallyFull=Flag(await InspectPublicUi(),"fullscreen");
+    bool signalOk=delivered&&immersive&&exitFull&&confirmedBefore&&saved==beforeRestore;
     layout["immersive"]=0;layout["h"]=Math.Max(100,Int(layout,"h")-64);File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
-    await Pause(800);
-    int afterRestore=await ReadInteractivePage();
-    bool restoredOk=signalOk&&!immersive&&Flag(await InspectPublicUi(),"fullscreen")&&afterRestore==beforeRestore;
-    ProbeLog("KO_PHYSICAL_F8",new{delivered,signalOk,remainsFull,beforeRestore,afterRestore,restoredOk});
+    var restoreDeadline=DateTime.UtcNow.AddSeconds(45);bool markPreserved=true;int afterRestore=0;
+    while(DateTime.UtcNow<restoreDeadline&&!closed){
+     if(saved!=beforeRestore){markPreserved=false;break;}
+     afterRestore=await ReadInteractivePage();
+     if(!immersive&&!escapeRestorePending&&presentationConfirmed&&interactiveBookmarkValid&&afterRestore==beforeRestore&&SafeStage(await InspectFullscreenStage()))break;
+     await Pause(300);
+    }
+    bool restoredOk=signalOk&&markPreserved&&!immersive&&!escapeRestorePending&&presentationConfirmed&&interactiveBookmarkValid&&saved==beforeRestore&&afterRestore==beforeRestore&&Flag(await InspectPublicUi(),"fullscreen");
+    ProbeLog("KO_PHYSICAL_ESCAPE_RESTORE",new{delivered,signalOk,initiallyFull,beforeRestore,afterRestore,markPreserved,restoredOk});
     ok=ok&&restoredOk;
    }
    ProbeLog("ANONYMOUS_KO_RESULT",new{samePage,advanced,invalid,ok,ui=await InspectPublicUi()});
