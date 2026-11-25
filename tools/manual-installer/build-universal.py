@@ -42,7 +42,7 @@ def sources():
                 $manifest.channel -cne 'stable' -or $manifest.kernel -ne 1) {
                 throw 'Unexpected manifest contract.'
             }
-""", """            if ([string]$manifest.version -cnotmatch '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$' -or
+""", r"""            if ([string]$manifest.version -cnotmatch '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$' -or
                 $manifest.schema -cne 'TT-RUNTIME-SNAPSHOT-1' -or
                 $manifest.channel -cne 'stable' -or $manifest.kernel -ne 1) {
                 throw 'Unexpected manifest contract.'
@@ -111,6 +111,8 @@ def build():
 
 if __name__ == "__main__":
     import argparse
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")
     p = argparse.ArgumentParser()
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
