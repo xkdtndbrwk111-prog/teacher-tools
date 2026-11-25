@@ -205,7 +205,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
   localStorage.setItem('tt-books-v1:mark:TEST_NATIVE',JSON.stringify({page:5,at:Date.now()}));
  });
  // Native WebView2 loads the shortlink itself. Browser regression must never open a popup or blocked iframe.
- let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7,almondValid=true,failAlmondOpen=true,almondOpenIds=[],almondStatusFailures=4;
+ let nativeCalls=[],session='a'.repeat(32),almondSession='b'.repeat(32),phase=0,failOpen=true,saved=5,ack=0,manual=false,layouts=[],almondAck=0,almondPage=7,almondValid=true,failAlmondOpen=true,almondOpenIds=[],almondStatusFailures=4,almondSeek=0;
  await page.route('**/api/book-reader/**',async route=>{
   const u=new URL(route.request().url());nativeCalls.push(u.pathname);
   if(u.pathname.endsWith('/open')){
@@ -225,7 +225,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
    if(u.pathname.endsWith('/close'))return route.fulfill({json:{ok:true}});
    const a=JSON.parse(Buffer.from(route.request().postData(),'base64').toString('utf8'));
    if(almondStatusFailures>0){almondStatusFailures--;return route.fulfill({status:503,json:{error:'temporary'}});}
-   assert.equal(a.command,null,'interactive mode must not send manual bookmark commands');
+   if(a.command&&a.command.seq>almondAck){assert.equal(a.command.kind,'seek');almondAck=a.command.seq;almondSeek=a.command.page;almondValid=false;}
    return route.fulfill({json:{ok:true,ready:true,owned:true,visible:true,closed:false,page:almondPage,saved:almondPage,total:394,manual:false,bookmarkValid:almondValid,ack:almondAck,status:'Canva 직접 재생'}});
   }
   assert.equal(u.searchParams.get('session'),session);
@@ -278,7 +278,7 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  assert.equal(await dlg.locator('#ttMediaFull').isVisible(),true);
  assert.equal(await dlg.locator('#ttMediaBottomClose').isVisible(),true);
  assert.ok(nativeCalls.some(x=>x.endsWith('/open')),'Almond must start owned native host');
- assert.equal(await dlg.getByRole('spinbutton',{name:'현재 페이지'}).getAttribute('readonly'),'');
+ assert.equal(await dlg.getByRole('spinbutton',{name:'현재 페이지'}).getAttribute('readonly'),null);
  almondValid=false;almondPage=1;
  await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-page')?.value==='1');
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),7,'unconfirmed resume must preserve old bookmark');
@@ -286,7 +286,12 @@ assert.equal(direct,3);console.log('PASS custom anthem subset, saved settings af
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===13);
  await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-page')?.value==='13');
  await page.waitForTimeout(500);assert.equal(almondPage,13,'automatic native bookmark reaches dashboard');
- await dlg.getByRole('button',{name:'전체화면',exact:true}).click();
+ const pageField=dlg.getByRole('spinbutton',{name:'현재 페이지'});
+ await pageField.fill('170');await page.waitForTimeout(700);assert.equal(await pageField.inputValue(),'170','poll must not overwrite input');
+ await pageField.press('Enter');await page.waitForFunction(()=>document.querySelector('#ttMediaDialog .mm-book-page')?.title.includes('170쪽 이동 중'));
+ await page.waitForTimeout(650);assert.equal(almondSeek,170);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page),13,'pending seek preserves confirmed mark');
+ almondPage=170;almondValid=true;await page.waitForFunction(()=>JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===170);
+ assert.equal(await dlg.evaluate(d=>d.classList.contains('mm-full')),true,'interactive reader starts fullscreen layout');
  assert.equal(await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented}),false,'Canva owns interactive arrow keys');
  await page.keyboard.press('Escape');
  await page.waitForFunction(()=>!document.querySelector('#ttMediaDialog').classList.contains('mm-full'));

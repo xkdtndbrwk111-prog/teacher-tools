@@ -149,7 +149,7 @@ internal sealed partial class BookReader : Form {
   if(interactiveBookmarkValid||interactiveSeekFailed||(!presentationConfirmed&&(DateTime.UtcNow-startupCoverAt).TotalSeconds>15)||(DateTime.UtcNow-startupCoverAt).TotalSeconds>105){DismissStartupCover();return;}
   startupText.Text=presentationConfirmed?requested+"쪽을 펼치는 중…":"책을 펼치는 중…";
  }
- string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid});}
+ string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid,seekPage=interactive&&seekTarget>0?seekTarget:0,seekFailed=interactive&&interactiveSeekFailed});}
  void Publish(string status){
   if(closed&&status!="종료")return;
   lastStatus=status;string data=State(status);if(data==lastState)return;
@@ -159,7 +159,7 @@ internal sealed partial class BookReader : Form {
   var d=ReadFile("command.json");if(d==null)return;
   long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
   string kind=Str(d,"kind");int p=Int(d,"page");
-  if(interactive){commandSeq=seq;return;}
+  if(interactive){if(kind=="seek"&&p>=1&&p<=pages){await BeginInteractiveSeek(p);commandSeq=seq;Publish(p+"쪽 이동 중");}else commandSeq=seq;return;}
   if(kind=="manual"&&p>=1&&p<=(actualPages>0?actualPages:pages)){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
   else if((kind=="prev"||kind=="next")&&immersive&&!interactive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
@@ -318,6 +318,9 @@ internal sealed partial class BookReader : Form {
  async Task ReleaseInteractiveSlider(){
   if(interactiveSeekFocused){try{await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript("if(document.activeElement===el)el.blur();return true;","false"));}catch{}interactiveSeekFocused=false;}
  }
+ async Task BeginInteractiveSeek(int target){
+  await ReleaseInteractiveSlider();seekTarget=target;interactiveBookmarkValid=false;previous=0;stable=0;interactiveSeekAt=DateTime.MinValue;interactiveSeekExpected=0;interactiveSeekKeys=0;interactiveSeekFailed=false;interactiveFastPending=false;interactiveFastDisabled=false;interactiveFastKeys=0;
+ }
  async Task UpdateInteractiveBookmark(){
   int p=await ReadInteractivePage();
   if(closed)return;
@@ -388,6 +391,14 @@ internal sealed partial class BookReader : Form {
   if(!await FocusInteractiveSlider(true))throw new InvalidOperationException("slider refocus");
   await InteractiveSliderKey(false);await Task.Delay(180);await UpdateInteractiveBookmark();await UpdateInteractiveBookmark();
   if(!interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("backward bookmark failed");
+  int jump=requested>1?1:Math.Min(pages,requested+2);
+  await BeginInteractiveSeek(jump);if(interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("manual jump overwrote saved position");
+  for(int i=0;i<40&&(!interactiveBookmarkValid||saved!=jump);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
+  if(!interactiveBookmarkValid||saved!=jump||detected!=jump)throw new InvalidOperationException("manual jump failed");
+  await BeginInteractiveSeek(requested);
+  for(int i=0;i<40&&(!interactiveBookmarkValid||saved!=requested);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
+  if(!interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("second manual jump failed");
+  Console.WriteLine("HOST MANUAL PAGE SEEK AND BOOKMARK FIXTURE PASS");
   Console.WriteLine("HOST INTERACTIVE AUTO BOOKMARK AND RESUME FIXTURE PASS");
  }
  int seekTarget=-1;

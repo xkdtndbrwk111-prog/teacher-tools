@@ -11113,17 +11113,21 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
   let lostSince=0,readySince=0,wasReady=false;
   const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   async function request(path,options,timeout){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),timeout);try{const r=await fetch(path,{...options,signal:ac.signal}),data=await r.json();return {r,data}}finally{clearTimeout(t)}}
-  let pageInput=null;
+  let pageInput=null,lastPage=resume&&bookMark(book)||1,pageEditing=false,jumpTarget=0,jumpSeq=0;
   if(book.interactive){
    pageInput=document.createElement('input');pageInput.type='number';pageInput.className='mm-book-page';
    pageInput.min='1';pageInput.max=String(bookPages(book));pageInput.step='1';
-   pageInput.value=String(resume&&bookMark(book)||1);pageInput.readOnly=true;pageInput.setAttribute('aria-label','현재 페이지');
-   pageInput.title='Canva의 실제 페이지를 자동으로 읽고 북마크에 저장합니다.';
+   pageInput.value=String(resume&&bookMark(book)||1);pageInput.setAttribute('aria-label','현재 페이지');
+   pageInput.title='페이지 번호를 입력하고 Enter를 누르면 이동합니다.';
+   pageInput.addEventListener('focus',()=>{pageEditing=true;pageInput.select()});
+   pageInput.addEventListener('blur',()=>{pageEditing=false;pageInput.value=String(jumpTarget||lastPage)});
+   pageInput.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!=='Escape')return;e.preventDefault();e.stopImmediatePropagation();if(e.key==='Escape'){pageInput.blur();return}const p=Number(pageInput.value);if(!session||!Number.isInteger(p)||p<1||p>bookPages(book)){pageInput.setCustomValidity('1~'+bookPages(book)+' 사이의 페이지를 입력하세요.');pageInput.reportValidity();return}pageInput.setCustomValidity('');jumpTarget=p;jumpSeq=++seq;command={seq:jumpSeq,kind:'seek',page:p};pageInput.title=p+'쪽 이동 중';pageInput.blur()});
+   pageInput.addEventListener('input',()=>pageInput.setCustomValidity(''));
    actions.replaceChildren(pageInput);
   }
   const statusHome=status.parentNode,statusNext=status.nextSibling;actions.before(status);
   const layout=()=>{const r=w.getBoundingClientRect(),vw=innerWidth,vh=innerHeight,x=Math.max(0,Math.ceil(r.left)),y=Math.max(0,Math.ceil(r.top));return {vw,vh,x,y,w:Math.max(0,Math.floor(Math.min(vw,r.right))-x),h:Math.max(0,Math.floor(Math.min(vh,r.bottom))-y),visible:Number(dialog.open&&!document.hidden&&epoch===token&&r.width>100&&r.height>60),immersive:Number(dialog.classList.contains('mm-full'))}};
-  const keyNav=e=>{if((book.interactive&&e.key!=='Escape')||cancelled||!dialog.classList.contains('mm-full')||e.ctrlKey||e.altKey||e.metaKey)return;if(!['Escape','ArrowLeft','ArrowRight',' ','PageUp','PageDown'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){full.click();return}if(session&&!command)command={seq:++seq,kind:['ArrowLeft','PageUp'].includes(e.key)?'prev':'next',page:0}};
+  const keyNav=e=>{if((pageInput&&e.target===pageInput)||(book.interactive&&e.key!=='Escape')||cancelled||!dialog.classList.contains('mm-full')||e.ctrlKey||e.altKey||e.metaKey)return;if(!['Escape','ArrowLeft','ArrowRight',' ','PageUp','PageDown'].includes(e.key))return;e.preventDefault();e.stopImmediatePropagation();if(e.repeat)return;if(e.key==='Escape'){full.click();return}if(session&&!command)command={seq:++seq,kind:['ArrowLeft','PageUp'].includes(e.key)?'prev':'next',page:0}};
   document.addEventListener('keydown',keyNav,true);
   bookStop=()=>{cancelled=true;clearTimeout(pollTimer);closeNativeBook(session);document.removeEventListener('keydown',keyNav,true);statusHome.insertBefore(status,statusNext);};
   const back=button('← 책 목록',books);if(!book.interactive)actions.append(back);window.ttSystemVolume?.read();status.textContent=book.interactive?'':'페이지 번호를 확인하고 있어요.';
@@ -11197,7 +11201,7 @@ function home(selected=''){dirty=false;reset('home','멀티미디어');const w=w
      if(!book.interactive&&!dialog.classList.contains('mm-full'))command=null;
      if(x.ready&&Number.isInteger(x.total)&&x.total>=1&&x.total<=4095)rememberBookPages(book,x.total);
      if((!book.interactive||x.bookmarkValid===true)&&Number.isInteger(x.saved)&&x.saved>=1&&x.saved<=bookPages(book)&&bookMark(book)!==x.saved)saveBookMark(book,x.saved);
-     if(book.interactive&&pageInput){pageInput.max=String(bookPages(book));if(Number.isInteger(x.page)&&x.page>=1&&x.page<=bookPages(book))pageInput.value=String(x.page);pageInput.title=String(x.status||'페이지 확인 중').slice(0,160);}
+     if(book.interactive&&pageInput){pageInput.max=String(bookPages(book));if(Number.isInteger(x.page)&&x.page>=1&&x.page<=bookPages(book))lastPage=x.page;if(jumpTarget&&Number(x.ack)>=jumpSeq&&(x.seekFailed===true||(x.bookmarkValid===true&&x.saved===jumpTarget)))jumpTarget=0;if(!pageEditing)pageInput.value=String(jumpTarget||lastPage);pageInput.title=jumpTarget?jumpTarget+'쪽 이동 중':'페이지 번호 입력 후 Enter · '+String(x.status||'페이지 확인 중').slice(0,100);}
      if(x.exitFull&&dialog.classList.contains('mm-full'))full.click();
      if(x.ready){wasReady=true;w.textContent=x.visible?'':'재생 영역을 맞추는 중…';}
      else if(book.interactive){

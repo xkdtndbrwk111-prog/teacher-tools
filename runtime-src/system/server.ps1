@@ -795,7 +795,7 @@ function Sync-TTBookHost($session,[string]$encoded){
  $layout=Get-TTBookLayout $x.layout
  $command=$x.command
  if($command){
-  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual','prev','next') -or !(Test-TTBookInt $command.page) -or ($command.kind -eq 'manual' -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
+  if(!(Test-TTBookInt $command.seq) -or $command.seq -lt 1 -or $command.seq -gt 1000000 -or $command.kind -cnotin @('auto','manual','prev','next','seek') -or !(Test-TTBookInt $command.page) -or ($command.kind -in @('manual','seek') -and ($command.page -lt 1 -or $command.page -gt $session.pages))){throw 'command invalid'}
   if($command.kind -in @('prev','next') -and ($layout.immersive -ne 1 -or $command.page -ne 0)){throw 'navigation outside immersive mode'}
   if($command.seq -gt $session.seq){Write-TTBookJson (Join-Path $session.dir 'command.json') @{seq=$command.seq;kind=$command.kind;page=$command.page};$session.seq=$command.seq}
  }
@@ -919,7 +919,7 @@ function Get-TTBookState {
    if((Test-TTBookInt $x.page) -and $x.page -ge 1 -and $x.page -le $v.pages){$d.page=$x.page}
    if((Test-TTBookInt $x.saved) -and $x.saved -ge 1 -and $x.saved -le $v.pages){$d.saved=$x.saved}
    $d.status=([string]$x.status).Substring(0,[Math]::Min(160,([string]$x.status).Length))
-   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.bookmarkValid=($x.bookmarkValid -eq $true);$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
+   $d.immersive=($x.immersive -eq $true);$d.exitFull=($x.exitFull -eq $true);$d.cleanControls=($x.cleanControls -eq $true);$d.manual=($x.manual -eq $true);$d.bookmarkValid=($x.bookmarkValid -eq $true);$d.seekFailed=($x.seekFailed -eq $true);if((Test-TTBookInt $x.seekPage) -and $x.seekPage -ge 0 -and $x.seekPage -le $v.pages){$d.seekPage=[int]$x.seekPage};$d.owned=($x.owned -eq $true);$d.visible=($x.visible -eq $true)
    foreach($k in @('ack','x','y','w','h','ownerError')){if(Test-TTBookInt $x.$k){$d[$k]=$x.$k}}
    $d.placement=([string]$x.placement).Substring(0,[Math]::Min(80,([string]$x.placement).Length))
    if($x.navigationMode -cin @('pending','direct','blocked','not-presentation','fixture')){$d.navigationMode=[string]$x.navigationMode}
