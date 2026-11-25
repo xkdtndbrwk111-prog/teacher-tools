@@ -871,7 +871,7 @@ function Invoke-TTBookWorker([string]$token,[int]$parentPid){
   if($parent.HasExited -or (Test-Path -LiteralPath $stop) -or ![IO.File]::Exists($lease)){return 0}
   foreach($name in @('request.json','layout.json')){if(!(Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)){throw 'worker request missing'}}
   $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
-  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'dfaf22e87ea32c38993d6b9116957c862f2bd394942d6940e3c4375c6d702288'){throw 'native dependency unavailable'}
+  if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c'){throw 'native dependency unavailable'}
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   Write-TTBookLaunchDiagnostic 'worker-extract-bundle'
   $stage='extract-bundle'
@@ -957,7 +957,7 @@ function Open-TTBookHost([string]$encoded) {
   $script:ttBookSession=$null
  }
  $bundle=Join-Path $PSScriptRoot 'asset-book-reader-host.zip'
- if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'dfaf22e87ea32c38993d6b9116957c862f2bd394942d6940e3c4375c6d702288'){throw 'native dependency unavailable'}
+ if(!(Test-Path -LiteralPath $bundle -PathType Leaf) -or ![Environment]::Is64BitOperatingSystem -or (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -cne '20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c'){throw 'native dependency unavailable'}
  $root=Join-Path $TTInstallDir 'book-reader-sessions'
  [void][IO.Directory]::CreateDirectory($root)
  $token=[guid]::NewGuid().ToString('N');$dir=Join-Path $root $token

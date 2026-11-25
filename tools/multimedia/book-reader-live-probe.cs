@@ -127,16 +127,12 @@ internal sealed partial class BookReader {
   const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement)return [];return [...document.querySelectorAll('[role=slider],input[type=range]')].map(e=>{const r=e.getBoundingClientRect(),n=v=>v!=null&&/^\d{1,4}$/.test(String(v))?Number(v):null;return {tag:e.tagName,role:e.getAttribute('role'),nativeRange:e.tagName==='INPUT'&&e.type==='range',value:n(e.getAttribute('aria-valuenow')??e.value),min:n(e.getAttribute('aria-valuemin')??e.min),max:n(e.getAttribute('aria-valuemax')??e.max),visible:r.width>0&&r.height>0,disabled:!!e.disabled||e.getAttribute('aria-disabled')==='true',tabIndex:e.tabIndex}})})()";
   return Json.DeserializeObject(await web.CoreWebView2.ExecuteScriptAsync(js));
  }
- async Task<int> ReadExactSlider(){
-  const string js=@"(()=>{if(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!document.fullscreenElement||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return 0;const a=[...document.querySelectorAll('[role=slider],input[type=range]')].filter(e=>Number(e.getAttribute('aria-valuemin')??e.min)===1&&Number(e.getAttribute('aria-valuemax')??e.max)===394);if(a.length!==1)return 0;const v=Number(a[0].getAttribute('aria-valuenow')??a[0].value);return Number.isInteger(v)&&v>=1&&v<=394?v:0})()";
-  int p;return int.TryParse(await web.CoreWebView2.ExecuteScriptAsync(js),out p)?p:0;
- }
+ async Task<int> ReadExactSlider(){return await ReadInteractivePage();}
  async Task TestExactSeek(){
   var core=web.CoreWebView2;
   int initial=await ReadExactSlider();ProbeLog("DIRECT_SLIDER",new{initial,dom=await InspectSliderDom()});
-  if(initial<1){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="no-unique-394-page-control"});return;}
-  const string focus=@"(()=>{const a=[...document.querySelectorAll('[role=slider],input[type=range]')].filter(e=>Number(e.getAttribute('aria-valuemin')??e.min)===1&&Number(e.getAttribute('aria-valuemax')??e.max)===394&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');if(a.length!==1||a[0].tabIndex<0)return false;a[0].focus({preventScroll:true});return document.activeElement===a[0]})()";
-  if(await core.ExecuteScriptAsync(focus)!="true"){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="official-slider-not-focusable"});return;}
+  if(initial<1){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="no-unique-bounded-page-control"});return;}
+  if(!await FocusInteractiveSlider(true)){ProbeLog("DIRECT_SEEK_BLOCKED",new{reason="official-slider-not-focusable"});return;}
   for(int i=0;i<4;i++){
    int before=await ReadExactSlider();bool right=i<2;string key=right?"ArrowRight":"ArrowLeft";int vk=right?39:37;
    await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Serialize(new{type="keyDown",key,code=key,windowsVirtualKeyCode=vk,nativeVirtualKeyCode=vk}));
@@ -243,8 +239,15 @@ internal sealed partial class BookReader {
   if(Environment.GetEnvironmentVariable("TT_LIVE_LANGUAGE")=="ko-KR"){
    // Fresh anonymous Korean locale, no authentication or terms acceptance.
    // Only cookie preference controls and the official Present button were used.
-   if(!SafeStage(await InspectFullscreenStage()))return 2;
-   int first=await ReadInteractivePage();int samePage=0,advanced=0,invalid=0;
+   // Fullscreen is not the same as a ready presentation. Require the actual
+   // initial bookmark and removal of the native loading cover before physical clicks.
+   var readyDeadline=DateTime.UtcNow.AddSeconds(30);
+   while(DateTime.UtcNow<readyDeadline&&!closed&&(startupCoverActive||!interactiveBookmarkValid||saved!=requested||await ReadInteractivePage()!=requested))await Pause(400);
+   int first=await ReadInteractivePage();
+   bool readyToRead=!startupCoverActive&&interactiveBookmarkValid&&saved==requested&&first==requested&&SafeStage(await InspectFullscreenStage());
+   ProbeLog("KO_READER_READY",new{readyToRead,first,saved,requested,startupCoverActive,interactiveBookmarkValid});
+   if(!readyToRead)return 2;
+   int samePage=0,advanced=0,invalid=0;
    for(int i=0;i<6;i++){
     if(!SafeStage(await InspectFullscreenStage())||!await PhysicalClick(.5,.48)){invalid++;break;}
     await Pause(1000);int p=await ReadInteractivePage();
@@ -252,6 +255,31 @@ internal sealed partial class BookReader {
     first=p;
    }
    bool ok=invalid==0&&samePage>0&&advanced>0;
+   if(ok){
+    // Exercise the real keyboard path (not just a direct handler call) after
+    // the prior presentation click test, with the host in immersive layout.
+    var layout=ReadFile("layout.json");if(layout==null)return 2;
+    layout["immersive"]=1;File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
+    await Pause(500);SetForegroundWindow(Handle);web.Focus();await Pause(200);
+    int beforeRestore=await ReadInteractivePage();
+    var stableDeadline=DateTime.UtcNow.AddSeconds(8);
+    while(DateTime.UtcNow<stableDeadline&&(!interactiveBookmarkValid||saved!=beforeRestore))await Pause(250);
+    bool confirmedBefore=beforeRestore>0&&interactiveBookmarkValid&&saved==beforeRestore;
+    bool delivered=await PhysicalKey(0x1B);await Pause(500);
+    bool initiallyFull=Flag(await InspectPublicUi(),"fullscreen");
+    bool signalOk=delivered&&immersive&&exitFull&&confirmedBefore&&saved==beforeRestore;
+    layout["immersive"]=0;layout["h"]=Math.Max(100,Int(layout,"h")-64);File.WriteAllText(Path.Combine(dir,"layout.json"),Json.Serialize(layout),Utf8);
+    var restoreDeadline=DateTime.UtcNow.AddSeconds(45);bool markPreserved=true;int afterRestore=0;
+    while(DateTime.UtcNow<restoreDeadline&&!closed){
+     if(saved!=beforeRestore){markPreserved=false;break;}
+     afterRestore=await ReadInteractivePage();
+     if(!immersive&&!escapeRestorePending&&presentationConfirmed&&interactiveBookmarkValid&&afterRestore==beforeRestore&&SafeStage(await InspectFullscreenStage()))break;
+     await Pause(300);
+    }
+    bool restoredOk=signalOk&&markPreserved&&!immersive&&!escapeRestorePending&&presentationConfirmed&&interactiveBookmarkValid&&saved==beforeRestore&&afterRestore==beforeRestore&&Flag(await InspectPublicUi(),"fullscreen");
+    ProbeLog("KO_PHYSICAL_ESCAPE_RESTORE",new{delivered,signalOk,initiallyFull,beforeRestore,afterRestore,markPreserved,restoredOk});
+    ok=ok&&restoredOk;
+   }
    ProbeLog("ANONYMOUS_KO_RESULT",new{samePage,advanced,invalid,ok,ui=await InspectPublicUi()});
    return ok?0:2;
   }

@@ -33,6 +33,8 @@ internal sealed partial class BookReader : Form {
  bool shownOnce, positioned, slotVisible, immersive, exitFull, cleanControls;
  long commandSeq;
  bool immersiveApplied;
+ bool escapeRestorePending;
+ DateTime escapeRestoreAt;
  Rectangle lastSlot;
  readonly Timer timer=new Timer();
  readonly string dir, url, title;
@@ -74,9 +76,10 @@ internal sealed partial class BookReader : Form {
   Bounds=fixture?workingArea:new Rectangle(-30000,-30000,320,180);
   BackColor=Color.FromArgb(17,17,17);ShowInTaskbar=false;KeyPreview=true;
   Controls.Add(web);web.Dock=DockStyle.Fill;
+  web.KeyDown+=InteractiveRestoreControls;
   if(interactive){
    startupCover.Dock=DockStyle.Fill;startupCover.BackColor=Color.FromArgb(24,24,24);
-   startupText.Dock=DockStyle.Fill;startupText.TextAlign=ContentAlignment.MiddleCenter;startupText.ForeColor=Color.White;startupText.Font=new Font("Malgun Gothic",20);startupText.Text="책을 펼치는 중…";
+   startupText.Dock=DockStyle.Fill;startupText.TextAlign=ContentAlignment.MiddleCenter;startupText.ForeColor=Color.White;startupText.Font=new Font("Malgun Gothic",20);startupText.Text=StartupMessage(false,requested);
    startupManual.Dock=DockStyle.Bottom;startupManual.Height=44;startupManual.Text="직접 열기";startupManual.Click+=(sender,args)=>DismissStartupCover();
    startupCover.Controls.Add(startupText);startupCover.Controls.Add(startupManual);Controls.Add(startupCover);startupCover.BringToFront();startupCoverActive=true;
   }
@@ -143,11 +146,31 @@ internal sealed partial class BookReader : Form {
    lastSlot=next;positioned=true;slotVisible=true;placementStatus="positioned";Publish(lastStatus);
   }
  }
+ void InteractiveRestoreControls(object sender,KeyEventArgs e){
+  if(!interactive||!immersive||closed||e.KeyCode!=Keys.Escape||e.Modifiers!=Keys.None)return;
+  // Respect WebView2's native Escape behavior. If its presentation closes,
+  // recover through the official Present control after the board layout shrinks.
+  if(exitFull||escapeRestorePending)return;
+  exitFull=true;escapeRestorePending=presentationConfirmed;escapeRestoreAt=DateTime.UtcNow;Publish(lastStatus);
+ }
+ async Task<bool> RestorePresentationAfterEscape(){
+  if(!escapeRestorePending)return false;
+  if(immersive||(DateTime.UtcNow-escapeRestoreAt).TotalMilliseconds<650)return true;
+  escapeRestorePending=false;
+  if(await web.CoreWebView2.ExecuteScriptAsync("!!document.fullscreenElement")=="true")return false;
+  int target=seekTarget>0?seekTarget:saved;
+  presentationConfirmed=false;presentAttempts=0;presentRetry=DateTime.MinValue;
+  if(target>0)await BeginInteractiveSeek(target);
+  else{interactiveBookmarkValid=false;previous=0;stable=0;}
+  Publish("Canva 발표 모드 복원 중 · 기존 북마크 유지");
+  return false;
+ }
  void DismissStartupCover(){if(!startupCoverActive)return;startupCoverActive=false;startupCover.Visible=false;if(!closed&&web.CanFocus)web.Focus();}
+ static string StartupMessage(bool presenting,int page){return (presenting?page+"쪽 펼치는 중…":"책 펼치는 중…")+"\n\n조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: ESC";}
  void UpdateStartupCover(){
   if(!startupCoverActive)return;
   if(interactiveBookmarkValid||interactiveSeekFailed||(!presentationConfirmed&&(DateTime.UtcNow-startupCoverAt).TotalSeconds>15)||(DateTime.UtcNow-startupCoverAt).TotalSeconds>105){DismissStartupCover();return;}
-  startupText.Text=presentationConfirmed?requested+"쪽을 펼치는 중…":"책을 펼치는 중…";
+  startupText.Text=StartupMessage(presentationConfirmed,requested);
  }
  string State(string status){return Json.Serialize(new{page=detected,saved=saved,status=status,closed=closed,ready=ready,total=actualPages>0?actualPages:pages,manual=manualMode!=0,ack=commandSeq,owned=fixture||GetWindow(Handle,4)==owner,visible=fixture||slotVisible,x=lastSlot.X,y=lastSlot.Y,w=lastSlot.Width,h=lastSlot.Height,placement=placementStatus,ownerError=ownerError,immersive=immersive,exitFull=exitFull,cleanControls=cleanControls,navigationMode=navigationMode,presentationConfirmed=presentationConfirmed,bookmarkValid=interactiveBookmarkValid,seekPage=interactive&&seekTarget>0?seekTarget:0,seekFailed=interactive&&interactiveSeekFailed});}
  void Publish(string status){
@@ -159,7 +182,7 @@ internal sealed partial class BookReader : Form {
   var d=ReadFile("command.json");if(d==null)return;
   long seq=Convert.ToInt64(d["seq"]);if(seq<=commandSeq)return;
   string kind=Str(d,"kind");int p=Int(d,"page");
-  if(interactive){if(kind=="seek"&&p>=1&&p<=pages){await BeginInteractiveSeek(p);commandSeq=seq;Publish(p+"쪽 이동 중");}else commandSeq=seq;return;}
+  if(interactive){if(kind=="seek"&&p>=1&&p<=(actualPages>0?actualPages:pages)){await BeginInteractiveSeek(p);commandSeq=seq;Publish(p+"쪽 이동 중");}else commandSeq=seq;return;}
   if(kind=="manual"&&p>=1&&p<=(actualPages>0?actualPages:pages)){manualMode=1;saved=p;seekTarget=0;waitingFor=0;}
   else if(kind=="auto"){manualMode=0;seekTarget=0;waitingFor=0;stable=0;previous=0;}
   else if((kind=="prev"||kind=="next")&&immersive&&!interactive){seekTarget=0;waitingFor=0;steps=0;stable=0;await Step(kind=="next");}
@@ -273,6 +296,7 @@ internal sealed partial class BookReader : Form {
   var core=web.CoreWebView2;
   await core.ExecuteScriptAsync("(()=>{const b=document.createElement('button');b.setAttribute('aria-label','전체 화면 프레젠테이션');b.textContent='전체 화면 프레젠테이션';b.style.cssText='position:fixed;left:20px;top:100px;width:180px;height:60px';b.onclick=()=>{document.body.dataset.presented='yes';document.documentElement.requestFullscreen().catch(()=>{})};document.body.append(b);return true})()");
   if(!startupCoverActive||!startupCover.Visible)throw new InvalidOperationException("startup cover missing");
+  if(startupText.Text!=StartupMessage(false,requested)||!StartupMessage(true,170).StartsWith("170쪽 펼치는 중…\n\n")||!StartupMessage(true,170).EndsWith("조금 오래 걸릴 수 있어요. 잠시만 기다려 주세요.\n\n조작부 표시: ESC"))throw new InvalidOperationException("startup wait notice missing");
   if(!await PresentInput(true))throw new InvalidOperationException("fixture official Present input missing");
   await Task.Delay(300);
   if(await core.ExecuteScriptAsync("document.body.dataset.presented==='yes'")!="true")throw new InvalidOperationException("fixture trusted Present input not delivered");
@@ -280,6 +304,10 @@ internal sealed partial class BookReader : Form {
   await VerifyInteractiveBookmarkFixture();
   if(!startupCoverActive)throw new InvalidOperationException("startup cover dismissed before confirmed resume");
   UpdateStartupCover();if(startupCoverActive||startupCover.Visible)throw new InvalidOperationException("startup cover not dismissed after resume");
+  immersive=true;exitFull=false;var restore=new KeyEventArgs(Keys.Escape);InteractiveRestoreControls(web,restore);
+  if(!exitFull||await core.ExecuteScriptAsync("!!document.fullscreenElement")!="true")throw new InvalidOperationException("interactive Escape must request board controls");
+  immersive=false;exitFull=false;escapeRestorePending=false;
+  Console.WriteLine("HOST INTERACTIVE ESCAPE AND WAIT NOTICE FIXTURE PASS");
   Console.WriteLine("HOST STARTUP COVER AND RESUME FIXTURE PASS");
   await core.ExecuteScriptAsync("document.exitFullscreen().catch(()=>{})");
   // A signed-in editor can expose visible text independently of its accessible name,
@@ -298,12 +326,15 @@ internal sealed partial class BookReader : Form {
  }
 
  // Read Canva's native page input, not a screenshot or a private component.
- // The exact registered book and range disambiguate the volume/other sliders.
- const string InteractiveSliderPrefix=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return FAIL;if(!document.fullscreenElement||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return FAIL;const a=[...document.querySelectorAll('input[type=range]')].filter(e=>Number(e.min)===1&&Number(e.max)===TOTAL&&Number(e.step||1)===1&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');if(a.length!==1)return FAIL;const el=a[0],v=Number(el.value);if(!Number.isInteger(v)||v<1||v>TOTAL)return FAIL;";
- string InteractiveScript(string tail,string fail){return InteractiveSliderPrefix.Replace("LAB",fixture?"true":"false").Replace("TOTAL",pages.ToString(System.Globalization.CultureInfo.InvariantCulture)).Replace("FAIL",fail)+tail+"})()";}
+ // The exact registered book, unique native min=1 integer range and bounded live maximum
+ // disambiguate volume/other sliders even when the teacher adds or removes pages.
+ const string InteractiveSliderPrefix=@"(()=>{const lab=LAB;if(!lab&&(location.origin!=='https://www.canva.com'||!location.pathname.startsWith('/design/DAHbOZ_XOJI/')||!location.pathname.endsWith('/edit')))return FAIL;if(!document.fullscreenElement||[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].some(e=>e.getClientRects().length))return FAIL;const a=[...document.querySelectorAll('input[type=range]')].filter(e=>Number(e.min)===1&&Number.isInteger(Number(e.max))&&Number(e.max)>=1&&Number(e.max)<=4095&&Number(e.step||1)===1&&!e.disabled&&e.getAttribute('aria-disabled')!=='true');if(a.length!==1)return FAIL;const el=a[0],v=Number(el.value),n=Number(el.max);if(!Number.isInteger(v)||v<1||v>n)return FAIL;";
+ string InteractiveScript(string tail,string fail){return InteractiveSliderPrefix.Replace("LAB",fixture?"true":"false").Replace("FAIL",fail)+tail+"})()";}
  async Task<int> ReadInteractivePage(){
-  int p;var raw=await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript("return v;","0"));
-  if(!int.TryParse(raw,out p)||p<1||p>pages)return 0;actualPages=pages;return p;
+  var raw=await web.CoreWebView2.ExecuteScriptAsync(InteractiveScript("return {page:v,total:n};","null"));
+  if(raw=="null")return 0;
+  var value=Json.Deserialize<Dictionary<string,object>>(raw);if(value==null)return 0;
+  int p=Int(value,"page"),n=Int(value,"total");if(n<1||n>4095||p<1||p>n)return 0;actualPages=n;return p;
  }
  async Task<bool> FocusInteractiveSlider(bool focus){
   string tail=focus?"if(el.tabIndex<0)return false;el.focus({preventScroll:true});return document.activeElement===el;":"return document.activeElement===el;";
@@ -329,12 +360,13 @@ internal sealed partial class BookReader : Form {
   if(seekTarget<0)seekTarget=requested;
   if(seekTarget>0){
    interactiveBookmarkValid=false;
+   if(seekTarget>actualPages){interactiveSeekFailed=true;await ReleaseInteractiveSlider();Publish("저장된 페이지가 현재 책 범위를 벗어남 · 기존 북마크 유지");return;}
    if(p==seekTarget){
     if(stable<2){Publish("이어 읽기 위치 확인 중");return;}
     seekTarget=0;interactiveSeekExpected=0;interactiveFastPending=false;await ReleaseInteractiveSlider();if(!fixture&&web.CanFocus)web.Focus();
    }else{
     if(interactiveSeekAt==DateTime.MinValue)interactiveSeekAt=DateTime.UtcNow;
-    if((DateTime.UtcNow-interactiveSeekAt).TotalSeconds>90||interactiveSeekKeys>pages+16)interactiveSeekFailed=true;
+    if((DateTime.UtcNow-interactiveSeekAt).TotalSeconds>90||interactiveSeekKeys>actualPages+16)interactiveSeekFailed=true;
     // PageUp/PageDown are native range inputs. Observe their actual effect;
     // never assume a jump size or save any intermediate page.
     if(interactiveFastPending){
@@ -356,7 +388,7 @@ internal sealed partial class BookReader : Form {
     interactiveSeekFocused=true;
     // Leave ample distance for a standard range large step (usually 10%).
     // No-effect fallback uses the previously verified arrow-only algorithm.
-    if(!interactiveFastDisabled&&Math.Abs(seekTarget-p)>=Math.Max(50,(pages+9)/10+2)){
+    if(!interactiveFastDisabled&&Math.Abs(seekTarget-p)>=Math.Max(50,(actualPages+9)/10+2)){
      interactiveFastPending=true;interactiveFastFrom=p;interactiveFastKeys++;interactiveSeekKeys++;waitingSince=DateTime.UtcNow;previous=0;stable=0;
      await InteractiveSliderInput(p<seekTarget?"PageUp":"PageDown",p<seekTarget?33:34);
      Publish(seekTarget+"쪽 이동 중");return;
@@ -398,6 +430,21 @@ internal sealed partial class BookReader : Form {
   await BeginInteractiveSeek(requested);
   for(int i=0;i<40&&(!interactiveBookmarkValid||saved!=requested);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
   if(!interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("second manual jump failed");
+  int expanded=pages+2;
+  if(expanded<=4095){
+   await core.ExecuteScriptAsync("(()=>{const r=document.querySelector('input[type=range][min=\\\"1\\\"]');r.max='"+expanded+"';return true})()");
+   if(await ReadInteractivePage()!=requested||actualPages!=expanded||saved!=requested)throw new InvalidOperationException("changed page total lost bookmark");
+   await core.ExecuteScriptAsync("(()=>{const r=document.querySelector('input[type=range][min=\\\"1\\\"]');const copy=r.cloneNode();copy.id='growth-ambiguous';copy.max=String(Number(r.max)-1);document.body.append(copy);return true})()");
+   await UpdateInteractiveBookmark();if(interactiveBookmarkValid||saved!=requested)throw new InvalidOperationException("different-size ambiguous range overwrote bookmark");
+   await core.ExecuteScriptAsync("document.getElementById('growth-ambiguous').remove()");
+   await BeginInteractiveSeek(expanded);
+   for(int i=0;i<120&&(!interactiveBookmarkValid||saved!=expanded);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
+   if(!interactiveBookmarkValid||saved!=expanded||detected!=expanded)throw new InvalidOperationException("new final page seek failed");
+   await BeginInteractiveSeek(requested);
+   for(int i=0;i<120&&(!interactiveBookmarkValid||saved!=requested);i++){await UpdateInteractiveBookmark();await Task.Delay(120);}
+   if(!interactiveBookmarkValid||saved!=requested||detected!=requested)throw new InvalidOperationException("restore after page growth failed");
+   Console.WriteLine("HOST INTERACTIVE PAGE TOTAL GROWTH AND AMBIGUITY FIXTURE PASS");
+  }
   Console.WriteLine("HOST MANUAL PAGE SEEK AND BOOKMARK FIXTURE PASS");
   Console.WriteLine("HOST INTERACTIVE AUTO BOOKMARK AND RESUME FIXTURE PASS");
  }
@@ -413,7 +460,7 @@ internal sealed partial class BookReader : Form {
    if(!fixture&&!slotVisible)return;
    if(interactive){
     // Native Canva owns presentation clicks. Only the official page slider is used for startup resume.
-    if(!fixture){await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}UpdateStartupCover();return;}
+    if(!fixture){if(await RestorePresentationAfterEscape())return;await TryEnterPresentation();if(presentationConfirmed)await UpdateInteractiveBookmark();else{interactiveBookmarkValid=false;Publish("Canva 발표 모드 준비 중 · 필요하면 공식 발표 버튼을 눌러 주세요");}UpdateStartupCover();return;}
     if(fixture){
      // Verify pointer and keyboard events on a real top-level WebView2 fixture.
      if(await web.CoreWebView2.ExecuteScriptAsync("(()=>!document.querySelector('iframe')&&document.querySelectorAll('button').length===2)()")!="true")throw new InvalidOperationException("interactive fixture must have no iframe");
