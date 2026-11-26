@@ -76,6 +76,8 @@ if((git hash-object --no-filters $realGame).Trim() -ne '4f157000276a1633c9d90553
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$out\HOJA-WebView-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
+& $csc /nologo /codepage:65001 /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$out\HOJA-Native-Launch-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs')
+if($LASTEXITCODE -ne 0){throw 'Native launcher compilation failed'}
 $utf8=New-Object Text.UTF8Encoding($false)
 $at=[DateTime]::UtcNow.ToString('o')
 $seed=@('{"type":"LAB_SENTINEL"}',(@{type='setting';cls='LAB_CLASS';at=$at;enabled=$true;weeklyOn=$false;cap=20}|ConvertTo-Json -Compress),(@{type='grant';cls='LAB_CLASS';at=$at;id='lab1';name='LAB_STUDENT';amount=5;source='lab-seed'}|ConvertTo-Json -Compress),(@{type='grant';cls='LAB_CLASS';at=$at;id='lab2';name='LAB_STUDENT_TWO';amount=5;source='lab-seed'}|ConvertTo-Json -Compress))
@@ -138,6 +140,44 @@ try{
  if($finalSeat.classId -ne 'LAB_CLASS_2' -or @($finalSeat.students).Count -ne 2 -or @($finalSeat.assignments).Count -ne 2){throw 'Unexpected manager seating'}
  $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
  if($offline.wallpaper){throw 'Closed host still reports connected'}
+ # Native launcher is an independent executable, after all Phase 1/2 regression checks.
+ $ledgerBeforeNative=(Get-FileHash (Join-Path $runtime 'coins.log')).Hash
+ $seatBeforeNative=(Get-FileHash (Join-Path $runtime 'seating.json')).Hash
+ $nativeExe=Join-Path $out 'HOJA-Native-Launch-Lab.exe'
+ $nativeReady=Join-Path $root 'native-launch.ready'
+ $nativeStop=Join-Path $root 'native-launch.stop'
+ $nativeResult=Join-Path $root 'native-launch.result'
+ foreach($mode in @('window','wallpaper','window')){
+  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+  $native=$null;$duplicate=$null
+  try{
+   $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch $mode" -PassThru
+   for($i=0;$i -lt 120 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Native launch exited: '+$native.ExitCode+' '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady)){throw 'Native launcher readiness timeout'}
+   $modePath=Join-Path $runtime 'board-mode.json'
+   $info=Get-Content $modePath -Raw|ConvertFrom-Json
+   if($info.pid -ne $native.Id -or $info.mode -ne $mode -or $info.window -le 0 -or $info.release -ne '2026-11-25-V1.66.43-STABLE-PILOT'){throw 'Native mode ownership mismatch'}
+   $beat=(Get-Item $modePath).LastWriteTimeUtc
+   $duplicate=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch $mode" -PassThru
+   if(!$duplicate.WaitForExit(10000) -or $duplicate.ExitCode -ne 3){throw 'Native duplicate was not rejected'}
+   Start-Sleep -Milliseconds 1600
+   if((Get-Item $modePath).LastWriteTimeUtc -le $beat){throw 'Native heartbeat did not refresh'}
+   $online=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
+   if(!$online.wallpaper){throw 'Native host not connected'}
+   Set-Content $nativeStop 'stop' -Encoding ASCII
+   if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native launcher close failed'}
+   Get-Content $nativeResult
+   if(Test-Path $modePath){throw 'Owned heartbeat not removed'}
+   $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
+   if($offline.wallpaper){throw 'Native launcher still connected'}
+   if($server.HasExited){throw 'Existing server unexpectedly stopped'}
+   Write-Host "PASS native $mode launch, duplicate lock, heartbeat, disconnect and restart"
+  }finally{
+   if($duplicate -and !$duplicate.HasExited){$duplicate.Kill();$duplicate.WaitForExit()}
+   if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
+  }
+ }
+ if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $ledgerBeforeNative -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBeforeNative){throw 'Native launcher changed classroom data'}
  Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
  if($hostProc -and !$hostProc.HasExited){$hostProc.Kill();$hostProc.WaitForExit()}

@@ -55,14 +55,14 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.F11){SetImmersive(!immersive);e.SuppressKeyPress=true;}else if(e.KeyCode==Keys.Escape && immersive){SetImmersive(false);e.SuppressKeyPress=true;}};
     }
-    static bool Local(string raw) {
+    internal static bool Local(string raw) {
         Uri u;
         return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="http" && u.Host=="127.0.0.1" && u.Port==17449 && String.IsNullOrEmpty(u.UserInfo);
     }
     static bool GameFixture(string raw) {
         Uri u; return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="https" && u.Host=="xkdtndbrwk111-prog.github.io" && u.Port==443 && String.IsNullOrEmpty(u.UserInfo) && u.AbsolutePath=="/hoja-minigames/" && u.Query.StartsWith("?mode=board&embed=dashboard&coin=4&fresh=",StringComparison.Ordinal);
     }
-    static bool Allowed(string raw,string method) {
+    internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
         if(method=="POST")return p=="/api/coins" || p=="/api/seating" || p=="/api/presentation/ack";
