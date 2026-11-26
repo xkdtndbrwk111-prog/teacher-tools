@@ -14,7 +14,20 @@ $serverText=[IO.File]::ReadAllText($serverPath)
 $oldCatch='}catch{$status=''400 Bad Request'';$body=''{"error":"roster rejected"}''}'
 $newCatch='}catch{[Console]::Error.WriteLine("LAB roster exception: "+$_.Exception.ToString()+" at "+$_.InvocationInfo.PositionMessage);$status=''400 Bad Request'';$body=''{"error":"roster rejected"}''}'
 if($serverText.IndexOf($oldCatch) -lt 0 -or $serverText.IndexOf($oldCatch) -ne $serverText.LastIndexOf($oldCatch)){throw 'Roster diagnostic anchor missing or ambiguous'}
+# PowerShell variable type constraints survive requests in the server loop.
+# The coins route types $old as byte[]; give the roster route its own object variable.
+# Apply only to the throwaway server copy, pending full regression and product approval.
+$rosterOld='      $old=$null'
+$rosterRead='      if([IO.File]::Exists($seatingFile)){$old=ConvertFrom-Json ([IO.File]::ReadAllText($seatingFile,[Text.Encoding]::UTF8))}'
+$rosterMerge='      $merged=Merge-TTManagerRoster $x $old'
+foreach($needle in @($rosterOld,$rosterRead,$rosterMerge)){
+ if($serverText.IndexOf($needle) -lt 0 -or $serverText.IndexOf($needle) -ne $serverText.LastIndexOf($needle)){throw 'Roster scope fix anchor missing or ambiguous'}
+ $serverText=$serverText.Replace($needle,$needle.Replace('$old','$previousRosterDocument'))
+}
 [IO.File]::WriteAllText($serverPath,$serverText.Replace($oldCatch,$newCatch),[Text.UTF8Encoding]::new($true))
+$tokens=$null;$parseErrors=$null
+[void][System.Management.Automation.Language.Parser]::ParseFile($serverPath,[ref]$tokens,[ref]$parseErrors)
+if($parseErrors.Count){throw ($parseErrors|Out-String)}
 $version='1.0.2903.40'
 $zip=Join-Path $root 'sdk.zip'
 Invoke-WebRequest -UseBasicParsing -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$version/microsoft.web.webview2.$version.nupkg" -OutFile $zip
