@@ -467,6 +467,7 @@ try{
  & (Join-Path $PSScriptRoot 'signed-native-package.ps1') -LabRoot $root -Runtime $runtime -Build $out -Kernel (Join-Path $PSScriptRoot '../../reviewed-kernel/tools/r8-updater/runtime/r8-kernel.ps1')
  & (Join-Path $PSScriptRoot 'installed-native-rollback.ps1') -LabRoot $root -Runtime $runtime -Build $out -Kernel (Join-Path $PSScriptRoot '../../reviewed-kernel/tools/r8-updater/runtime/r8-kernel.ps1')
  & (Join-Path $PSScriptRoot 'installed-native-rollback.ps1') -LabRoot $root -Runtime $runtime -Build $out -Kernel (Join-Path $PSScriptRoot '../../reviewed-kernel/tools/r8-updater/runtime/r8-kernel.ps1') -Bootstrap
+ & (Join-Path $PSScriptRoot 'native-server-read-test.ps1') -LabRoot $root -Runtime $runtime -Build $out
  if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $ledgerBeforeNative -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBeforeNative){throw 'Native launcher changed classroom data'}
  Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
