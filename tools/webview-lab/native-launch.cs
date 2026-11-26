@@ -23,6 +23,7 @@ internal sealed class NativeBoardLaunch : Form {
     int migrationBinaryRequests;
     string migrationProfile,migrationMarker;
     Process ownedServer;
+    IntPtr ownedJob=IntPtr.Zero;
     readonly object logLock=new object();
     readonly Timer heartbeat=new Timer();
     bool published,closing; int exitCode=1; long ownedWindow;
@@ -31,6 +32,33 @@ internal sealed class NativeBoardLaunch : Form {
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr h,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] struct JobBasic {
+        public long PerProcessUserTimeLimit,PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize,MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass,SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct JobIo {
+        public ulong ReadOperationCount,WriteOperationCount,OtherOperationCount,ReadTransferCount,WriteTransferCount,OtherTransferCount;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct JobExtended {
+        public JobBasic BasicLimitInformation;
+        public JobIo IoInfo;
+        public UIntPtr ProcessMemoryLimit,JobMemoryLimit,PeakProcessMemoryUsed,PeakJobMemoryUsed;
+    }
+    [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes,string name);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int infoClass,ref JobExtended info,uint length);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+    void PrepareOwnedJob(){
+        ownedJob=CreateJobObject(IntPtr.Zero,null);
+        if(ownedJob==IntPtr.Zero)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"create owned job");
+        var info=new JobExtended();info.BasicLimitInformation.LimitFlags=0x2000; // KILL_ON_JOB_CLOSE
+        if(!SetInformationJobObject(ownedJob,9,ref info,(uint)Marshal.SizeOf(typeof(JobExtended))))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"configure owned job");
+    }
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource){
@@ -98,12 +126,16 @@ internal sealed class NativeBoardLaunch : Form {
         var info=new ProcessStartInfo(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" -Port 17449");
         info.WorkingDirectory=runtime;info.UseShellExecute=false;info.CreateNoWindow=true;
         info.RedirectStandardOutput=true;info.RedirectStandardError=true;
+        PrepareOwnedJob();
         ownedServer=new Process();ownedServer.StartInfo=info;
         ownedServer.OutputDataReceived+=(s,e)=>ServerLog("native-server-out.log",e.Data);
         ownedServer.ErrorDataReceived+=(s,e)=>ServerLog("native-server-err.log",e.Data);
-        Require(ownedServer.Start(),"server start");ownedServer.BeginOutputReadLine();ownedServer.BeginErrorReadLine();
-        // Retain the exact process handle; never terminate a listener discovered by port.
-        var retained=ownedServer.Handle;
+        Require(ownedServer.Start(),"server start");
+        // Attach only the process just created, before reporting any readiness.
+        // A non-inherited job handle closes when this launcher crashes.
+        if(!AssignProcessToJobObject(ownedJob,ownedServer.Handle))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"assign owned server to job");
+        ownedServer.BeginOutputReadLine();ownedServer.BeginErrorReadLine();
         File.WriteAllText(Path.Combine(root,"native-server.pid"),ownedServer.Id.ToString());
         for(int i=0;i<60;i++){
             Require(!ownedServer.HasExited,"owned server exited during startup");
@@ -117,9 +149,15 @@ internal sealed class NativeBoardLaunch : Form {
         throw new IOException("owned server readiness timeout");
     }
     void StopOwnedServer(){
-        if(ownedServer==null)return;
-        try{if(!ownedServer.HasExited)ownedServer.Kill();Require(ownedServer.WaitForExit(10000),"owned server exit timeout");}
-        finally{ownedServer.Dispose();ownedServer=null;}
+        try{
+            if(ownedServer!=null){
+                if(!ownedServer.HasExited)ownedServer.Kill();
+                Require(ownedServer.WaitForExit(10000),"owned server exit timeout");
+            }
+        }finally{
+            if(ownedServer!=null){ownedServer.Dispose();ownedServer=null;}
+            if(ownedJob!=IntPtr.Zero){CloseHandle(ownedJob);ownedJob=IntPtr.Zero;}
+        }
     }
     async Task StartBoard(){
         if(startOwned)await StartOwnedServer();

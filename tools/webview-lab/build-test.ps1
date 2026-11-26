@@ -370,6 +370,52 @@ try{
    if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
   }
  }
+ # 3E-1b: crash the real owned host, verify its exact child dies, then restart.
+ foreach($cut in @('host','server')){
+  $native=$null;$owned=$null
+  Remove-Item $nativeReady,$nativeStop,$nativeResult,$pidFile -Force -ErrorAction SilentlyContinue
+  try{
+   $native=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch-owned window' -PassThru
+   for($i=0;$i -lt 180 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Crash pair launch failed: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady) -or !(Test-Path $pidFile)){throw 'Crash pair not ready'}
+   $owned=Get-Process -Id ([int](Get-Content $pidFile -Raw)) -ErrorAction Stop
+   $null=$owned.Handle
+   if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $owned.Id){throw 'Crash pair listener mismatch'}
+   if($cut -eq 'host'){
+    $native.Kill();$native.WaitForExit()
+    if(!$owned.WaitForExit(15000)){throw 'Owned service survived host crash'}
+    if(!(Test-Path $modePath)){throw 'Crash heartbeat not retained for recovery'}
+    Write-Host 'PASS killed host closes exact owned service via job'
+   }else{
+    $owned.Kill();$owned.WaitForExit()
+    if(!$native.WaitForExit(15000) -or $native.ExitCode -ne 1 -or (Get-Content $nativeResult -Raw) -notmatch 'owned server exited'){throw 'Host did not detect service crash'}
+    if((Test-Path $modePath) -or (Test-Path $proofPath)){throw 'Server crash left live heartbeat'}
+    Write-Host 'PASS killed owned service closes host and clears heartbeat'
+   }
+   for($i=0;$i -lt 80 -and (Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue);$i++){Start-Sleep -Milliseconds 250}
+   if(Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue){throw 'Crash pair port still occupied'}
+  }finally{
+   if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
+   if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
+  }
+ }
+ Remove-Item $nativeReady,$nativeStop,$nativeResult,$pidFile -Force -ErrorAction SilentlyContinue
+ $native=$null;$owned=$null
+ try{
+  $native=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch-owned window' -PassThru
+  for($i=0;$i -lt 180 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw 'Post-crash restart exited'};Start-Sleep -Milliseconds 250}
+  if(!(Test-Path $nativeReady) -or !(Test-Path $pidFile)){throw 'Post-crash restart timeout'}
+  $owned=Get-Process -Id ([int](Get-Content $pidFile -Raw)) -ErrorAction Stop
+  $null=$owned.Handle
+  if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $owned.Id){throw 'Post-crash restart wrong listener'}
+  if(!(Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2).wallpaper){throw 'Post-crash board not connected'}
+  Set-Content $nativeStop 'stop' -Encoding ASCII
+  if(!$native.WaitForExit(20000) -or $native.ExitCode -ne 0 -or !$owned.WaitForExit(10000)){throw 'Post-crash normal close failed'}
+  Write-Host 'PASS native owned host and service restart after both crash modes'
+ }finally{
+  if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
+  if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
+ }
  if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $ledgerBeforeNative -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBeforeNative){throw 'Native launcher changed classroom data'}
  Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
