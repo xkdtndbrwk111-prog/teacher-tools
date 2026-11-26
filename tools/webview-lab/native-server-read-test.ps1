@@ -8,7 +8,7 @@ if($LASTEXITCODE -ne 0){throw 'Native server compilation failed'}
 foreach($port in @(17449,17450)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied port; no reuse'}}
 $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $legacy=$null;$native=$null
-function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin=''){
+function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin='', [string]$payload='', [string]$coinRevision='', [string]$seatRevision=''){
  $c=[Net.Sockets.TcpClient]::new()
  try{
   $c.ReceiveTimeout=10000;$c.SendTimeout=10000;$c.Connect('127.0.0.1',$port)
@@ -18,7 +18,10 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
   $request="$method $path HTTP/1.1"+$nl+"Host: $hostName"+$nl
   if($site){$request+="Sec-Fetch-Site: $site"+$nl}
   if($origin){$request+="Origin: $origin"+$nl}
-  $request+="Connection: close"+$nl+$nl
+  if($method -eq 'POST'){$request+="Content-Length: "+[Text.Encoding]::ASCII.GetByteCount($payload)+$nl+"Content-Type: text/plain"+$nl}
+  if($coinRevision){$request+="X-TT-Coin-Revision: $coinRevision"+$nl}
+  if($seatRevision){$request+="X-TT-Seating-Revision: $seatRevision"+$nl}
+  $request+="Connection: close"+$nl+$nl+$payload
   $bytes=[Text.Encoding]::ASCII.GetBytes($request);$stream.Write($bytes,0,$bytes.Length)
   # Read exactly the declared response, not EOF: a peer may reset after a valid denial.
   $header=[IO.MemoryStream]::new()
@@ -52,7 +55,7 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
   if([int]$headers['Content-Length'] -ne $body.Length){throw 'Content length mismatch'}
   $sha=[Security.Cryptography.SHA256]::Create()
   try{$hash=[BitConverter]::ToString($sha.ComputeHash($body)).Replace('-','')}finally{$sha.Dispose()}
-  return @{status=$lines[0];headers=$headers;hash=$hash}
+  return @{status=$lines[0];headers=$headers;hash=$hash;body=$body}
  }finally{$c.Dispose()}
 }
 try{
@@ -92,4 +95,88 @@ try{
  throw
 }finally{
  foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
+}
+
+# 4B-1: separate disposable data roots. Never write the 1~3 regression fixture.
+$envRoot=$env:HOJA_LAB_ROOT;$envLocal=$env:LOCALAPPDATA
+$legacy=$null;$native=$null
+$roots=@{};$stores=@{}
+try{
+ foreach($port in @(17451,17452)){
+  if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied coin test port'}
+  $r=Join-Path $LabRoot ('hoja-webview-lab-'+[guid]::NewGuid().ToString('N'))
+  $local=Join-Path $r 'local';$store=Join-Path $local 'TeacherToolsLocal'
+  New-Item -ItemType Directory -Path $store -Force|Out-Null
+  Get-ChildItem -LiteralPath $Runtime -File | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $store}
+  # Deliberately no trailing newline; test compatibility with legacy ledgers.
+  [IO.File]::WriteAllText((Join-Path $store 'coins.log'),'{"type":"LAB_SENTINEL"}',[Text.UTF8Encoding]::new($false))
+  $roots[$port]=$r;$stores[$port]=$store
+  $env:HOJA_LAB_ROOT=$r;$env:LOCALAPPDATA=$local
+  if($port -eq 17451){
+   Set-Content (Join-Path $r 'coin-write-fixture.flag') 'fixture' -Encoding ASCII
+   $native=Start-Process -FilePath $exe -ArgumentList '--lab-coin-server' -PassThru -WindowStyle Hidden -RedirectStandardError (Join-Path $r 'native-coin-err.log')
+   $null=$native.Handle
+  }else{
+   $legacy=Start-Process -FilePath $ps -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+(Join-Path $store 'server.ps1')+'" -Port 17452') -PassThru -WindowStyle Hidden
+   $null=$legacy.Handle
+  }
+  $proc=if($port -eq 17451){$native}else{$legacy}
+  $ok=$false
+  for($i=0;$i -lt 80;$i++){
+   if($proc.HasExited){throw "Coin server exited $port code $($proc.ExitCode)"}
+   try{if((Raw-Request $port '/health').status -eq 'HTTP/1.1 200 OK'){$ok=$true;break}}catch{}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!$ok -or (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen).OwningProcess -ne $proc.Id){throw "Coin server ownership $port"}
+ }
+ function B64([string]$text){[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))}
+ function Coin-Post([int]$port,[string]$payload,[string]$rev='', [string]$seat='', [string]$site='same-origin',[string]$origin=''){
+  Raw-Request $port '/api/coins' POST '' $site $origin $payload $rev $seat
+ }
+ $rev=(Raw-Request 17451 '/api/coins').headers['X-TT-Coin-Revision']
+ $seat=(Raw-Request 17451 '/api/seating').headers['X-TT-Seating-Revision']
+ if($rev -cne (Raw-Request 17452 '/api/coins').headers['X-TT-Coin-Revision'] -or $seat -cne (Raw-Request 17452 '/api/seating').headers['X-TT-Seating-Revision']){throw 'Coin seed mismatch'}
+ $batch=B64 ('{"type":"grant","id":"lab1","name":"학생","amount":5}'+[char]10+[char]10+'{"type":"spend","id":"lab1","amount":-1}')
+ foreach($case in @('missing','stale','stale-seat','cross-site','valid','replay')){
+  $answers=@()
+  foreach($port in @(17451,17452)){
+   $answer=switch($case){
+    'missing'{Coin-Post $port $batch}
+    'stale'{Coin-Post $port $batch ('a'*64)}
+    'stale-seat'{Coin-Post $port $batch $rev ('a'*64)}
+    'cross-site'{Coin-Post $port $batch $rev $seat 'cross-site'}
+    'valid'{Coin-Post $port $batch $rev $seat}
+    'replay'{Coin-Post $port $batch $rev $seat}
+   }
+   $answers+=@($answer)
+  }
+  $expected=switch($case){'missing'{428}'stale'{409}'stale-seat'{409}'cross-site'{403}'valid'{200}'replay'{409}}
+  if($answers[0].status -notmatch ("^HTTP/1.1 "+$expected+" ") -or $answers[0].status -cne $answers[1].status -or $answers[0].hash -cne $answers[1].hash -or $answers[0].headers['X-TT-Coin-Revision'] -cne $answers[1].headers['X-TT-Coin-Revision']){throw "Coin POST parity $case"}
+  $left=Raw-Request 17451 '/api/coins';$right=Raw-Request 17452 '/api/coins'
+  if($left.hash -cne $right.hash -or $left.headers['X-TT-Coin-Revision'] -cne $right.headers['X-TT-Coin-Revision']){throw "Coin ledger parity $case"}
+  Write-Host "PASS native coin POST parity $case"
+ }
+ # Two simultaneous TCP clients with one revision, separate accepted sockets.
+ $current=(Raw-Request 17451 '/api/coins').headers['X-TT-Coin-Revision']
+ $payload=B64 '{"type":"spend","id":"lab1","amount":-1,"op":"race"}'
+ $nl=[string][char]13+[char]10
+ $wire=[Text.Encoding]::ASCII.GetBytes(("POST /api/coins HTTP/1.1"+$nl+"Host: 127.0.0.1:17451"+$nl+"Sec-Fetch-Site: same-origin"+$nl+"X-TT-Coin-Revision: $current"+$nl+"Content-Length: "+$payload.Length+$nl+"Connection: close"+$nl+$nl+$payload))
+ $clients=@()
+ try{
+  for($i=0;$i -lt 2;$i++){$c=[Net.Sockets.TcpClient]::new();$c.ReceiveTimeout=10000;$c.Connect('127.0.0.1',17451);$clients+=@($c)}
+  foreach($c in $clients){$c.GetStream().Write($wire,0,$wire.Length)}
+  $statuses=@(foreach($c in $clients){$reader=[IO.StreamReader]::new($c.GetStream(),[Text.Encoding]::ASCII);try{$reader.ReadLine()}finally{$reader.Dispose()}})
+  if(@($statuses|Where-Object {$_ -eq 'HTTP/1.1 200 OK'}).Count -ne 1 -or @($statuses|Where-Object {$_ -eq 'HTTP/1.1 409 Conflict'}).Count -ne 1){throw 'Native compare/commit race'}
+ }finally{foreach($c in $clients){$c.Dispose()}}
+ $rows=@([IO.File]::ReadAllLines((Join-Path $stores[17451] 'coins.log'),[Text.Encoding]::UTF8))
+ if($rows.Count -ne 4 -or @($rows|Where-Object {$_ -match '"op":"race"'}).Count -ne 1){throw 'Race appended more than once'}
+ $after=Raw-Request 17451 '/api/coins'
+ Set-Content (Join-Path $roots[17451] 'native-read-server.stop') 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Coin server clean stop'}
+ if((Get-FileHash (Join-Path $stores[17451] 'coins.log')).Hash -cne $after.hash){throw 'Coin persisted hash mismatch'}
+ if((Get-FileHash (Join-Path $stores[17451] 'seating.json')).Hash.ToLowerInvariant() -cne $seat){throw 'Coin write altered seat'}
+ Write-Host 'PASS native coin atomic revision, one accepted concurrent debit, exact persistence and unchanged seating'
+}finally{
+ foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
+ $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal
 }
