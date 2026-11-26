@@ -90,7 +90,19 @@ try{
  $refunds=@($events|Where-Object {$_.type -eq 'refund'})
  foreach($s in $spends){$matching=@($refunds|Where-Object {$_.charge -eq $s.charge -and $_.id -eq $s.id -and $_.amount -eq -$s.amount});if($matching.Count -ne 1){throw 'Refund must match charge, student and amount exactly once'}}
  $duo=@($spends|Group-Object charge|Where-Object {$_.Count -eq 2})
- if($duo.Count -ne 1 -or @($duo[0].Group|Where-Object {$_.amount -ne -1}).Count -ne 0 -or @($duo[0].Group.id|Sort-Object -Unique).Count -ne 2){throw 'Duo charge must spend one coin per distinct student'}
+ # Disk ledger deliberately preserves legacy denomination (COIN_UNIT=2).
+ # Validate exact raw amounts and the projected integer balances, not just row counts.
+ if($duo.Count -ne 1){throw 'Expected one two-student charge'}
+ $duoRows=@($duo[0].Group)
+ $duoIds=@($duoRows|ForEach-Object {$_.id}|Sort-Object -Unique)
+ if(($duoIds -join ',') -ne 'lab1,lab2' -or @($duoRows|Where-Object {$_.amount -ne -0.5}).Count -ne 0){throw ('Invalid duo raw spend: '+($duoRows|ConvertTo-Json -Compress))}
+ $solo=@($spends|Group-Object charge|Where-Object {$_.Count -eq 1}|ForEach-Object {$_.Group})
+ if($solo.Count -ne 2 -or @($solo|Where-Object {$_.id -ne 'lab1' -or $_.amount -ne -1}).Count -ne 0){throw 'Invalid fixture/solo raw spend'}
+ foreach($person in @(@{id='lab1';balance=14},@{id='lab2';balance=10})){
+  $sum=($events|Where-Object {$_.cls -eq 'LAB_CLASS' -and $_.id -eq $person.id}|Measure-Object amount -Sum).Sum
+  if(($sum*2) -ne $person.balance){throw ('Incorrect projected final balance: '+$person.id)}
+ }
+ Write-Host 'PASS disk denomination: solo -1 raw = -2 shown; duo -0.5 raw = -1 shown; both final balances exact'
  $finalSeat=Get-Content (Join-Path $runtime 'seating.json') -Raw -Encoding UTF8 | ConvertFrom-Json
  if($finalSeat.classId -ne 'LAB_CLASS_2' -or @($finalSeat.students).Count -ne 2 -or @($finalSeat.assignments).Count -ne 2){throw 'Unexpected manager seating'}
  $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
