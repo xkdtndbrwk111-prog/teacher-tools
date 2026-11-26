@@ -57,12 +57,12 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
 }
 try{
  $legacy=Start-Process -FilePath $ps -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+(Join-Path $Runtime 'server.ps1')+'" -Port 17449') -PassThru -WindowStyle Hidden
- $native=Start-Process -FilePath $exe -ArgumentList '--lab-read-server' -PassThru -WindowStyle Hidden
+ $native=Start-Process -FilePath $exe -ArgumentList '--lab-read-server' -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $LabRoot 'native-read-out.log') -RedirectStandardError (Join-Path $LabRoot 'native-read-err.log')
  $null=$legacy.Handle;$null=$native.Handle
  foreach($port in @(17449,17450)){
   $proc=if($port -eq 17449){$legacy}else{$native}
   $ok=$false
-  for($i=0;$i -lt 80;$i++){if($proc.HasExited){throw 'Server exited'};try{if((Raw-Request $port '/health').status -eq 'HTTP/1.1 200 OK'){$ok=$true;break}}catch{};Start-Sleep -Milliseconds 250}
+  for($i=0;$i -lt 80;$i++){if($proc.HasExited){throw ('Server exited port '+$port+' code '+$proc.ExitCode+' '+(Get-Content (Join-Path $LabRoot 'native-read-err.log') -Raw -ErrorAction SilentlyContinue))};try{if((Raw-Request $port '/health').status -eq 'HTTP/1.1 200 OK'){$ok=$true;break}}catch{};Start-Sleep -Milliseconds 250}
   if(!$ok -or (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen).OwningProcess -ne $proc.Id){throw 'Server ownership/readiness failure'}
  }
  $routes=@('/health','/','/index.html','/seating-inbox','/coins.js','/coins-ui.js','/update-ui.js','/podo.js','/handmade-paper.png','/museum-clouds/sky','/museum-clouds/far','/museum-clouds/near','/museum-sway/base/spring','/museum-sway/sheet/summer','/museum-sway/sheet/winter/left','/api/coins','/api/seating','/unknown')
@@ -87,6 +87,9 @@ try{
  Set-Content (Join-Path $LabRoot 'native-read-server.stop') 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native server stop failed'}
  Write-Host 'PASS native read server exact response parity, no user-data static exposure, write rejection, loopback ownership and clean stop'
+}catch{
+ if(Test-Path (Join-Path $LabRoot 'native-read-err.log')){Write-Host (Get-Content (Join-Path $LabRoot 'native-read-err.log') -Raw)}
+ throw
 }finally{
  foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
 }

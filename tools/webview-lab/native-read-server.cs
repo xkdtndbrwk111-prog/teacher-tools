@@ -38,6 +38,7 @@ internal static class NativeReadServer {
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
+   try{
    int budget=32768;string[] req=ReadLine(s,ref budget).Split(' ');
    var h=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
    while(true){string line=ReadLine(s,ref budget);if(line=="")break;int i=line.IndexOf(':');if(i<1||!Regex.IsMatch(line.Substring(0,i),"^[A-Za-z0-9-]+$"))throw new IOException("Header");string k=line.Substring(0,i);if(h.ContainsKey(k))throw new IOException("Duplicate header");h.Add(k,line.Substring(i+1).Trim());}
@@ -73,6 +74,10 @@ internal static class NativeReadServer {
    if(bytes==null){Json(s,"404 Not Found","{\"error\":\"missing asset\"}");return;}
    if(name=="dashboard.html"){using(var reader=new StreamReader(new MemoryStream(bytes),Encoding.UTF8,true))bytes=Utf8.GetBytes(reader.ReadToEnd());}
    Reply(s,"200 OK",Type(name),bytes);
+   }finally{
+    // NetworkStream owns the socket. Half-close before disposing it, never afterward.
+    try{c.Client.Shutdown(SocketShutdown.Send);}catch(SocketException){}catch(ObjectDisposedException){}
+   }
   }
  }
  static int Main(string[] args){
@@ -88,7 +93,7 @@ internal static class NativeReadServer {
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
     if(!l.Pending()){Thread.Sleep(20);continue;}
-    using(var c=l.AcceptTcpClient()){try{Serve(c);c.Client.Shutdown(SocketShutdown.Send);}catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}}
+    using(var c=l.AcceptTcpClient()){try{Serve(c);}catch(IOException e){Console.Error.WriteLine("Rejected connection: "+e.GetType().Name);}catch(SocketException e){Console.Error.WriteLine("Socket: "+e.SocketErrorCode);}catch(UnauthorizedAccessException){Console.Error.WriteLine("File access rejected");}}
    }return 0;
   }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();}
  }
