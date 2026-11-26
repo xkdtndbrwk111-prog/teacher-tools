@@ -1,4 +1,4 @@
-name: HOJA WebView2 phase 1 isolated Windows lab
+name: HOJA WebView2 isolated Windows lab
 on:
   pull_request:
     paths: ['tools/webview-lab/**','.github/workflows/hoja-webview-lab.yml']

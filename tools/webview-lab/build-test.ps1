@@ -39,6 +39,9 @@ $loader=Get-ChildItem (Join-Path $root 'sdk') -Recurse -Filter WebView2Loader.dl
 if(!$loader -or !(Test-Path $win)){throw 'Missing WebView2 dependencies'}
 Copy-Item $core.FullName,$win,$loader.FullName $out
 Copy-Item (Join-Path $PSScriptRoot 'mini-fixture.html') $out
+$realGame=Join-Path $out 'real-mini.html'
+Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/51c195b9cd87a63c96944f547ad307e07d7eac40/index.html' -OutFile $realGame
+if((git hash-object --no-filters $realGame).Trim() -ne '4f157000276a1633c9d90553bc6aac81e6980be8'){throw 'Real mini game Git blob hash mismatch'}
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$out\HOJA-WebView-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
@@ -72,6 +75,8 @@ try{
  for($i=0;$i -lt 240 -and !(Test-Path $readyPath);$i++){if($hostProc.HasExited){throw ('Native host exited: '+(Get-Content $result -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
  if(!(Test-Path $readyPath)){throw 'Manager handshake timed out'}
  if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation before Phase 2B'}
+ if(!(Test-Path (Join-Path $root 'real-game.pass'))){throw 'Real game verification missing'}
+ Get-Content (Join-Path $root 'real-game.pass')
  node (Join-Path $PSScriptRoot 'manager-test.cjs') $root
  if($LASTEXITCODE -ne 0){Get-Content (Join-Path $root 'server-err.log') -ErrorAction SilentlyContinue;throw 'Chrome manager test failed'}
  if(!$hostProc.WaitForExit(30000)){throw 'Native host timed out'}
@@ -79,12 +84,12 @@ try{
  Get-Content $result
  if($hostProc.ExitCode -ne 0){throw 'Native host failed'}
  $events=@(Get-Content (Join-Path $runtime 'coins.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
- if($events.Count -ne 6 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 1 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 1){throw 'Unexpected ledger contents'}
+ if($events.Count -ne 8 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 2 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 2){throw 'Unexpected ledger contents'}
  $finalSeat=Get-Content (Join-Path $runtime 'seating.json') -Raw -Encoding UTF8 | ConvertFrom-Json
  if($finalSeat.classId -ne 'LAB_CLASS_2' -or @($finalSeat.students).Count -ne 2 -or @($finalSeat.assignments).Count -ne 2){throw 'Unexpected manager seating'}
  $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
  if($offline.wallpaper){throw 'Closed host still reports connected'}
- Write-Host "PASS isolated ledger: exact grant/spend/refund once; Phase 2A seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
+ Write-Host "PASS isolated ledger: exact grant once, fixture and real game spend/refund once each; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
  if($hostProc -and !$hostProc.HasExited){$hostProc.Kill();$hostProc.WaitForExit()}
  if($server -and !$server.HasExited){$server.Kill();$server.WaitForExit()}

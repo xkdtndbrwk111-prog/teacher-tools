@@ -11,7 +11,9 @@ internal sealed class Lab : Form {
     const string Origin = "http://127.0.0.1:17449";
     readonly WebView2 view = new WebView2();
     readonly string profile, result;
-    string fixture;
+    string fixture, realGame;
+    bool useRealGame;
+    CoreWebView2Frame gameFrame;
     readonly Timer watchdog = new Timer();
     readonly Timer heartbeat = new Timer();
     string modeFile;
@@ -22,6 +24,10 @@ internal sealed class Lab : Form {
     internal Lab(string profile, string result) {
         this.profile=profile; this.result=result;
         fixture=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mini-fixture.html"));
+        realGame=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"real-mini.html"));
+        string original="const DASHBOARD_ORIGIN='http://127.0.0.1:17439';";
+        Require(realGame.IndexOf(original,StringComparison.Ordinal)>=0&&realGame.IndexOf(original,StringComparison.Ordinal)==realGame.LastIndexOf(original,StringComparison.Ordinal),"exact real game origin anchor");
+        realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='http://127.0.0.1:17449';");
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
         view.Dock=DockStyle.Fill; Controls.Add(view);
@@ -71,6 +77,7 @@ internal sealed class Lab : Form {
         core.Settings.AreDefaultContextMenusEnabled=false;
         core.Settings.IsWebMessageEnabled=false;
         core.Settings.AreHostObjectsAllowed=false;
+        core.FrameCreated+=(s,e)=>{gameFrame=e.Frame;};
         core.NavigationStarting+=(s,e)=>{if(!Local(e.Uri))e.Cancel=true;};
         core.FrameNavigationStarting+=(s,e)=>{if(!Local(e.Uri)&&!GameFixture(e.Uri)&&e.Uri!="about:blank")e.Cancel=true;};
         core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
@@ -79,7 +86,8 @@ internal sealed class Lab : Form {
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
         core.WebResourceRequested+=(s,e)=>{
             if(GameFixture(e.Request.Uri)&&e.Request.Method=="GET"){
-                e.Response=env.CreateWebResourceResponse(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(fixture)),200,"OK","Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'");
+                string csp=useRealGame?"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'":"default-src 'none'; script-src 'unsafe-inline'";
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(useRealGame?realGame:fixture)),200,"OK","Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: "+csp);
             }else if(!Allowed(e.Request.Uri,e.Request.Method))
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
@@ -95,13 +103,14 @@ internal sealed class Lab : Form {
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
         await VerifyGame(core);
+        await VerifyRealGame(core);
         await VerifyManager(core);
         Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
         SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; Chrome manager seating and offline seating/PE presentation");
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs keyboard/touch and coin spend/refund; Chrome manager seating and offline seating/PE presentation");
     }
     async Task<string> WaitResult(CoreWebView2 core,string expression) {
         for(int i=0;i<100;i++){
@@ -139,6 +148,60 @@ internal sealed class Lab : Form {
         await core.ExecuteScriptAsync("window.labGameResult='';document.getElementById('openMiniGames').click()");
         Require(await WaitResult(core,"window.labGameResult||''")=="\"ok\"","mini reopen");
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+    }
+    async Task GameWait(string expression,string label,int count=120) {
+        string actual="";
+        for(int i=0;i<count;i++){
+            if(gameFrame!=null){try{actual=await gameFrame.ExecuteScriptAsync(expression);if(actual=="true")return;}catch(InvalidOperationException){}}
+            await Task.Delay(100);
+        }
+        throw new InvalidOperationException(label+" last="+actual);
+    }
+    async Task GameAction(string script) {
+        Require(await gameFrame.ExecuteScriptAsync(script+";true")=="true","real game action "+script);
+    }
+    async Task SendKey(CoreWebView2 core,string key,string code) {
+        string p="\"key\":\""+key+"\",\"code\":\""+code+"\",\"windowsVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0])+",\"nativeVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0]);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"rawKeyDown\","+p+"}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"keyUp\","+p+"}");
+    }
+    async Task VerifyRealGame(CoreWebView2 core) {
+        // Keep the earlier fixture regression and its exact ledger independent.
+        string ledger=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","coins.log");
+        Require(File.ReadAllLines(ledger).Length==6,"fixture exact six ledger rows before real game");
+        useRealGame=true;gameFrame=null;
+        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
+        await GameWait("typeof COIN!=='undefined'&&COIN.ready&&COIN.classId==='LAB_CLASS'&&COIN.students.some(s=>s.id==='lab1'&&s.balance===14)","real game coin handshake",200);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","real menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","stairs selection");
+        await GameAction("document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","real coin picker");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("typeof ST!=='undefined'&&ST.on&&ST.phase==='run'&&ST.players.length===1&&round?.charge&&COIN.students[0].balance===12","real stairs start and spend",180);
+        Require(await gameFrame.ExecuteScriptAsync("stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2")=="true","stairs rendered canvas/hit controls");
+        await core.ExecuteScriptAsync("document.getElementById('miniFrame').focus()");
+        await GameAction("document.body.focus()");
+        string key=await gameFrame.ExecuteScriptAsync("stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a'");
+        Require(key=="\"a\""||key=="\"d\"","stairs next key");
+        string k=key.Trim('"');await SendKey(core,k,"Key"+k.ToUpperInvariant());
+        await GameWait("ST.players[0].idx===1","CDP keyboard actually moves player",20);
+        string raw=await gameFrame.ExecuteScriptAsync("(()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c0':'t0')),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')})()");
+        string offset=await core.ExecuteScriptAsync("(()=>{const r=document.getElementById('miniFrame').getBoundingClientRect();return [r.left,r.top].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
+        string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+x+",\"y\":"+y+",\"id\":1}]}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        await GameWait("ST.players[0].idx===2","CDP touch actually moves player",20);
+        await SendKey(core,"Escape","Escape");
+        await GameWait("ST.phase==='paused'&&!document.getElementById('stOverlay').hidden","real keyboard pause",20);
+        await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&COIN.refunds.size===0&&COIN.students[0].balance===14","real refund and return",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","real game board return");
+        useRealGame=false;
+        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs menu, canvas, coin spend/refund, CDP key/touch, pause, return");
     }
     void PublishMode() {
         string tmp=modeFile+".tmp";
