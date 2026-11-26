@@ -28,6 +28,37 @@ foreach($needle in @($rosterOld,$rosterRead,$rosterMerge)){
 $tokens=$null;$parseErrors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile($serverPath,[ref]$tokens,[ref]$parseErrors)
 if($parseErrors.Count){throw ($parseErrors|Out-String)}
+# Isolated confirmed timetable input and deterministic lesson clock only. No production source edits.
+$dashboardPath=Join-Path $runtime 'dashboard.html'
+$dashboardText=[IO.File]::ReadAllText($dashboardPath)
+$lessonStartAnchor='function miniLessonNow(){'
+$lessonEndAnchor='function miniLessonReset(){'
+$i=$dashboardText.IndexOf($lessonStartAnchor)
+$j=$dashboardText.IndexOf($lessonEndAnchor)
+if($i -lt 0 -or $j -le $i -or $i -ne $dashboardText.LastIndexOf($lessonStartAnchor) -or $j -ne $dashboardText.LastIndexOf($lessonEndAnchor)){throw 'Lesson guard anchors missing or ambiguous'}
+$guard=$dashboardText.Substring($i,$j-$i)
+if(!$guard.Contains('const c=seoulClock();') -or !$guard.Contains('return miniLessonPlan(c,lastWeek,periods,Date.now());')){throw 'Lesson clock anchors missing'}
+$guard=$guard.Replace('const c=seoulClock();','const c=seoulClock(new Date(window.__labLessonClock??Date.now()));').Replace('return miniLessonPlan(c,lastWeek,periods,Date.now());','return miniLessonPlan(c,lastWeek,periods,window.__labLessonClock??Date.now());')
+$labLesson=@'
+ let labLessonSaved=null;
+ window.__labLessonSeed=()=>{
+   if(labLessonSaved)throw Error('fixture already active');
+   labLessonSaved={week:lastWeek,confirmed:weekAlertConfirmed,times:periods,stored:localStorage.getItem('class-periods'),effects:lessonAlertSettings.enabled};
+   window.__labLessonClock=Date.parse('2026-11-24T08:59:15+09:00');
+   lastWeek={referenceDate:'2026-11-24',dates:['11/23','11/24','11/25','11/26','11/27'],rows:[{label:'1교시',cells:['','국어','','','']}]};
+   periods=[['09:00','09:40'],['09:50','10:30'],['10:40','11:20'],['11:30','12:10'],['13:00','13:40'],['13:50','14:30'],['14:40','15:20']];
+   localStorage.setItem('class-periods',JSON.stringify(periods));weekAlertConfirmed=true;lessonAlertSettings.enabled=true;
+ };
+ window.__labLessonStatus=()=>({plan:miniLessonNow(),farewell:miniLessonFarewell?.textContent||'',image:!!miniLessonFarewell?.querySelector('img')?.src.startsWith('data:image/webp;base64,')});
+ window.__labLessonRestore=()=>{
+   const s=labLessonSaved;if(!s)throw Error('fixture missing');
+   lastWeek=s.week;weekAlertConfirmed=s.confirmed;periods=s.times;lessonAlertSettings.enabled=s.effects;
+   if(s.stored===null)localStorage.removeItem('class-periods');else localStorage.setItem('class-periods',s.stored);
+   delete window.__labLessonClock;labLessonSaved=null;
+ };
+'@
+$dashboardText=$dashboardText.Substring(0,$i)+$guard+$labLesson+[Environment]::NewLine+$dashboardText.Substring($j)
+[IO.File]::WriteAllText($dashboardPath,$dashboardText,[Text.UTF8Encoding]::new($false))
 $version='1.0.2903.40'
 $zip=Join-Path $root 'sdk.zip'
 Invoke-WebRequest -UseBasicParsing -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$version/microsoft.web.webview2.$version.nupkg" -OutFile $zip
@@ -85,7 +116,7 @@ try{
  Get-Content $result
  if($hostProc.ExitCode -ne 0){throw 'Native host failed'}
  $events=@(Get-Content (Join-Path $runtime 'coins.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
- if($events.Count -ne 13 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 4 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 4){throw 'Unexpected ledger contents'}
+ if($events.Count -ne 15 -or @($events|Where-Object {$_.type -eq 'spend'}).Count -ne 5 -or @($events|Where-Object {$_.type -eq 'refund'}).Count -ne 5){throw 'Unexpected ledger contents'}
  $spends=@($events|Where-Object {$_.type -eq 'spend'})
  $refunds=@($events|Where-Object {$_.type -eq 'refund'})
  foreach($s in $spends){$matching=@($refunds|Where-Object {$_.charge -eq $s.charge -and $_.id -eq $s.id -and $_.amount -eq -$s.amount});if($matching.Count -ne 1){throw 'Refund must match charge, student and amount exactly once'}}
@@ -97,7 +128,7 @@ try{
  $duoIds=@($duoRows|ForEach-Object {$_.id}|Sort-Object -Unique)
  if(($duoIds -join ',') -ne 'lab1,lab2' -or @($duoRows|Where-Object {$_.amount -ne -0.5}).Count -ne 0){throw ('Invalid duo raw spend: '+($duoRows|ConvertTo-Json -Compress))}
  $solo=@($spends|Group-Object charge|Where-Object {$_.Count -eq 1}|ForEach-Object {$_.Group})
- if($solo.Count -ne 2 -or @($solo|Where-Object {$_.id -ne 'lab1' -or $_.amount -ne -1}).Count -ne 0){throw 'Invalid fixture/solo raw spend'}
+ if($solo.Count -ne 3 -or @($solo|Where-Object {$_.id -ne 'lab1' -or $_.amount -ne -1}).Count -ne 0){throw 'Invalid fixture/solo/timed raw spend'}
  foreach($person in @(@{id='lab1';balance=14},@{id='lab2';balance=10})){
   $sum=($events|Where-Object {$_.cls -eq 'LAB_CLASS' -and $_.id -eq $person.id}|Measure-Object amount -Sum).Sum
   if(($sum*2) -ne $person.balance){throw ('Incorrect projected final balance: '+$person.id)}
@@ -107,7 +138,7 @@ try{
  if($finalSeat.classId -ne 'LAB_CLASS_2' -or @($finalSeat.students).Count -ne 2 -or @($finalSeat.assignments).Count -ne 2){throw 'Unexpected manager seating'}
  $offline=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
  if($offline.wallpaper){throw 'Closed host still reports connected'}
- Write-Host "PASS isolated ledger: exact fixture and solo/duo spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
+ Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
  if($hostProc -and !$hostProc.HasExited){$hostProc.Kill();$hostProc.WaitForExit()}
  if($server -and !$server.HasExited){$server.Kill();$server.WaitForExit()}

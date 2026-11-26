@@ -30,6 +30,10 @@ internal sealed class Lab : Form {
         string original="const DASHBOARD_ORIGIN='http://127.0.0.1:17439';";
         Require(realGame.IndexOf(original,StringComparison.Ordinal)>=0&&realGame.IndexOf(original,StringComparison.Ordinal)==realGame.LastIndexOf(original,StringComparison.Ordinal),"exact real game origin anchor");
         realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='http://127.0.0.1:17449';");
+        // Only the lesson guard's clock is controllable in this isolated test.
+        string clockAnchor="const now=Date.now(),state=lessonPhase(lessonStart,now);";
+        Require(realGame.IndexOf(clockAnchor,StringComparison.Ordinal)>=0&&realGame.IndexOf(clockAnchor,StringComparison.Ordinal)==realGame.LastIndexOf(clockAnchor,StringComparison.Ordinal),"exact lesson clock anchor");
+        realGame=realGame.Replace(clockAnchor,"const now=window.__labLessonClock??Date.now(),state=lessonPhase(lessonStart,now);");
         // Actual game state is lexical inside one IIFE. Read-only observation, no game/coin state writes.
         string start="<script>(() => {";
         Require(realGame.IndexOf(start,StringComparison.Ordinal)>=0&&realGame.IndexOf(start,StringComparison.Ordinal)==realGame.LastIndexOf(start,StringComparison.Ordinal),"real main script anchor");
@@ -38,7 +42,7 @@ internal sealed class Lab : Form {
         int tail=realGame.LastIndexOf(end,StringComparison.Ordinal);
         Require(tail>0&&realGame.Substring(tail+end.Length).TrimStart().StartsWith("</script>",StringComparison.Ordinal),"real main closure end");
         string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,pid:e.pointerId,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
-window.__labObserve=()=>({focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,balance2:COIN.students.find(s=>s.id==='lab2')?.balance,idx2:ST.players[1]?.idx,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
+window.__labObserve=()=>({lessonStart,lessonRevision,lessonWarning,lessonClosed,lessonOverlay:!!lessonOverlay?.isConnected,focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,balance2:COIN.students.find(s=>s.id==='lab2')?.balance,idx2:ST.players[1]?.idx,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
 window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
 window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c':'t')+i),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};
 window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
@@ -130,7 +134,7 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; Chrome manager seating and offline seating/PE presentation");
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; real timetable-driven lesson end; Chrome manager seating and offline seating/PE presentation");
     }
     async Task<string> WaitResult(CoreWebView2 core,string expression) {
         for(int i=0;i<100;i++){
@@ -247,8 +251,9 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
         Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","real game board return");
         await VerifyDuo(core);
+        await VerifyLessonEnd(core);
         useRealGame=false;
-        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs solo and reopened two-player round, simultaneous trusted touch, coin spend/refund, keyboard, pause, return");
+        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs solo and reopened two-player round, simultaneous trusted touch, coin spend/refund, keyboard, pause, return; real lesson warning, timed close, farewell, refund and re-entry lock");
     }
     async Task VerifyDuo(CoreWebView2 core) {
         await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
@@ -287,6 +292,51 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14&&__labObserve().balance2===10","duo refund restores both balances",100);
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
         Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","duo return to board");
+    }
+    async Task BoardWait(CoreWebView2 core,string expression,string label,int count=50) {
+        string last="";
+        for(int i=0;i<count;i++){
+            last=await core.ExecuteScriptAsync(expression);
+            if(last=="true"){Trace("PASS "+label);return;}
+            await Task.Delay(100);
+        }
+        Trace("FAIL "+label+" last="+last+" board="+await core.ExecuteScriptAsync("JSON.stringify({lesson:window.__labLessonStatus?.(),messages:window.__labLessonMessages,open:document.getElementById('miniGames').open})"));
+        throw new InvalidOperationException(label+" last="+last);
+    }
+    async Task VerifyLessonEnd(CoreWebView2 core) {
+        // Existing lesson logic, real cross-origin messages, real timers and coin ledger.
+        // Only the confirmed timetable input and lesson-boundary clocks are fixtures.
+        await core.ExecuteScriptAsync(@"window.__labLessonMessages=[];addEventListener('message',e=>{
+          if(e.origin!=='https://xkdtndbrwk111-prog.github.io'||e.source!==document.getElementById('miniFrame').contentWindow||!e.data)return;
+          const d=e.data;if(d.type==='hoja-close'||d.type==='hoja-ready'||d.type==='hoja-coin-refund')window.__labLessonMessages.push({type:d.type,sessionId:d.sessionId,reason:d.reason,start:d.lessonStartMs,id:d.lessonCue?.id,line:d.lessonCue?.line,portrait:typeof d.lessonCue?.portrait==='string'&&d.lessonCue.portrait.startsWith('data:image/webp;base64,')});
+        });document.getElementById('openMiniGames').click()");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14","lesson round reopened",150);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden","lesson round menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","lesson round selection");
+        await GameAction("document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","lesson round student");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().charged&&__labObserve().balance===12","lesson real paid round",180);
+        await GameAction("window.__labLessonClock=Date.parse('2026-11-24T08:59:15+09:00')");
+        Require(await core.ExecuteScriptAsync("window.__labLessonSeed();!!window.__labLessonStatus().plan&&!window.__labLessonStatus().plan.locked")=="true","confirmed timetable fixture before lock");
+        await GameWait("__labObserve().lessonStart===Date.parse('2026-11-24T09:00:00+09:00')&&__labObserve().lessonWarning&&__labObserve().lessonOverlay&&!__labObserve().lessonClosed","actual board schedule produces game fuse warning",25);
+        Require(await core.ExecuteScriptAsync("document.getElementById('miniGames').open")=="true","game remains open at warning");
+        // Advance both guard clocks to the actual 30-second cutoff, never call close directly.
+        await core.ExecuteScriptAsync("window.__labLessonClock=Date.parse('2026-11-24T08:59:30+09:00')");
+        await GameAction("window.__labLessonClock=Date.parse('2026-11-24T08:59:30+09:00')");
+        await BoardWait(core,"!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')&&window.__labLessonStatus().plan.locked","actual deadline closes iframe",35);
+        await BoardWait(core,@"(()=>{const a=window.__labLessonMessages,m=a.find(x=>x.type==='hoja-close'&&x.reason==='lesson-end'),s=window.__labLessonStatus();return !!m&&a.some(x=>x.type==='hoja-ready'&&x.sessionId===m.sessionId)&&m.start===Date.parse('2026-11-24T09:00:00+09:00')&&m.portrait&&!!m.id&&!!m.line&&s.farewell.includes(m.line)&&s.image})()","actual game farewell cue rendered by board",25);
+        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await TTCoins.snapshot(true),st=TTCoins.stateOf(s.events,'LAB_CLASS');document.documentElement.dataset.labTimedRefund=TTCoins.balanceOf(st,'lab1')===14&&TTCoins.balanceOf(st,'lab2')===10?'ok':'bad'}catch(e){document.documentElement.dataset.labTimedRefund='error'}})()");
+        await BoardWait(core,"document.documentElement.dataset.labTimedRefund==='ok'","timed exit refunds eligible round",35);
+        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
+        await BoardWait(core,"!document.getElementById('miniGames').open&&window.__labLessonStatus().plan.locked&&window.__labLessonStatus().farewell.includes('다음 쉬는 시간에 만나')","re-entry blocked at cutoff");
+        await core.ExecuteScriptAsync("window.__labLessonClock=Date.parse('2026-11-24T09:40:00+09:00');document.getElementById('openMiniGames').click()");
+        await BoardWait(core,"document.getElementById('miniGames').open&&!window.__labLessonStatus().plan?.locked","next break unlocks actual board");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14","next break real game reconnect",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click();window.__labLessonRestore()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')&&window.__labLessonClock===undefined")=="true","lesson fixture restored and board returned");
     }
     void PublishMode() {
         string tmp=modeFile+".tmp";
