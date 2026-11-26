@@ -160,10 +160,37 @@ function Start-R8Board([string]$ReadyToken=''){
 function Run-Bootstrap([string]$expectedRelease,[string]$expectedState){
  Remove-Item $ready,$stop,$result,$pidFile -Force -ErrorAction SilentlyContinue
  $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
- $runner=Start-Process -FilePath $ps -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$bootstrapFile+'" -Windowed') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $root 'bootstrap-out.log') -RedirectStandardError (Join-Path $root 'bootstrap-err.log')
+ $statePath=Join-Path $test 'update-state.json'
+ $diagnostic=Join-Path $root 'bootstrap-exception.txt'
+ $complete=Join-Path $root 'bootstrap-complete.txt'
+ $wrapper=Join-Path $root 'invoke-bootstrap.ps1'
+ Remove-Item $statePath,$diagnostic,$complete -Force -ErrorAction SilentlyContinue
+ # Retain the Process handle before waiting; write explicit completion and uncaught-error evidence.
+ $wrapperSource=@'
+$ErrorActionPreference='Stop'
+try{
+ $root=$env:HOJA_LAB_ROOT
+ & (Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal\launch.ps1') -Windowed
+ [IO.File]::WriteAllText((Join-Path $root 'bootstrap-complete.txt'),'returned')
+ exit 0
+}catch{
+ [IO.File]::WriteAllText((Join-Path $env:HOJA_LAB_ROOT 'bootstrap-exception.txt'),($_|Out-String)+[Environment]::NewLine+$_.ScriptStackTrace)
+ exit 1
+}
+'@
+ [IO.File]::WriteAllText($wrapper,$wrapperSource,[Text.UTF8Encoding]::new($true))
+ $runner=Start-Process -FilePath $ps -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$wrapper+'"') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $root 'bootstrap-out.log') -RedirectStandardError (Join-Path $root 'bootstrap-err.log')
+ $null=$runner.Handle
  $child=$null;$owned=$null
  try{
-  if(!$runner.WaitForExit(90000) -or $runner.ExitCode -ne 0){throw ('Bootstrap process failed: '+(Get-Content (Join-Path $root 'bootstrap-err.log') -Raw -ErrorAction SilentlyContinue))}
+  $finished=$runner.WaitForExit(90000)
+  if(!$finished -or $runner.ExitCode -ne 0 -or !(Test-Path $complete) -or (Get-Content $complete -Raw) -cne 'returned'){
+   foreach($path in @($diagnostic,$statePath,(Join-Path $root 'bootstrap-out.log'),(Join-Path $root 'bootstrap-err.log'),$result)){
+    if(Test-Path $path){Write-Host ("BOOTSTRAP DIAGNOSTIC "+(Split-Path $path -Leaf)+": "+(Get-Content $path -Raw))}
+   }
+   throw ("Bootstrap process failed: finished=$finished exit=$($runner.ExitCode)")
+  }
+  if(!(Test-Path $statePath)){throw 'Bootstrap returned without fresh update state'}
   $state=Read-R8Json (Join-Path $test 'update-state.json')
   if($state.status -cne $expectedState){throw ('Unexpected bootstrap state: '+($state|ConvertTo-Json -Compress))}
   for($i=0;$i -lt 180 -and !(Test-Path $ready);$i++){Start-Sleep -Milliseconds 250}
