@@ -260,6 +260,41 @@ try{
    Write-Host "PASS $source committed dashboard and edited memo start after transfer cleanup"
   }finally{if(!$native.HasExited){$native.Kill();$native.WaitForExit()}}
  }
+ # 3E-1a: actual crash with an externally managed service; never stop a foreign live owner.
+ $modePath=Join-Path $runtime 'board-mode.json'
+ $proofPath=Join-Path $runtime 'native-mode-owner.json'
+ $foreignMode=(@{mode='window';window=1;pid=$PID;release='2026-11-25-V1.66.43-STABLE-PILOT'}|ConvertTo-Json -Compress)
+ [IO.File]::WriteAllText($modePath,$foreignMode)
+ try{
+  $attempt=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch window' -PassThru
+  if(!$attempt.WaitForExit(10000) -or $attempt.ExitCode -ne 4 -or (Get-Content $modePath -Raw) -ne $foreignMode){throw 'Unowned heartbeat recovery was not refused'}
+  [IO.File]::WriteAllText($proofPath,$foreignMode)
+  $attempt=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch window' -PassThru
+  if(!$attempt.WaitForExit(10000) -or $attempt.ExitCode -ne 4 -or (Get-Content $modePath -Raw) -ne $foreignMode){throw 'Live owner recovery was not refused'}
+  Write-Host 'PASS unowned and live PID mode metadata preserved'
+ }finally{Remove-Item $modePath,$proofPath -Force -ErrorAction SilentlyContinue}
+ Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+ $crashed=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch window' -PassThru
+ try{
+  for($i=0;$i -lt 160 -and !(Test-Path $nativeReady);$i++){if($crashed.HasExited){throw 'Crash fixture start failed'};Start-Sleep -Milliseconds 250}
+  if(!(Test-Path $nativeReady) -or !(Test-Path $proofPath)){throw 'Crash fixture not ready'}
+  $oldMode=Get-Content $modePath -Raw
+  if((Get-Content $proofPath -Raw) -ne $oldMode){throw 'Ownership proof mismatch'}
+  $crashed.Kill();$crashed.WaitForExit()
+  if(!(Test-Path $modePath) -or !(Test-Path $proofPath)){throw 'Crash fixture unexpectedly removed heartbeat'}
+  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+  $restarted=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch window' -PassThru
+  try{
+   for($i=0;$i -lt 160 -and !(Test-Path $nativeReady);$i++){if($restarted.HasExited){throw ('Crash restart failed '+$restarted.ExitCode+' '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady)){throw 'Crash restart timeout'}
+   $current=Get-Content $modePath -Raw|ConvertFrom-Json
+   if($current.pid -ne $restarted.Id -or $current.pid -eq $crashed.Id){throw 'Stale mode reused'}
+   if($server.HasExited -or (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $server.Id){throw 'External service changed during restart'}
+   Set-Content $nativeStop 'stop' -Encoding ASCII
+   if(!$restarted.WaitForExit(10000) -or $restarted.ExitCode -ne 0 -or (Test-Path $modePath) -or (Test-Path $proofPath)){throw 'Recovered native close failed'}
+   Write-Host 'PASS actual killed native host recovered dead owned heartbeat, external server preserved'
+  }finally{if(!$restarted.HasExited){$restarted.Kill();$restarted.WaitForExit()}}
+ }finally{if(!$crashed.HasExited){$crashed.Kill();$crashed.WaitForExit()}}
  # 3B: refuse ownership of the existing healthy service, then start/stop the real isolated service natively.
  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
  $attempt=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch-owned window' -PassThru

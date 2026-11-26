@@ -31,6 +31,7 @@ internal sealed class NativeBoardLaunch : Form {
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr h,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource){
         this.startOwned=startOwned;this.migrationSource=migrationSource;
@@ -266,7 +267,14 @@ internal sealed class NativeBoardLaunch : Form {
     void Publish(){
         ownedWindow=Handle.ToInt64();
         string tmp=modeFile+".native-tmp";
-        File.WriteAllText(tmp,ModeJson(),new UTF8Encoding(false));
+        string json=ModeJson();
+        // Only a heartbeat published by this research launcher has this exact ownership proof.
+        string proof=Path.Combine(runtime,"native-mode-owner.json");
+        if(!published){
+            Require(!File.Exists(modeFile),"unexpected mode file before publish");
+            File.WriteAllText(proof,json,new UTF8Encoding(false));
+        }
+        File.WriteAllText(tmp,json,new UTF8Encoding(false));
         if(File.Exists(modeFile))File.Replace(tmp,modeFile,null);else File.Move(tmp,modeFile);
         published=true;
     }
@@ -275,11 +283,35 @@ internal sealed class NativeBoardLaunch : Form {
         try{
             if(File.Exists(modeFile)){
                 var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(modeFile));
-                if(Convert.ToInt64(json["window"])==ownedWindow&&Convert.ToInt32(json["pid"])==Process.GetCurrentProcess().Id)File.Delete(modeFile);
+                if(Convert.ToInt64(json["window"])==ownedWindow&&Convert.ToInt32(json["pid"])==Process.GetCurrentProcess().Id){
+                    File.Delete(modeFile);
+                    string proof=Path.Combine(runtime,"native-mode-owner.json");
+                    if(File.Exists(proof)&&File.ReadAllText(proof)==ModeJson())File.Delete(proof);
+                }
             }
         }catch{}
     }
     void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();NativeShareInput.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
+    // Caller holds exclusive launcher lock. Never terminate processes on stale metadata.
+    static bool RecoverStaleMode(string runtime){
+        string mode=Path.Combine(runtime,"board-mode.json"),proof=Path.Combine(runtime,"native-mode-owner.json");
+        if(!File.Exists(mode))return true;
+        try{
+            if(!File.Exists(proof))return false;
+            string raw=File.ReadAllText(mode);
+            if(raw!=File.ReadAllText(proof))return false;
+            var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(raw);
+            int pid=Convert.ToInt32(d["pid"]);long hwnd=Convert.ToInt64(d["window"]);
+            if(pid<=0||hwnd<=0||(string)d["release"]!=Release||((string)d["mode"]!="window"&&(string)d["mode"]!="wallpaper"))return false;
+            // A reused PID or HWND is ambiguous: retain metadata and refuse.
+            try{using(var proc=Process.GetProcessById(pid)){if(!proc.HasExited)return false;}}catch(ArgumentException){}
+            uint owner;GetWindowThreadProcessId(new IntPtr(hwnd),out owner);
+            if(owner!=0)return false;
+            if(File.ReadAllText(mode)!=raw||File.ReadAllText(proof)!=raw)return false;
+            File.Delete(mode);File.Delete(proof);
+            return true;
+        }catch{return false;}
+    }
     [STAThread] static int Main(string[] args){
         bool migrate=args.Length==3&&args[0]=="--lab-launch-migrate"&&(args[2]=="chrome"||args[2]=="edge");
         if((!migrate&&(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")))||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
@@ -292,7 +324,7 @@ internal sealed class NativeBoardLaunch : Form {
         FileStream guard;
         try{guard=new FileStream(Path.Combine(runtime,"native-launch.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}catch(IOException){return 3;}
         using(guard){
-            if(File.Exists(Path.Combine(runtime,"board-mode.json")))return 4;
+            if(!RecoverStaleMode(runtime))return 4;
             try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
             using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned",migrate?args[2]:null)){
