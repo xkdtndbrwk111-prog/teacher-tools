@@ -39,9 +39,9 @@ internal static class NativeReadServer {
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
    int budget=32768;string[] req=ReadLine(s,ref budget).Split(' ');
-   if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    var h=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
    while(true){string line=ReadLine(s,ref budget);if(line=="")break;int i=line.IndexOf(':');if(i<1||!Regex.IsMatch(line.Substring(0,i),"^[A-Za-z0-9-]+$"))throw new IOException("Header");string k=line.Substring(0,i);if(h.ContainsKey(k))throw new IOException("Duplicate header");h.Add(k,line.Substring(i+1).Trim());}
+   if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
    if(req[0]!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
@@ -88,7 +88,7 @@ internal static class NativeReadServer {
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
     if(!l.Pending()){Thread.Sleep(20);continue;}
-    using(var c=l.AcceptTcpClient()){try{Serve(c);}catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}}
+    using(var c=l.AcceptTcpClient()){try{Serve(c);c.Client.Shutdown(SocketShutdown.Send);}catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}}
    }return 0;
   }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();}
  }

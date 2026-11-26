@@ -20,14 +20,33 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
   if($origin){$request+="Origin: $origin"+$nl}
   $request+="Connection: close"+$nl+$nl
   $bytes=[Text.Encoding]::ASCII.GetBytes($request);$stream.Write($bytes,0,$bytes.Length)
-  $ms=[IO.MemoryStream]::new()
-  try{$stream.CopyTo($ms);$raw=$ms.ToArray()}finally{$ms.Dispose()}
-  $split=-1
-  for($i=0;$i -lt [Math]::Min($raw.Length-3,32768);$i++){if($raw[$i] -eq 13 -and $raw[$i+1] -eq 10 -and $raw[$i+2] -eq 13 -and $raw[$i+3] -eq 10){$split=$i;break}}
-  if($split -lt 0){throw "No HTTP response $port $path"}
-  $head=[Text.Encoding]::ASCII.GetString($raw,0,$split)
-  $body=New-Object byte[] ($raw.Length-$split-4)
-  [Array]::Copy($raw,$split+4,$body,0,$body.Length)
+  # Read exactly the declared response, not EOF: a peer may reset after a valid denial.
+  $header=[IO.MemoryStream]::new()
+  try{
+   $tail=0
+   while($header.Length -lt 32768){
+    $v=$stream.ReadByte()
+    if($v -lt 0){throw "Truncated HTTP header $port $method $path"}
+    $header.WriteByte([byte]$v)
+    $tail=if(($tail -eq 0 -or $tail -eq 2) -and $v -eq 13){$tail+1}elseif(($tail -eq 1 -or $tail -eq 3) -and $v -eq 10){$tail+1}elseif($v -eq 13){1}else{0}
+    if($tail -eq 4){break}
+   }
+   if($tail -ne 4){throw "HTTP header limit $port $method $path"}
+   $rawHeader=$header.ToArray()
+  }finally{$header.Dispose()}
+  $split=$rawHeader.Length-4
+  $head=[Text.Encoding]::ASCII.GetString($rawHeader,0,$split)
+  $match=[regex]::Match($head,'(?im)^Content-Length: ([0-9]+)\r?$')
+  if(!$match.Success){throw "Missing Content-Length $port $method $path"}
+  $length=[int]$match.Groups[1].Value
+  if($length -gt 67108864){throw 'Response exceeds test limit'}
+  $body=New-Object byte[] $length
+  $offset=0
+  while($offset -lt $length){
+   $n=$stream.Read($body,$offset,$length-$offset)
+   if($n -le 0){throw "Truncated HTTP body $port $method $path"}
+   $offset+=$n
+  }
   $lines=$head -split $nl;$headers=@{}
   foreach($line in $lines|Select-Object -Skip 1){$idx=$line.IndexOf(':');$headers[$line.Substring(0,$idx)]=$line.Substring($idx+1).Trim()}
   if([int]$headers['Content-Length'] -ne $body.Length){throw 'Content length mismatch'}
@@ -55,12 +74,14 @@ try{
  }
  foreach($route in @('/api/coins','/api/seating')){
   foreach($case in @('foreign-host','cross-site','foreign-origin','post')){
+   Write-Host "CHECK native guard $route $case"
    $res=switch($case){'foreign-host'{Raw-Request 17450 $route GET 'evil.invalid'}'cross-site'{Raw-Request 17450 $route GET '' 'cross-site'}'foreign-origin'{Raw-Request 17450 $route GET '' '' 'https://evil.invalid'}'post'{Raw-Request 17450 $route POST '' 'same-origin'}}
    $expected=if($case -eq 'post'){'HTTP/1.1 405 Method Not Allowed'}else{'HTTP/1.1 403 Forbidden'}
    if($res.status -ne $expected){throw "Native guard failed $route $case"}
   }
  }
  foreach($route in @('/coins.log','/seating.json','/server.ps1','/release.json','/native-profile','/../coins.log','/%2e%2e/coins.log')){
+  Write-Host "CHECK native private path $route"
   if((Raw-Request 17450 $route).status -notmatch '^HTTP/1.1 (400|404) '){throw "Native private file exposed $route"}
  }
  Set-Content (Join-Path $LabRoot 'native-read-server.stop') 'stop' -Encoding ASCII
