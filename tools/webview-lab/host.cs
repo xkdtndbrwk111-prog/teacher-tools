@@ -37,7 +37,8 @@ internal sealed class Lab : Form {
         string end="})();";
         int tail=realGame.LastIndexOf(end,StringComparison.Ordinal);
         Require(tail>0&&realGame.Substring(tail+end.Length).TrimStart().StartsWith("</script>",StringComparison.Ordinal),"real main closure end");
-        string probe=@"window.__labObserve=()=>({ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
+        string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
+window.__labObserve=()=>({focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
 window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
 window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c0':'t0')),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
         realGame=realGame.Insert(tail,probe+Environment.NewLine);
@@ -190,6 +191,20 @@ window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDi
     async Task GameAction(string script) {
         Require(await gameFrame.ExecuteScriptAsync(script+";true")=="true","real game action "+script);
     }
+    async Task FocusRealGame(CoreWebView2 core) {
+        Activate();view.Focus();
+        // Focus the real cross-origin document using browser input, not a synthetic DOM key event.
+        await core.ExecuteScriptAsync("document.getElementById('miniFrame').focus()");
+        string raw=await gameFrame.ExecuteScriptAsync("(()=>{const r=document.getElementById('stCanvas').getBoundingClientRect();return [r.left+r.width*.5,r.top+r.height*.16].join(',')})()");
+        string offset=await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame'),r=f.getBoundingClientRect();return [r.left+f.clientLeft,r.top+f.clientTop].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
+        string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        string point=",\"x\":"+x+",\"y\":"+y+",\"button\":\"left\",\"clickCount\":1";
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mousePressed\""+point+"}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseReleased\""+point+"}");
+        Trace("focus board="+await core.ExecuteScriptAsync("JSON.stringify({focused:document.hasFocus(),active:document.activeElement?.id})")+" game="+await gameFrame.ExecuteScriptAsync("JSON.stringify(__labObserve())"));
+        await GameWait("__labObserve().focus&&__labObserve().idx===0","real game focused without advancing",15);
+    }
     async Task SendKey(CoreWebView2 core,string key,string code) {
         string p="\"key\":\""+key+"\",\"code\":\""+code+"\",\"windowsVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0])+",\"nativeVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0]);
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"rawKeyDown\","+p+"}");
@@ -212,21 +227,20 @@ window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDi
         await GameAction("document.querySelector('[data-student=lab1]').click()");
         await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().n===1&&__labObserve().charged&&__labObserve().balance===12","real stairs start and spend",180);
         await GameWait("__labObserve().canvas","stairs rendered canvas/hit controls",30);
-        await core.ExecuteScriptAsync("document.getElementById('miniFrame').focus()");
-        await GameAction("document.body.focus()");
+        await FocusRealGame(core);
         string key=await gameFrame.ExecuteScriptAsync("__labNext()");
         Require(key=="\"a\""||key=="\"d\"","stairs next key");
         string k=key.Trim('"');await SendKey(core,k,"Key"+k.ToUpperInvariant());
-        await GameWait("__labObserve().idx===1","CDP keyboard actually moves player",20);
+        await GameWait("__labObserve().idx===1&&__labObserve().input.some(e=>e.type==='keydown'&&e.trusted&&e.code==='Key"+k.ToUpperInvariant()+"')","CDP keyboard actually moves player",20);
         string raw=await gameFrame.ExecuteScriptAsync("__labTouch()");
         string offset=await core.ExecuteScriptAsync("(()=>{const r=document.getElementById('miniFrame').getBoundingClientRect();return [r.left,r.top].join(',')})()");
         var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
         string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+x+",\"y\":"+y+",\"id\":1}]}");
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
-        await GameWait("__labObserve().idx===2","CDP touch actually moves player",20);
+        await GameWait("__labObserve().idx===2&&__labObserve().input.some(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted)","CDP touch actually moves player",20);
         await SendKey(core,"Escape","Escape");
-        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden","real keyboard pause",20);
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden&&__labObserve().input.some(e=>e.type==='keydown'&&e.code==='Escape'&&e.trusted)","real keyboard pause",20);
         await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
         await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14","real refund and return",100);
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
