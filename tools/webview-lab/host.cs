@@ -37,10 +37,10 @@ internal sealed class Lab : Form {
         string end="})();";
         int tail=realGame.LastIndexOf(end,StringComparison.Ordinal);
         Require(tail>0&&realGame.Substring(tail+end.Length).TrimStart().StartsWith("</script>",StringComparison.Ordinal),"real main closure end");
-        string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
-window.__labObserve=()=>({focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
+        string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,pid:e.pointerId,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
+window.__labObserve=()=>({focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,balance2:COIN.students.find(s=>s.id==='lab2')?.balance,idx2:ST.players[1]?.idx,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
 window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
-window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c0':'t0')),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
+window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c':'t')+i),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
         realGame=realGame.Insert(tail,probe+Environment.NewLine);
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
@@ -129,7 +129,7 @@ window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDi
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs keyboard/touch and coin spend/refund; Chrome manager seating and offline seating/PE presentation");
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; Chrome manager seating and offline seating/PE presentation");
     }
     async Task<string> WaitResult(CoreWebView2 core,string expression) {
         for(int i=0;i<100;i++){
@@ -213,7 +213,7 @@ window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDi
     async Task VerifyRealGame(CoreWebView2 core) {
         // Keep the earlier fixture regression and its exact ledger independent.
         string ledger=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","coins.log");
-        Require(File.ReadAllLines(ledger).Length==6,"fixture exact six ledger rows before real game");
+        Require(File.ReadAllLines(ledger).Length==7,"fixture exact seven ledger rows with second student seed");
         useRealGame=true;
         await core.ExecuteScriptAsync("window.__labMessages=[];addEventListener('message',e=>{if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__labMessages.push(e.data.type)});document.getElementById('openMiniGames').click()");
         Trace("requested real game; existing frames="+liveFrames.Count);
@@ -245,8 +245,42 @@ window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDi
         await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14","real refund and return",100);
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
         Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","real game board return");
+        await VerifyDuo(core);
         useRealGame=false;
-        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs menu, canvas, coin spend/refund, CDP key/touch, pause, return");
+        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs solo and reopened two-player round, simultaneous trusted touch, coin spend/refund, keyboard, pause, return");
+    }
+    async Task VerifyDuo(CoreWebView2 core) {
+        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14&&__labObserve().balance2===10","real reopened two-player roster",150);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden","real reopened menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","duo selection");
+        await GameAction("[...document.querySelectorAll('#stageList .stage-card')].find(b=>b.textContent.includes('2인 경주')).click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","duo first student");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("!!document.querySelector('[data-student=lab2]:not([disabled])')&&document.querySelector('[data-student=lab1]').disabled","duo distinct second student");
+        await GameAction("document.querySelector('[data-student=lab2]').click()");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().n===2&&__labObserve().charged&&__labObserve().balance===13&&__labObserve().balance2===9","duo actual one coin per player",180);
+        await GameWait("__labObserve().canvas","duo canvas/hit regions");
+        string offset=await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame'),r=f.getBoundingClientRect();return [r.left+f.clientLeft,r.top+f.clientTop].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] off=offset.Trim('"').Split(',');
+        string[] points=new string[2];
+        for(int i=0;i<2;i++){
+            string raw=await gameFrame.ExecuteScriptAsync("__labTouch("+i+")");
+            string[] xy=raw.Trim('"').Split(',');
+            string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+            points[i]="{\"x\":"+x+",\"y\":"+y+",\"id\":"+(i+1)+"}";
+        }
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":["+String.Join(",",points)+"]}");
+        await GameWait("__labObserve().idx===1&&__labObserve().idx2===1&&new Set(__labObserve().input.filter(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted).map(e=>e.pid)).size===2","two simultaneous trusted contacts advance both players",20);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        await SendKey(core,"Escape","Escape");
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden","duo pause",20);
+        await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14&&__labObserve().balance2===10","duo refund restores both balances",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","duo return to board");
     }
     void PublishMode() {
         string tmp=modeFile+".tmp";
