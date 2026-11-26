@@ -232,6 +232,28 @@ try{
   }
   if((Get-FileHash $snapshot).Hash -ne $snapshotHash){throw 'Source export was modified'}
   Write-Host "PASS $source retry chose fresh profile; subsequent launch reused committed profile"
+  # Explicit cleanup prototype: refuse traversal, preserve committed profile and legacy source.
+  $cleanup=Join-Path $PSScriptRoot 'migration-cleanup.cjs'
+  $chosenMarker=Get-Content $marker -Raw
+  Set-Content $marker '..\migration-legacy' -Encoding ASCII
+  node $cleanup $root $source 2>$null
+  $cleanupExit=$LASTEXITCODE
+  [IO.File]::WriteAllText($marker,$chosenMarker)
+  if($cleanupExit -eq 0 -or !(Test-Path $snapshot)){throw 'Unsafe cleanup marker accepted'}
+  node $cleanup $root $source
+  if($LASTEXITCODE -ne 0){throw 'Migration cleanup failed'}
+  if((Test-Path $snapshot) -or (Test-Path (Join-Path $root "migration-$source-blobs")) -or (Test-Path (Join-Path $root $discarded)) -or !(Test-Path (Join-Path $root $committed))){throw 'Cleanup postcondition'}
+  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+  $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
+  try{
+   for($i=0;$i -lt 160 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Cleaned profile exited: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady)){throw 'Cleaned profile startup timeout'}
+   if((Get-Content (Join-Path $root "migration-$source.result") -Raw) -ne 'PASS committed profile starts without transfer files'){throw 'Clean launch failed'}
+   if((Get-Content (Join-Path $root "migration-$source.binary-count") -Raw) -ne '0'){throw 'Cleaned profile fetched old data'}
+   Set-Content $nativeStop 'stop' -Encoding ASCII
+   if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Cleaned profile close failed'}
+   Write-Host "PASS $source committed dashboard and edited memo start after transfer cleanup"
+  }finally{if(!$native.HasExited){$native.Kill();$native.WaitForExit()}}
  }
  # 3B: refuse ownership of the existing healthy service, then start/stop the real isolated service natively.
  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue

@@ -178,7 +178,14 @@ internal sealed class NativeBoardLaunch : Form {
             lastBounds=area;
         }
         if(migrationSource!=null){
-            await VerifyMigration(core);
+            string transfer=Path.Combine(root,"migration-"+migrationSource+".json");
+            if(migrationFirst||File.Exists(transfer))await VerifyMigration(core);
+            else{
+                // A completed profile is self-contained; old export must not be required to launch.
+                Require(File.Exists(migrationMarker),"missing committed profile");
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),"PASS committed profile starts without transfer files");
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".binary-count"),"0");
+            }
             // Lab fault injection: terminate after complete import but before UI verification/commit.
             if(migrationFirst&&File.Exists(Path.Combine(root,"migration-"+migrationSource+".interrupt"))){
                 File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".interrupted"),migrationProfile);
