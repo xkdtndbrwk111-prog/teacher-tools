@@ -235,11 +235,16 @@ try{
   # Explicit cleanup prototype: refuse traversal, preserve committed profile and legacy source.
   $cleanup=Join-Path $PSScriptRoot 'migration-cleanup.cjs'
   $chosenMarker=Get-Content $marker -Raw
-  Set-Content $marker '..\migration-legacy' -Encoding ASCII
-  node $cleanup $root $source 2>$null
-  $cleanupExit=$LASTEXITCODE
-  [IO.File]::WriteAllText($marker,$chosenMarker)
-  if($cleanupExit -eq 0 -or !(Test-Path $snapshot)){throw 'Unsafe cleanup marker accepted'}
+  $badOut=Join-Path $root "migration-$source-invalid-cleanup.out"
+  $badErr=Join-Path $root "migration-$source-invalid-cleanup.err"
+  try{
+   Set-Content $marker '..\migration-legacy' -Encoding ASCII
+   # Windows PowerShell 5.1 treats stderr as NativeCommandError under Stop.
+   # Read the deliberate rejection from the exact child exit code and stderr file.
+   $bad=Start-Process -FilePath (Get-Command node -ErrorAction Stop).Source -ArgumentList ('"{0}" "{1}" {2}' -f $cleanup,$root,$source) -RedirectStandardOutput $badOut -RedirectStandardError $badErr -Wait -PassThru -NoNewWindow
+   if($bad.ExitCode -ne 1 -or (Get-Content $badErr -Raw) -notmatch 'invalid profile selection' -or !(Test-Path $snapshot)){throw 'Unsafe cleanup marker rejection failed'}
+   Write-Host "PASS $source unsafe cleanup marker rejected"
+  }finally{[IO.File]::WriteAllText($marker,$chosenMarker)}
   node $cleanup $root $source
   if($LASTEXITCODE -ne 0){throw 'Migration cleanup failed'}
   if((Test-Path $snapshot) -or (Test-Path (Join-Path $root "migration-$source-blobs")) -or (Test-Path (Join-Path $root $discarded)) -or !(Test-Path (Join-Path $root $committed))){throw 'Cleanup postcondition'}
