@@ -19,7 +19,8 @@ internal sealed class NativeBoardLaunch : Form {
     readonly WebView2 browser=new WebView2();
     readonly bool startOwned;
     readonly string migrationSource;
-    bool migrationFirst;
+    bool migrationFirst,migrationServing;
+    int migrationBinaryRequests;
     string migrationProfile,migrationMarker;
     Process ownedServer;
     readonly object logLock=new object();
@@ -154,6 +155,18 @@ internal sealed class NativeBoardLaunch : Form {
             if(migrationSource!=null&&e.Request.Uri==Origin+"/__lab_migration"){
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes("<!doctype html><title>Isolated migration</title>")),200,"OK","Content-Type: text/html; charset=utf-8");return;
             }
+            if(migrationSource!=null&&e.Request.Uri.StartsWith(Origin+"/__lab_migration/blob/",StringComparison.Ordinal)){
+                string sha=e.Request.Uri.Substring((Origin+"/__lab_migration/blob/").Length);
+                if(migrationServing&&core.Source==Origin+"/__lab_migration"&&e.Request.Method=="GET"&&System.Text.RegularExpressions.Regex.IsMatch(sha,"^[a-f0-9]{64}$")){
+                    string file=Path.Combine(root,"migration-"+migrationSource+"-blobs",sha+".bin");
+                    if(File.Exists(file)&&new FileInfo(file).Length<=4*1024*1024){
+                        byte[] bytes=File.ReadAllBytes(file);
+                        migrationBinaryRequests++;
+                        e.Response=env.CreateWebResourceResponse(new MemoryStream(bytes),200,"OK","Content-Type: application/octet-stream\r\nCache-Control: no-store");return;
+                    }
+                }
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");return;
+            }
             if(!Lab.Allowed(e.Request.Uri,e.Request.Method))e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
         core.ProcessFailed+=(s,e)=>Finish(1,"FAIL renderer "+e.ProcessFailedKind);
@@ -228,6 +241,7 @@ internal sealed class NativeBoardLaunch : Form {
         }
         File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".chunks"),chunks.ToString());
         bool first=migrationFirst;
+        migrationServing=first;
         string unpack="let expected=JSON.parse(__migrationParts.join(''));delete globalThis.__migrationParts;";
         if(first){
             await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"await ttMigration.restore(expected);document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
@@ -235,8 +249,10 @@ internal sealed class NativeBoardLaunch : Form {
             await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"let actual=await ttMigration.snapshot();let diff=ttMigration.comparePersisted(expected,actual);document.title=diff.length?'migration-fail: '+diff.join('; '):'migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }
         string title="";
-        for(int i=0;i<450;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
+        for(int i=0;i<1200;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
+        migrationServing=false;
         Require(title.Contains("migration-ok"),"migration timeout");
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".binary-count"),migrationBinaryRequests.ToString());
         File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
     }
     string ModeJson(){return "{\"mode\":\""+mode+"\",\"window\":"+Handle.ToInt64()+",\"pid\":"+Process.GetCurrentProcess().Id+",\"release\":\""+Release+"\"}";}

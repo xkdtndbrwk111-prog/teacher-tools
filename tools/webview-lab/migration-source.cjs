@@ -53,19 +53,23 @@ function copyStorage(profile,stage){
  return before;
 }
 async function exportChunks(page,filename){
- const length=await page.evaluate(async()=>{globalThis.__migrationText=JSON.stringify(await ttMigration.snapshot());return __migrationText.length});
- assert(length<=96*1024*1024,'transfer exceeds research envelope');
- const hash=crypto.createHash('sha256'),fd=filename?fs.openSync(filename,'wx'):null;
- try{
-  for(let p=0;p<length;p+=512*1024){
-   const part=await page.evaluate(([a,b])=>__migrationText.slice(a,b),[p,p+512*1024]);
-   assert.equal(part.length,Math.min(512*1024,length-p));
-   // UTF-8 chunk boundaries may split a surrogate pair; preserve UTF-16 code units for comparison.
-   hash.update(part,'utf16le');
-   if(fd!==null)fs.writeSync(fd,part,null,'utf16le');
-  }
- }finally{if(fd!==null)fs.closeSync(fd);await page.evaluate(()=>{delete globalThis.__migrationText})}
- return {length,sha:hash.digest('hex')};
+ let data;
+ if(filename){
+  const dir=path.join(root,'migration-'+source+'-blobs');fs.mkdirSync(dir);
+  await page.exposeFunction('__writeMigrationChunk',(sha,b64)=>{
+   assert(/^[a-f0-9]{64}$/.test(sha));assert(b64.length<=6*1024*1024);
+   const bytes=Buffer.from(b64,'base64');assert(bytes.length<=4*1024*1024);
+   assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),sha);
+   const target=path.join(dir,sha+'.bin');
+   if(!fs.existsSync(target))fs.writeFileSync(target,bytes,{flag:'wx'});
+   else assert.deepEqual(fs.readFileSync(target),bytes);
+  });
+  data=await page.evaluate(()=>ttMigration.snapshot(globalThis.__writeMigrationChunk));
+ }else data=await page.evaluate(()=>ttMigration.snapshot());
+ const serialized=JSON.stringify(data);
+ assert(serialized.length<=16*1024*1024,'metadata exceeds research envelope');
+ if(filename)fs.writeFileSync(filename,serialized,{flag:'wx',encoding:'utf16le'});
+ return {length:serialized.length,sha:crypto.createHash('sha256').update(serialized,'utf16le').digest('hex')};
 }
 async function open(profile,channel){
  const ctx=await chromium.launchPersistentContext(profile,{channel,headless:true,args:['--no-first-run','--disable-background-networking']});
@@ -104,9 +108,9 @@ async function open(profile,channel){
   const data=JSON.parse(fs.readFileSync(file,'utf16le'));
   assert.equal(data.values.length,7);assert.equal(data.dbs.length,3);assert(!JSON.stringify(data.values).includes('must-not-copy'));
   const video=data.dbs.find(d=>d.name==='tt-multimedia-v1').records[0][1].entries.find(([k])=>k==='media')[1].entries[0][1].entries.find(([k])=>k==='file')[1];
-  const byteLength=Buffer.from(video.bytes,'base64').length;
-  assert.equal(byteLength,source==='chrome'?36*1024*1024:4);
-  console.log('PASS '+source+' chunked export, media bytes='+byteLength+', envelope chars='+actual.length);
+  const byteLength=video.chunks.reduce((sum,c)=>sum+c.size,0);
+  assert.equal(byteLength,source==='chrome'?250*1024*1024:4);assert.equal(byteLength,video.size);
+  console.log('PASS '+source+' separate binary export, media bytes='+byteLength+', blob chunks='+video.chunks.length+', envelope chars='+actual.length);
   console.log('PASS '+source+' closed profile copy export matches original at old board origin, other origin excluded');
  }finally{
   if(copy)await copy.close();

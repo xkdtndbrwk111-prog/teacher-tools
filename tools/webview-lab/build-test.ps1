@@ -192,7 +192,7 @@ try{
   Set-Content $interrupt 'interrupt' -Encoding ASCII
   $broken=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
   try{
-   if(!$broken.WaitForExit(120000)){throw 'Interrupted migration timeout'}
+   if(!$broken.WaitForExit(180000)){throw 'Interrupted migration timeout'}
    if($broken.ExitCode -eq 0 -or !(Test-Path $interrupted) -or (Test-Path $marker) -or (Test-Path $nativeReady)){throw 'Interrupted migration published readiness or committed'}
    $discarded=(Get-Content $interrupted -Raw).Trim()
    if(!(Test-Path (Join-Path $root $discarded))){throw 'Interrupted staging profile missing'}
@@ -208,7 +208,7 @@ try{
    $native=$null
    try{
     $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
-    for($i=0;$i -lt 480 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Migration native exited: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+    for($i=0;$i -lt 720 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Migration native exited: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
     if(!(Test-Path $nativeReady)){throw 'Migration startup timeout'}
     if(!(Test-Path $marker)){throw 'Verified migration missing commit marker'}
     $chosen=(Get-Content $marker -Raw).Trim()
@@ -217,8 +217,11 @@ try{
     if($round -eq 2 -and $chosen -ne $committed){throw 'Committed profile changed'}
     if((Get-Content (Join-Path $root "migration-$source.attempt") -Raw).Trim() -ne $chosen){throw 'Wrong committed profile selected'}
     $chunkCount=[int](Get-Content (Join-Path $root "migration-$source.chunks") -Raw)
-    if($source -eq 'chrome' -and $chunkCount -lt 70){throw 'Large migration was not chunked'}
-    Write-Host "PASS $source transfer chunks=$chunkCount"
+    $binaryCount=[int](Get-Content (Join-Path $root "migration-$source.binary-count") -Raw)
+    if($source -eq 'chrome' -and $round -eq 1 -and $binaryCount -lt 65){throw 'Large migration binary chunks missing'}
+    if($round -eq 2 -and $binaryCount -ne 0){throw 'Committed profile unexpectedly fetched old media'}
+    if((Get-Item $snapshot).Length -gt 1048576){throw 'Media bytes leaked into manifest'}
+    Write-Host "PASS $source manifest chunks=$chunkCount binary requests=$binaryCount"
     $report=Get-Content (Join-Path $root "migration-$source.result") -Raw
     if($round -eq 1 -and $report -ne 'PASS exact import and readback'){throw 'First import missing'}
     if($round -eq 2 -and $report -ne 'PASS repeated launch preserves user edit and IndexedDB blobs'){throw 'Repeated import overwrote edits'}
