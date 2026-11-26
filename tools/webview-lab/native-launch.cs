@@ -18,7 +18,8 @@ internal sealed class NativeBoardLaunch : Form {
     readonly string root,runtime,mode,modeFile,stopFile,resultFile;
     readonly WebView2 browser=new WebView2();
     readonly bool startOwned;
-    readonly string migrationSource;
+    readonly string migrationSource,updateToken;
+    string updateJournal;
     bool migrationFirst,migrationServing;
     int migrationBinaryRequests;
     string migrationProfile,migrationMarker;
@@ -61,7 +62,8 @@ internal sealed class NativeBoardLaunch : Form {
     }
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
-    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource){
+    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource,string updateToken){
+        this.updateToken=updateToken;
         this.startOwned=startOwned;this.migrationSource=migrationSource;
         this.root=root;this.runtime=runtime;this.mode=mode;
         modeFile=Path.Combine(runtime,"board-mode.json");
@@ -159,7 +161,31 @@ internal sealed class NativeBoardLaunch : Form {
             if(ownedJob!=IntPtr.Zero){CloseHandle(ownedJob);ownedJob=IntPtr.Zero;}
         }
     }
+    string ValidateUpdateJournal(){
+        // Lab only: test the existing R8 token/version handshake, not the signature or rollback kernel.
+        string tx=Path.Combine(runtime,"r8-transaction"),pending=Path.Combine(tx,"pending.json"),ready=Path.Combine(tx,"ready.json");
+        Require(Directory.Exists(tx)&&File.Exists(pending)&&!File.Exists(ready),"update journal missing or already ready");
+        Require((File.GetAttributes(tx)&FileAttributes.ReparsePoint)==0&&(File.GetAttributes(pending)&FileAttributes.ReparsePoint)==0,"linked update journal");
+        Require(new FileInfo(pending).Length<=524288,"update journal too large");
+        string raw=File.ReadAllText(pending);
+        var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(raw);
+        Require(Convert.ToInt32(d["schema"])==1&&(string)d["token"]==updateToken&&(string)d["version"]=="1.66.43","update token/version mismatch");
+        return raw;
+    }
+    void PublishUpdateReady(){
+        if(updateToken==null)return;
+        Require(ValidateUpdateJournal()==updateJournal,"update journal changed");
+        string ready=Path.Combine(runtime,"r8-transaction","ready.json"),temp=ready+"."+Guid.NewGuid().ToString("N")+".tmp";
+        byte[] bytes=Encoding.UTF8.GetBytes("{\"token\":\""+updateToken+"\",\"release\":\""+Release+"\"}");
+        try{
+            using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+                stream.Write(bytes,0,bytes.Length);stream.Flush(true);
+            }
+            File.Move(temp,ready);
+        }finally{if(File.Exists(temp))File.Delete(temp);}
+    }
     async Task StartBoard(){
+        if(updateToken!=null)updateJournal=ValidateUpdateJournal();
         if(startOwned)await StartOwnedServer();
         string health=await Task.Run(()=>Health());
         var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
@@ -261,6 +287,7 @@ internal sealed class NativeBoardLaunch : Form {
             File.Move(temp,migrationMarker);
         }
         Publish();heartbeat.Start();
+        PublishUpdateReady();
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
     }
     async Task VerifyMigration(CoreWebView2 core){
@@ -352,7 +379,8 @@ internal sealed class NativeBoardLaunch : Form {
     }
     [STAThread] static int Main(string[] args){
         bool migrate=args.Length==3&&args[0]=="--lab-launch-migrate"&&(args[2]=="chrome"||args[2]=="edge");
-        if((!migrate&&(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")))||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
+        bool update=args.Length==3&&args[0]=="--lab-launch-update"&&System.Text.RegularExpressions.Regex.IsMatch(args[2],"^[a-f0-9]{32}$");
+        if((!migrate&&!update&&(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")))||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
         string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if(String.IsNullOrEmpty(root)||String.IsNullOrEmpty(local))return 2;
         root=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
@@ -365,7 +393,7 @@ internal sealed class NativeBoardLaunch : Form {
             if(!RecoverStaleMode(runtime))return 4;
             try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned",migrate?args[2]:null)){
+            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned"||update,migrate?args[2]:null,update?args[2]:null)){
                 try{Application.Run(form);return form.exitCode;}
                 finally{form.StopOwnedServer();}
             }

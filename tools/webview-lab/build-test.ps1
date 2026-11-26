@@ -416,6 +416,54 @@ try{
   if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
   if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
  }
+ # 3E-2a: existing R8 ready.json contract, isolated synthetic journal only.
+ $tx=Join-Path $runtime 'r8-transaction'
+ if(Test-Path $tx){throw 'Unexpected transaction fixture'}
+ New-Item -ItemType Directory -Path $tx|Out-Null
+ $pending=Join-Path $tx 'pending.json';$updateReady=Join-Path $tx 'ready.json'
+ $token=[guid]::NewGuid().ToString('N')
+ $wrong=[guid]::NewGuid().ToString('N')
+ $releaseHash=(Get-FileHash (Join-Path $runtime 'release.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+ $journal=@{schema=1;token=$token;version='1.66.43';files=@(@{name='release.json';before='';after=$releaseHash})}
+ try{
+  foreach($case in @('missing','wrong-token','wrong-version','already-ready')){
+   Remove-Item $pending,$updateReady,$nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+   if($case -ne 'missing'){
+    $journal.version=if($case -eq 'wrong-version'){'1.66.44'}else{'1.66.43'}
+    [IO.File]::WriteAllText($pending,($journal|ConvertTo-Json -Depth 5 -Compress))
+   }
+   if($case -eq 'already-ready'){[IO.File]::WriteAllText($updateReady,'sentinel')}
+   $argToken=if($case -eq 'wrong-token'){$wrong}else{$token}
+   $attempt=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-update window $argToken" -PassThru
+   if(!$attempt.WaitForExit(15000) -or $attempt.ExitCode -ne 1 -or (Test-Path $nativeReady)){throw "Update gate did not reject $case"}
+   if($case -eq 'already-ready'){if((Get-Content $updateReady -Raw) -ne 'sentinel'){throw 'Ready marker overwritten'}}
+   elseif(Test-Path $updateReady){throw 'Invalid update published ready'}
+   if(Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue){throw 'Invalid update started server'}
+   Write-Host "PASS native update ready rejection $case"
+  }
+  Remove-Item $updateReady,$nativeReady,$nativeStop,$nativeResult,$pidFile -Force -ErrorAction SilentlyContinue
+  $journal.version='1.66.43'
+  [IO.File]::WriteAllText($pending,($journal|ConvertTo-Json -Depth 5 -Compress))
+  $journalHash=(Get-FileHash $pending).Hash
+  $native=$null;$owned=$null
+  try{
+   $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-update window $token" -PassThru
+   for($i=0;$i -lt 180 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Update launch failed: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady) -or !(Test-Path $updateReady) -or !(Test-Path $pidFile)){throw 'Update readiness missing'}
+   $owned=Get-Process -Id ([int](Get-Content $pidFile -Raw)) -ErrorAction Stop
+   $null=$owned.Handle
+   $receipt=Get-Content $updateReady -Raw|ConvertFrom-Json
+   $health=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/health' -TimeoutSec 2
+   if($receipt.token -cne $token -or $receipt.release -cne $health.release -or $health.release -cne '2026-11-25-V1.66.43-STABLE-PILOT' -or !(Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2).wallpaper){throw 'Update readiness receipt invalid'}
+   if((Get-FileHash $pending).Hash -ne $journalHash){throw 'Launcher changed updater journal'}
+   Set-Content $nativeStop 'stop' -Encoding ASCII
+   if(!$native.WaitForExit(20000) -or $native.ExitCode -ne 0 -or !$owned.WaitForExit(10000)){throw 'Update launch normal close failed'}
+   Write-Host 'PASS native R8 token and release receipt after actual dashboard and service readiness'
+  }finally{
+   if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
+   if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
+  }
+ }finally{Remove-Item -LiteralPath $tx -Recurse -Force}
  if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $ledgerBeforeNative -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBeforeNative){throw 'Native launcher changed classroom data'}
  Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
