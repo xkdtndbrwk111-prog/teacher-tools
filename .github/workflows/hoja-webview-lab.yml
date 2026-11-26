@@ -12,6 +12,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 734e494fad3c81033a786b4b7a5acc5c3ebcd424
+          path: reviewed-kernel
+          persist-credentials: false
+          sparse-checkout: tools/r8-updater/runtime
       - name: Install pinned browser test driver
         shell: powershell
         run: |
