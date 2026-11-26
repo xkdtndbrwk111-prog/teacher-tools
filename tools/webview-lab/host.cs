@@ -14,6 +14,8 @@ internal sealed class Lab : Form {
     string fixture, realGame;
     bool useRealGame;
     CoreWebView2Frame gameFrame;
+    readonly System.Collections.Generic.List<CoreWebView2Frame> liveFrames=new System.Collections.Generic.List<CoreWebView2Frame>();
+    void Trace(string message){File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.trace"),DateTime.UtcNow.ToString("o")+" "+message+Environment.NewLine);}
     readonly Timer watchdog = new Timer();
     readonly Timer heartbeat = new Timer();
     string modeFile;
@@ -28,6 +30,17 @@ internal sealed class Lab : Form {
         string original="const DASHBOARD_ORIGIN='http://127.0.0.1:17439';";
         Require(realGame.IndexOf(original,StringComparison.Ordinal)>=0&&realGame.IndexOf(original,StringComparison.Ordinal)==realGame.LastIndexOf(original,StringComparison.Ordinal),"exact real game origin anchor");
         realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='http://127.0.0.1:17449';");
+        // Actual game state is lexical inside one IIFE. Read-only observation, no game/coin state writes.
+        string start="<script>(() => {";
+        Require(realGame.IndexOf(start,StringComparison.Ordinal)>=0&&realGame.IndexOf(start,StringComparison.Ordinal)==realGame.LastIndexOf(start,StringComparison.Ordinal),"real main script anchor");
+        realGame=realGame.Replace(start,"<script>window.__labErrors=[];addEventListener('error',e=>{if(e.message)__labErrors.push(e.message)});addEventListener('unhandledrejection',e=>__labErrors.push(String(e.reason)));</script>"+start);
+        string end="})();";
+        int tail=realGame.LastIndexOf(end,StringComparison.Ordinal);
+        Require(tail>0&&realGame.Substring(tail+end.Length).TrimStart().StartsWith("</script>",StringComparison.Ordinal),"real main closure end");
+        string probe=@"window.__labObserve=()=>({ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
+window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
+window.__labTouch=()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c0':'t0')),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
+        realGame=realGame.Insert(tail,probe+Environment.NewLine);
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
         view.Dock=DockStyle.Fill; Controls.Add(view);
@@ -77,7 +90,11 @@ internal sealed class Lab : Form {
         core.Settings.AreDefaultContextMenusEnabled=false;
         core.Settings.IsWebMessageEnabled=false;
         core.Settings.AreHostObjectsAllowed=false;
-        core.FrameCreated+=(s,e)=>{gameFrame=e.Frame;};
+        core.FrameCreated+=(s,e)=>{
+            var f=e.Frame;liveFrames.Add(f);Trace("frame created count="+liveFrames.Count);
+            f.Destroyed+=(a,b)=>{liveFrames.Remove(f);if(Object.ReferenceEquals(gameFrame,f))gameFrame=null;Trace("frame destroyed count="+liveFrames.Count);};
+            f.NavigationStarting+=(a,b)=>{if(GameFixture(b.Uri)){gameFrame=f;Trace("game frame navigation real="+useRealGame);}};
+        };
         core.NavigationStarting+=(s,e)=>{if(!Local(e.Uri))e.Cancel=true;};
         core.FrameNavigationStarting+=(s,e)=>{if(!Local(e.Uri)&&!GameFixture(e.Uri)&&e.Uri!="about:blank")e.Cancel=true;};
         core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
@@ -86,6 +103,7 @@ internal sealed class Lab : Form {
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
         core.WebResourceRequested+=(s,e)=>{
             if(GameFixture(e.Request.Uri)&&e.Request.Method=="GET"){
+                Trace("serve game real="+useRealGame);
                 string csp=useRealGame?"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'":"default-src 'none'; script-src 'unsafe-inline'";
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(useRealGame?realGame:fixture)),200,"OK","Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: "+csp);
             }else if(!Allowed(e.Request.Uri,e.Request.Method))
@@ -150,12 +168,24 @@ internal sealed class Lab : Form {
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
     }
     async Task GameWait(string expression,string label,int count=120) {
-        string actual="";
+        string actual="",lastError="";
         for(int i=0;i<count;i++){
-            if(gameFrame!=null){try{actual=await gameFrame.ExecuteScriptAsync(expression);if(actual=="true")return;}catch(InvalidOperationException){}}
+            foreach(var f in liveFrames.ToArray()){
+                try{
+                    string location=await f.ExecuteScriptAsync("location.href");
+                    if(location==null||!location.Contains("xkdtndbrwk111-prog.github.io/hoja-minigames/"))continue;
+                    gameFrame=f;
+                    actual=await f.ExecuteScriptAsync(expression);
+                    if(actual=="true"){Trace("PASS "+label);return;}
+                }catch(Exception ex){lastError=ex.GetType().Name+": "+ex.Message;}
+            }
             await Task.Delay(100);
         }
-        throw new InvalidOperationException(label+" last="+actual);
+        string probe="unavailable";
+        if(gameFrame!=null)try{probe=await gameFrame.ExecuteScriptAsync("JSON.stringify({href:location.href,ready:document.readyState,observe:typeof __labObserve,state:typeof __labObserve==='function'?__labObserve():null,errors:window.__labErrors,menu:!!document.getElementById('menuScreen')})");}catch(Exception ex){probe=ex.Message;}
+        string outer=await view.CoreWebView2.ExecuteScriptAsync("JSON.stringify({src:document.getElementById('miniFrame').getAttribute('src'),open:document.getElementById('miniGames').open,notice:document.getElementById('miniNotice').hidden,msg:window.__labMessages})");
+        Trace("FAIL "+label+" frames="+liveFrames.Count+" last="+actual+" exception="+lastError+" probe="+probe+" board="+outer);
+        throw new InvalidOperationException(label+" last="+actual+" probe="+probe+" frames="+liveFrames.Count+" exception="+lastError);
     }
     async Task GameAction(string script) {
         Require(await gameFrame.ExecuteScriptAsync(script+";true")=="true","real game action "+script);
@@ -169,9 +199,10 @@ internal sealed class Lab : Form {
         // Keep the earlier fixture regression and its exact ledger independent.
         string ledger=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","coins.log");
         Require(File.ReadAllLines(ledger).Length==6,"fixture exact six ledger rows before real game");
-        useRealGame=true;gameFrame=null;
-        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
-        await GameWait("typeof COIN!=='undefined'&&COIN.ready&&COIN.classId==='LAB_CLASS'&&COIN.students.some(s=>s.id==='lab1'&&s.balance===14)","real game coin handshake",200);
+        useRealGame=true;
+        await core.ExecuteScriptAsync("window.__labMessages=[];addEventListener('message',e=>{if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__labMessages.push(e.data.type)});document.getElementById('openMiniGames').click()");
+        Trace("requested real game; existing frames="+liveFrames.Count);
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().classId==='LAB_CLASS'&&__labObserve().balance===14","real game coin handshake",200);
         await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
         await GameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","real menu");
         await GameAction("document.getElementById('openStairs').click()");
@@ -179,25 +210,25 @@ internal sealed class Lab : Form {
         await GameAction("document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click()");
         await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","real coin picker");
         await GameAction("document.querySelector('[data-student=lab1]').click()");
-        await GameWait("typeof ST!=='undefined'&&ST.on&&ST.phase==='run'&&ST.players.length===1&&round?.charge&&COIN.students[0].balance===12","real stairs start and spend",180);
-        Require(await gameFrame.ExecuteScriptAsync("stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2")=="true","stairs rendered canvas/hit controls");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().n===1&&__labObserve().charged&&__labObserve().balance===12","real stairs start and spend",180);
+        await GameWait("__labObserve().canvas","stairs rendered canvas/hit controls",30);
         await core.ExecuteScriptAsync("document.getElementById('miniFrame').focus()");
         await GameAction("document.body.focus()");
-        string key=await gameFrame.ExecuteScriptAsync("stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a'");
+        string key=await gameFrame.ExecuteScriptAsync("__labNext()");
         Require(key=="\"a\""||key=="\"d\"","stairs next key");
         string k=key.Trim('"');await SendKey(core,k,"Key"+k.ToUpperInvariant());
-        await GameWait("ST.players[0].idx===1","CDP keyboard actually moves player",20);
-        string raw=await gameFrame.ExecuteScriptAsync("(()=>{const p=ST.players[0],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c0':'t0')),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')})()");
+        await GameWait("__labObserve().idx===1","CDP keyboard actually moves player",20);
+        string raw=await gameFrame.ExecuteScriptAsync("__labTouch()");
         string offset=await core.ExecuteScriptAsync("(()=>{const r=document.getElementById('miniFrame').getBoundingClientRect();return [r.left,r.top].join(',')})()");
         var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
         string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+x+",\"y\":"+y+",\"id\":1}]}");
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
-        await GameWait("ST.players[0].idx===2","CDP touch actually moves player",20);
+        await GameWait("__labObserve().idx===2","CDP touch actually moves player",20);
         await SendKey(core,"Escape","Escape");
-        await GameWait("ST.phase==='paused'&&!document.getElementById('stOverlay').hidden","real keyboard pause",20);
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden","real keyboard pause",20);
         await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
-        await GameWait("!document.getElementById('menuScreen').hidden&&COIN.refunds.size===0&&COIN.students[0].balance===14","real refund and return",100);
+        await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14","real refund and return",100);
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
         Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","real game board return");
         useRealGame=false;

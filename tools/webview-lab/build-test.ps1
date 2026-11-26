@@ -72,11 +72,12 @@ try{
  $profile=Join-Path $root 'profile'
  $hostProc=Start-Process -FilePath (Join-Path $out 'HOJA-WebView-Lab.exe') -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
  $readyPath=Join-Path $root 'manager.ready'
- for($i=0;$i -lt 240 -and !(Test-Path $readyPath);$i++){if($hostProc.HasExited){throw ('Native host exited: '+(Get-Content $result -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+ for($i=0;$i -lt 240 -and !(Test-Path $readyPath);$i++){if($hostProc.HasExited){Get-Content (Join-Path $root 'real-game.trace') -ErrorAction SilentlyContinue;throw ('Native host exited: '+(Get-Content $result -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
  if(!(Test-Path $readyPath)){throw 'Manager handshake timed out'}
  if((Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBefore){throw 'Unexpected seating mutation before Phase 2B'}
  if(!(Test-Path (Join-Path $root 'real-game.pass'))){throw 'Real game verification missing'}
  Get-Content (Join-Path $root 'real-game.pass')
+ Get-Content (Join-Path $root 'real-game.trace') -ErrorAction SilentlyContinue
  node (Join-Path $PSScriptRoot 'manager-test.cjs') $root
  if($LASTEXITCODE -ne 0){Get-Content (Join-Path $root 'server-err.log') -ErrorAction SilentlyContinue;throw 'Chrome manager test failed'}
  if(!$hostProc.WaitForExit(30000)){throw 'Native host timed out'}
