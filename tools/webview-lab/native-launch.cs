@@ -19,6 +19,8 @@ internal sealed class NativeBoardLaunch : Form {
     readonly WebView2 browser=new WebView2();
     readonly bool startOwned;
     readonly string migrationSource;
+    bool migrationFirst;
+    string migrationProfile,migrationMarker;
     Process ownedServer;
     readonly object logLock=new object();
     readonly Timer heartbeat=new Timer();
@@ -122,7 +124,22 @@ internal sealed class NativeBoardLaunch : Form {
         string health=await Task.Run(()=>Health());
         var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
         Require(json.ContainsKey("service")&&(string)json["service"]=="teacher-tools-local"&&json.ContainsKey("release")&&(string)json["release"]==Release,"isolated health mismatch");
-        var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,migrationSource==null?"native-profile":"native-migration-"+migrationSource));
+        string profile=Path.Combine(root,"native-profile");
+        if(migrationSource!=null){
+            migrationMarker=Path.Combine(root,"migration-"+migrationSource+".done");
+            migrationFirst=!File.Exists(migrationMarker);
+            string prefix="native-migration-"+migrationSource+"-";
+            if(migrationFirst){
+                migrationProfile=prefix+Guid.NewGuid().ToString("N");
+                Require(!Directory.Exists(Path.Combine(root,migrationProfile)),"staging exists");
+            }else{
+                migrationProfile=File.ReadAllText(migrationMarker).Trim();
+                Require(System.Text.RegularExpressions.Regex.IsMatch(migrationProfile,"^"+prefix+"[a-f0-9]{32}$")&&Directory.Exists(Path.Combine(root,migrationProfile)),"invalid committed migration profile");
+            }
+            profile=Path.Combine(root,migrationProfile);
+            File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".attempt"),migrationProfile);
+        }
+        var env=await CoreWebView2Environment.CreateAsync(null,profile);
         await browser.EnsureCoreWebView2Async(env);
         var core=browser.CoreWebView2;
         core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
@@ -147,7 +164,15 @@ internal sealed class NativeBoardLaunch : Form {
             Require(SetWindowPos(Handle,new IntPtr(1),area.X,area.Y,area.Width,area.Height,0x0070),"wallpaper position");
             lastBounds=area;
         }
-        if(migrationSource!=null)await VerifyMigration(core);
+        if(migrationSource!=null){
+            await VerifyMigration(core);
+            // Lab fault injection: terminate after complete import but before UI verification/commit.
+            if(migrationFirst&&File.Exists(Path.Combine(root,"migration-"+migrationSource+".interrupt"))){
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".interrupted"),migrationProfile);
+                Process.GetCurrentProcess().Kill();
+                return;
+            }
+        }
         string url=Origin+"/";
         if(mode=="wallpaper"){var s=TargetScreen();var a=s.Bounds;var w=s.WorkingArea;url+="?inset="+(w.X-a.X)+","+(w.Y-a.Y)+","+(a.Right-w.Right)+","+(a.Bottom-w.Bottom);}
         var loaded=new TaskCompletionSource<bool>();
@@ -156,22 +181,30 @@ internal sealed class NativeBoardLaunch : Form {
         Require(await Task.WhenAny(loaded.Task,Task.Delay(15000))==loaded.Task&&await loaded.Task,"dashboard navigation");
         Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('1.66.43')")=="true","real dashboard identity");
         if(migrationSource!=null){
-            string note=File.Exists(Path.Combine(root,"migration-"+migrationSource+".edited"))?"LAB updated after migration":"LAB 메모";
+            string note=migrationFirst?"LAB 메모":"LAB updated after migration";
             string verify="(()=>{const r=window.ttGridDebug?.().items.memo;return document.body.dataset.theme==='pink'&&document.getElementById('classHeading').textContent==='LAB "+migrationSource+" 교실'&&document.getElementById('notes').value==='"+note+"'&&r&&r.x===31&&r.y===20&&r.w===12&&r.h===5&&!r.off&&r.z===4})()";
             Require(await core.ExecuteScriptAsync(verify)=="true","migrated dashboard UI theme/name/memo/layout");
             if(note!="LAB updated after migration"){
                 Require(await core.ExecuteScriptAsync("(()=>{const el=document.getElementById('notes');el.value='LAB updated after migration';el.dispatchEvent(new Event('input',{bubbles:true}));return localStorage.getItem('teacher-note')===el.value})()")=="true","actual dashboard memo edit");
-                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".edited"),"verified");
+
             }
         }
         if(mode=="wallpaper")Require(FormBorderStyle==FormBorderStyle.None&&Bounds==TargetScreen().Bounds&&!ShowInTaskbar,"wallpaper geometry/frame");
         else Require(FormBorderStyle==FormBorderStyle.Sizable&&ShowInTaskbar,"windowed geometry/frame");
         if(mode=="wallpaper")NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
+        if(migrationSource!=null&&migrationFirst){
+            // Commit only after exact readback and actual dashboard UI validation, never overwrite a completed choice.
+            string temp=migrationMarker+"."+Guid.NewGuid().ToString("N")+".tmp";
+            using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+                byte[] bytes=Encoding.UTF8.GetBytes(migrationProfile);
+                stream.Write(bytes,0,bytes.Length);stream.Flush(true);
+            }
+            File.Move(temp,migrationMarker);
+        }
         Publish();heartbeat.Start();
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
     }
     async Task VerifyMigration(CoreWebView2 core){
-        string marker=Path.Combine(root,"migration-"+migrationSource+".done");
         string data=File.ReadAllText(Path.Combine(root,"migration-"+migrationSource+".json"));
         Require(data.Length<32000000,"transfer too large");
         string quoted=new System.Web.Script.Serialization.JavaScriptSerializer(){MaxJsonLength=64000000}.Serialize(data);
@@ -181,7 +214,7 @@ internal sealed class NativeBoardLaunch : Form {
         Require(await Task.WhenAny(loaded.Task,Task.Delay(10000))==loaded.Task&&await loaded.Task,"migration neutral page");
         core.NavigationCompleted-=handler;
         await core.ExecuteScriptAsync(File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"migration-transfer.js")));
-        bool first=!File.Exists(marker);
+        bool first=migrationFirst;
         if(first){
             await core.ExecuteScriptAsync("(async()=>{try{await ttMigration.restore(JSON.parse("+quoted+"));document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }else{
@@ -190,7 +223,6 @@ internal sealed class NativeBoardLaunch : Form {
         string title="";
         for(int i=0;i<80;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
         Require(title.Contains("migration-ok"),"migration timeout");
-        if(first)File.WriteAllText(marker,"verified");
         File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
     }
     string ModeJson(){return "{\"mode\":\""+mode+"\",\"window\":"+Handle.ToInt64()+",\"pid\":"+Process.GetCurrentProcess().Id+",\"release\":\""+Release+"\"}";}

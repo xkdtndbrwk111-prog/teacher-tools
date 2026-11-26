@@ -184,6 +184,25 @@ try{
   if($LASTEXITCODE -ne 0){throw 'Source browser transfer failed'}
   $snapshot=Join-Path $root "migration-$source.json"
   $snapshotHash=(Get-FileHash $snapshot).Hash
+  # Interrupted import must never become the chosen profile.
+  $marker=Join-Path $root "migration-$source.done"
+  $interrupt=Join-Path $root "migration-$source.interrupt"
+  $interrupted=Join-Path $root "migration-$source.interrupted"
+  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+  Set-Content $interrupt 'interrupt' -Encoding ASCII
+  $broken=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
+  try{
+   if(!$broken.WaitForExit(40000)){throw 'Interrupted migration timeout'}
+   if($broken.ExitCode -eq 0 -or !(Test-Path $interrupted) -or (Test-Path $marker) -or (Test-Path $nativeReady)){throw 'Interrupted migration published readiness or committed'}
+   $discarded=(Get-Content $interrupted -Raw).Trim()
+   if(!(Test-Path (Join-Path $root $discarded))){throw 'Interrupted staging profile missing'}
+   if((Get-FileHash $snapshot).Hash -ne $snapshotHash){throw 'Interrupted migration changed export'}
+   Write-Host "PASS $source interrupted migration did not commit"
+  }finally{
+   Remove-Item $interrupt -Force -ErrorAction SilentlyContinue
+   if(!$broken.HasExited){$broken.Kill();$broken.WaitForExit()}
+  }
+  $committed=''
   foreach($round in @(1,2)){
    Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
    $native=$null
@@ -191,6 +210,12 @@ try{
     $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
     for($i=0;$i -lt 160 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Migration native exited: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
     if(!(Test-Path $nativeReady)){throw 'Migration startup timeout'}
+    if(!(Test-Path $marker)){throw 'Verified migration missing commit marker'}
+    $chosen=(Get-Content $marker -Raw).Trim()
+    if($chosen -eq $discarded){throw 'Interrupted profile reused'}
+    if($round -eq 1){$committed=$chosen}
+    if($round -eq 2 -and $chosen -ne $committed){throw 'Committed profile changed'}
+    if((Get-Content (Join-Path $root "migration-$source.attempt") -Raw).Trim() -ne $chosen){throw 'Wrong committed profile selected'}
     $report=Get-Content (Join-Path $root "migration-$source.result") -Raw
     if($round -eq 1 -and $report -ne 'PASS exact import and readback'){throw 'First import missing'}
     if($round -eq 2 -and $report -ne 'PASS repeated launch preserves user edit and IndexedDB blobs'){throw 'Repeated import overwrote edits'}
@@ -200,6 +225,7 @@ try{
    }finally{if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}}
   }
   if((Get-FileHash $snapshot).Hash -ne $snapshotHash){throw 'Source export was modified'}
+  Write-Host "PASS $source retry chose fresh profile; subsequent launch reused committed profile"
  }
  # 3B: refuse ownership of the existing healthy service, then start/stop the real isolated service natively.
  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
