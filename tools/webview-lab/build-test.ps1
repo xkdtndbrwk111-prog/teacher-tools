@@ -216,7 +216,11 @@ try{
     $shareUri='http://127.0.0.1:17449/api/share-input'
     $headers=@{'Sec-Fetch-Site'='same-origin'}
     foreach($options in @(@{keyboard=$false;cursor=$false},@{keyboard=$true;cursor=$false},@{keyboard=$false;cursor=$true},@{keyboard=$false;cursor=$false})){
-     $posted=Invoke-RestMethod -Method Post -Uri $shareUri -Headers $headers -ContentType 'application/json' -Body ($options|ConvertTo-Json -Compress)
+     # Existing /api/share-input contract accepts UTF-8 JSON encoded as ASCII Base64.
+     $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($options|ConvertTo-Json -Compress)))
+     $posted=Invoke-RestMethod -Method Post -Uri $shareUri -Headers $headers -ContentType 'text/plain' -Body $encoded
+     $saved=Invoke-RestMethod -Uri $shareUri -TimeoutSec 2
+     if($saved.keyboard -ne $options.keyboard -or $saved.cursor -ne $options.cursor){throw 'Share input API readback mismatch'}
      if($posted.keyboard -ne $options.keyboard -or $posted.cursor -ne $options.cursor){throw 'Share input API settings mismatch'}
      $wantHook=$options.keyboard -or $options.cursor
      $ok=$false
