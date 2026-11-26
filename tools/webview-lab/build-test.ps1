@@ -70,6 +70,7 @@ $loader=Get-ChildItem (Join-Path $root 'sdk') -Recurse -Filter WebView2Loader.dl
 if(!$loader -or !(Test-Path $win)){throw 'Missing WebView2 dependencies'}
 Copy-Item $core.FullName,$win,$loader.FullName $out
 Copy-Item (Join-Path $PSScriptRoot 'mini-fixture.html') $out
+Copy-Item (Join-Path $PSScriptRoot 'migration-transfer.js') $out
 $realGame=Join-Path $out 'real-mini.html'
 Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/xkdtndbrwk111-prog/hoja-minigames/51c195b9cd87a63c96944f547ad307e07d7eac40/index.html' -OutFile $realGame
 if((git hash-object --no-filters $realGame).Trim() -ne '4f157000276a1633c9d90553bc6aac81e6980be8'){throw 'Real mini game Git blob hash mismatch'}
@@ -176,6 +177,29 @@ try{
    if($duplicate -and !$duplicate.HasExited){$duplicate.Kill();$duplicate.WaitForExit()}
    if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
   }
+ }
+ # 3D-1 logical migration feasibility on isolated real Chrome and Edge profiles.
+ foreach($source in @('chrome','edge')){
+  node (Join-Path $PSScriptRoot 'migration-source.cjs') $root $source
+  if($LASTEXITCODE -ne 0){throw 'Source browser transfer failed'}
+  $snapshot=Join-Path $root "migration-$source.json"
+  $snapshotHash=(Get-FileHash $snapshot).Hash
+  foreach($round in @(1,2)){
+   Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+   $native=$null
+   try{
+    $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-migrate window $source" -PassThru
+    for($i=0;$i -lt 160 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){throw ('Migration native exited: '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+    if(!(Test-Path $nativeReady)){throw 'Migration startup timeout'}
+    $report=Get-Content (Join-Path $root "migration-$source.result") -Raw
+    if($round -eq 1 -and $report -ne 'PASS exact import and readback'){throw 'First import missing'}
+    if($round -eq 2 -and $report -ne 'PASS repeated launch preserves user edit and IndexedDB blobs'){throw 'Repeated import overwrote edits'}
+    Write-Host "$source $report"
+    Set-Content $nativeStop 'stop' -Encoding ASCII
+    if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Migration native close failed'}
+   }finally{if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}}
+  }
+  if((Get-FileHash $snapshot).Hash -ne $snapshotHash){throw 'Source export was modified'}
  }
  # 3B: refuse ownership of the existing healthy service, then start/stop the real isolated service natively.
  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue

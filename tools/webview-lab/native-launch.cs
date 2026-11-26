@@ -18,6 +18,7 @@ internal sealed class NativeBoardLaunch : Form {
     readonly string root,runtime,mode,modeFile,stopFile,resultFile;
     readonly WebView2 browser=new WebView2();
     readonly bool startOwned;
+    readonly string migrationSource;
     Process ownedServer;
     readonly object logLock=new object();
     readonly Timer heartbeat=new Timer();
@@ -28,8 +29,8 @@ internal sealed class NativeBoardLaunch : Form {
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
-    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned){
-        this.startOwned=startOwned;
+    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource){
+        this.startOwned=startOwned;this.migrationSource=migrationSource;
         this.root=root;this.runtime=runtime;this.mode=mode;
         modeFile=Path.Combine(runtime,"board-mode.json");
         stopFile=Path.Combine(root,"native-launch.stop");
@@ -121,7 +122,7 @@ internal sealed class NativeBoardLaunch : Form {
         string health=await Task.Run(()=>Health());
         var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
         Require(json.ContainsKey("service")&&(string)json["service"]=="teacher-tools-local"&&json.ContainsKey("release")&&(string)json["release"]==Release,"isolated health mismatch");
-        var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"native-profile"));
+        var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,migrationSource==null?"native-profile":"native-migration-"+migrationSource));
         await browser.EnsureCoreWebView2Async(env);
         var core=browser.CoreWebView2;
         core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
@@ -132,7 +133,12 @@ internal sealed class NativeBoardLaunch : Form {
         core.PermissionRequested+=(s,e)=>{e.State=CoreWebView2PermissionState.Deny;};
         core.DownloadStarting+=(s,e)=>{e.Cancel=true;};
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
-        core.WebResourceRequested+=(s,e)=>{if(!Lab.Allowed(e.Request.Uri,e.Request.Method))e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");};
+        core.WebResourceRequested+=(s,e)=>{
+            if(migrationSource!=null&&e.Request.Uri==Origin+"/__lab_migration"){
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes("<!doctype html><title>Isolated migration</title>")),200,"OK","Content-Type: text/html; charset=utf-8");return;
+            }
+            if(!Lab.Allowed(e.Request.Uri,e.Request.Method))e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
+        };
         core.ProcessFailed+=(s,e)=>Finish(1,"FAIL renderer "+e.ProcessFailedKind);
         if(mode=="wallpaper"){
             var screen=TargetScreen();var area=screen.Bounds;var work=screen.WorkingArea;
@@ -141,6 +147,7 @@ internal sealed class NativeBoardLaunch : Form {
             Require(SetWindowPos(Handle,new IntPtr(1),area.X,area.Y,area.Width,area.Height,0x0070),"wallpaper position");
             lastBounds=area;
         }
+        if(migrationSource!=null)await VerifyMigration(core);
         string url=Origin+"/";
         if(mode=="wallpaper"){var s=TargetScreen();var a=s.Bounds;var w=s.WorkingArea;url+="?inset="+(w.X-a.X)+","+(w.Y-a.Y)+","+(a.Right-w.Right)+","+(a.Bottom-w.Bottom);}
         var loaded=new TaskCompletionSource<bool>();
@@ -153,6 +160,32 @@ internal sealed class NativeBoardLaunch : Form {
         if(mode=="wallpaper")NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
         Publish();heartbeat.Start();
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
+    }
+    async Task VerifyMigration(CoreWebView2 core){
+        string marker=Path.Combine(root,"migration-"+migrationSource+".done");
+        string data=File.ReadAllText(Path.Combine(root,"migration-"+migrationSource+".json"));
+        Require(data.Length<32000000,"transfer too large");
+        string quoted=new System.Web.Script.Serialization.JavaScriptSerializer(){MaxJsonLength=64000000}.Serialize(data);
+        var loaded=new TaskCompletionSource<bool>();
+        EventHandler<CoreWebView2NavigationCompletedEventArgs> handler=(s,e)=>loaded.TrySetResult(e.IsSuccess);
+        core.NavigationCompleted+=handler;core.Navigate(Origin+"/__lab_migration");
+        Require(await Task.WhenAny(loaded.Task,Task.Delay(10000))==loaded.Task&&await loaded.Task,"migration neutral page");
+        core.NavigationCompleted-=handler;
+        await core.ExecuteScriptAsync(File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"migration-transfer.js")));
+        bool first=!File.Exists(marker);
+        if(first){
+            await core.ExecuteScriptAsync("(async()=>{try{await ttMigration.restore(JSON.parse("+quoted+"));document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
+        }else{
+            await core.ExecuteScriptAsync("(async()=>{try{let expected=JSON.parse("+quoted+"),actual=await ttMigration.snapshot();let map=new Map(actual.values);let ok=expected.values.every(([k,v])=>k==='teacher-note'?map.get(k)==='LAB updated after migration':map.get(k)===v)&&JSON.stringify(actual.dbs)===JSON.stringify(expected.dbs);document.title=ok?'migration-ok':'migration-fail: persisted values'}catch(e){document.title='migration-fail: '+e.message}})()");
+        }
+        string title="";
+        for(int i=0;i<80;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
+        Require(title.Contains("migration-ok"),"migration timeout");
+        if(first){
+            await core.ExecuteScriptAsync("localStorage.setItem('teacher-note','LAB updated after migration')");
+            File.WriteAllText(marker,"verified");
+        }
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
     }
     string ModeJson(){return "{\"mode\":\""+mode+"\",\"window\":"+Handle.ToInt64()+",\"pid\":"+Process.GetCurrentProcess().Id+",\"release\":\""+Release+"\"}";}
     void Publish(){
@@ -173,7 +206,8 @@ internal sealed class NativeBoardLaunch : Form {
     }
     void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();NativeShareInput.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
     [STAThread] static int Main(string[] args){
-        if(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
+        bool migrate=args.Length==3&&args[0]=="--lab-launch-migrate"&&(args[2]=="chrome"||args[2]=="edge");
+        if((!migrate&&(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")))||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
         string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if(String.IsNullOrEmpty(root)||String.IsNullOrEmpty(local))return 2;
         root=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
@@ -186,7 +220,7 @@ internal sealed class NativeBoardLaunch : Form {
             if(File.Exists(Path.Combine(runtime,"board-mode.json")))return 4;
             try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned")){
+            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned",migrate?args[2]:null)){
                 try{Application.Run(form);return form.exitCode;}
                 finally{form.StopOwnedServer();}
             }
