@@ -27,6 +27,7 @@ internal sealed class NativeBoardLaunch : Form {
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr h,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     NativeBoardLaunch(string root,string runtime,string mode,bool startOwned){
         this.startOwned=startOwned;
         this.root=root;this.runtime=runtime;this.mode=mode;
@@ -40,6 +41,7 @@ internal sealed class NativeBoardLaunch : Form {
         if(mode=="wallpaper"){FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;}
         browser.Dock=DockStyle.Fill;Controls.Add(browser);
         Shown+=async(s,e)=>{try{await StartBoard();}catch(Exception ex){Finish(1,"FAIL "+ex.Message);}};
+        FormClosing+=(s,e)=>NativeShareInput.Stop();
         FormClosed+=(s,e)=>{heartbeat.Stop();RemoveOwnedMode();};
         heartbeat.Interval=1000;heartbeat.Tick+=(s,e)=>{try{
             if(File.Exists(stopFile)){Finish(0,"PASS native close "+mode);return;}
@@ -148,6 +150,7 @@ internal sealed class NativeBoardLaunch : Form {
         Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('1.66.43')")=="true","real dashboard identity");
         if(mode=="wallpaper")Require(FormBorderStyle==FormBorderStyle.None&&Bounds==TargetScreen().Bounds&&!ShowInTaskbar,"wallpaper geometry/frame");
         else Require(FormBorderStyle==FormBorderStyle.Sizable&&ShowInTaskbar,"windowed geometry/frame");
+        if(mode=="wallpaper")NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
         Publish();heartbeat.Start();
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
     }
@@ -168,7 +171,7 @@ internal sealed class NativeBoardLaunch : Form {
             }
         }catch{}
     }
-    void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
+    void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();NativeShareInput.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
     [STAThread] static int Main(string[] args){
         if(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
         string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
@@ -181,6 +184,7 @@ internal sealed class NativeBoardLaunch : Form {
         try{guard=new FileStream(Path.Combine(runtime,"native-launch.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}catch(IOException){return 3;}
         using(guard){
             if(File.Exists(Path.Combine(runtime,"board-mode.json")))return 4;
+            try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
             using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned")){
                 try{Application.Run(form);return form.exitCode;}

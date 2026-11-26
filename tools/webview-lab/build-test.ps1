@@ -76,7 +76,7 @@ if((git hash-object --no-filters $realGame).Trim() -ne '4f157000276a1633c9d90553
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$out\HOJA-WebView-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
 if($LASTEXITCODE -ne 0){throw 'Compilation failed'}
-& $csc /nologo /codepage:65001 /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$out\HOJA-Native-Launch-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs')
+& $csc /nologo /codepage:65001 /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$out\HOJA-Native-Launch-Lab.exe" "/reference:$out\Microsoft.Web.WebView2.Core.dll" "/reference:$out\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs')
 if($LASTEXITCODE -ne 0){throw 'Native launcher compilation failed'}
 $utf8=New-Object Text.UTF8Encoding($false)
 $at=[DateTime]::UtcNow.ToString('o')
@@ -211,10 +211,36 @@ try{
    if($health.service -ne 'teacher-tools-local' -or $health.release -ne '2026-11-25-V1.66.43-STABLE-PILOT'){throw 'Owned health mismatch'}
    $online=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
    if(!$online.wallpaper){throw 'Owned board not connected'}
+   if($mode -eq 'wallpaper'){
+    $shareStatus=Join-Path $runtime 'share-input-status.json'
+    $shareUri='http://127.0.0.1:17449/api/share-input'
+    $headers=@{'Sec-Fetch-Site'='same-origin'}
+    foreach($options in @(@{keyboard=$false;cursor=$false},@{keyboard=$true;cursor=$false},@{keyboard=$false;cursor=$true},@{keyboard=$false;cursor=$false})){
+     $posted=Invoke-RestMethod -Method Post -Uri $shareUri -Headers $headers -ContentType 'application/json' -Body ($options|ConvertTo-Json -Compress)
+     if($posted.keyboard -ne $options.keyboard -or $posted.cursor -ne $options.cursor){throw 'Share input API settings mismatch'}
+     $wantHook=$options.keyboard -or $options.cursor
+     $ok=$false
+     for($i=0;$i -lt 30;$i++){
+      try{
+       $st=Get-Content $shareStatus -Raw|ConvertFrom-Json
+       $api=Invoke-RestMethod -Uri ($shareUri+'/status') -TimeoutSec 2
+       if($st.pid -eq $native.Id -and $st.keyboard -eq $options.keyboard -and $st.cursor -eq $options.cursor -and $st.hook -eq $wantHook -and $api.running -and $api.hook -eq $wantHook){$ok=$true;break}
+      }catch{}
+      Start-Sleep -Milliseconds 200
+     }
+     if(!$ok){Get-Content (Join-Path $runtime 'share-input.log') -ErrorAction SilentlyContinue;throw 'Native share input option/hook state not applied'}
+     Write-Host "PASS native share input keyboard=$($options.keyboard) cursor=$($options.cursor) hook=$wantHook"
+    }
+    $restart=Invoke-RestMethod -Method Post -Uri ($shareUri+'/restart') -Headers $headers -ContentType 'application/json' -Body '{}'
+    if(!$restart.ok){throw 'Share input restart status failed'}
+    $st=Get-Content $shareStatus -Raw|ConvertFrom-Json
+    if($st.pid -ne $native.Id){throw 'Share helper PID changed'}
+   }
    Set-Content $nativeStop 'stop' -Encoding ASCII
    if(!$native.WaitForExit(20000) -or $native.ExitCode -ne 0){throw 'Owned native close failed'}
    if(!$owned.WaitForExit(10000)){throw 'Owned service survived normal close'}
    if(Test-Path (Join-Path $runtime 'board-mode.json')){throw 'Owned heartbeat not removed'}
+   if(Test-Path (Join-Path $runtime 'share-input-status.json')){throw 'Native share input status survived close'}
    if(Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue){throw 'Owned server listener not released'}
    Write-Host "PASS native $mode owns service lifecycle, health, exact listener, cleanup and restart"
   }finally{
