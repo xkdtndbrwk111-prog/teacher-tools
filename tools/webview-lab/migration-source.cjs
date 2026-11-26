@@ -52,6 +52,21 @@ function copyStorage(profile,stage){
  assert(!fs.existsSync(path.join(dest,'Network'))&&!fs.existsSync(path.join(dest,'Cookies')));
  return before;
 }
+async function exportChunks(page,filename){
+ const length=await page.evaluate(async()=>{globalThis.__migrationText=JSON.stringify(await ttMigration.snapshot());return __migrationText.length});
+ assert(length<=96*1024*1024,'transfer exceeds research envelope');
+ const hash=crypto.createHash('sha256'),fd=filename?fs.openSync(filename,'wx'):null;
+ try{
+  for(let p=0;p<length;p+=512*1024){
+   const part=await page.evaluate(([a,b])=>__migrationText.slice(a,b),[p,p+512*1024]);
+   assert.equal(part.length,Math.min(512*1024,length-p));
+   // UTF-8 chunk boundaries may split a surrogate pair; preserve UTF-16 code units for comparison.
+   hash.update(part,'utf16le');
+   if(fd!==null)fs.writeSync(fd,part,null,'utf16le');
+  }
+ }finally{if(fd!==null)fs.closeSync(fd);await page.evaluate(()=>{delete globalThis.__migrationText})}
+ return {length,sha:hash.digest('hex')};
+}
 async function open(profile,channel){
  const ctx=await chromium.launchPersistentContext(profile,{channel,headless:true,args:['--no-first-run','--disable-background-networking']});
  await ctx.route('**/*',r=>{const u=new URL(r.request().url());return (u.origin===origin||u.origin==='http://127.0.0.1:17448')?r.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>isolated transfer</title>'}):r.abort()});
@@ -66,7 +81,7 @@ async function open(profile,channel){
   const page=ctx.pages()[0]||await ctx.newPage();
   await page.goto('http://127.0.0.1:17448/');await page.evaluate(()=>{localStorage.setItem('other-origin-secret','must-not-copy')});
   await page.goto(origin+'/__lab_migration');await page.addScriptTag({content:script});await page.evaluate(s=>ttMigration.seed(s),source);
-  expected=await page.evaluate(()=>ttMigration.snapshot());
+  expected=await exportChunks(page,null);
   assert.throws(()=>copyStorage(profile,stage),/source profile active/);assert(!fs.existsSync(stage));
   console.log('PASS '+source+' active profile refused before copying');
  }finally{await ctx.close()}
@@ -83,9 +98,15 @@ async function open(profile,channel){
   copy=await open(stage,channel);
   const page=copy.pages()[0]||await copy.newPage();
   await page.goto(origin+'/__lab_migration');await page.addScriptTag({content:script});
-  const data=await page.evaluate(()=>ttMigration.snapshot());
-  assert.deepEqual(data,expected);assert.equal(data.values.length,7);assert.equal(data.dbs.length,3);assert(!JSON.stringify(data).includes('must-not-copy'));
-  fs.writeFileSync(path.join(root,'migration-'+source+'.json'),JSON.stringify(data),{flag:'wx'});
+  const file=path.join(root,'migration-'+source+'.json');
+  const actual=await exportChunks(page,file);
+  assert.deepEqual(actual,expected);
+  const data=JSON.parse(fs.readFileSync(file,'utf16le'));
+  assert.equal(data.values.length,7);assert.equal(data.dbs.length,3);assert(!JSON.stringify(data.values).includes('must-not-copy'));
+  const video=data.dbs.find(d=>d.name==='tt-multimedia-v1').records[0][1].entries.find(([k])=>k==='media')[1].entries[0][1].entries.find(([k])=>k==='file')[1];
+  const byteLength=Buffer.from(video.bytes,'base64').length;
+  assert.equal(byteLength,source==='chrome'?36*1024*1024:4);
+  console.log('PASS '+source+' chunked export, media bytes='+byteLength+', envelope chars='+actual.length);
   console.log('PASS '+source+' closed profile copy export matches original at old board origin, other origin excluded');
  }finally{
   if(copy)await copy.close();

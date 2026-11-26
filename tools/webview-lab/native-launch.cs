@@ -205,23 +205,37 @@ internal sealed class NativeBoardLaunch : Form {
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
     }
     async Task VerifyMigration(CoreWebView2 core){
-        string data=File.ReadAllText(Path.Combine(root,"migration-"+migrationSource+".json"));
-        Require(data.Length<32000000,"transfer too large");
-        string quoted=new System.Web.Script.Serialization.JavaScriptSerializer(){MaxJsonLength=64000000}.Serialize(data);
+        string input=Path.Combine(root,"migration-"+migrationSource+".json");
+        Require(new FileInfo(input).Length<=192L*1024*1024,"transfer too large");
+        string data=File.ReadAllText(input,Encoding.Unicode);
+        Require(data.Length<=96*1024*1024,"transfer too large");
+        var serializer=new System.Web.Script.Serialization.JavaScriptSerializer(){MaxJsonLength=4*1024*1024};
         var loaded=new TaskCompletionSource<bool>();
         EventHandler<CoreWebView2NavigationCompletedEventArgs> handler=(s,e)=>loaded.TrySetResult(e.IsSuccess);
         core.NavigationCompleted+=handler;core.Navigate(Origin+"/__lab_migration");
         Require(await Task.WhenAny(loaded.Task,Task.Delay(10000))==loaded.Task&&await loaded.Task,"migration neutral page");
         core.NavigationCompleted-=handler;
         await core.ExecuteScriptAsync(File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"migration-transfer.js")));
+        Require(await core.ExecuteScriptAsync("globalThis.__migrationParts=[];true")=="true","chunk initialization");
+        int chunks=0;
+        for(int offset=0;offset<data.Length;){
+            int count=Math.Min(512*1024,data.Length-offset);
+            if(offset+count<data.Length&&Char.IsHighSurrogate(data[offset+count-1]))count--;
+            string part=serializer.Serialize(data.Substring(offset,count));
+            chunks++;
+            Require(await core.ExecuteScriptAsync("__migrationParts.push("+part+")")==chunks.ToString(),"chunk delivery");
+            offset+=count;
+        }
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".chunks"),chunks.ToString());
         bool first=migrationFirst;
+        string unpack="let expected=JSON.parse(__migrationParts.join(''));delete globalThis.__migrationParts;";
         if(first){
-            await core.ExecuteScriptAsync("(async()=>{try{await ttMigration.restore(JSON.parse("+quoted+"));document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
+            await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"await ttMigration.restore(expected);document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }else{
-            await core.ExecuteScriptAsync("(async()=>{try{let expected=JSON.parse("+quoted+"),actual=await ttMigration.snapshot();let diff=ttMigration.comparePersisted(expected,actual);document.title=diff.length?'migration-fail: '+diff.join('; '):'migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
+            await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"let actual=await ttMigration.snapshot();let diff=ttMigration.comparePersisted(expected,actual);document.title=diff.length?'migration-fail: '+diff.join('; '):'migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }
         string title="";
-        for(int i=0;i<80;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
+        for(int i=0;i<450;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
         Require(title.Contains("migration-ok"),"migration timeout");
         File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
     }
