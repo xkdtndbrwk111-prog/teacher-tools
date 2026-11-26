@@ -265,6 +265,16 @@ internal sealed class NativeBoardLaunch : Form {
         core.Navigate(url);
         Require(await Task.WhenAny(loaded.Task,Task.Delay(15000))==loaded.Task&&await loaded.Task,"dashboard navigation");
         Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('1.66.43')")=="true","real dashboard identity");
+        // Explicit isolated update fixture: exercise actual dashboard memo persistence.
+        string profileProbe=Path.Combine(root,"update-profile-probe");
+        if(File.Exists(profileProbe)){
+            string probe=File.ReadAllText(profileProbe).Trim();
+            Require(probe=="seed"||probe=="verify","invalid update profile probe");
+            if(probe=="seed")
+                Require(await core.ExecuteScriptAsync("(()=>{const el=document.getElementById('notes');el.value='LAB update memo';el.dispatchEvent(new Event('input',{bubbles:true}));return localStorage.getItem('teacher-note')===el.value})()")=="true","seed update profile memo");
+            else
+                Require(await core.ExecuteScriptAsync("document.getElementById('notes').value==='LAB update memo'&&localStorage.getItem('teacher-note')==='LAB update memo'")=="true","preserved update profile memo");
+        }
         if(migrationSource!=null){
             string note=migrationFirst?"LAB 메모":"LAB updated after migration";
             string verify="(()=>{const r=window.ttGridDebug?.().items.memo;return document.body.dataset.theme==='pink'&&document.getElementById('classHeading').textContent==='LAB "+migrationSource+" 교실'&&document.getElementById('notes').value==='"+note+"'&&r&&r.x===31&&r.y===20&&r.w===12&&r.h===5&&!r.off&&r.z===4})()";
