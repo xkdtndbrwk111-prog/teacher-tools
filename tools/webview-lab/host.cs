@@ -40,7 +40,8 @@ internal sealed class Lab : Form {
         string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,pid:e.pointerId,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
 window.__labObserve=()=>({focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,balance2:COIN.students.find(s=>s.id==='lab2')?.balance,idx2:ST.players[1]?.idx,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
 window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
-window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c':'t')+i),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
+window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c':'t')+i),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};
+window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
         realGame=realGame.Insert(tail,probe+Environment.NewLine);
         Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
         ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
@@ -275,8 +276,13 @@ window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNex
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":["+String.Join(",",points)+"]}");
         await GameWait("__labObserve().idx===1&&__labObserve().idx2===1&&new Set(__labObserve().input.filter(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted).map(e=>e.pid)).size===2","two simultaneous trusted contacts advance both players",20);
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
-        await SendKey(core,"Escape","Escape");
-        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden","duo pause",20);
+        // A touch-first game need not own keyboard focus; test its actual canvas menu instead.
+        string menuRaw=await gameFrame.ExecuteScriptAsync("__labMenuPoint()");
+        string[] menuXY=menuRaw.Trim('"').Split(',');
+        string mx=(double.Parse(menuXY[0],inv)+double.Parse(off[0],inv)).ToString(inv),my=(double.Parse(menuXY[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+mx+",\"y\":"+my+",\"id\":4}]}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden&&__labObserve().idx===1&&__labObserve().idx2===1&&__labObserve().input.filter(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted).length===3","duo actual touch menu pause",20);
         await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
         await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14&&__labObserve().balance2===10","duo refund restores both balances",100);
         await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
