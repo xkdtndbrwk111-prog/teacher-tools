@@ -17,6 +17,9 @@ internal sealed class NativeBoardLaunch : Form {
     const string Release="2026-11-25-V1.66.43-STABLE-PILOT";
     readonly string root,runtime,mode,modeFile,stopFile,resultFile;
     readonly WebView2 browser=new WebView2();
+    readonly bool startOwned;
+    Process ownedServer;
+    readonly object logLock=new object();
     readonly Timer heartbeat=new Timer();
     bool published,closing; int exitCode=1; long ownedWindow;
     Rectangle lastBounds;
@@ -24,7 +27,8 @@ internal sealed class NativeBoardLaunch : Form {
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr h,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
-    NativeBoardLaunch(string root,string runtime,string mode){
+    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned){
+        this.startOwned=startOwned;
         this.root=root;this.runtime=runtime;this.mode=mode;
         modeFile=Path.Combine(runtime,"board-mode.json");
         stopFile=Path.Combine(root,"native-launch.stop");
@@ -39,6 +43,7 @@ internal sealed class NativeBoardLaunch : Form {
         FormClosed+=(s,e)=>{heartbeat.Stop();RemoveOwnedMode();};
         heartbeat.Interval=1000;heartbeat.Tick+=(s,e)=>{try{
             if(File.Exists(stopFile)){Finish(0,"PASS native close "+mode);return;}
+            if(startOwned&&ownedServer!=null&&ownedServer.HasExited){Finish(1,"FAIL owned server exited");return;}
             if(mode=="wallpaper"&&!IsIconic(Handle)){
                 Rectangle next=TargetScreen().Bounds;
                 if(next!=lastBounds){if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0014))throw new IOException("display resize");lastBounds=next;}
@@ -59,7 +64,58 @@ internal sealed class NativeBoardLaunch : Form {
         using(var res=(HttpWebResponse)req.GetResponse())
         using(var reader=new StreamReader(res.GetResponseStream()))return reader.ReadToEnd();
     }
+    static bool PortOccupied(){
+        foreach(var ep in System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners())if(ep.Port==17449)return true;
+        return false;
+    }
+    static int ListenerPid(){
+        var info=new ProcessStartInfo(Path.Combine(Environment.SystemDirectory,"netstat.exe"),"-ano -p TCP");
+        info.UseShellExecute=false;info.CreateNoWindow=true;info.RedirectStandardOutput=true;
+        using(var p=Process.Start(info)){
+            string output=p.StandardOutput.ReadToEnd();p.WaitForExit();
+            Require(p.ExitCode==0,"netstat failed");
+            var matches=System.Text.RegularExpressions.Regex.Matches(output,@"(?m)^\s*TCP\s+127\.0\.0\.1:17449\s+\S+\s+LISTENING\s+(\d+)\s*$");
+            Require(matches.Count<=1,"ambiguous server listener");
+            return matches.Count==0?0:Int32.Parse(matches[0].Groups[1].Value);
+        }
+    }
+    void ServerLog(string filename,string line){
+        if(line==null)return;
+        lock(logLock){try{File.AppendAllText(Path.Combine(root,filename),line+Environment.NewLine,new UTF8Encoding(false));}catch{}}
+    }
+    async Task StartOwnedServer(){
+        Require(!PortOccupied(),"occupied port; no existing process stopped");
+        string script=Path.Combine(runtime,"server.ps1");
+        Require(File.Exists(script),"server script missing");
+        string exe=Path.Combine(Environment.SystemDirectory,@"WindowsPowerShell\v1.0\powershell.exe");
+        var info=new ProcessStartInfo(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" -Port 17449");
+        info.WorkingDirectory=runtime;info.UseShellExecute=false;info.CreateNoWindow=true;
+        info.RedirectStandardOutput=true;info.RedirectStandardError=true;
+        ownedServer=new Process();ownedServer.StartInfo=info;
+        ownedServer.OutputDataReceived+=(s,e)=>ServerLog("native-server-out.log",e.Data);
+        ownedServer.ErrorDataReceived+=(s,e)=>ServerLog("native-server-err.log",e.Data);
+        Require(ownedServer.Start(),"server start");ownedServer.BeginOutputReadLine();ownedServer.BeginErrorReadLine();
+        // Retain the exact process handle; never terminate a listener discovered by port.
+        var retained=ownedServer.Handle;
+        File.WriteAllText(Path.Combine(root,"native-server.pid"),ownedServer.Id.ToString());
+        for(int i=0;i<60;i++){
+            Require(!ownedServer.HasExited,"owned server exited during startup");
+            int pid=await Task.Run(()=>ListenerPid());
+            if(pid!=0){
+                Require(pid==ownedServer.Id,"port acquired by unrelated process");
+                try{await Task.Run(()=>Health());return;}catch(WebException){}
+            }
+            await Task.Delay(250);
+        }
+        throw new IOException("owned server readiness timeout");
+    }
+    void StopOwnedServer(){
+        if(ownedServer==null)return;
+        try{if(!ownedServer.HasExited)ownedServer.Kill();Require(ownedServer.WaitForExit(10000),"owned server exit timeout");}
+        finally{ownedServer.Dispose();ownedServer=null;}
+    }
     async Task StartBoard(){
+        if(startOwned)await StartOwnedServer();
         string health=await Task.Run(()=>Health());
         var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
         Require(json.ContainsKey("service")&&(string)json["service"]=="teacher-tools-local"&&json.ContainsKey("release")&&(string)json["release"]==Release,"isolated health mismatch");
@@ -114,7 +170,7 @@ internal sealed class NativeBoardLaunch : Form {
     }
     void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
     [STAThread] static int Main(string[] args){
-        if(args.Length!=2||args[0]!="--lab-launch"||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
+        if(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
         string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if(String.IsNullOrEmpty(root)||String.IsNullOrEmpty(local))return 2;
         root=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
@@ -126,7 +182,10 @@ internal sealed class NativeBoardLaunch : Form {
         using(guard){
             if(File.Exists(Path.Combine(runtime,"board-mode.json")))return 4;
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-            using(var form=new NativeBoardLaunch(root,runtime,args[1])){Application.Run(form);return form.exitCode;}
+            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned")){
+                try{Application.Run(form);return form.exitCode;}
+                finally{form.StopOwnedServer();}
+            }
         }
     }
 }

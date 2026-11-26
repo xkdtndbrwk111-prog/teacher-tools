@@ -177,6 +177,51 @@ try{
    if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
   }
  }
+ # 3B: refuse ownership of the existing healthy service, then start/stop the real isolated service natively.
+ Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+ $attempt=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch-owned window' -PassThru
+ if(!$attempt.WaitForExit(10000) -or $attempt.ExitCode -ne 1 -or $server.HasExited -or (Test-Path $nativeReady)){throw 'Existing service ownership rejection failed'}
+ if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $server.Id){throw 'Existing listener changed'}
+ Write-Host 'PASS native launcher refuses existing healthy service, leaves it running'
+ $server.Kill();$server.WaitForExit()
+ for($i=0;$i -lt 80 -and (Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue);$i++){Start-Sleep -Milliseconds 250}
+ if(Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue){throw 'Previous test server still listening'}
+ $foreign=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,17449)
+ try{
+  $foreign.Start()
+  Remove-Item $nativeReady,$nativeStop,$nativeResult -Force -ErrorAction SilentlyContinue
+  $attempt=Start-Process -FilePath $nativeExe -ArgumentList '--lab-launch-owned window' -PassThru
+  if(!$attempt.WaitForExit(10000) -or $attempt.ExitCode -ne 1 -or (Test-Path $nativeReady)){throw 'Foreign listener rejection failed'}
+  if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $PID){throw 'Foreign listener changed'}
+  Write-Host 'PASS occupied unrelated port refused without killing listener'
+ }finally{$foreign.Stop()}
+ foreach($mode in @('window','wallpaper')){
+  $pidFile=Join-Path $root 'native-server.pid'
+  Remove-Item $nativeReady,$nativeStop,$nativeResult,$pidFile -Force -ErrorAction SilentlyContinue
+  $native=$null;$owned=$null
+  try{
+   $native=Start-Process -FilePath $nativeExe -ArgumentList "--lab-launch-owned $mode" -PassThru
+   for($i=0;$i -lt 180 -and !(Test-Path $nativeReady);$i++){if($native.HasExited){Get-Content (Join-Path $root 'native-server-err.log') -ErrorAction SilentlyContinue;throw ('Owned launch exited: '+$native.ExitCode+' '+(Get-Content $nativeResult -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+   if(!(Test-Path $nativeReady) -or !(Test-Path $pidFile)){throw 'Owned launcher timeout'}
+   $ownedId=[int](Get-Content $pidFile -Raw)
+   $owned=Get-Process -Id $ownedId -ErrorAction Stop
+   $null=$owned.Handle
+   if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17449 -State Listen).OwningProcess -ne $ownedId){throw 'Owned server listener PID mismatch'}
+   $health=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/health' -TimeoutSec 2
+   if($health.service -ne 'teacher-tools-local' -or $health.release -ne '2026-11-25-V1.66.43-STABLE-PILOT'){throw 'Owned health mismatch'}
+   $online=Invoke-RestMethod -Uri 'http://127.0.0.1:17449/api/board-status' -TimeoutSec 2
+   if(!$online.wallpaper){throw 'Owned board not connected'}
+   Set-Content $nativeStop 'stop' -Encoding ASCII
+   if(!$native.WaitForExit(20000) -or $native.ExitCode -ne 0){throw 'Owned native close failed'}
+   if(!$owned.WaitForExit(10000)){throw 'Owned service survived normal close'}
+   if(Test-Path (Join-Path $runtime 'board-mode.json')){throw 'Owned heartbeat not removed'}
+   if(Get-NetTCPConnection -LocalPort 17449 -State Listen -ErrorAction SilentlyContinue){throw 'Owned server listener not released'}
+   Write-Host "PASS native $mode owns service lifecycle, health, exact listener, cleanup and restart"
+  }finally{
+   if($native -and !$native.HasExited){$native.Kill();$native.WaitForExit()}
+   if($owned -and !$owned.HasExited){$owned.Kill();$owned.WaitForExit()}
+  }
+ }
  if((Get-FileHash (Join-Path $runtime 'coins.log')).Hash -ne $ledgerBeforeNative -or (Get-FileHash (Join-Path $runtime 'seating.json')).Hash -ne $seatBeforeNative){throw 'Native launcher changed classroom data'}
  Write-Host "PASS isolated ledger: exact fixture and solo/duo/timed spends and matched per-student refunds; Phase 2A/2C seat unchanged; Phase 2B exact manager seat; host bytes=$((Get-ChildItem $out -File | Where-Object {$_.Extension -in '.exe','.dll'} | Measure-Object Length -Sum).Sum)"
 }finally{
