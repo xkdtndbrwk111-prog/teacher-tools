@@ -155,6 +155,15 @@ internal sealed class NativeBoardLaunch : Form {
         core.Navigate(url);
         Require(await Task.WhenAny(loaded.Task,Task.Delay(15000))==loaded.Task&&await loaded.Task,"dashboard navigation");
         Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('1.66.43')")=="true","real dashboard identity");
+        if(migrationSource!=null){
+            string note=File.Exists(Path.Combine(root,"migration-"+migrationSource+".edited"))?"LAB updated after migration":"LAB 메모";
+            string verify="(()=>{const r=window.ttGridDebug?.().items.memo;return document.body.dataset.theme==='pink'&&document.getElementById('classHeading').textContent==='LAB "+migrationSource+" 교실'&&document.getElementById('notes').value==='"+note+"'&&r&&r.x===31&&r.y===20&&r.w===12&&r.h===5&&!r.off&&r.z===4})()";
+            Require(await core.ExecuteScriptAsync(verify)=="true","migrated dashboard UI theme/name/memo/layout");
+            if(note!="LAB updated after migration"){
+                Require(await core.ExecuteScriptAsync("(()=>{const el=document.getElementById('notes');el.value='LAB updated after migration';el.dispatchEvent(new Event('input',{bubbles:true}));return localStorage.getItem('teacher-note')===el.value})()")=="true","actual dashboard memo edit");
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".edited"),"verified");
+            }
+        }
         if(mode=="wallpaper")Require(FormBorderStyle==FormBorderStyle.None&&Bounds==TargetScreen().Bounds&&!ShowInTaskbar,"wallpaper geometry/frame");
         else Require(FormBorderStyle==FormBorderStyle.Sizable&&ShowInTaskbar,"windowed geometry/frame");
         if(mode=="wallpaper")NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
@@ -176,15 +185,12 @@ internal sealed class NativeBoardLaunch : Form {
         if(first){
             await core.ExecuteScriptAsync("(async()=>{try{await ttMigration.restore(JSON.parse("+quoted+"));document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }else{
-            await core.ExecuteScriptAsync("(async()=>{try{let expected=JSON.parse("+quoted+"),actual=await ttMigration.snapshot();let map=new Map(actual.values);let ok=expected.values.every(([k,v])=>k==='teacher-note'?map.get(k)==='LAB updated after migration':map.get(k)===v)&&JSON.stringify(actual.dbs)===JSON.stringify(expected.dbs);document.title=ok?'migration-ok':'migration-fail: persisted values'}catch(e){document.title='migration-fail: '+e.message}})()");
+            await core.ExecuteScriptAsync("(async()=>{try{let expected=JSON.parse("+quoted+"),actual=await ttMigration.snapshot();let diff=ttMigration.comparePersisted(expected,actual);document.title=diff.length?'migration-fail: '+diff.join('; '):'migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
         }
         string title="";
         for(int i=0;i<80;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
         Require(title.Contains("migration-ok"),"migration timeout");
-        if(first){
-            await core.ExecuteScriptAsync("localStorage.setItem('teacher-note','LAB updated after migration')");
-            File.WriteAllText(marker,"verified");
-        }
+        if(first)File.WriteAllText(marker,"verified");
         File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
     }
     string ModeJson(){return "{\"mode\":\""+mode+"\",\"window\":"+Handle.ToInt64()+",\"pid\":"+Process.GetCurrentProcess().Id+",\"release\":\""+Release+"\"}";}

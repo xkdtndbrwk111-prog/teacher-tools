@@ -48,11 +48,39 @@ globalThis.ttMigration=(()=>{
  async function seed(source){
   localStorage.setItem('class-theme','pink');localStorage.setItem('teacher-class-name','LAB '+source+' 교실');localStorage.setItem('teacher-note','LAB 메모');
   localStorage.setItem('class-drawing-lab','data:image/png;base64,AAECAw==');localStorage.setItem('class-grid-model','square48-v1');
-  localStorage.setItem('class-grid-density','2');localStorage.setItem('class-layout',JSON.stringify({items:{clock:{x:1,y:2,w:8,h:4}}}));
+  localStorage.setItem('class-grid-density','2');localStorage.setItem('class-layout',JSON.stringify({weekView:'today',items:{memo:{x:31,y:20,w:12,h:5,off:false,z:4}}}));
   const records=[['tt-alert-voice','clips','lead1',new Blob([new Uint8Array([1,0,255,2])],{type:'audio/webm'})],
     ['teacher-tools-dashboard-assets','media','background',{blob:new Blob([new Uint8Array([5,4,3,2])],{type:'image/webp'}),name:'LAB.webp',savedAt:'2026-11-26'}],
     ['tt-multimedia-v1','apps','meeting',{media:{'1':{kind:'local',file:new Blob([new Uint8Array([9,8,7,6])],{type:'video/mp4'}),name:'LAB.mp4'}}}]];
   for(const [name,store,key,v] of records){const db=await open(name,store);try{const tx=db.transaction(store,'readwrite'),end=done(tx);tx.objectStore(store).put(v,key);await end}finally{db.close()}}
  }
- return {snapshot,restore,seed};
+ function comparePersisted(expected,actual){
+  const map=new Map(actual.values),diff=[];
+  for(const [k,v] of expected.values){
+   const a=map.get(k);
+   if(k==='class-layout'){
+    // Actual dashboard layoutLoad adds missing default widgets and normalizes off/z.
+    // Preserve every explicitly seeded widget's coordinates, dimensions and visibility.
+    try{
+     const e=JSON.parse(v),s=JSON.parse(a);
+     if(e.weekView!==s.weekView)diff.push('layout:weekView');
+     for(const [id,r] of Object.entries(e.items)){
+      const got=s.items?.[id];
+      if(!got||['x','y','w','h','off','z'].some(k=>got[k]!==r[k]))diff.push('layout:'+id);
+     }
+    }catch{diff.push('layout:missing or invalid')}
+   }else if(a!==(k==='teacher-note'?'LAB updated after migration':v))diff.push('local:'+k+(a===undefined?':missing':':changed'));
+  }
+  const actualDbs=new Map(actual.dbs.map(d=>[d.name,d]));
+  for(const d of expected.dbs){
+   const a=actualDbs.get(d.name);
+   if(!a||a.store!==d.store){diff.push('db:'+d.name+':missing/schema');continue}
+   const records=new Map(a.records);
+   for(const [k,v] of d.records){if(JSON.stringify(records.get(k))!==JSON.stringify(v))diff.push('db:'+d.name+'/'+k+':changed/missing')}
+   if(a.records.length!==d.records.length)diff.push('db:'+d.name+':record count');
+  }
+  for(const a of actual.dbs)if(!expected.dbs.some(d=>d.name===a.name)&&a.records.length)diff.push('db:'+a.name+':unexpected records');
+  return diff;
+ }
+ return {snapshot,restore,seed,comparePersisted};
 })();
