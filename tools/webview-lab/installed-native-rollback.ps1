@@ -108,95 +108,7 @@ function Prepare-LabBootstrap{
  if($start -lt 0 -or $end -le $start){throw 'Kernel transport anchors missing'}
  $transport=@'
 function Get-R8Remote([string]$Relative,[int]$Limit){
- if($Relative -cnotmatch '^(latest\.json|blobs/[a-f0-9]{64}\.bin)
-try{
- $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=$local
- if($Bootstrap){Prepare-LabBootstrap}
- Set-Content $probe 'seed' -Encoding ASCII
- Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
- Set-Content $probe 'verify' -Encoding ASCII
- Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
- Check-Base
- Write-Host 'PASS runnable synthetic previous version and persistent real dashboard memo'
- foreach($case in @('interrupted','broken','success')){
-  $files=@();$bytesByHash=@{}
-  foreach($f in $programs){
-   $data=[IO.File]::ReadAllBytes($f.FullName)
-   if($case -eq 'broken' -and $f.Name -eq 'dashboard.html'){
-    $data=[Text.Encoding]::UTF8.GetBytes($originalDashboard.Replace('openMiniGames','labMissingMiniGames'))
-   }
-   $hash=Get-R8Sha $data;$bytesByHash[$hash]=$data
-   $files+=@{name=$f.Name;sha256=$hash;bytes=$data.Length}
-  }
-  foreach($name in $names){
-   $data=[IO.File]::ReadAllBytes((Join-Path $Build $name))
-   $hash=Get-R8Sha $data;$bytesByHash[$hash]=$data
-   $files+=@{name=$name;sha256=$hash;bytes=$data.Length}
-  }
-  $m=@{schema='TT-RUNTIME-SNAPSHOT-1';channel='stable';kernel=1;version='1.66.43';bases=@($baseHash);files=$files}
-  $payload=$R8Utf8.GetBytes((ConvertTo-Json -InputObject $m -Depth 10 -Compress))
-  $signed=$R8Utf8.GetBytes((ConvertTo-Json -Compress @{payload=[Convert]::ToBase64String($payload);signature=[Convert]::ToBase64String($rsa.SignData($payload,'SHA256'))}))
-  $parsed=Read-R8Manifest $signed $key
-  $plan=@(New-R8Plan $test $parsed)
-  if($plan.Count -ne 3 -or @(Compare-Object @('dashboard.html','release.json',$names[0]) @($plan.name)).Count){throw 'Actual update plan mismatch'}
-  $token=[guid]::NewGuid().ToString('N')
-  if($Bootstrap){
-   [IO.File]::WriteAllBytes((Join-Path $feed 'latest.json'),$signed)
-   foreach($sha in $bytesByHash.Keys){[IO.File]::WriteAllBytes((Join-Path $feed "blobs/$sha.bin"),$bytesByHash[$sha])}
-   if($case -eq 'interrupted'){
-    $stage=Initialize-R8Transaction $test $parsed $plan {param($sha,$length) return ,([byte[]]$bytesByHash[$sha])}
-    Save-R8Journal $test $stage $plan $token '1.66.43'
-    Install-R8Plan $test $stage @($plan[0])
-    Run-Bootstrap '2026-11-24-V1.66.42-STABLE-PILOT' 'error'
-    Check-Base
-    Write-Host 'PASS R8 bootstrap recovered interrupted transaction and launched base'
-   }elseif($case -eq 'broken'){
-    Run-Bootstrap '2026-11-24-V1.66.42-STABLE-PILOT' 'error'
-    Check-Base
-    Write-Host 'PASS R8 bootstrap rejected signed UI failure and automatically launched restored base'
-   }else{
-    Run-Bootstrap '2026-11-25-V1.66.43-STABLE-PILOT' 'installed'
-    foreach($f in $parsed.files){if((Get-R8FileSha (Get-R8Path $test $f.name)) -cne $f.sha256){throw 'Bootstrap installed bytes mismatch'}}
-    Run-Bootstrap '2026-11-25-V1.66.43-STABLE-PILOT' 'latest'
-    Write-Host 'PASS R8 bootstrap automatically installed and committed actual native update, replay ignored'
-   }
-   continue
-  }
-  $stage=Initialize-R8Transaction $test $parsed $plan {param($sha,$length) return ,([byte[]]$bytesByHash[$sha])}
-  Save-R8Journal $test $stage $plan $token '1.66.43'
-  if($case -eq 'interrupted'){
-   Install-R8Plan $test $stage @($plan[0])
-   Restore-R8Transaction $test;Remove-R8Staging $test
-   Check-Base
-   Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
-   Write-Host 'PASS partial native update interrupted and runnable base recovered'
-   continue
-  }
-  Install-R8Plan $test $stage $plan
-  foreach($f in $parsed.files){if((Get-R8FileSha (Get-R8Path $test $f.name)) -cne $f.sha256){throw 'Candidate bytes mismatch'}}
-  if($case -eq 'broken'){
-   Run-Installed '2026-11-25-V1.66.43-STABLE-PILOT' $token -ExpectFail
-   if(!(Test-Path $pending)){throw 'Failed candidate lost recovery journal'}
-   Restore-R8Transaction $test;Remove-R8Staging $test
-   Check-Base
-   Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
-   Write-Host 'PASS signed installed bad dashboard fails real UI gate, exact old executable and profile recovered'
-  }else{
-   Run-Installed '2026-11-25-V1.66.43-STABLE-PILOT' $token
-   [IO.File]::Delete($pending)
-   Remove-R8Staging $test
-   if(Test-Path $tx){throw 'Successful transaction not committed'}
-   Run-Installed '2026-11-25-V1.66.43-STABLE-PILOT'
-   Check-Data
-   if(@(New-R8Plan $test $parsed).Count){throw 'Committed candidate replay accepted'}
-   Write-Host 'PASS signed installed target actually starts, commits and restarts with preserved real memo and classroom data'
-  }
- }
-}finally{
- $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal
- $rsa.Dispose()
-}
-){throw 'Unexpected download path.'}
+ if($Relative -cnotmatch '^(latest\.json|blobs/[a-f0-9]{64}\.bin)$'){throw 'Unexpected download path.'}
  $p=Join-Path (Join-Path $env:HOJA_LAB_ROOT 'local-signed-feed') $Relative
  Assert-R8Plain $p
  if((Get-Item -LiteralPath $p).Length -gt $Limit){throw 'Download size limit.'}
@@ -280,12 +192,14 @@ function Run-Bootstrap([string]$expectedRelease,[string]$expectedState){
 }
 try{
  $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=$local
+ if($Bootstrap){Prepare-LabBootstrap;Write-Host 'BEGIN R8 bootstrap integration'}
  Set-Content $probe 'seed' -Encoding ASCII
  Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
  Set-Content $probe 'verify' -Encoding ASCII
  Run-Installed '2026-11-24-V1.66.42-STABLE-PILOT'
  Check-Base
  Write-Host 'PASS runnable synthetic previous version and persistent real dashboard memo'
+ $bootstrapPasses=0
  foreach($case in @('interrupted','broken','success')){
   $files=@();$bytesByHash=@{}
   foreach($f in $programs){
@@ -308,6 +222,29 @@ try{
   $plan=@(New-R8Plan $test $parsed)
   if($plan.Count -ne 3 -or @(Compare-Object @('dashboard.html','release.json',$names[0]) @($plan.name)).Count){throw 'Actual update plan mismatch'}
   $token=[guid]::NewGuid().ToString('N')
+  if($Bootstrap){
+   [IO.File]::WriteAllBytes((Join-Path $feed 'latest.json'),$signed)
+   foreach($sha in $bytesByHash.Keys){[IO.File]::WriteAllBytes((Join-Path $feed "blobs/$sha.bin"),$bytesByHash[$sha])}
+   if($case -eq 'interrupted'){
+    $stage=Initialize-R8Transaction $test $parsed $plan {param($sha,$length) return ,([byte[]]$bytesByHash[$sha])}
+    Save-R8Journal $test $stage $plan $token '1.66.43'
+    Install-R8Plan $test $stage @($plan[0])
+    Run-Bootstrap '2026-11-24-V1.66.42-STABLE-PILOT' 'error'
+    Check-Base
+    Write-Host 'PASS R8 bootstrap recovered interrupted transaction and launched base'
+   }elseif($case -eq 'broken'){
+    Run-Bootstrap '2026-11-24-V1.66.42-STABLE-PILOT' 'error'
+    Check-Base
+    Write-Host 'PASS R8 bootstrap rejected signed UI failure and automatically launched restored base'
+   }else{
+    Run-Bootstrap '2026-11-25-V1.66.43-STABLE-PILOT' 'installed'
+    foreach($f in $parsed.files){if((Get-R8FileSha (Get-R8Path $test $f.name)) -cne $f.sha256){throw 'Bootstrap installed bytes mismatch'}}
+    Run-Bootstrap '2026-11-25-V1.66.43-STABLE-PILOT' 'latest'
+    Write-Host 'PASS R8 bootstrap automatically installed and committed actual native update, replay ignored'
+   }
+   $bootstrapPasses++
+   continue
+  }
   $stage=Initialize-R8Transaction $test $parsed $plan {param($sha,$length) return ,([byte[]]$bytesByHash[$sha])}
   Save-R8Journal $test $stage $plan $token '1.66.43'
   if($case -eq 'interrupted'){
@@ -338,6 +275,8 @@ try{
    Write-Host 'PASS signed installed target actually starts, commits and restarts with preserved real memo and classroom data'
   }
  }
+ if($Bootstrap -and $bootstrapPasses -ne 3){throw 'Bootstrap branches did not execute'}
+ if($Bootstrap){Write-Host 'PASS all three R8 bootstrap integration cases executed'}
 }finally{
  $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal
  $rsa.Dispose()
