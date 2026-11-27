@@ -108,6 +108,19 @@ internal sealed class NativeBoardLaunch : Form {
     }
 #if NATIVE_SHARE_LAB
 
+    bool AllowedLocalMedia(string raw,string method){
+        // Only an active, locally issued playback capability; never permit arbitrary loopback ports.
+        if((method!="GET"&&method!="HEAD")||!File.Exists(Path.Combine(root,"media-write-fixture.flag")))return false;
+        Uri u;if(!Uri.TryCreate(raw,UriKind.Absolute,out u)||u.Scheme!="http"||u.Host!="127.0.0.1"||u.Port==17451||u.IsDefaultPort||u.UserInfo!=""||u.Query!=""||u.Fragment!="")return false;
+        var m=System.Text.RegularExpressions.Regex.Match(u.AbsolutePath,@"\A/([a-f0-9]{32})/video\.mp4\z");
+        if(!m.Success)return false;
+        try{
+            string media=Path.Combine(root,"local","TeacherToolsMedia"),play=Path.Combine(media,"playback"),dir=Path.Combine(play,m.Groups[1].Value),file=Path.Combine(dir,"port");
+            foreach(string p in new[]{media,play,dir,file})if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)return false;
+            if(File.Exists(Path.Combine(dir,"stop"))||new FileInfo(file).Length>16)return false;
+            int port;return Int32.TryParse(File.ReadAllText(file).Trim(),out port)&&port==u.Port;
+        }catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}
+    }
     bool bookUiTesting;
     async Task WaitBookUi(string expression,string label){
         var core=browser.CoreWebView2;
@@ -433,7 +446,11 @@ internal sealed class NativeBoardLaunch : Form {
                 }
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");return;
             }
-            if(!Lab.Allowed(e.Request.Uri,e.Request.Method))e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
+            bool allowed=Lab.Allowed(e.Request.Uri,e.Request.Method);
+#if NATIVE_SHARE_LAB
+            if(!allowed&&e.ResourceContext==CoreWebView2WebResourceContext.Media)allowed=AllowedLocalMedia(e.Request.Uri,e.Request.Method);
+#endif
+            if(!allowed)e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
         core.ProcessFailed+=(s,e)=>Finish(1,"FAIL renderer "+e.ProcessFailedKind);
         if(mode=="wallpaper"){
