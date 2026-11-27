@@ -1302,33 +1302,7 @@ try{
  foreach($name in $backupBefore.Keys){$originalEncoded[$name]=[Convert]::ToBase64String($backupBefore[$name])}
  $originalBody=Backup-Body $originalEncoded
  $token=(School-Doc '/api/backup/token').token
- if($token -cnotmatch '^[a-f0-9]{32}
-
-
-
-
-
-
-
-
-
-
-
-
-
- Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
- if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
-
-
-
-
-
-
-}finally{
- foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
- $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal
-}
-){throw 'Restore token format'}
+ if($token -cnotmatch '^[a-f0-9]{32}$'){throw 'Restore token format'}
  Assert-P (Raw-Request 17451 '/api/backup/token') 403
  Assert-P (Backup-Post $originalBody '') 403
  Assert-P (Backup-Post $originalBody ('0'*32)) 403
