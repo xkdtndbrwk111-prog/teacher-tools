@@ -71,6 +71,11 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_DATA_LAB
+        if(p=="/api/school")return method=="GET"||method=="POST";
+        if(p=="/api/school/search"||p=="/api/week"||p=="/api/meal"||p=="/api/events"||p=="/api/weather"||p=="/api/weather/places")return method=="GET";
+        if(p=="/api/weather/place")return method=="POST";
+#endif
 #if NATIVE_PHOTO_LAB
         if(p=="/api/photos"||p=="/api/photos/pick"||p=="/photo")return method=="GET";
 #endif
@@ -129,8 +134,31 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
                 e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
         core.ProcessFailed+=(s,e)=>Fail("renderer failure: "+e.ProcessFailedKind);
+#if NATIVE_DATA_LAB
+        // Only pin Date's current time; all supplied date arguments and the real
+        // dashboard renderer, fetch, localStorage and school.js remain unmodified.
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(@"(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-11-23T00:00:00Z');class LabDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}window.Date=LabDate})()");
+#endif
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("document.body.innerText.includes('1.66.43') || document.documentElement.outerHTML.includes('1.66.43')")=="true","exact dashboard version");
+#if NATIVE_DATA_LAB
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const wait=async(fn)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error('wait')};
+          await wait(()=>document.getElementById('schoolNow')?.textContent.includes('시험초등학교'));
+          await loadData();
+          await wait(()=>window.ttWeather?.place==='LAB 날씨');
+          const q=id=>document.getElementById(id);
+          const ok=q('week').textContent.includes('국어')&&q('week').textContent.includes('체육')&&q('weekName').textContent.includes('나이스 기본 시간표')&&q('meal').textContent.includes('쌀밥')&&mealSelectedDate==='20261123'&&mealRows[0].date==='20261123'&&q('events').textContent.includes('행사1')&&window.ttWeather.cur.temp===0&&window.ttWeather.pm10===0&&document.querySelector('.wx-temp')?.textContent==='0°';
+          document.documentElement.dataset.labData=ok?'ok':'bad:'+JSON.stringify({week:q('week').textContent,meal:q('meal').textContent,selected:mealSelectedDate,events:q('events').textContent,weather:window.ttWeather?.cur});
+        }catch(e){document.documentElement.dataset.labData='error:'+e.message}})()");
+        string dataResult=await WaitResult(core,"document.documentElement.dataset.labData||''");
+        Require(dataResult=="\"ok\"","actual data widgets: "+dataResult);
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{await loadData();for(let i=0;i<100;i++){if(window.ttWeather?.place==='LAB 날씨')break;await new Promise(r=>setTimeout(r,100))}document.documentElement.dataset.labDataReload=localStorage.getItem('class-cache-week')&&document.getElementById('meal').textContent.includes('쌀밥')&&window.ttWeather?.cur.temp===0?'ok':'bad'}catch(e){document.documentElement.dataset.labDataReload='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labDataReload||''")=="\"ok\"","actual school data widgets reload");
+        Finish(0,"PASS actual dashboard school.js, NEIS timetable, current-day meal, calendar and weather/air widget, reload");
+        return;
+#endif
 #if NATIVE_PHOTO_LAB
         await core.ExecuteScriptAsync(@"(async()=>{try{await photoRefresh();if(photoCount!==2)throw Error('list');photoShowIndex(0,true);for(let i=0;i<80;i++){if(photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.naturalHeight===1&&img.src.includes('/photo?i=0&t=')))break;await new Promise(r=>setTimeout(r,50))}const denied=await fetch('/photos.txt');document.documentElement.dataset.labPhoto=photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t='))&&document.getElementById('photoFolderStatus').textContent.includes('사진 2장')&&denied.status===403?'ok':'bad'}catch(e){document.documentElement.dataset.labPhoto='error:'+e.message}})()");
         Require(await WaitResult(core,"document.documentElement.dataset.labPhoto||''")=="\"ok\"","actual WebView2 photo list, decoded GIF and blocked raw settings");

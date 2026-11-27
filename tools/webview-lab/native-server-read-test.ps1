@@ -950,6 +950,37 @@ try{
   foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $albumBefore[$file])){throw 'Photo UI altered ledger'}}
   Write-Host 'PASS real WebView2 image decode/reload using native private photo endpoint'
  }finally{if($photoHost -and !$photoHost.HasExited){$photoHost.Kill();$photoHost.WaitForExit()}}
+ # 4D-6a: actual school/meal/calendar/timetable/weather UI; exact fixture dates.
+ $dataBefore=Snapshot-CrashFiles
+ Set-Content -LiteralPath $todayFile '20261123' -Encoding ASCII
+ # Recreate Monday deleted by cache test. Use actual renderer-visible Korean subjects.
+ for($day=23;$day -le 27;$day++){
+  $q=$baseQuery+'202611'+$day
+  $rows=@(@{PERIO='1';ITRT_CNTNT='국어'},@{PERIO='2';ITRT_CNTNT='수학'},@{PERIO='3';ITRT_CNTNT='영어'},@{PERIO='4';ITRT_CNTNT='사회'},@{PERIO='5';ITRT_CNTNT='과학'})
+  if($day -eq 23){Put-Neis 'elsTimetable' $q $rows 6;Put-Neis 'elsTimetable' ($q+'&PERIO=6') @(@{PERIO='6';ITRT_CNTNT='체육'})}else{Put-Neis 'elsTimetable' $q $rows}
+ }
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"name":"LAB 날씨","lat":37.5,"lon":127.125,"auto":false}') 200
+ Remove-Item -LiteralPath $cachePath -Force -ErrorAction SilentlyContinue
+ $fixedNow=[DateTimeOffset]::Parse('2026-11-23T00:00:00Z').ToUnixTimeMilliseconds()
+ Set-Content -LiteralPath $clock ([string]$fixedNow) -Encoding ASCII
+ $forecastPath=Weather-Fixture 'forecast' $forecastQuery ($forecastJson.Replace('2026-11-27','2026-11-23'))
+ $airPath=Weather-Fixture 'air' $airQuery ($airJson.Replace('2026-11-27','2026-11-23'))
+ # Calendar renderer uses local Date; fixed time 09:00 KST before lunch.
+ $dataExe=Join-Path $Build 'HOJA-Native-Data-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_DATA_LAB /target:winexe /platform:x64 "/out:$dataExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native data UI compilation'}
+ $dataHost=$null;$result=Join-Path $crashRoot 'data-result.txt';$profile=Join-Path $crashRoot 'data-profile'
+ try{
+  $dataHost=Start-Process -FilePath $dataExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$dataHost.Handle
+  if(!$dataHost.WaitForExit(60000)){throw 'Native data UI timeout'}
+  if(Test-Path $result){Get-Content $result}
+  if($dataHost.ExitCode -ne 0 -or !(Test-Path $result)){throw 'Native data UI failed'}
+  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $dataBefore[$file])){throw 'Data UI altered ledger'}}
+  Write-Host 'PASS actual WebView2 school/timetable/meal/calendar/weather/air widgets against native server, KST before lunch and reload'
+ }finally{if($dataHost -and !$dataHost.HasExited){$dataHost.Kill();$dataHost.WaitForExit()}}
+
 
 
 
