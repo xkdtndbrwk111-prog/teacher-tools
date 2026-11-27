@@ -83,6 +83,7 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         if(p=="/api/book-reader/open"||p=="/api/book-reader/close")return method=="POST";
         if(p=="/api/book-reader/status")return method=="GET"||method=="POST";
         if(p=="/api/youtube/status")return method=="GET";
+        if(p=="/api/youtube/start"||p=="/api/youtube/cancel"||p=="/api/youtube/play-start"||p=="/api/youtube/play-status"||p=="/api/youtube/play-stop")return method=="POST";
 #endif
 #if NATIVE_AUDIO_LAB
         if(p=="/api/speakers")return method=="GET";
