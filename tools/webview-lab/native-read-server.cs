@@ -1164,6 +1164,49 @@ internal static class NativeReadServer {
   if(d==null||d.Count!=2||!(Val(d,"keyboard") is bool)||!(Val(d,"cursor") is bool))throw new FormatException("Share options");
   return new Dictionary<string,object>{{"keyboard",Val(d,"keyboard")},{"cursor",Val(d,"cursor")}};
  }
+ // 4E-3b1: read only. Status requires fresh helper and matching native launcher ownership.
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
+ static Dictionary<string,object> FreshShareDocument(string name){
+  var bytes=Read(name);
+  if(bytes==null||bytes.Length>8192)return null;
+  double age=(DateTime.UtcNow-File.GetLastWriteTimeUtc(Path.Combine(root,name))).TotalSeconds;
+  if(age< -2||age>5)return null;
+  return Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));
+ }
+ static Dictionary<string,object> ShareHelperStatus(){
+  var offline=new Dictionary<string,object>{{"running",false},{"hook",false},{"last",""}};
+  try{
+   var st=FreshShareDocument("share-input-status.json");
+   var mode=FreshShareDocument("board-mode.json");
+   var proofBytes=Read("native-mode-owner.json");
+   if(st==null||mode==null||proofBytes==null||proofBytes.Length>8192)return offline;
+   var proof=Obj(Serializer().DeserializeObject(Utf8.GetString(proofBytes).TrimStart('\uFEFF')));
+   object pid=Val(st,"pid"),window=Val(mode,"window");
+   if(!IntValue(pid,1,Int32.MaxValue)||!IntValue(window,1,Int64.MaxValue)||!Equals(pid,Val(mode,"pid"))||!Equals(pid,Val(proof,"pid"))||!Equals(window,Val(proof,"window"))||TextVal(mode,"mode")!="wallpaper"||TextVal(proof,"mode")!="wallpaper"||TextVal(st,"release")!=release||TextVal(mode,"release")!=release||TextVal(proof,"release")!=release||!(Val(st,"hook") is bool)||!(Val(st,"keyboard") is bool)||!(Val(st,"cursor") is bool))return offline;
+   int id=Convert.ToInt32(pid);uint owner;
+   if(GetWindowThreadProcessId(new IntPtr(Convert.ToInt64(window)),out owner)==0||owner!=(uint)id)return offline;
+   using(var p=Process.GetProcessById(id)){
+    if(p.HasExited)return offline;
+    string exe=Path.GetFullPath(p.MainModule.FileName);
+    if(!exe.StartsWith(labRoot+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)||!String.Equals(Path.GetFileName(exe),"HOJA-Native-Launch-Lab.exe",StringComparison.OrdinalIgnoreCase))return offline;
+   }
+   return new Dictionary<string,object>{{"running",true},{"hook",Val(st,"hook")},{"keyboard",Val(st,"keyboard")},{"cursor",Val(st,"cursor")},{"release",release},{"last",""}};
+  }catch(Exception e){
+   if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is System.ComponentModel.Win32Exception||e is FormatException||e is OverflowException))throw;
+   return offline;
+  }
+ }
+ static void ShareHelperData(Stream s,string path,string method,string site,string origin,byte[] payload){
+  bool read=method=="GET";
+  if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if((path=="/api/share-input/status"&&!read)||(path=="/api/share-input/restart"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  var state=ShareHelperStatus();
+  if(read){Json(s,"200 OK",Serializer().Serialize(state));return;}
+  if(payload.Length!=0){Json(s,"400 Bad Request","{\"error\":\"invalid restart request\"}");return;}
+  // A running helper needs no restart. Offline restart awaits the owning native launcher's control channel.
+  if(True(Val(state,"running")))Json(s,"200 OK","{\"ok\":true}");
+  else Json(s,"503 Service Unavailable","{\"error\":\"helper restart unavailable\"}");
+ }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -1276,7 +1319,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1298,6 +1341,7 @@ internal static class NativeReadServer {
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
+   if(coinWrites&&(path=="/api/share-input/status"||path=="/api/share-input/restart")){ShareHelperData(s,path,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/weather/place"||path=="/api/weather/places")){WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
