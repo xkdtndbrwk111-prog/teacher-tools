@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -962,6 +962,88 @@ internal static class NativeReadServer {
    Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_REQUEST_FAILED\",\"error\":\"날씨를 불러오지 못했어요. 다시 시도하거나 날씨 설정을 확인해 주세요.\"}");
   }
  }
+ // Phase 4D-5a: private album, explicitly selected local lab folder only.
+ static readonly object PhotoGate=new object();
+ static readonly Dictionary<string,string> PhotoTypes=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){{".jpg","image/jpeg"},{".jpeg","image/jpeg"},{".png","image/png"},{".webp","image/webp"},{".gif","image/gif"},{".bmp","image/bmp"}};
+ static string photoFolder="";
+ static List<string> photoFiles=new List<string>();
+ static bool SafePhotoPath(string path,bool directory){
+  try{
+   string full=Path.GetFullPath(path),allowed=Path.GetFullPath(Path.Combine(labRoot,"photo-album")).TrimEnd(Path.DirectorySeparatorChar);
+   // Lab isolation is stricter than production: never inspect arbitrary host folders.
+   if(!full.Equals(allowed,StringComparison.OrdinalIgnoreCase)&&!full.StartsWith(allowed+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))return false;
+   string cursor=full;
+   while(true){
+    var attr=File.GetAttributes(cursor);if((attr&FileAttributes.ReparsePoint)!=0)return false;
+    if(cursor==full&&directory!=((attr&FileAttributes.Directory)!=0))return false;
+    if(cursor.Equals(allowed,StringComparison.OrdinalIgnoreCase))break;
+    cursor=Path.GetDirectoryName(cursor);if(String.IsNullOrEmpty(cursor))return false;
+   }return true;
+  }catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}catch(ArgumentException){return false;}
+ }
+ static string SelectedPhotoFolder(){
+  byte[] raw=Read("photos.txt");return raw==null?"":Utf8.GetString(raw).TrimStart('\uFEFF').Trim();
+ }
+ static Dictionary<string,object> RefreshPhotos(){
+  photoFolder=SelectedPhotoFolder();photoFiles=new List<string>();
+  int skipped=0;bool missing=false;
+  if(photoFolder!=""){
+   if(!SafePhotoPath(photoFolder,true))missing=true;
+   else{
+    var pending=new Stack<string>();pending.Push(Path.GetFullPath(photoFolder));int visited=0;
+    var selected=new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+    while(pending.Count>0){
+     string dir=pending.Pop();if(!SafePhotoPath(dir,true))continue;
+     foreach(string path in Directory.EnumerateFileSystemEntries(dir)){
+      if(++visited>100000)throw new IOException("Photo scan limit");
+      FileAttributes a;try{a=File.GetAttributes(path);}catch(IOException){continue;}
+      if((a&FileAttributes.ReparsePoint)!=0)continue;
+      if((a&FileAttributes.Directory)!=0){pending.Push(path);continue;}
+      string ext=Path.GetExtension(path);
+      if(ext.Equals(".heic",StringComparison.OrdinalIgnoreCase)||ext.Equals(".heif",StringComparison.OrdinalIgnoreCase)){skipped++;continue;}
+      if(!PhotoTypes.ContainsKey(ext))continue;
+      selected.Add(path);if(selected.Count>3000)selected.Remove(selected.Max);
+     }
+    }
+    photoFiles.AddRange(selected);
+   }
+  }
+  return new Dictionary<string,object>{{"folder",photoFolder},{"count",photoFiles.Count},{"skipped",skipped},{"missing",missing}};
+ }
+ static void PhotoData(Stream s,string path,string target,string method,string host,string site,string origin){
+  if(host!="127.0.0.1:"+Port||(site!=""&&site!="same-origin")||(origin!=""&&origin!="http://127.0.0.1:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  lock(PhotoGate){
+   try{
+    if(path=="/api/photos"){Json(s,"200 OK",Serializer().Serialize(RefreshPhotos()));return;}
+    if(path=="/api/photos/pick"){
+     // Lab-only deterministic picker result; no path accepted over HTTP.
+     // Native STA dialog is integrated in the next checkpoint.
+     string fixture=Path.Combine(labRoot,"photo-picker-result.txt");
+     if(!File.Exists(fixture)||(File.GetAttributes(fixture)&FileAttributes.ReparsePoint)!=0){Json(s,"503 Service Unavailable","{\"error\":\"picker unavailable\"}");return;}
+     string folder=File.ReadAllText(fixture).Trim();
+     if(folder!=""){
+      if(!SafePhotoPath(folder,true)){Json(s,"400 Bad Request","{\"error\":\"invalid folder\"}");return;}
+      AtomicWrite("photos.txt",Utf8.GetBytes(Path.GetFullPath(folder)));
+     }
+     Json(s,"200 OK",Serializer().Serialize(RefreshPhotos()));return;
+    }
+    if(photoFolder!=SelectedPhotoFolder()||photoFiles.Count==0)RefreshPhotos();
+    int index;var q=Query(target);
+    if(q.Count!=1||!MatchFull(Get(q,"i"),"[0-9]{1,5}")||!Int32.TryParse(Get(q,"i"),out index)||index<0||index>=photoFiles.Count){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
+    string file=photoFiles[index];
+    if(!SafePhotoPath(file,false)||!file.StartsWith(Path.GetFullPath(photoFolder).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
+    using(var input=new FileStream(file,FileMode.Open,FileAccess.Read,FileShare.Read)){
+     if(input.Length>62914560){Json(s,"404 Not Found","{\"error\":\"too large\"}");return;}
+     byte[] data=new byte[(int)input.Length];int pos=0;while(pos<data.Length){int n=input.Read(data,pos,data.Length-pos);if(n==0)throw new IOException("Photo truncated");pos+=n;}
+     Reply(s,"200 OK",PhotoTypes[Path.GetExtension(file)],data);
+    }
+   }catch(Exception e){
+    if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is FormatException))throw;
+    Json(s,"404 Not Found","{\"error\":\"not found\"}");
+   }
+  }
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -982,6 +1064,7 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+   if(coinWrites&&(path=="/api/photos"||path=="/api/photos/pick"||path=="/photo")){PhotoData(s,path,req[1],req[0],host,site,origin);return;}
    bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week"||path=="/api/weather/places"||path=="/api/weather");
    if(remote){
     if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}

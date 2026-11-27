@@ -870,6 +870,64 @@ try{
  Assert-P (Seat-Post 17451 '/api/weather/place' '{"auto":true}') 200
  Remove-Item -LiteralPath $clock,$metPath,$airPath -Force
  Write-Host 'PASS native optional MET fallback conversion, 203/304 metadata, durable 3h floor and restart protection'
+ # 4D-5a: local private album, nested files, picker result and path guard.
+ $albumBefore=Snapshot-CrashFiles
+ $album=Join-Path $crashRoot 'photo-album'
+ $nested=Join-Path $album 'nested'
+ New-Item -ItemType Directory -Path $nested -Force|Out-Null
+ $albumSetting=Join-Path $crashStore 'photos.txt'
+ Remove-Item -LiteralPath $albumSetting -Force -ErrorAction SilentlyContinue
+ $empty=School-Doc '/api/photos'
+ if($empty.count -ne 0 -or $empty.folder -ne '' -or $empty.missing){throw 'Empty photo album'}
+ $png=[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR2UAAAAASUVORK5CYII=')
+ $gif=[Convert]::FromBase64String('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
+ [IO.File]::WriteAllBytes((Join-Path $album 'a.png'),$png)
+ [IO.File]::WriteAllBytes((Join-Path $nested 'b.gif'),$gif)
+ [IO.File]::WriteAllText((Join-Path $album 'c.heic'),'unsupported',$utf8)
+ [IO.File]::WriteAllText((Join-Path $album 'secret.txt'),'LAB_PRIVATE_SENTINEL',$utf8)
+ $large=Join-Path $album 'z.jpg'
+ $f=[IO.File]::Open($large,[IO.FileMode]::CreateNew);try{$f.SetLength(62914561)}finally{$f.Dispose()}
+ $outside=Join-Path $crashRoot 'outside-photo'
+ New-Item -ItemType Directory -Path $outside -Force|Out-Null
+ [IO.File]::WriteAllBytes((Join-Path $outside 'hidden.png'),$png)
+ $junction=Join-Path $album 'linked'
+ New-Item -ItemType Junction -Path $junction -Target $outside|Out-Null
+ $pickFile=Join-Path $crashRoot 'photo-picker-result.txt'
+ [IO.File]::WriteAllText($pickFile,$album,$utf8)
+ $list=School-Doc '/api/photos/pick'
+ if($list.folder -cne $album -or $list.count -ne 3 -or $list.skipped -ne 1 -or $list.missing){throw 'Photo picker/list contract'}
+ $r=Raw-Request 17451 '/photo?i=0' GET '' 'same-origin'
+ Assert-P $r 200
+ if($r.hash -cne (Hash-Bytes $png) -or $r.headers['Content-Type'] -cne 'image/png'){throw 'PNG exact bytes/MIME'}
+ $r=Raw-Request 17451 '/photo?i=1' GET '' 'same-origin'
+ Assert-P $r 200
+ if($r.hash -cne (Hash-Bytes $gif) -or $r.headers['Content-Type'] -cne 'image/gif'){throw 'Nested GIF exact bytes/MIME'}
+ Assert-P (Raw-Request 17451 '/photo?i=2' GET '' 'same-origin') 404 '{"error":"too large"}'
+ foreach($route in @('/photo?i=3','/photo?i=-1','/photo?i=0&i=1','/photo?path=secret.txt','/photos.txt','/photo-album/secret.txt')){
+  Assert-P (Raw-Request 17451 $route GET '' 'same-origin') 404
+ }
+ Assert-P (Raw-Request 17451 '/photo?i=0' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/photos' GET 'localhost:17451' 'same-origin') 403
+ Assert-P (Raw-Request 17451 '/api/photos/pick' GET '' 'cross-site') 403
+ $albumHash=(Get-FileHash $albumSetting).Hash
+ [IO.File]::WriteAllText($pickFile,$outside,$utf8)
+ Assert-P (Raw-Request 17451 '/api/photos/pick' GET '' 'same-origin') 400
+ [IO.File]::WriteAllText($pickFile,'',$utf8)
+ $list=School-Doc '/api/photos/pick'
+ if($list.count -ne 3 -or (Get-FileHash $albumSetting).Hash -cne $albumHash){throw 'Picker cancel changed selection'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Photo restart stop'}
+ $native=Start-CrashServer
+ $list=School-Doc '/api/photos'
+ if($list.count -ne 3 -or $list.folder -cne $album){throw 'Photo selection restart'}
+ Remove-Item -LiteralPath (Join-Path $album 'a.png') -Force
+ Assert-P (Raw-Request 17451 '/photo?i=0' GET '' 'same-origin') 404
+ $list=School-Doc '/api/photos'
+ if($list.count -ne 2){throw 'Photo refresh after removal'}
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $albumBefore[$file])){throw 'Photo album altered ledger'}}
+ [IO.Directory]::Delete($junction)
+ Write-Host 'PASS native private photo album nested list, exact image bytes, MIME, HEIC/size cap, picker cancel, junction/external denial and restart'
+
 
 
 
