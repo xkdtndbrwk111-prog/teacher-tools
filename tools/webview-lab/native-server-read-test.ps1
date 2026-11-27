@@ -1052,6 +1052,48 @@ try{
  Remove-Item -LiteralPath $systemFlag -Force
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $systemBefore[$file])){throw 'System API altered ledger'}}
  Write-Host 'PASS native font enumeration, fixed browser/settings targets, HTTP(S) validation, denied external/protocol and explicit fixture-only shell dispatch'
+ # 4E-2a: isolated audio contract; actual OS writes are intentionally disabled.
+ $audioBefore=Snapshot-CrashFiles
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":25}') 503
+ Assert-P (Seat-Post 17451 '/api/speakers/set' '{"id":"lab-b"}') 503
+ $audioFile=Join-Path $crashStore 'audio-lab.json'
+ $audioFlag=Join-Path $crashRoot 'audio-fixture.flag'
+ [IO.File]::WriteAllText($audioFile,'{"list":[{"id":"lab-a","name":"시험 스피커 A","current":true},{"id":"lab-b","name":"시험 스피커 B","current":false}],"level":50,"muted":false}',$utf8)
+ Set-Content -LiteralPath $audioFlag 'fixture-only' -Encoding ASCII
+ $speakers=School-Doc '/api/speakers'
+ if($speakers.list.Count -ne 2 -or !$speakers.list[0].current -or $speakers.list[1].current){throw 'Audio list contract'}
+ $volume=School-Doc '/api/volume'
+ if($volume.level -ne 50 -or $volume.muted){throw 'Audio initial state'}
+ Assert-P (Seat-Post 17451 '/api/speakers/set' '{"id":"lab-b"}') 200
+ $speakers=School-Doc '/api/speakers'
+ if($speakers.list[0].current -or !$speakers.list[1].current){throw 'Audio speaker switch'}
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":-1}') 200
+ $volume=School-Doc '/api/volume'
+ if($volume.level -ne 0 -or $volume.muted){throw 'Audio zero/clamp'}
+ Assert-P (Seat-Post 17451 '/api/volume' '{"muted":true}') 200
+ $volume=School-Doc '/api/volume'
+ if($volume.level -ne 0 -or !$volume.muted){throw 'Audio mute independent'}
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":150}') 200
+ $volume=School-Doc '/api/volume'
+ if($volume.level -ne 100 -or !$volume.muted){throw 'Audio upper clamp'}
+ $audioHash=(Get-FileHash $audioFile).Hash
+ Assert-P (Seat-Post 17451 '/api/speakers/set' '{"id":"missing"}') 400
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":"bad"}') 400
+ Assert-P (Seat-Post 17451 '/api/volume' '{"muted":"false"}') 400
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":25}' 'cross-site') 403
+ Assert-P (Raw-Request 17451 '/api/speakers' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/audio-lab.json') 404
+ if((Get-FileHash $audioFile).Hash -cne $audioHash){throw 'Rejected audio mutation changed state'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Audio restart stop'}
+ $native=Start-CrashServer
+ $volume=School-Doc '/api/volume';$speakers=School-Doc '/api/speakers'
+ if($volume.level -ne 100 -or !$volume.muted -or !$speakers.list[1].current){throw 'Audio fixture restart state'}
+ Remove-Item -LiteralPath $audioFlag -Force
+ Assert-P (Seat-Post 17451 '/api/volume' '{"muted":false}') 503
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $audioBefore[$file])){throw 'Audio API altered ledger'}}
+ Write-Host 'PASS native isolated audio protocol, device selection, level clamp/mute, invalid and cross-site rejection, restart, OS writes disabled'
+
 
 
 
