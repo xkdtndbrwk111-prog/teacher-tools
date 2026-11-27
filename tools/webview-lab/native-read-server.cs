@@ -1684,7 +1684,10 @@ internal static class NativeReadServer {
  static Dictionary<string,object> MediaAction(string media,string action,Dictionary<string,object> x){
   string id=TextVal(x,"id"),q=TextVal(x,"quality");
   if(action=="/api/youtube/start"){
-   if(x.Count!=3||!True(Val(x,"authorized"))||!MatchFull(id,"LAB_[A-Z0-9]{7}")||!MediaChoice(q,"720","1080")||!File.Exists(Path.Combine(labRoot,"media-download-fixture.flag")))throw new FormatException("Fixture download");
+   bool fixture=File.Exists(Path.Combine(labRoot,"media-download-fixture.flag"));
+   bool live=File.Exists(Path.Combine(labRoot,"media-download-live.flag"));
+   if(x.Count!=3||!True(Val(x,"authorized"))||!MediaChoice(q,"720","1080")||
+      !(fixture?MatchFull(id,"LAB_[A-Z0-9]{7}"):live&&MatchFull(id,"[A-Za-z0-9_-]{11}")))throw new FormatException("Download authorization");
    MediaReap(ref mediaDownload,ref mediaDownloadJob,false);
    if(mediaDownload!=null||TextVal(MediaJob(media),"state")=="running")throw new IOException("Download busy");
    MediaEnsureDirectory(media);string jobs=Path.Combine(media,"jobs");MediaEnsureDirectory(jobs);
@@ -1695,8 +1698,9 @@ internal static class NativeReadServer {
    }
    string job=Guid.NewGuid().ToString("N");
    MediaWrite(media,"last-job.json",new Dictionary<string,object>{{"job",job},{"id",id},{"quality",q},{"created",DateTime.UtcNow.ToString("o")}});
-   // Explicitly offline fixture worker: never download real content during CI.
-   mediaDownload=MediaLaunch(Path.Combine(labRoot,"media-download-fixture.ps1"),"-YoutubeJob "+job+" -YoutubeVideoId "+id+" -YoutubeQuality "+q,ref mediaDownloadJob);
+   // The live path requires a separate explicit lab flag; CI never creates it.
+   string script=fixture?Path.Combine(labRoot,"media-download-fixture.ps1"):Path.Combine(root,"server.ps1");
+   mediaDownload=MediaLaunch(script,"-YoutubeJob "+job+" -YoutubeVideoId "+id+" -YoutubeQuality "+q,ref mediaDownloadJob);
    return new Dictionary<string,object>{{"ok",true},{"job",job}};
   }
   if(action=="/api/youtube/cancel"){
@@ -1706,6 +1710,19 @@ internal static class NativeReadServer {
    if(!MediaSafeDirectory(media)||!MediaSafeDirectory(jobs)||!MediaSafeDirectory(dir))throw new IOException("Job directory");
    string flag=Path.Combine(dir,"cancel");if(!File.Exists(flag))using(var f=new FileStream(flag,FileMode.CreateNew,FileAccess.Write,FileShare.Read))f.WriteByte(49);
    return MediaOk();
+  }
+  if(action=="/api/youtube/open-library"){
+   if(x.Count!=0)throw new FormatException("Library folder");
+   MediaEnsureDirectory(media);string lib=Path.Combine(media,"library");MediaEnsureDirectory(lib);
+   // No actual Explorer side effect in CI. Record only the fixed application directory operation.
+   if(!File.Exists(Path.Combine(labRoot,"media-folder-fixture.flag")))throw new IOException("Folder fixture disabled");
+   File.WriteAllText(Path.Combine(labRoot,"media-folder-opened.fixture"),"library",Utf8);return MediaOk();
+  }
+  if(action=="/api/youtube/rename"){
+   if(x.Count!=3||q=="local"||!(Val(x,"title") is string)||TextVal(x,"title").Length>180||!MediaEntry(media,id,q))throw new FormatException("Library title");
+   string dir=Path.Combine(media,"library",id+"-"+q);if(!MediaSafeDirectory(dir))throw new IOException("Library directory");
+   var meta=MediaJson(Path.Combine(dir,"metadata.json"));if(meta==null)throw new IOException("Library metadata");
+   meta["customTitle"]=MediaTitle(Val(x,"title"));MediaWrite(dir,"metadata.json",meta);return MediaOk();
   }
   if(action=="/api/youtube/play-start"){
    if(x.Count!=2||!MediaEntry(media,id,q))throw new FormatException("Playback entry");
@@ -1734,7 +1751,7 @@ internal static class NativeReadServer {
   string board="http://127.0.0.1:"+Port,alt="http://localhost:"+Port;
   if(site!="same-origin"||(origin!=""&&origin!=board&&origin!=alt)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   bool read=path=="/api/youtube/status"&&method=="GET";
-  bool action=method=="POST"&&MediaChoice(path,"/api/youtube/start","/api/youtube/cancel","/api/youtube/play-start","/api/youtube/play-status","/api/youtube/play-stop");
+  bool action=method=="POST"&&MediaChoice(path,"/api/youtube/start","/api/youtube/cancel","/api/youtube/play-start","/api/youtube/play-status","/api/youtube/play-stop","/api/youtube/open-library","/api/youtube/rename");
   if(!read&&!action){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
   if(action&&!File.Exists(Path.Combine(labRoot,"media-write-fixture.flag"))){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
   if(!File.Exists(Path.Combine(labRoot,"media-read-fixture.flag"))){Json(s,"503 Service Unavailable","{\"error\":\"media unavailable\"}");return;}
