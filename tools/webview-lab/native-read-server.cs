@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json","share-input.json"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -1158,6 +1158,42 @@ internal static class NativeReadServer {
  static Dictionary<string,object> AudioVolume(double level,bool muted){
   return new Dictionary<string,object>{{"level",Math.Round(level)},{"muted",muted}};
  }
+ // Phase 4E-3a: persist the existing dashboard's input-sharing settings.
+ // The helper lifecycle is separate; this endpoint never installs a hook or launches a process.
+ static Dictionary<string,object> ShareOptions(Dictionary<string,object> d){
+  if(d==null||d.Count!=2||!(Val(d,"keyboard") is bool)||!(Val(d,"cursor") is bool))throw new FormatException("Share options");
+  return new Dictionary<string,object>{{"keyboard",Val(d,"keyboard")},{"cursor",Val(d,"cursor")}};
+ }
+ static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
+  bool read=method=="GET";
+  if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(!read&&method!="POST"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  Dictionary<string,object> options;
+  if(read){
+   try{
+    byte[] bytes=Read("share-input.json");
+    if(bytes==null)options=new Dictionary<string,object>{{"keyboard",false},{"cursor",false}};
+    else{
+     if(bytes.Length>4096)throw new FormatException("Share options size");
+     options=ShareOptions(Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF'))));
+    }
+   }catch(Exception e){
+    if(!(e is IOException||e is UnauthorizedAccessException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+    Json(s,"500 Internal Server Error","{\"error\":\"share settings unavailable\"}");return;
+   }
+  }else{
+   try{
+    if(payload.Length==0||payload.Length>4096)throw new FormatException("Share options size");
+    options=ShareOptions(Obj(Serializer().DeserializeObject(Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload))))));
+   }catch(Exception e){
+    if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+    Json(s,"400 Bad Request","{\"error\":\"invalid share settings\"}");return;
+   }
+   try{AtomicWrite("share-input.json",Utf8.GetBytes(Serializer().Serialize(options)));}
+   catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException))throw;Json(s,"500 Internal Server Error","{\"error\":\"share settings unavailable\"}");return;}
+  }
+  Json(s,"200 OK",Serializer().Serialize(options));
+ }
  static void AudioData(Stream s,string path,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -1240,7 +1276,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1261,6 +1297,7 @@ internal static class NativeReadServer {
    }
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
+   if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/weather/place"||path=="/api/weather/places")){WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
