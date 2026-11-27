@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json","share-input.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json","share-input.json","share-input-restart.json"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -1173,26 +1173,37 @@ internal static class NativeReadServer {
   if(age< -2||age>5)return null;
   return Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));
  }
+ // A restart can address only the validated, currently owned wallpaper launcher.
+ static Dictionary<string,object> ShareOwner(){
+  try{
+   var mode=FreshShareDocument("board-mode.json");
+   var proofBytes=Read("native-mode-owner.json");
+   if(mode==null||proofBytes==null||proofBytes.Length>8192)return null;
+   var proof=Obj(Serializer().DeserializeObject(Utf8.GetString(proofBytes).TrimStart('\uFEFF')));
+   object pid=Val(mode,"pid"),window=Val(mode,"window");
+   if(!IntValue(pid,1,Int32.MaxValue)||!IntValue(window,1,Int64.MaxValue)||!Equals(pid,Val(proof,"pid"))||!Equals(window,Val(proof,"window"))||TextVal(mode,"mode")!="wallpaper"||TextVal(proof,"mode")!="wallpaper"||TextVal(mode,"release")!=release||TextVal(proof,"release")!=release)return null;
+   int id=Convert.ToInt32(pid);uint owner;
+   if(GetWindowThreadProcessId(new IntPtr(Convert.ToInt64(window)),out owner)==0||owner!=(uint)id)return null;
+   using(var p=Process.GetProcessById(id)){
+    if(p.HasExited)return null;
+    string exe=Path.GetFullPath(p.MainModule.FileName);
+    if(!exe.StartsWith(labRoot+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)||!String.Equals(Path.GetFileName(exe),"HOJA-Native-Launch-Lab.exe",StringComparison.OrdinalIgnoreCase))return null;
+    mode["startTicks"]=p.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture);
+   }
+   return mode;
+  }catch(Exception e){
+   if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is System.ComponentModel.Win32Exception||e is FormatException||e is OverflowException))throw;
+   return null;
+  }
+ }
  static Dictionary<string,object> ShareHelperStatus(){
   var offline=new Dictionary<string,object>{{"running",false},{"hook",false},{"last",""}};
   try{
-   var st=FreshShareDocument("share-input-status.json");
-   var mode=FreshShareDocument("board-mode.json");
-   var proofBytes=Read("native-mode-owner.json");
-   if(st==null||mode==null||proofBytes==null||proofBytes.Length>8192)return offline;
-   var proof=Obj(Serializer().DeserializeObject(Utf8.GetString(proofBytes).TrimStart('\uFEFF')));
-   object pid=Val(st,"pid"),window=Val(mode,"window");
-   if(!IntValue(pid,1,Int32.MaxValue)||!IntValue(window,1,Int64.MaxValue)||!Equals(pid,Val(mode,"pid"))||!Equals(pid,Val(proof,"pid"))||!Equals(window,Val(proof,"window"))||TextVal(mode,"mode")!="wallpaper"||TextVal(proof,"mode")!="wallpaper"||TextVal(st,"release")!=release||TextVal(mode,"release")!=release||TextVal(proof,"release")!=release||!(Val(st,"hook") is bool)||!(Val(st,"keyboard") is bool)||!(Val(st,"cursor") is bool))return offline;
-   int id=Convert.ToInt32(pid);uint owner;
-   if(GetWindowThreadProcessId(new IntPtr(Convert.ToInt64(window)),out owner)==0||owner!=(uint)id)return offline;
-   using(var p=Process.GetProcessById(id)){
-    if(p.HasExited)return offline;
-    string exe=Path.GetFullPath(p.MainModule.FileName);
-    if(!exe.StartsWith(labRoot+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)||!String.Equals(Path.GetFileName(exe),"HOJA-Native-Launch-Lab.exe",StringComparison.OrdinalIgnoreCase))return offline;
-   }
+   var owner=ShareOwner();var st=FreshShareDocument("share-input-status.json");
+   if(owner==null||st==null||!Equals(Val(st,"pid"),Val(owner,"pid"))||TextVal(st,"release")!=release||!(Val(st,"hook") is bool)||!(Val(st,"keyboard") is bool)||!(Val(st,"cursor") is bool))return offline;
    return new Dictionary<string,object>{{"running",true},{"hook",Val(st,"hook")},{"keyboard",Val(st,"keyboard")},{"cursor",Val(st,"cursor")},{"release",release},{"last",""}};
   }catch(Exception e){
-   if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is System.ComponentModel.Win32Exception||e is FormatException||e is OverflowException))throw;
+   if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;
    return offline;
   }
  }
@@ -1203,9 +1214,14 @@ internal static class NativeReadServer {
   var state=ShareHelperStatus();
   if(read){Json(s,"200 OK",Serializer().Serialize(state));return;}
   if(payload.Length!=0){Json(s,"400 Bad Request","{\"error\":\"invalid restart request\"}");return;}
-  // A running helper needs no restart. Offline restart awaits the owning native launcher's control channel.
-  if(True(Val(state,"running")))Json(s,"200 OK","{\"ok\":true}");
-  else Json(s,"503 Service Unavailable","{\"error\":\"helper restart unavailable\"}");
+  if(True(Val(state,"running"))){Json(s,"200 OK","{\"ok\":true}");return;}
+  var owner=ShareOwner();
+  if(owner==null){Json(s,"503 Service Unavailable","{\"error\":\"helper restart unavailable\"}");return;}
+  // The UI thread of the exact owner consumes this short-lived request. No process launch.
+  owner["issuedTicks"]=DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+  try{AtomicWrite("share-input-restart.json",Utf8.GetBytes(Serializer().Serialize(owner)));}
+  catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException))throw;Json(s,"500 Internal Server Error","{\"error\":\"restart request unavailable\"}");return;}
+  Json(s,"202 Accepted","{\"ok\":true,\"pending\":true}");
  }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
