@@ -93,6 +93,8 @@ internal sealed class NativeBoardLaunch : Form {
 #if NATIVE_SHARE_LAB
             string bookProbe=Path.Combine(root,"book-ui-test.fixture");
             if(mode=="window"&&File.Exists(bookProbe)){File.Delete(bookProbe);VerifyBookUi();}
+            string meetingProbe=Path.Combine(root,"meeting-ui-test.fixture");
+            if(mode=="window"&&File.Exists(meetingProbe)){File.Delete(meetingProbe);VerifyMeetingUi();}
             if(mode=="wallpaper"){
                 string pause=Path.Combine(root,"share-helper-stop.fixture");
                 if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
@@ -160,6 +162,74 @@ internal sealed class NativeBoardLaunch : Form {
         // Framework csc uses C# 5; await cannot appear in a finally block.
         try{await core.ExecuteScriptAsync("if(window.__bookFetch)window.fetch=window.__bookFetch");}catch{}
         bookUiTesting=false;
+    }
+
+    bool meetingUiTesting;
+    async Task WaitMeetingUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<100;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Meeting UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({title:document.getElementById('ttMediaHeading').textContent,status:document.getElementById('ttMediaStatus').textContent,actions:document.getElementById('ttMediaActions').textContent})"));
+    }
+    async Task MeetingClick(string text){
+        var js=new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(text);
+        var core=browser.CoreWebView2;
+        Require(await core.ExecuteScriptAsync("(()=>{const b=[...document.querySelectorAll('#ttMediaDialog button')].find(x=>x.textContent.trim()==="+js+"&&!x.hidden&&!x.closest('[inert]'));if(!b)return false;b.click();return true})()")=="true","Meeting button "+text);
+    }
+    async Task OpenMeeting(bool settings){
+        var core=browser.CoreWebView2;
+        await core.ExecuteScriptAsync("document.getElementById('ttMediaOpen').click()");
+        await WaitMeetingUi("!!document.querySelector('[data-media-tool=meeting] .mm-tile')","media home");
+        await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=meeting] .mm-tile').click()");
+        await MeetingClick(settings?"개인화":"실행하기");
+    }
+    async void VerifyMeetingUi(){
+        if(meetingUiTesting)return;meetingUiTesting=true;
+        string result=Path.Combine(root,"meeting-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            // Reset only the isolated test profile's meeting entry. Keep other stores untouched.
+            await core.ExecuteScriptAsync("(()=>{window.__meetingSeed=false;const r=indexedDB.open('tt-multimedia-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('apps');r.onsuccess=()=>{const d=r.result,t=d.transaction('apps','readwrite');t.objectStore('apps').delete('meeting');t.oncomplete=()=>{d.close();window.__meetingSeed=true}}})()");
+            await WaitMeetingUi("window.__meetingSeed===true","empty fixture");
+            await OpenMeeting(false);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('회의 시작')&&[...document.querySelectorAll('#ttMediaActions button')].filter(x=>x.textContent.startsWith('애국가')).length===4&&!!document.querySelector('#ttMediaStage iframe[src*=\"canva.com\"]')","default opening and four anthem options");
+            await MeetingClick("애국가 1절");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage iframe[src*=youtube]')","default anthem iframe");
+            // Simulate provider events, not actual network/media playback.
+            await core.ExecuteScriptAsync("(()=>{const f=document.querySelector('#ttMediaStage iframe');window.__meetingOld=f.contentWindow;const id=new URL(f.src).searchParams.get('widgetid');const emit=(source,origin,n)=>window.dispatchEvent(new MessageEvent('message',{source,origin,data:JSON.stringify({event:'onStateChange',id,info:n})}));emit(window,'https://www.youtube.com',1);emit(window,'https://www.youtube.com',0);emit(f.contentWindow,'https://invalid.example',1);emit(f.contentWindow,'https://invalid.example',0)})()");
+            await Task.Delay(200);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent==='애국가 제창'","forged provider events rejected");
+            await core.ExecuteScriptAsync("(()=>{const f=document.querySelector('#ttMediaStage iframe'),id=new URL(f.src).searchParams.get('widgetid');for(const n of [1,0])window.dispatchEvent(new MessageEvent('message',{source:f.contentWindow,origin:'https://www.youtube.com',data:JSON.stringify({event:'onStateChange',id,info:n})}))})()");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('교가 제외')&&[...document.querySelectorAll('#ttMediaActions button')].some(x=>x.textContent==='회의 종료')","no school song branch");
+            await MeetingClick("회의 종료");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open","default close");
+            await OpenMeeting(true);
+            await WaitMeetingUi("!!document.getElementById('ttMediaSlot2')","personalize");
+            // Register using the unchanged settings UI, not a replacement database implementation.
+            await core.ExecuteScriptAsync("(()=>{const put=(k)=>{const s=document.getElementById('ttMediaSlot'+k);s.closest('details').open=true;s.value='local';s.dispatchEvent(new Event('change'));const f=s.parentElement.querySelector('input[type=file]'),dt=new DataTransfer();dt.items.add(new File([new Uint8Array([1,2,3,4])],k+'-fixture.mp4',{type:'video/mp4'}));f.files=dt.files;f.dispatchEvent(new Event('change'))};put('2');put('song');const c=document.getElementById('ttMediaCanvaA');c.closest('details').open=true;c.value='https://www.canva.com/design/LAB_MEETING/LAB_KEY/view';c.dispatchEvent(new Event('change'))})()");
+            await MeetingClick("저장");
+            await WaitMeetingUi("!!document.querySelector('[data-media-tool=meeting] .mm-tile')","saved settings return");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open","close saved settings");
+            await OpenMeeting(false);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('회의 시작')&&document.querySelector('#ttMediaStage iframe')?.src==='https://www.canva.com/design/LAB_MEETING/LAB_KEY/view?embed'&&[...document.querySelectorAll('#ttMediaActions button')].map(x=>x.textContent).join(',')==='애국가 2절'","reloaded personal Canva and selected anthem only");
+            await MeetingClick("애국가 2절");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage video[src^=blob]')","stored local anthem blob");
+            await core.ExecuteScriptAsync("window.__oldMeetingVideo=document.querySelector('#ttMediaStage video');window.__oldMeetingVideo.dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('교가 포함')&&[...document.querySelectorAll('#ttMediaActions button')].some(x=>x.textContent==='교가 재생')","registered school song branch");
+            await MeetingClick("교가 재생");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage video[src^=blob]')&&document.getElementById('ttMediaHeading').textContent==='교가 제창'","stored school song blob");
+            await core.ExecuteScriptAsync("window.__oldMeetingVideo.dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent==='교가 제창'","stale anthem event ignored");
+            await core.ExecuteScriptAsync("document.querySelector('#ttMediaStage video').dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('폐회사')","school song completion");
+            await MeetingClick("회의 종료");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open&&!document.querySelector('#ttMediaStage video,#ttMediaStage iframe')","meeting cleanup");
+            File.WriteAllText(result,"PASS native dashboard meeting default and personal settings, persisted local blobs, selected anthem, school-song branches, synthetic provider events and cleanup");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        meetingUiTesting=false;
     }
     bool shareUiTesting;
     async Task WaitShareUi(string expression,string label){
