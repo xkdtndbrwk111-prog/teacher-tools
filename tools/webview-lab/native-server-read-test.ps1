@@ -1018,6 +1018,41 @@ try{
  }finally{$slowWeather.Dispose();Remove-Item -LiteralPath $delayedRegion,$regionEntered -ErrorAction SilentlyContinue}
  Assert-P (Seat-Post 17451 '/api/school' $school) 200
  Write-Host 'PASS old school exact-code address lookup, administrative-only geocoder, typed location error and late result protection'
+ # 4E-1: font enumeration and safe native shell dispatch (fixture, no live launch).
+ $systemBefore=Snapshot-CrashFiles
+ $font=School-Doc '/api/fonts'
+ if($font.list.Count -lt 1 -or @($font.list|Where-Object {![string]$_}).Count -ne 0){throw 'Installed font enumeration'}
+ $fontAgain=School-Doc '/api/fonts'
+ if(($font.list -join '|') -cne ($fontAgain.list -join '|')){throw 'Installed font cache'}
+ Assert-P (Raw-Request 17451 '/api/fonts' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/open-manager' POST '' 'same-origin') 503
+ $systemFlag=Join-Path $crashRoot 'system-open-fixture.flag'
+ Set-Content -LiteralPath $systemFlag 'fixture-only' -Encoding ASCII
+ foreach($route in @('/api/open-manager','/api/open-sheet-copy','/api/open-sound-settings')){
+  Assert-P (Raw-Request 17451 $route POST '' 'same-origin') 200 '{"ok":true}'
+  Assert-P (Raw-Request 17451 $route GET '' 'same-origin') 405
+  Assert-P (Raw-Request 17451 $route POST '' 'cross-site' 'https://evil.invalid') 403
+ }
+ $openLog=Join-Path $crashRoot 'system-open.log'
+ $targets=@(Get-Content -LiteralPath $openLog -Encoding UTF8|ForEach-Object{(ConvertFrom-Json $_).target})
+ if(($targets -join '|') -cne 'https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/|https://docs.google.com/spreadsheets/d/1-vejhJz909ivFnhzNRkpbd31BSJsElEPzXUYkONdJRQ/copy|ms-settings:sound'){throw 'Fixed system targets'}
+ function Open-Web([string]$url){
+  $json=@{url=$url}|ConvertTo-Json -Compress
+  Raw-Request 17451 '/api/open-web' POST '' 'same-origin' 'http://127.0.0.1:17451' $json
+ }
+ Assert-P (Open-Web 'https://example.invalid/path?a=1&b=2') 200
+ $logHash=(Get-FileHash $openLog).Hash
+ foreach($url in @('file:///C:/secret.txt','javascript:alert(1)','ms-settings:sound','https://user:password@example.invalid/','https://example.invalid/a b','not-a-url')){
+  Assert-P (Open-Web $url) 400
+ }
+ if((Get-FileHash $openLog).Hash -cne $logHash){throw 'Rejected URL dispatched'}
+ $liveSystem=Join-Path $crashRoot 'system-open-live.flag'
+ Set-Content -LiteralPath $liveSystem 'ambiguous' -Encoding ASCII
+ try{Assert-P (Raw-Request 17451 '/api/open-manager' POST '' 'same-origin') 503}finally{Remove-Item -LiteralPath $liveSystem -Force}
+ Remove-Item -LiteralPath $systemFlag -Force
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $systemBefore[$file])){throw 'System API altered ledger'}}
+ Write-Host 'PASS native font enumeration, fixed browser/settings targets, HTTP(S) validation, denied external/protocol and explicit fixture-only shell dispatch'
+
 
 
 

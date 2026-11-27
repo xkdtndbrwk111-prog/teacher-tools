@@ -1122,6 +1122,54 @@ internal static class NativeReadServer {
    }
   }
  }
+ static string[] installedFonts;
+ static readonly object SystemGate=new object();
+ static string[] InstalledFonts(){
+  if(installedFonts!=null)return installedFonts;
+  var list=new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+  using(var fonts=new System.Drawing.Text.InstalledFontCollection())foreach(var family in fonts.Families){try{if(!String.IsNullOrWhiteSpace(family.Name))list.Add(family.Name);}finally{family.Dispose();}}
+  installedFonts=new List<string>(list).ToArray();return installedFonts;
+ }
+ static void OpenSystemTarget(string target){
+  string fixture=Path.Combine(labRoot,"system-open-fixture.flag"),live=Path.Combine(labRoot,"system-open-live.flag");
+  bool fake=File.Exists(fixture),actual=File.Exists(live);
+  if(fake==actual)throw new IOException("System open mode unavailable");
+  string flag=fake?fixture:live;
+  if((File.GetAttributes(flag)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked system mode");
+  if(fake){
+   string log=Path.Combine(labRoot,"system-open.log");
+   if(File.Exists(log)&&(File.GetAttributes(log)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked system log");
+   File.AppendAllText(log,Serializer().Serialize(new Dictionary<string,object>{{"target",target}})+"\n",Utf8);
+  }else{
+   // Explicit interactive lab mode only. Shell association, not a shell command.
+   using(var process=Process.Start(new ProcessStartInfo{FileName=target,UseShellExecute=true})){}
+  }
+ }
+ static void SystemData(Stream s,string path,string method,string site,string origin,byte[] payload){
+  bool read=method=="GET";
+  if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if((path=="/api/fonts"&&!read)||(path!="/api/fonts"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  lock(SystemGate){
+   try{
+    if(path=="/api/fonts"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"list",InstalledFonts()}}));return;}
+    string target;
+    if(path=="/api/open-manager")target="https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/";
+    else if(path=="/api/open-sheet-copy")target="https://docs.google.com/spreadsheets/d/"+SheetTemplate+"/copy";
+    else if(path=="/api/open-sound-settings")target="ms-settings:sound";
+    else{
+     if(payload.Length==0||payload.Length>8192){Json(s,"400 Bad Request","{\"error\":\"url\"}");return;}
+     var body=Obj(Serializer().DeserializeObject(Utf8.GetString(payload)));string url=TextVal(body,"url");Uri uri;
+     if(url.Length==0||url.Length>2000||Regex.IsMatch(url,@"[\x00-\x20\x7f]")||!Uri.TryCreate(url,UriKind.Absolute,out uri)||(uri.Scheme!="https"&&uri.Scheme!="http")||uri.UserInfo!=""||String.IsNullOrEmpty(uri.Host)){Json(s,"400 Bad Request","{\"error\":\"url\"}");return;}
+     target=uri.AbsoluteUri;
+    }
+    OpenSystemTarget(target);Json(s,"200 OK","{\"ok\":true}");
+   }catch(Exception e){
+    if(e is FormatException||e is ArgumentException||e is InvalidOperationException){Json(s,"400 Bad Request","{\"error\":\"url\"}");return;}
+    if(!(e is IOException||e is UnauthorizedAccessException||e is System.ComponentModel.Win32Exception))throw;
+    Json(s,"503 Service Unavailable","{\"error\":\"system open unavailable\"}");
+   }
+  }
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -1132,7 +1180,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1143,6 +1191,7 @@ internal static class NativeReadServer {
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
    if(coinWrites&&(path=="/api/photos"||path=="/api/photos/pick"||path=="/photo")){PhotoData(s,path,req[1],req[0],host,site,origin);return;}
+   if(coinWrites&&(path=="/api/fonts"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings")){SystemData(s,path,req[0],site,origin,payload);return;}
    bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week"||path=="/api/weather/places"||path=="/api/weather");
    if(remote){
     if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}
