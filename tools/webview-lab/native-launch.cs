@@ -467,10 +467,30 @@ internal sealed class NativeBoardLaunch : Form {
         core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
         core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;
         core.NavigationStarting+=(s,e)=>{if(!Lab.Local(e.Uri))e.Cancel=true;};
-        core.FrameNavigationStarting+=(s,e)=>{if(!Lab.Local(e.Uri)&&e.Uri!="about:blank")e.Cancel=true;};
+        core.FrameNavigationStarting+=(s,e)=>{
+            bool allowed=Lab.Local(e.Uri)||e.Uri=="about:blank";
+#if NATIVE_FIELD_PILOT
+            if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Frame(e.Uri);
+#endif
+            if(!allowed)e.Cancel=true;
+        };
         core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
         core.PermissionRequested+=(s,e)=>{e.State=CoreWebView2PermissionState.Deny;};
-        core.DownloadStarting+=(s,e)=>{e.Cancel=true;};
+        core.DownloadStarting+=(s,e)=>{
+            e.Cancel=true;
+#if NATIVE_FIELD_PILOT
+            if(File.Exists(Path.Combine(root,"field-transfer-live.flag"))&&FieldProviderPolicy.Backup(e.DownloadOperation.Uri,e.ResultFilePath,Origin)){
+                // Explicit user save dialog, limited to original local backup downloads.
+                using(var picker=new SaveFileDialog()){
+                    picker.Filter="HOJA backup (*.ttbackup)|*.ttbackup";picker.DefaultExt="ttbackup";picker.AddExtension=true;picker.OverwritePrompt=true;
+                    picker.FileName=Path.GetFileName(e.ResultFilePath);
+                    if(picker.ShowDialog(this)==DialogResult.OK&&String.Equals(Path.GetExtension(picker.FileName),".ttbackup",StringComparison.OrdinalIgnoreCase)){
+                        e.ResultFilePath=picker.FileName;e.Cancel=false;e.Handled=true;
+                    }
+                }
+            }
+#endif
+        };
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
         core.WebResourceRequested+=(s,e)=>{
             if(migrationSource!=null&&e.Request.Uri==Origin+"/__lab_migration"){
@@ -491,6 +511,9 @@ internal sealed class NativeBoardLaunch : Form {
             bool allowed=Lab.Allowed(e.Request.Uri,e.Request.Method);
 #if NATIVE_SHARE_LAB
             if(!allowed&&e.ResourceContext==CoreWebView2WebResourceContext.Media)allowed=AllowedLocalMedia(e.Request.Uri,e.Request.Method);
+#endif
+#if NATIVE_FIELD_PILOT
+            if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Resource(e.Request.Uri,e.Request.Method,e.ResourceContext==CoreWebView2WebResourceContext.Document);
 #endif
             if(!allowed)e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
         };
