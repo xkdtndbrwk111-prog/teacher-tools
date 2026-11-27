@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json","share-input.json","share-input-restart.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json","photos.txt","audio-lab.json","share-input.json","share-input-restart.json",BackupJournal}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -1260,6 +1260,107 @@ internal static class NativeReadServer {
    Json(s,"400 Bad Request","{\"error\":\"backup unavailable\"}");
   }
  }
+ // 4E-4b: legacy restore envelope; durable old snapshot before any mutation.
+ // A missing file in a with-students backup is a deletion. Settings-only is empty.
+ static string backupToken=Guid.NewGuid().ToString("N");
+ const string BackupJournal="backup-restore-journal.json";
+ static JavaScriptSerializer BackupSerializer(){return new JavaScriptSerializer(){MaxJsonLength=40*1024*1024,RecursionLimit=100};}
+ static Dictionary<string,byte[]> DecodeBackupFiles(Dictionary<string,object> files,bool validate){
+  if(files==null||files.Count>BackupNames.Length)throw new FormatException("Backup files");
+  var decoded=new Dictionary<string,byte[]>(StringComparer.Ordinal);long total=0;
+  foreach(var pair in files){
+   if(Array.IndexOf(BackupNames,pair.Key)<0||!(pair.Value is string))throw new FormatException("Backup file");
+   byte[] bytes=Convert.FromBase64String((string)pair.Value);total+=bytes.LongLength;
+   if(bytes.Length>16777216||total>25165824)throw new FormatException("Backup size");
+   if(validate){
+    string raw=Utf8.GetString(bytes).TrimStart('\uFEFF');
+    if(pair.Key.EndsWith(".json")){
+     if(Obj(BackupSerializer().DeserializeObject(raw))==null)throw new FormatException("Backup JSON object");
+    }else{
+     foreach(string line in raw.Split('\n')){
+      if(String.IsNullOrWhiteSpace(line))continue;
+      if(Obj(BackupSerializer().DeserializeObject(line.TrimStart('\uFEFF')))==null)throw new FormatException("Backup log object");
+     }
+    }
+   }
+   decoded.Add(pair.Key,bytes);
+  }
+  return decoded;
+ }
+ static Dictionary<string,object> SnapshotBackup(){
+  var old=new Dictionary<string,object>(StringComparer.Ordinal);long total=0;
+  foreach(string name in BackupNames){
+   byte[] bytes=BackupRead(name);
+   if(bytes==null)continue;
+   total+=bytes.LongLength;if(total>25165824)throw new IOException("Old backup size");
+   old.Add(name,Convert.ToBase64String(bytes));
+  }
+  return old;
+ }
+ static void ApplyBackupFiles(Dictionary<string,byte[]> files,bool inject){
+  // Fixed paths only. Validate every existing target before changing any.
+  foreach(string name in BackupNames)BackupRead(name);
+  foreach(string name in BackupNames){
+   byte[] data;
+   if(files.TryGetValue(name,out data))AtomicWrite(name,data);
+   else{string p=Path.Combine(root,name);if(File.Exists(p))File.Delete(p);}
+   if(inject)CrashCheckpoint("backup-restore","after-"+name);
+  }
+ }
+ static void RemoveBackupJournal(){
+  string p=Path.Combine(root,BackupJournal);
+  if((File.GetAttributes(p)&(FileAttributes.Directory|FileAttributes.ReparsePoint))!=0)throw new IOException("Unsafe journal");
+  File.Delete(p);
+ }
+ static void RecoverBackup(){
+  byte[] raw=Read(BackupJournal);
+  if(raw==null){if(Directory.Exists(Path.Combine(root,BackupJournal)))throw new IOException("Unsafe journal");return;}
+  var j=Obj(BackupSerializer().DeserializeObject(Utf8.GetString(raw)));
+  if(j==null||j.Count!=2||!IntValue(Val(j,"version"),1,1))throw new IOException("Invalid restore journal");
+  var old=DecodeBackupFiles(Obj(Val(j,"files")),false);
+  ApplyBackupFiles(old,false);
+  RemoveBackupJournal();
+ }
+ static void BackupRestoreData(Stream s,string path,string method,string site,string origin,string token,byte[] payload){
+  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(path=="/api/backup/token"){
+   if(method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+   Json(s,"200 OK",BackupSerializer().Serialize(new Dictionary<string,object>{{"token",backupToken}}));return;
+  }
+  if(method!="POST"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  if(!String.Equals(token,backupToken,StringComparison.OrdinalIgnoreCase)){Json(s,"403 Forbidden","{\"error\":\"token\"}");return;}
+  Dictionary<string,byte[]> next;Dictionary<string,object> old;
+  try{
+   var doc=Obj(BackupSerializer().DeserializeObject(Utf8.GetString(payload)));
+   string mode=TextVal(doc,"mode");
+   if(doc==null||doc.Count!=4||TextVal(doc,"format")!="teacher-tools-server-files"||!IntValue(Val(doc,"version"),1,1)||(mode!="with-students"&&mode!="settings-only"))throw new FormatException("Backup envelope");
+   next=DecodeBackupFiles(Obj(Val(doc,"files")),true);
+   if(mode=="settings-only"&&next.Count!=0)throw new FormatException("Settings only");
+   old=SnapshotBackup();
+   if(Read(BackupJournal)!=null||Directory.Exists(Path.Combine(root,BackupJournal)))throw new IOException("Pending restore");
+  }catch(Exception e){
+   if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;
+   Json(s,"400 Bad Request","{\"error\":\"restore_failed\"}");return;
+  }
+  bool journal=false;
+  try{
+   AtomicWrite(BackupJournal,Utf8.GetBytes(BackupSerializer().Serialize(new Dictionary<string,object>{{"version",1},{"files",old}})));
+   journal=true;
+   CrashCheckpoint("backup-restore","prepared");
+   ApplyBackupFiles(next,true);
+   CrashCheckpoint("backup-restore","before-commit");
+   RemoveBackupJournal();journal=false;
+  }catch(Exception e){
+   // If rollback cannot complete, stop the isolated process rather than serving partial data.
+   try{if(journal||File.Exists(Path.Combine(root,BackupJournal)))RecoverBackup();}
+   catch{Environment.Exit(1);return;}
+   Json(s,"500 Internal Server Error","{\"error\":\"restore_failed\"}");return;
+  }
+  lock(WeekGate){schoolGeneration++;timetableCache.Clear();}
+  placeGeneration++;
+  backupToken=Guid.NewGuid().ToString("N");
+  Json(s,"200 OK","{\"ok\":true}");
+ }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -1372,10 +1473,10 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart"||path=="/api/backup/restore");
    int length=0;
    string cl=Get(h,"Content-Length");
-   if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
+   if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>(path=="/api/backup/restore"&&coinWrites?33554432:8388608)){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    byte[] payload=new byte[length];
    if(length>0){
     if(!write){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1394,6 +1495,7 @@ internal static class NativeReadServer {
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
    if(coinWrites&&path=="/api/backup/export"){BackupExportData(s,req[0],site,origin);return;}
+   if(coinWrites&&(path=="/api/backup/token"||path=="/api/backup/restore")){BackupRestoreData(s,path,req[0],site,origin,Get(h,"X-TT-Backup-Token"),payload);return;}
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/share-input/status"||path=="/api/share-input/restart")){ShareHelperData(s,path,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/weather/place"||path=="/api/weather/places")){WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);return;}
@@ -1470,7 +1572,7 @@ internal static class NativeReadServer {
   release=(string)j["release"];if(!Regex.IsMatch(release,"^[0-9-]+-V[0-9.]+-STABLE-PILOT$"))return 2;
   var l=new TcpListener(IPAddress.Loopback,Port);l.ExclusiveAddressUse=true;
   try{ThreadPool.SetMinThreads(20,20);NoInherit(l.Server);l.Start();NoInherit(l.Server);
-   if(coinWrites)ClearAbandonedWrites();
+   if(coinWrites){ClearAbandonedWrites();RecoverBackup();}
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
     if(!l.Pending()){Thread.Sleep(20);continue;}
