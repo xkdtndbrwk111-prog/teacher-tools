@@ -784,6 +784,58 @@ try{
  if(Test-Path $weatherFile){throw 'School change did not invalidate place'}
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $weatherBefore[$file])){throw 'Weather location altered ledger'}}
  Write-Host 'PASS native weather offline region centers, manual/auto location, restricted geocoder mapping, school invalidation and private file guards'
+ # 4D-4b: Open-Meteo forecast/air independent cache and stale recovery.
+ $clock=Join-Path $crashRoot 'weather-clock.txt'
+ $now=[long]1795734000000
+ Set-Content -LiteralPath $clock ([string]$now) -Encoding ASCII
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"name":"시험 위치","lat":37.5,"lon":127.125,"auto":false}') 200
+ $base='latitude=37.5000&longitude=127.1250'
+ $forecastQuery=$base+'&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5'
+ $airQuery=$base+'&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5'
+ function Weather-Fixture([string]$endpoint,[string]$query,[string]$json){
+  $key=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes($endpoint+'?'+$query))).ToLowerInvariant()
+  $path=Join-Path $fixtureDir ($key+'.json')
+  [IO.File]::WriteAllText($path,$json,$utf8)
+  return $path
+ }
+ $forecastJson='{"current":{"temperature_2m":0,"weather_code":0,"wind_speed_10m":3,"precipitation":0},"hourly":{"time":["2026-11-27T09:00"],"temperature_2m":[0],"weather_code":[0],"precipitation_probability":[0]},"daily":{"time":["2026-11-27"],"temperature_2m_max":[4],"temperature_2m_min":[-3],"weather_code":[0],"precipitation_probability_max":[0]}}'
+ $airJson='{"current":{"pm10":0,"pm2_5":12},"hourly":{"time":["2026-11-27T09:00"],"pm10":[0],"pm2_5":[12]}}'
+ $forecastPath=Weather-Fixture 'forecast' $forecastQuery $forecastJson
+ $airPath=Weather-Fixture 'air' $airQuery $airJson
+ $weather=School-Doc '/api/weather'
+ if($weather.source -cne 'Open-Meteo' -or $weather.weather.current.temperature_2m -ne 0 -or $weather.weather.current.weather_code -ne 0 -or $weather.air.current.pm10 -ne 0 -or $weather.stale -or $weather.airStale -or $weather.at -ne $now){throw 'Weather initial data including zero values'}
+ $cachePath=Join-Path $crashStore 'weather-cache.json'
+ if(!(Test-Path $cachePath)){throw 'Weather persisted cache missing'}
+ $cacheHash=(Get-FileHash $cachePath).Hash
+ Remove-Item -LiteralPath $forecastPath -Force
+ $weather=School-Doc '/api/weather'
+ if($weather.stale -or $weather.at -ne $now -or (Get-FileHash $cachePath).Hash -cne $cacheHash){throw 'Weather half-hour cache'}
+ Set-Content -LiteralPath $clock ([string]($now+1000)) -Encoding ASCII
+ $weather=School-Doc '/api/weather?fresh=1'
+ if(!$weather.stale -or $weather.airStale -or $weather.airAt -ne ($now+1000) -or $weather.at -ne $now){throw 'Independent failed weather and refreshed air'}
+ $forecastPath=Weather-Fixture 'forecast' $forecastQuery ($forecastJson.Replace('"temperature_2m":0','"temperature_2m":5'))
+ $weather=School-Doc '/api/weather?fresh=1'
+ if(!$weather.stale -or $weather.weather.current.temperature_2m -ne 0){throw 'Weather backoff bypassed'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Weather cache restart stop'}
+ $native=Start-CrashServer
+ $weather=School-Doc '/api/weather?fresh=1'
+ if(!$weather.stale -or $weather.weather.current.temperature_2m -ne 0){throw 'Weather restart backoff'}
+ Set-Content -LiteralPath $clock ([string]($now+301001)) -Encoding ASCII
+ $weather=School-Doc '/api/weather?fresh=1'
+ if($weather.stale -or $weather.weather.current.temperature_2m -ne 5){throw 'Weather recovery'}
+ Remove-Item -LiteralPath $forecastPath,$airPath -Force
+ Set-Content -LiteralPath $clock ([string]($now+87000000)) -Encoding ASCII
+ $r=Raw-Request 17451 '/api/weather' GET '' 'same-origin'
+ Assert-P $r 502
+ if((ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($r.body))).code -ne 'WEATHER_API_UNAVAILABLE'){throw 'Weather stale expiry'}
+ Assert-P (Raw-Request 17451 '/api/weather' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/weather-cache.json') 404
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"auto":true}') 200
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $weatherBefore[$file])){throw 'Weather cache altered ledger'}}
+ Remove-Item -LiteralPath $clock -Force
+ Write-Host 'PASS native Open-Meteo forecast/air, zero values, independent cache, stale fallback, refresh backoff, restart recovery and 24h expiry'
+
 
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}

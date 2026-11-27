@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json","weather-cache.json"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -360,7 +360,14 @@ internal static class NativeReadServer {
  }
  // The provider constructs its own HTTPS URLs. No caller-supplied URL, credentials,
  // redirects, cookies, or certificate-validation bypass.
+ const string ForecastTail="&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5";
+ const string AirTail="&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5";
  static Uri UpstreamUri(string endpoint,string query){
+  if(endpoint=="forecast"||endpoint=="air"){
+   string tail=endpoint=="forecast"?ForecastTail:AirTail;
+   if(!query.EndsWith(tail,StringComparison.Ordinal)||!Regex.IsMatch(query.Substring(0,query.Length-tail.Length),@"\Alatitude=[0-9]{2}\.[0-9]{4}&longitude=[0-9]{3}\.[0-9]{4}\z"))throw new FormatException("Weather query");
+   return new Uri((endpoint=="forecast"?"https://api.open-meteo.com/v1/forecast?":"https://air-quality-api.open-meteo.com/v1/air-quality?")+query);
+  }
   if(endpoint=="places"){
    if(query.Length>1024||!Regex.IsMatch(query,@"\Aformat=json&limit=[1-5]&countrycodes=kr&accept-language=ko&q=[A-Za-z0-9_%.-]+\z"))throw new FormatException("Place query");
    return new Uri("https://nominatim.openstreetmap.org/search?"+query);
@@ -375,7 +382,7 @@ internal static class NativeReadServer {
  }
  [ThreadStatic] static Stopwatch upstreamBudget;
  static string HttpsText(Uri uri){
-  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"&&uri.Host!="nominatim.openstreetmap.org"))throw new FormatException("Upstream origin");
+  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"&&uri.Host!="nominatim.openstreetmap.org"&&uri.Host!="api.open-meteo.com"&&uri.Host!="air-quality-api.open-meteo.com"))throw new FormatException("Upstream origin");
   const int limit=2097152;
   int remaining=upstreamBudget==null?9000:Math.Min(9000,30000-(int)upstreamBudget.ElapsedMilliseconds);
   if(remaining<1)throw new IOException("Upstream budget exhausted");
@@ -718,6 +725,100 @@ internal static class NativeReadServer {
   string file=Path.Combine(root,"weather-place.json");
   if(File.Exists(file)){if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked weather place");File.Delete(file);}
  }
+ static Dictionary<string,object> ResolveKnownPlace(){
+  // Called only under LocalGate. Slow online resolution is a later checkpoint.
+  var p=ReadPlace();if(p!=null)return p;
+  var school=School();var known=KnownAddress(TextVal(school,"address"));
+  if(known==null)return null;
+  double lat,lon;Coordinate(Val(known,"lat"),out lat);Coordinate(Val(known,"lon"),out lon);
+  p=Place(TextVal(known,"name")+" (지역 중심)",lat,lon,true);
+  AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(p)));
+  return p;
+ }
+ static readonly object WeatherGate=new object();
+ static long WeatherNow(){
+  // Isolated deterministic test clock, inaccessible through the HTTP request.
+  string path=Path.Combine(labRoot,"weather-clock.txt");long n;
+  if(File.Exists(Path.Combine(labRoot,"neis-fixture.flag"))&&File.Exists(path)){
+   if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0||!Int64.TryParse(File.ReadAllText(path).Trim(),out n)||n<1600000000000L||n>2000000000000L)throw new IOException("Weather fixture clock");
+   return n;
+  }
+  return (long)(DateTime.UtcNow-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalMilliseconds;
+ }
+ static long LongVal(Dictionary<string,object> d,string key){long n;return Int64.TryParse(Convert.ToString(Val(d,key),CultureInfo.InvariantCulture),out n)?n:0;}
+ static Dictionary<string,object> DictVal(Dictionary<string,object> d,string key){return Obj(Val(d,key));}
+ static int CountVal(Dictionary<string,object> d,string key){var a=Val(d,key) as System.Collections.IList;return a==null?0:a.Count;}
+ static bool ValidForecast(Dictionary<string,object> data){
+  var current=DictVal(data,"current");var hourly=DictVal(data,"hourly");var daily=DictVal(data,"daily");
+  int h=CountVal(hourly,"time"),d=CountVal(daily,"time");double number;
+  return Coordinate(Val(current,"temperature_2m"),out number)&&Coordinate(Val(current,"weather_code"),out number)&&h>0&&d>0&&CountVal(hourly,"temperature_2m")==h&&CountVal(hourly,"weather_code")==h&&CountVal(daily,"temperature_2m_max")==d&&CountVal(daily,"temperature_2m_min")==d&&CountVal(daily,"weather_code")==d;
+ }
+ static bool ValidAir(Dictionary<string,object> data){
+  var current=DictVal(data,"current");var hourly=DictVal(data,"hourly");int h=CountVal(hourly,"time");double number;
+  return (Coordinate(Val(current,"pm10"),out number)||Coordinate(Val(current,"pm2_5"),out number))&&h>0&&CountVal(hourly,"pm10")==h&&CountVal(hourly,"pm2_5")==h;
+ }
+ static Dictionary<string,object> LoadWeather(){
+  byte[] raw=Read("weather-cache.json");
+  if(raw!=null&&raw.Length<=4194304)try{
+   var data=Obj(Serializer().DeserializeObject(Utf8.GetString(raw).TrimStart('\uFEFF')));
+   if(data!=null){var result=new Dictionary<string,object>();foreach(var pair in data)if(Regex.IsMatch(pair.Key,@"\A[0-9]{2}\.[0-9]{4},[0-9]{3}\.[0-9]{4}\z")&&Obj(pair.Value)!=null)result.Add(pair.Key,pair.Value);return result;}
+  }catch(ArgumentException){}catch(InvalidOperationException){}
+  return new Dictionary<string,object>();
+ }
+ static bool SaveWeather(Dictionary<string,object> store){
+  try{byte[] raw=Utf8.GetBytes(Serializer().Serialize(store));if(raw.Length>4194304)return false;AtomicWrite("weather-cache.json",raw);return true;}
+  catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}catch(InvalidOperationException){return false;}
+ }
+ static bool RefreshWeatherPart(Dictionary<string,object> entry,string part,string nextKey,string query,long now,bool fresh){
+  var old=DictVal(entry,part);
+  if(now<LongVal(entry,nextKey)||(!fresh&&old!=null&&now-LongVal(old,"at")<1800000))return false;
+  entry[nextKey]=now+300000;
+  try{
+   var data=Obj(Serializer().DeserializeObject(ProviderText(part=="weather"?"forecast":"air",query)));
+   if(!(part=="weather"?ValidForecast(data):ValidAir(data)))throw new FormatException("Weather schema");
+   entry[part]=new Dictionary<string,object>{{"data",data},{"at",now}};entry[nextKey]=0L;
+  }catch(Exception e){
+   if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   if(old!=null)old["attemptFailed"]=true;
+  }
+  return true;
+ }
+ static void WeatherForecastData(Stream s,string target,string site,string origin){
+  if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!=""&&site!="same-origin"&&site!="none")){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  try{
+   var q=Query(target);bool fresh=Get(q,"fresh")=="1";
+   Dictionary<string,object> p;lock(LocalGate)p=ResolveKnownPlace();
+   if(p==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
+   double la,lo;Coordinate(Val(p,"lat"),out la);Coordinate(Val(p,"lon"),out lo);
+   string lat=(Math.Truncate(la*10000)/10000).ToString("0.0000",CultureInfo.InvariantCulture),lon=(Math.Truncate(lo*10000)/10000).ToString("0.0000",CultureInfo.InvariantCulture);
+   string key=lat+","+lon,baseQuery="latitude="+lat+"&longitude="+lon;
+   lock(WeatherGate){
+    long now=WeatherNow();var store=LoadWeather();var entry=DictVal(store,key);
+    bool dirty=false;
+    if(entry==null){entry=new Dictionary<string,object>{{"weather",null},{"air",null},{"met",null},{"primaryNext",0L},{"airNext",0L},{"metNext",0L}};store[key]=entry;dirty=true;}
+    var expired=new List<string>();foreach(var pair in store){
+     if(pair.Key==key)continue;var v=Obj(pair.Value);
+     long last=Math.Max(LongVal(v,"metNext"),Math.Max(LongVal(DictVal(v,"weather"),"at"),LongVal(DictVal(v,"air"),"at")));
+     if(now-last>86400000)expired.Add(pair.Key);
+    }
+    foreach(string k in expired){store.Remove(k);dirty=true;}
+    if(RefreshWeatherPart(entry,"weather","primaryNext",baseQuery+ForecastTail,now,fresh))dirty=true;
+    if(RefreshWeatherPart(entry,"air","airNext",baseQuery+AirTail,now,fresh))dirty=true;
+    if(dirty)SaveWeather(store);
+    var w=DictVal(entry,"weather");var a=DictVal(entry,"air");
+    var wd=DictVal(w,"data");var ad=DictVal(a,"data");
+    long at=LongVal(w,"at"),airAt=LongVal(a,"at");
+    if(!ValidForecast(wd)||now-at>=86400000){wd=null;at=0;}
+    if(!ValidAir(ad)||now-airAt>=86400000){ad=null;airAt=0;}
+    if(wd==null&&ad==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_API_UNAVAILABLE\",\"error\":\"위치는 확인했지만 날씨 서비스에 연결하지 못했어요.\"}");return;}
+    bool stale=wd!=null&&(now-at>=1800000||True(Val(w,"attemptFailed"))),airStale=ad!=null&&(now-airAt>=1800000||True(Val(a,"attemptFailed")));
+    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"place",new Dictionary<string,object>{{"name",Val(p,"name")},{"lat",la},{"lon",lo}}},{"weather",wd},{"air",ad},{"at",at},{"source",wd==null?"":"Open-Meteo"},{"stale",stale},{"airAt",airAt},{"airStale",airStale},{"metDeprecated",false}}));
+   }
+  }catch(Exception e){
+   if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_REQUEST_FAILED\",\"error\":\"날씨를 불러오지 못했어요. 다시 시도하거나 날씨 설정을 확인해 주세요.\"}");
+  }
+ }
  static void WeatherPlaceData(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -742,14 +843,8 @@ internal static class NativeReadServer {
    // Location-only lab probe, never exposed by the production API. Forecast
    // integration will use this same resolution under the weather endpoint.
    if(path=="/api/weather/place"&&read){
-    var p=ReadPlace();
-    if(p==null){
-     var school=School();var known=KnownAddress(TextVal(school,"address"));
-     if(known==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
-     double lat,lon;Coordinate(Val(known,"lat"),out lat);Coordinate(Val(known,"lon"),out lon);
-     p=Place(TextVal(known,"name")+" (지역 중심)",lat,lon,true);
-     AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(p)));
-    }
+    var p=ResolveKnownPlace();
+    if(p==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
     Json(s,"200 OK",Serializer().Serialize(p));return;
    }
    Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");
@@ -778,10 +873,10 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-   bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week"||path=="/api/weather/places");
+   bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week"||path=="/api/weather/places"||path=="/api/weather");
    if(remote){
     if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}
-    try{upstreamBudget=Stopwatch.StartNew();if(path=="/api/weather/places")WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);else SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{upstreamBudget=null;RemoteSlots.Release();}
+    try{upstreamBudget=Stopwatch.StartNew();if(path=="/api/weather")WeatherForecastData(s,req[1],site,origin);else if(path=="/api/weather/places")WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);else SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{upstreamBudget=null;RemoteSlots.Release();}
     return;
    }
    // All local writes, presentation transitions, and revision checks are serialized.
