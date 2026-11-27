@@ -1415,7 +1415,14 @@ internal static class NativeReadServer {
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int infoClass,ref BookJobExtended info,uint length);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
- static bool BookProcessEnabled(){return File.Exists(Path.Combine(labRoot,"book-reader-process-fixture.flag"));}
+ static bool FieldBookLive(){
+#if NATIVE_FIELD_PILOT
+  return File.Exists(Path.Combine(labRoot,"field-pilot.flag"))&&File.Exists(Path.Combine(labRoot,"field-book-live.flag"));
+#else
+  return false;
+#endif
+ }
+ static bool BookProcessEnabled(){return FieldBookLive()||File.Exists(Path.Combine(labRoot,"book-reader-process-fixture.flag"));}
  static void BookSessionWrite(BookLabSession b,string name,object value){
   string p=Path.Combine(b.StageDirectory,name),temp=p+"."+Guid.NewGuid().ToString("N")+".tmp";
   if((File.GetAttributes(b.StageDirectory)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked book session");
@@ -1429,7 +1436,9 @@ internal static class NativeReadServer {
   b.ProcessFixture=true;
   // Preserve original request.json shape; the fixture uses the syntactically valid
   // LAB URL and a dead loopback proxy, never a real book or account.
-  if(TextVal(request,"url")!="https://www.canva.com/design/LAB_ID/LAB_KEY/view?embed")throw new IOException("Offline fixture URL required");
+  bool live=FieldBookLive();
+  if(!live&&TextVal(request,"url")!="https://www.canva.com/design/LAB_ID/LAB_KEY/view?embed")throw new IOException("Offline fixture URL required");
+  if(live&&File.Exists(Path.Combine(labRoot,"book-state-fixture.flag")))throw new IOException("Synthetic reader forbidden in field mode");
   BookSessionWrite(b,"request.json",new Dictionary<string,object>{{"url",b.Url},{"title",TextVal(request,"title")},{"pages",b.Pages},{"start",Val(request,"start")},{"saved",Val(request,"saved")},{"interactive",True(Val(request,"interactive"))?1:0},{"owner",b.OwnerWindow},{"ownerPid",b.OwnerPid}});
   BookSessionWrite(b,"layout.json",b.Layout);
   File.WriteAllText(Path.Combine(b.StageDirectory,"lease"),"1",Utf8);
@@ -1440,8 +1449,14 @@ internal static class NativeReadServer {
   var info=new ProcessStartInfo(Path.Combine(b.StageDirectory,"BookReader.exe"),"--session \""+b.StageDirectory+"\"");
   info.WorkingDirectory=b.StageDirectory;info.UseShellExecute=false;info.CreateNoWindow=true;
   info.RedirectStandardOutput=true;info.RedirectStandardError=true;
-  info.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]="--proxy-server=http://127.0.0.1:1 --proxy-bypass-list=<-loopback>";
-  info.EnvironmentVariables["WEBVIEW2_USER_DATA_FOLDER"]=Path.Combine(b.StageDirectory,"offline-profile");
+  if(!live){
+   info.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]="--proxy-server=http://127.0.0.1:1 --proxy-bypass-list=<-loopback>";
+   info.EnvironmentVariables["WEBVIEW2_USER_DATA_FOLDER"]=Path.Combine(b.StageDirectory,"offline-profile");
+  }else{
+   // The original interactive reader selects its own isolated profile.
+   info.EnvironmentVariables.Remove("WEBVIEW2_USER_DATA_FOLDER");
+   info.EnvironmentVariables.Remove("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS");
+  }
   b.Reader=Process.Start(info);
   if(b.Reader==null)throw new IOException("Book process missing");
   if(!AssignProcessToJobObject(b.ReaderJob,b.Reader.Handle))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"book job assign");
@@ -1460,7 +1475,7 @@ internal static class NativeReadServer {
    }
   }else if(b.ReaderJob!=IntPtr.Zero){CloseHandle(b.ReaderJob);b.ReaderJob=IntPtr.Zero;}
  }
- static bool BookStageEnabled(){return File.Exists(Path.Combine(labRoot,"book-bundle-fixture.flag"));}
+ static bool BookStageEnabled(){return FieldBookLive()||File.Exists(Path.Combine(labRoot,"book-bundle-fixture.flag"));}
  static string StageBookBundle(string token){
   byte[] bundle=Read("asset-book-reader-host.zip");
   if(bundle==null||bundle.Length>3000000||Sha(bundle)!=BookBundleHash||!Environment.Is64BitOperatingSystem)throw new IOException("Bundle mismatch");
@@ -1510,7 +1525,7 @@ internal static class NativeReadServer {
   Directory.Delete(dir,false);session.StageDirectory=null;
  }
 
- static bool BookFixture(){return File.Exists(Path.Combine(labRoot,"book-session-fixture.flag"));}
+ static bool BookFixture(){return FieldBookLive()||File.Exists(Path.Combine(labRoot,"book-session-fixture.flag"));}
  static bool BookOwnerMatches(BookLabSession b,Dictionary<string,object> owner){
   return owner!=null&&LongVal(owner,"pid")==b.OwnerPid&&LongVal(owner,"window")==b.OwnerWindow&&TextVal(owner,"startTicks")==b.OwnerStart;
  }
@@ -1529,7 +1544,7 @@ internal static class NativeReadServer {
  // 5A-3a: translate only verified original BookReader state, never infer a bookmark.
  static Dictionary<string,object> BookStatus(BookLabSession b){
   var result=new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",b.Closed},{"page",0},{"saved",0},{"total",b.Pages},{"status",b.Closed?"격리 세션 종료":"책 재생기 시작 중"},{"navigationMode","pending"},{"ack",0},{"bookmarkValid",false},{"visible",false},{"owned",false},{"immersive",false},{"exitFull",false},{"cleanControls",false},{"seekFailed",false},{"seekPage",0},{"manual",false},{"fixtureSeq",b.Seq},{"fixturePid",b.Reader==null?0:b.Reader.Id}};
-  bool synthetic=BookFixture()&&File.Exists(Path.Combine(labRoot,"book-state-fixture.flag"));
+  bool synthetic=!FieldBookLive()&&BookFixture()&&File.Exists(Path.Combine(labRoot,"book-state-fixture.flag"));
   if(b.Closed||(!synthetic&&(!b.ProcessFixture||b.Reader==null||b.Reader.HasExited)))return result;
   try{
    string file=synthetic?Path.Combine(labRoot,"book-state-fixture.json"):Path.Combine(b.StageDirectory,"state.json");
@@ -2030,6 +2045,10 @@ internal static class NativeReadServer {
   lab=Path.GetFullPath(lab);if(!Regex.IsMatch(Path.GetFileName(lab),"^hoja-webview-lab-[a-f0-9]{32}$")||!String.Equals(Path.GetFullPath(local),Path.Combine(lab,"local"),StringComparison.OrdinalIgnoreCase))return 2;
   labRoot=lab;root=Path.Combine(local,"TeacherToolsLocal");
   if(coinWrites&&!File.Exists(Path.Combine(lab,"coin-write-fixture.flag")))return 2;
+#if NATIVE_FIELD_PILOT
+  if(!coinWrites||!File.Exists(Path.Combine(lab,"field-pilot.flag")))return 2;
+  foreach(string name in new[]{"book-state-fixture.flag","book-session-fixture.flag","book-bundle-fixture.flag","book-reader-process-fixture.flag","media-download-fixture.flag","neis-fixture.flag","audio-fixture.flag"})if(File.Exists(Path.Combine(lab,name)))return 2;
+#endif
   var j=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"release.json")));
   release=(string)j["release"];if(!Regex.IsMatch(release,"^[0-9-]+-V[0-9.]+-STABLE-PILOT$"))return 2;
   var l=new TcpListener(IPAddress.Loopback,Port);l.ExclusiveAddressUse=true;
