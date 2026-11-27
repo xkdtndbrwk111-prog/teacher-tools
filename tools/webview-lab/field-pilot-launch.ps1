@@ -1,7 +1,7 @@
-param([ValidateSet('window','wallpaper')][string]$Mode='window',[switch]$LiveBook,[switch]$LiveDownload,[switch]$Smoke)
+param([ValidateSet('window','wallpaper')][string]$Mode='window',[switch]$LiveBook,[switch]$LiveDownload,[switch]$LiveProviders,[switch]$LiveAudio,[switch]$LiveSystem,[switch]$Transfer,[string]$Display='', [switch]$Smoke)
 $ErrorActionPreference='Stop'
 if(![Environment]::Is64BitOperatingSystem){throw 'Windows x64 required'}
-if($Smoke -and ($LiveBook -or $LiveDownload)){throw 'Offline smoke only'}
+if($Smoke -and ($LiveBook -or $LiveDownload -or $LiveProviders -or $LiveAudio -or $LiveSystem -or $Transfer)){throw 'Offline smoke only'}
 $package=$PSScriptRoot
 $manifest=Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw -Encoding UTF8|ConvertFrom-Json
 if($manifest.schema -cne 'HOJA-FIELD-PILOT-1' -or $manifest.version -cne '1.66.43-field-a1'){throw 'Unexpected package manifest'}
@@ -24,7 +24,8 @@ $payload=Join-Path $package 'payload';Plain $payload;Plain (Join-Path $payload '
 $realLocal=$env:LOCALAPPDATA;$oldLab=$env:HOJA_LAB_ROOT
 $parent=Join-Path $realLocal 'TeacherToolsWebView2Pilot'
 [void][IO.Directory]::CreateDirectory($parent);Plain $parent
-$root=Join-Path $parent 'hoja-webview-lab-5d120000000000000000000000000001'
+if($manifest.source -cnotmatch '^[a-f0-9]{40}$'){throw 'Invalid build source'}
+$root=Join-Path $parent ('hoja-webview-lab-'+$manifest.source.Substring(0,32))
 $lock=[IO.File]::Open((Join-Path $parent 'pilot.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 $server=$null;$board=$null
 try{
@@ -45,10 +46,22 @@ try{
  if((Get-Content -LiteralPath (Join-Path $root 'field-pilot.flag') -Raw) -cne '1.66.43-field-a1'){throw 'Pilot identity mismatch'}
  Verify-Payload $root
  $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=Join-Path $root 'local'
- foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
+ foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
  foreach($name in @('coin-write-fixture.flag','media-read-fixture.flag','media-write-fixture.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'isolated-field-data' -Encoding ASCII}
  if($LiveBook){Set-Content -LiteralPath (Join-Path $root 'field-book-live.flag') 'explicit' -Encoding ASCII}
  if($LiveDownload){Set-Content -LiteralPath (Join-Path $root 'media-download-live.flag') 'explicit' -Encoding ASCII}
+ if($LiveProviders){foreach($name in @('field-provider-live.flag','neis-live.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'explicit' -Encoding ASCII}}
+ if($LiveAudio){Set-Content -LiteralPath (Join-Path $root 'field-audio-live.flag') 'explicit' -Encoding ASCII}
+ if($LiveSystem){foreach($name in @('field-system-live.flag','system-open-live.flag','photo-picker-live.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'explicit' -Encoding ASCII}}
+ if($Transfer){Set-Content -LiteralPath (Join-Path $root 'field-transfer-live.flag') 'explicit' -Encoding ASCII}
+ if($Display){
+  Add-Type -AssemblyName System.Windows.Forms
+  if($Display -cnotin @([Windows.Forms.Screen]::AllScreens|ForEach-Object {$_.DeviceName})){throw 'Unknown display device'}
+  [IO.File]::WriteAllText((Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal/display.txt'),$Display)
+ }
+ Add-Type -AssemblyName System.Windows.Forms
+ $screens=@([Windows.Forms.Screen]::AllScreens|ForEach-Object {@{device=$_.DeviceName;primary=$_.Primary;x=$_.Bounds.X;y=$_.Bounds.Y;width=$_.Bounds.Width;height=$_.Bounds.Height}})
+ @{schema='HOJA-FIELD-DEVICE-1';mode=$Mode;screens=$screens;providerOptIn=[bool]$LiveProviders;audioOptIn=[bool]$LiveAudio}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $root 'field-device-report.json') -Encoding UTF8
  $server=Start-Process -FilePath (Join-Path $root 'bin/HOJA-Native-Server.exe') -ArgumentList '--lab-coin-server' -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $root 'server-out.log') -RedirectStandardError (Join-Path $root 'server-err.log')
  $null=$server.Handle
  $ready=Join-Path $root 'native-read-server.ready'
