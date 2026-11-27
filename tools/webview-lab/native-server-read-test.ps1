@@ -171,11 +171,66 @@ try{
  $rows=@([IO.File]::ReadAllLines((Join-Path $stores[17451] 'coins.log'),[Text.Encoding]::UTF8))
  if($rows.Count -ne 4 -or @($rows|Where-Object {$_ -match '"op":"race"'}).Count -ne 1){throw 'Race appended more than once'}
  $after=Raw-Request 17451 '/api/coins'
- Set-Content (Join-Path $roots[17451] 'native-read-server.stop') 'stop' -Encoding ASCII
- if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Coin server clean stop'}
  if((Get-FileHash (Join-Path $stores[17451] 'coins.log')).Hash -cne $after.hash){throw 'Coin persisted hash mismatch'}
  if((Get-FileHash (Join-Path $stores[17451] 'seating.json')).Hash.ToLowerInvariant() -cne $seat){throw 'Coin write altered seat'}
  Write-Host 'PASS native coin atomic revision, one accepted concurrent debit, exact persistence and unchanged seating'
+ # 4B-2: actual legacy and native storage, semantic comparison for serialized roster.
+ # The legacy isolated server already has the persistent $old variable collision fixed.
+ function Seat-Post([int]$port,[string]$route,[string]$text,[string]$site='same-origin',[switch]$NoOrigin){
+  $origin=if($NoOrigin){''}else{"http://127.0.0.1:$port"}
+  Raw-Request $port $route POST '' $site $origin (B64 $text)
+ }
+ function Canon($value){
+  if($null -eq $value){return 'null'}
+  if($value -is [System.Management.Automation.PSCustomObject]){
+   $pieces=@(foreach($p in ($value.PSObject.Properties|Sort-Object Name)){(ConvertTo-Json -InputObject $p.Name -Compress)+':'+(Canon $p.Value)})
+   return '{'+($pieces -join ',')+'}'
+  }
+  if($value -is [array]){return '['+(@(foreach($v in $value){Canon $v}) -join ',')+']'}
+  return (ConvertTo-Json -InputObject $value -Compress)
+ }
+ function Seat-Snapshot([int]$port){ConvertFrom-Json ([Text.Encoding]::UTF8.GetString((Raw-Request $port '/api/seating').body))}
+ $seatDoc='{"classId":"LAB_A","className":"시험반","layout":{"rows":2,"cols":2,"cells":[{"id":"s0","row":0,"col":0},{"id":"s1","row":0,"col":1}]},"students":[{"id":"m1","name":"이전 이름","visual":"avatar1"},{"id":"m2","name":"제외 전","visual":"avatar2"}],"assignments":[{"studentId":"m1","seatId":"s0"},{"studentId":"m2","seatId":"s1"}],"groups":[{"id":"g1","seatIds":["s0","s1"]}],"teacherAvatar":{"gender":"female"},"practice":{"genderSeats":true},"pairReactions":[{"id":"old"}],"previousAssignments":[{"studentId":"m2"}],"historyTransition":true,"previousRound":2}'
+ $roster='{"rosterProtocol":1,"classId":"LAB_A","className":"시험반","roster":[{"id":"m1","name":"새 이름","gender":"female","excluded":false,"number":1},{"id":"m2","name":"제외","gender":"male","excluded":true,"number":2},{"id":"m3","name":"신규","gender":"none","excluded":false,"number":3}],"layout":{"rows":99},"assignments":[{"studentId":"m3","seatId":"fake"}]}'
+ foreach($port in @(17451,17452)){
+  if((Seat-Post $port '/api/seating' $seatDoc).status -ne 'HTTP/1.1 200 OK'){throw "Seat write failed $port"}
+ }
+ if((Raw-Request 17451 '/api/seating').hash -cne (Raw-Request 17452 '/api/seating').hash){throw 'Seat byte parity'}
+ $seedSeat=Seat-Snapshot 17451
+ $seedRev=(Raw-Request 17451 '/api/seating').headers['X-TT-Seating-Revision']
+ foreach($case in @('invalid-seat','cross-site','no-origin','duplicate-id','duplicate-number','same-class','new-class')){
+  foreach($port in @(17451,17452)){
+   $response=switch($case){
+    'invalid-seat'{Seat-Post $port '/api/seating' '{"students":[],"assignments":[]}'}
+    'cross-site'{Seat-Post $port '/api/roster' $roster 'cross-site'}
+    'no-origin'{Seat-Post $port '/api/roster' $roster -NoOrigin}
+    'duplicate-id'{Seat-Post $port '/api/roster' ($roster.Replace('"id":"m3"','"id":"m1"'))}
+    'duplicate-number'{Seat-Post $port '/api/roster' ($roster.Replace('"number":3','"number":1'))}
+    'same-class'{Seat-Post $port '/api/roster' $roster}
+    'new-class'{Seat-Post $port '/api/roster' ($roster.Replace('LAB_A','LAB_B'))}
+   }
+   $expected=switch($case){'invalid-seat'{400}'cross-site'{403}'no-origin'{403}'duplicate-id'{400}'duplicate-number'{400}default{200}}
+   if($response.status -notmatch ("^HTTP/1.1 "+$expected+" ")){throw "Seat/roster status $port $case $($response.status)"}
+  }
+  $nativeSeat=Seat-Snapshot 17451;$legacySeat=Seat-Snapshot 17452
+  if((Canon $nativeSeat) -cne (Canon $legacySeat)){throw "Roster semantic parity $case"}
+  if($case -eq 'same-class'){
+   if((Canon $nativeSeat.layout) -cne (Canon $seedSeat.layout) -or (Canon $nativeSeat.groups) -cne (Canon $seedSeat.groups) -or (Canon $nativeSeat.teacherAvatar) -cne (Canon $seedSeat.teacherAvatar) -or @($nativeSeat.assignments).Count -ne 1 -or $nativeSeat.assignments[0].studentId -ne 'm1' -or $nativeSeat.students[0].name -cne '새 이름' -or @($nativeSeat.roster).Count -ne 3 -or $nativeSeat.historyTransition -or @($nativeSeat.previousAssignments).Count -ne 0){throw 'Roster preservation failed'}
+  }elseif($case -eq 'new-class'){
+   if(!$nativeSeat.rosterOnly -or @($nativeSeat.students).Count -ne 0 -or @($nativeSeat.assignments).Count -ne 0 -or @($nativeSeat.groups).Count -ne 0 -or $nativeSeat.classId -ne 'LAB_B'){throw 'New class retained stale geometry'}
+  }else{
+   if((Raw-Request 17451 '/api/seating').headers['X-TT-Seating-Revision'] -cne $seedRev){throw "Rejected seat changed $case"}
+  }
+  Write-Host "PASS native seating/roster $case"
+ }
+ if((Raw-Request 17451 '/api/coins').hash -cne $after.hash){throw 'Roster altered coins'}
+ if((Coin-Post 17451 $batch $after.headers['X-TT-Coin-Revision'] $seedRev).status -ne 'HTTP/1.1 409 Conflict'){throw 'Old seat revision not rejected after roster'}
+ $persist=(Raw-Request 17451 '/api/seating').hash
+ Set-Content (Join-Path $roots[17451] 'native-read-server.stop') 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Coin server clean stop'}
+ if((Get-FileHash (Join-Path $stores[17451] 'seating.json')).Hash -cne $persist){throw 'Seat persisted hash mismatch'}
+ Write-Host 'PASS native seating/roster geometry, exclusions, class isolation, stale seat and coin preservation'
+
 }finally{
  foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
  $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal

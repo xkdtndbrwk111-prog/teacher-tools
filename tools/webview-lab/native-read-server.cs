@@ -36,6 +36,80 @@ internal static class NativeReadServer {
   byte[] h=Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: "+type+"\r\nContent-Length: "+bytes.Length+"\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n"+extra+"\r\n");s.Write(h,0,h.Length);s.Write(bytes,0,bytes.Length);s.Flush();
  }
  static void Json(Stream s,string status,string body){Reply(s,status,"application/json; charset=utf-8",Utf8.GetBytes(body));}
+ static object Val(Dictionary<string,object> d,string key){object v;return d!=null&&d.TryGetValue(key,out v)?v:null;}
+ static Dictionary<string,object> Obj(object v){return v as Dictionary<string,object>;}
+ static object[] Arr(object v){return v as object[]??new object[0];}
+ static bool Id(object v){return v is string&&Regex.IsMatch((string)v,"^[A-Za-z0-9_-]{1,160}$");}
+ static bool Label(object v){return v is string&&!String.IsNullOrWhiteSpace((string)v)&&((string)v).Length<=80;}
+ static bool True(object v){return v is bool&&(bool)v;}
+ static bool IntValue(object v,long low,long high){return (v is int||v is long)&&Convert.ToInt64(v)>=low&&Convert.ToInt64(v)<=high;}
+ static JavaScriptSerializer Serializer(){return new JavaScriptSerializer(){MaxJsonLength=8388608,RecursionLimit=100};}
+ static void AtomicWrite(string name,byte[] data){
+  string dest=Path.Combine(root,name),tmp=dest+".native-"+Guid.NewGuid().ToString("N")+".tmp";
+  // Read validates any existing file before replacing it.
+  Read(name);
+  try{
+   using(var f=new FileStream(tmp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(data,0,data.Length);f.Flush(true);}
+   if(File.Exists(dest))File.Replace(tmp,dest,null);else File.Move(tmp,dest);
+  }finally{if(File.Exists(tmp))File.Delete(tmp);}
+ }
+ static Dictionary<string,object> MergeRoster(Dictionary<string,object> x,Dictionary<string,object> old){
+  if(!IntValue(Val(x,"rosterProtocol"),1,1)||!Id(Val(x,"classId"))||!Label(Val(x,"className")))throw new FormatException("Roster identity");
+  var input=Arr(Val(x,"roster"));
+  if(input.Length<1||input.Length>100)throw new FormatException("Roster size");
+  var ids=new Dictionary<string,Dictionary<string,object>>(StringComparer.Ordinal);
+  var nums=new HashSet<long>();var roster=new List<object>();var genders=new Dictionary<string,object>(StringComparer.Ordinal);
+  foreach(object value in input){
+   var row=Obj(value);object id=Val(row,"id"),name=Val(row,"name"),gender=Val(row,"gender"),excluded=Val(row,"excluded"),number=Val(row,"number");
+   if(!Id(id)||!Label(name)||!(gender is string)||((string)gender!="male"&&(string)gender!="female"&&(string)gender!="none")||!(excluded is bool)||!IntValue(number,1,10000)||ids.ContainsKey((string)id)||!nums.Add(Convert.ToInt64(number)))throw new FormatException("Roster member");
+   var clean=new Dictionary<string,object>{{"id",id},{"name",name},{"gender",gender},{"excluded",excluded},{"number",number}};
+   ids.Add((string)id,clean);roster.Add(clean);genders.Add((string)id,gender);
+  }
+  var result=new Dictionary<string,object>();
+  bool same=old!=null&&String.Equals(Val(old,"classId") as string,(string)Val(x,"classId"),StringComparison.Ordinal)&&Val(old,"layout")!=null&&Arr(Val(old,"assignments")).Length>0;
+  bool genderSeats=false;
+  if(same){
+   foreach(string key in new[]{"layout","groups","teacherAvatar"})if(Val(old,key)!=null)result.Add(key,Val(old,key));
+   var assignments=new List<object>();var assigned=new HashSet<string>(StringComparer.Ordinal);
+   foreach(object value in Arr(Val(old,"assignments"))){
+    var a=Obj(value);string id=Val(a,"studentId") as string;
+    if(id!=null&&ids.ContainsKey(id)&&!True(Val(ids[id],"excluded"))){assignments.Add(a);assigned.Add(id);}
+   }
+   var students=new List<object>();
+   foreach(object value in Arr(Val(old,"students"))){
+    var student=Obj(value);string id=Val(student,"id") as string;
+    if(id!=null&&assigned.Contains(id)){student["name"]=Val(ids[id],"name");students.Add(student);}
+   }
+   result["assignments"]=assignments;result["students"]=students;
+   result["pairReactions"]=new object[0];result["previousAssignments"]=new object[0];result["historyTransition"]=false;result["previousRound"]=null;
+   genderSeats=True(Val(Obj(Val(old,"practice")),"genderSeats"));
+  }else{
+   result["rosterOnly"]=true;result["students"]=new object[0];result["assignments"]=new object[0];result["groups"]=new object[0];
+  }
+  result["groupProtocol"]=1;result["practice"]=new Dictionary<string,object>{{"genderSeats",genderSeats},{"genders",genders}};
+  result["classId"]=Val(x,"classId");result["className"]=Val(x,"className");result["roster"]=roster;
+  return result;
+ }
+ static void SaveSeating(Stream s,byte[] payload,bool roster){
+  byte[] next;
+  try{
+   if(roster&&payload.Length>65536){Json(s,"400 Bad Request","{\"error\":\"size\"}");return;}
+   string text=Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)));
+   var json=Serializer();var input=Obj(json.DeserializeObject(text));
+   if(roster){
+    byte[] old=Read("seating.json");
+    var previous=old==null?null:Obj(json.DeserializeObject(Utf8.GetString(old).TrimStart('\uFEFF')));
+    next=Utf8.GetBytes(json.Serialize(MergeRoster(input,previous)));
+   }else{
+    if(Arr(Val(input,"assignments")).Length==0||Arr(Val(input,"students")).Length==0||Obj(Val(input,"layout"))==null){Json(s,"400 Bad Request","{\"error\":\"invalid seating\"}");return;}
+    next=Utf8.GetBytes(text);
+   }
+  }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   if(roster)Json(s,"400 Bad Request","{\"error\":\"roster rejected\"}");
+   else Json(s,"502 Bad Gateway","{\"code\":\"UPSTREAM_ERROR\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");return;
+  }
+  AtomicWrite("seating.json",next);Json(s,"200 OK","{\"ok\":true}");
+ }
  static void AppendCoins(Stream s,Dictionary<string,string> h,byte[] payload){
   // One accept loop serializes the revision comparison and the durable atomic replacement.
   byte[] old=Read("coins.log")??new byte[0];
@@ -76,7 +150,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&path=="/api/coins";
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -88,7 +162,8 @@ internal static class NativeReadServer {
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
    if(write){
     if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-    AppendCoins(s,h,payload);return;
+    if(path=="/api/roster"&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+    if(path=="/api/coins")AppendCoins(s,h,payload);else SaveSeating(s,payload,path=="/api/roster");return;
    }
    if(req[0]!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
    if(path=="/health"){Json(s,"200 OK","{\"service\":\"teacher-tools-local\",\"version\":493,\"release\":\""+release+"\"}");return;}
