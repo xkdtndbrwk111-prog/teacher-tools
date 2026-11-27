@@ -71,6 +71,21 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: xkdtndbrwk111-prog/hoja-minigames
+          ref: 51c195b9cd87a63c96944f547ad307e07d7eac40
+          path: reviewed-minigames
+          persist-credentials: false
+          sparse-checkout: index.html
+          sparse-checkout-cone-mode: false
+      - name: Install pinned manager smoke browser driver
+        shell: powershell
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/hoja-field-node" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright installation failed'}
+          "NODE_PATH=$env:RUNNER_TEMP/hoja-field-node/node_modules" >> $env:GITHUB_ENV
+          "HOJA_FIELD_MANAGER_SMOKE=$env:GITHUB_WORKSPACE/tools/webview-lab/field-manager-smoke.cjs" >> $env:GITHUB_ENV
       - name: Build separate field pilot
         shell: powershell
         run: tools/webview-lab/field-pilot-build.ps1
@@ -87,7 +102,7 @@ jobs:
           & (Join-Path $package 'Start-Pilot.ps1') -Smoke
           & (Join-Path $package 'Start-Pilot.ps1') -Smoke -Mode wallpaper
           if((Get-FileHash (Join-Path $legacy 'keep.txt')).Hash -cne $hash -or @(Get-ChildItem $legacy -Force).Count -ne 1){throw 'Existing installation changed'}
-          if(Get-NetTCPConnection -LocalPort 17451 -State Listen -ErrorAction SilentlyContinue){throw 'Pilot listener survived close'}
+          foreach($port in @(17451,4188,4189)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Pilot listener $port survived close"}}
           $original=Join-Path $package 'payload/local/TeacherToolsLocal/release.json'
           $bytes=[IO.File]::ReadAllBytes($original)
           try{
