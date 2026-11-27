@@ -1361,6 +1361,42 @@ internal static class NativeReadServer {
   backupToken=Guid.NewGuid().ToString("N");
   Json(s,"200 OK","{\"ok\":true}");
  }
+ // Phase 5A-1: validate the legacy book protocol without launching or navigating a reader.
+ // Valid requests remain explicitly unavailable unless the isolated fixture is enabled.
+ static Dictionary<string,object> BookLayout(object value){
+  var x=Obj(value);if(x==null)throw new FormatException("layout");
+  var d=new Dictionary<string,object>();
+  foreach(string k in new[]{"vw","vh","x","y","w","h","visible"}){
+   object v=Val(x,k);if(!IntValue(v,0,32768))throw new FormatException("layout");d[k]=v;
+  }
+  if(LongVal(d,"vw")<200||LongVal(d,"vh")<150||LongVal(d,"visible")>1||LongVal(d,"x")+LongVal(d,"w")>LongVal(d,"vw")+1||LongVal(d,"y")+LongVal(d,"h")>LongVal(d,"vh")+1)throw new FormatException("layout bounds");
+  object im=Val(x,"immersive");if(im!=null&&!IntValue(im,0,1))throw new FormatException("immersive");
+  d["immersive"]=im??0;return d;
+ }
+ static Dictionary<string,object> BookRequest(byte[] payload){
+  if(payload.Length==0||payload.Length>4096)throw new FormatException("book size");
+  var x=Obj(Serializer().DeserializeObject(Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)))));
+  if(x==null)throw new FormatException("book request");return x;
+ }
+ static Dictionary<string,object> BookOpen(byte[] payload){
+  var x=BookRequest(payload);
+  string url=TextVal(x,"url"),id=TextVal(x,"id"),title=TextVal(x,"title"),openId=TextVal(x,"openId");
+  object i=Val(x,"interactive");if(i!=null&&!(i is bool))throw new FormatException("interactive");
+  bool interactive=True(i);
+  var match=Regex.Match(url,@"\Ahttps://www\.canva\.com/design/([A-Za-z0-9_-]+)/[A-Za-z0-9_-]+/view\?embed\z");
+  bool valid=interactive?id=="DAHbOZ_XOJI"&&url=="https://canva.link/9qxk3zuhh93ts2s":match.Success&&match.Groups[1].Value==id;
+  if(url.Length>500||!valid||title.Length>80||String.IsNullOrWhiteSpace(title)||!IntValue(Val(x,"pages"),1,4095)||!IntValue(Val(x,"start"),1,LongVal(x,"pages"))||!IntValue(Val(x,"saved"),0,LongVal(x,"pages"))||(openId!=""&&!MatchFull(openId,"[a-f0-9]{32}")))throw new FormatException("book");
+  x["layout"]=BookLayout(Val(x,"layout"));return x;
+ }
+ static void BookProtocol(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
+  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if((path=="/api/book-reader/status"&&method!="GET"&&method!="POST")||(path!="/api/book-reader/status"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  if(path!="/api/book-reader/open"){Json(s,"404 Not Found","{\"error\":\"session\"}");return;}
+  try{BookOpen(payload);}
+  catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BOOK_URL_INVALID\"}");return;}
+  // The next stage must prove exact native owner and pinned reader bundle before starting a child.
+  Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"OWNER_NOT_FOUND\"}");
+ }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -1473,7 +1509,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart"||path=="/api/backup/restore");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart"||path=="/api/backup/restore"||path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>(path=="/api/backup/restore"&&coinWrites?33554432:8388608)){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1494,6 +1530,7 @@ internal static class NativeReadServer {
    }
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
+   if(coinWrites&&(path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close")){BookProtocol(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path=="/api/backup/export"){BackupExportData(s,req[0],site,origin);return;}
    if(coinWrites&&(path=="/api/backup/token"||path=="/api/backup/restore")){BackupRestoreData(s,path,req[0],site,origin,Get(h,"X-TT-Backup-Token"),payload);return;}
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
