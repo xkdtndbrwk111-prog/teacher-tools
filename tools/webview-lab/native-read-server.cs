@@ -1529,10 +1529,10 @@ internal static class NativeReadServer {
  // 5A-3a: translate only verified original BookReader state, never infer a bookmark.
  static Dictionary<string,object> BookStatus(BookLabSession b){
   var result=new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",b.Closed},{"page",0},{"saved",0},{"total",b.Pages},{"status",b.Closed?"격리 세션 종료":"책 재생기 시작 중"},{"navigationMode","pending"},{"ack",0},{"bookmarkValid",false},{"visible",false},{"owned",false},{"immersive",false},{"exitFull",false},{"cleanControls",false},{"seekFailed",false},{"seekPage",0},{"manual",false},{"fixtureSeq",b.Seq},{"fixturePid",b.Reader==null?0:b.Reader.Id}};
-  if(b.Closed||!b.ProcessFixture||b.Reader==null||b.Reader.HasExited)return result;
+  bool synthetic=BookFixture()&&File.Exists(Path.Combine(labRoot,"book-state-fixture.flag"));
+  if(b.Closed||(!synthetic&&(!b.ProcessFixture||b.Reader==null||b.Reader.HasExited)))return result;
   try{
-   string file=Path.Combine(b.StageDirectory,"state.json");
-   if(File.Exists(Path.Combine(labRoot,"book-state-fixture.flag")))file=Path.Combine(labRoot,"book-state-fixture.json");
+   string file=synthetic?Path.Combine(labRoot,"book-state-fixture.json"):Path.Combine(b.StageDirectory,"state.json");
    if(!File.Exists(file)||(File.GetAttributes(file)&(FileAttributes.ReparsePoint|FileAttributes.Directory))!=0)return result;
    var info=new FileInfo(file);if(info.Length==0||info.Length>8192)return result;
    byte[] bytes=File.ReadAllBytes(file);if(bytes.Length>8192)return result;
@@ -1547,6 +1547,9 @@ internal static class NativeReadServer {
    string status=TextVal(x,"status"),navigation=TextVal(x,"navigationMode");
    if(status.Length>160||Array.IndexOf(new[]{"pending","direct","blocked","not-presentation","fixture","consent","setup"},navigation)<0)return result;
    bool owned=True(Val(x,"owned")),closed=True(Val(x,"closed"));
+   // A non-owned reader must not supply bookmark or page updates even if
+   // its state file claims bookmarkValid; the dashboard saves without a ready gate.
+   if(!owned||LongVal(x,"ack")>b.Seq)return result;
    b.Pages=n;
    result["total"]=n;result["page"]=LongVal(x,"page");result["saved"]=LongVal(x,"saved");
    result["ready"]=!closed&&owned&&True(Val(x,"ready"));result["closed"]=closed;
