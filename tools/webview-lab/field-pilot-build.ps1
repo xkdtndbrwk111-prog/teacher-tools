@@ -43,4 +43,5 @@ $inventory=@(Get-ChildItem -LiteralPath $payload -File -Recurse|Sort-Object Full
 @{schema='HOJA-FIELD-PILOT-1';version='1.66.43-field-a1';source=(git -C $repo rev-parse HEAD);files=$inventory}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $Output 'manifest.json') -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-pilot-launch.ps1') -Destination (Join-Path $Output 'Start-Pilot.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-pilot-readme.md') -Destination (Join-Path $Output 'READ-ME.md')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-acceptance.md') -Destination (Join-Path $Output 'FIELD-ACCEPTANCE.md')
 Write-Host "PASS field package staged, files=$($inventory.Count)"
