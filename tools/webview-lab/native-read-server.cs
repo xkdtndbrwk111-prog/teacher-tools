@@ -175,7 +175,13 @@ internal static class NativeReadServer {
   AtomicWrite("coins.log",next);
   Reply(s,"200 OK","application/json; charset=utf-8",Utf8.GetBytes("{\"ok\":true}"),"X-TT-Coin-Revision: "+Sha(next)+"\r\n");
  }
- static bool ManagerOrigin(string o){return o=="https://xkdtndbrwk111-prog.github.io"||o=="http://127.0.0.1:4192"||o=="http://localhost:4192"||o=="http://127.0.0.1:4188"||o=="http://localhost:4188";}
+ static bool ManagerOrigin(string o){
+#if NATIVE_FIELD_PILOT
+  return o=="http://127.0.0.1:4188";
+#else
+  return o=="https://xkdtndbrwk111-prog.github.io"||o=="http://127.0.0.1:4192"||o=="http://localhost:4192"||o=="http://127.0.0.1:4188"||o=="http://localhost:4188";
+#endif
+ }
  static string Cors(string origin){return ManagerOrigin(origin)?"Access-Control-Allow-Origin: "+origin+"\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin, Access-Control-Request-Private-Network\r\n":"";}
  static void CorsJson(Stream s,string status,string body,string origin){Reply(s,status,"application/json; charset=utf-8",Utf8.GetBytes(body),Cors(origin));}
  static Dictionary<string,object> BoardStatus(){
@@ -1939,9 +1945,18 @@ internal static class NativeReadServer {
     if(path=="/api/fonts"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"list",InstalledFonts()}}));return;}
     string target;
 #if NATIVE_FIELD_PILOT
-    // Published manager still uses the operational 17439 origin. Fail closed
-    // until its explicit pilot-origin pairing has been reviewed.
-    if(path=="/api/open-manager"){Json(s,"409 Conflict","{\"error\":\"pilot manager pairing unavailable\"}");return;}
+    // Only the packaged local manager, never the public manager or ordinary browser profile.
+    if(path=="/api/open-manager"){
+     if(!File.Exists(Path.Combine(labRoot,"field-manager-live.flag"))||!File.Exists(Path.Combine(labRoot,"manager.static.ready"))){Json(s,"409 Conflict","{\"error\":\"pilot manager disabled\"}");return;}
+     string chrome=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"Google","Chrome","Application","chrome.exe");
+     string chrome32=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Google","Chrome","Application","chrome.exe");
+     string edge=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Microsoft","Edge","Application","msedge.exe");
+     string browser=File.Exists(chrome)?chrome:File.Exists(chrome32)?chrome32:edge;
+     if(!File.Exists(browser))throw new IOException("Pilot browser missing");
+     string profile=Path.Combine(labRoot,"manager-browser-profile");MediaEnsureDirectory(profile);
+     using(var p=Process.Start(new ProcessStartInfo(browser,"--user-data-dir=\""+profile+"\" --no-first-run --no-default-browser-check --new-window http://127.0.0.1:4188/seating/"){UseShellExecute=false})){}
+     Json(s,"200 OK","{\"ok\":true}");return;
+    }
 #endif
     if(path=="/api/open-manager")target="https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/";
     else if(path=="/api/open-sheet-copy")target="https://docs.google.com/spreadsheets/d/"+SheetTemplate+"/copy";
