@@ -754,6 +754,37 @@ try{
  if($meal.rows[0].date -cne '20261123'){throw 'Fixture provider selection'}
  Assert-P (Raw-Request 17451 '/api/school/search?q=https%3A%2F%2Fevil.invalid&office=B10' GET '' 'same-origin') 502
  Write-Host 'PASS fixed HTTPS URL construction, mutually exclusive provider selection, no live-network fixture fallback'
+ # 4D-4a: offline region lookup, controlled remote fallback and saved location.
+ $weatherBefore=Snapshot-CrashFiles
+ $regionSchool=$school.Replace('시험 주소','서울특별시 노원구 시험로')
+ Assert-P (Seat-Post 17451 '/api/school' $regionSchool) 200
+ $region=School-Doc ('/api/weather/places?q='+[uri]::EscapeDataString('노원구'))
+ if($region.list.Count -ne 1 -or $region.list[0].name -cne '서울특별시 노원구' -or [math]::Abs($region.list[0].lat-37.6542) -gt 0.00001){throw 'Offline weather place search'}
+ $auto=School-Doc '/api/weather/place'
+ if(!$auto.auto -or $auto.name -cne '서울특별시 노원구 (지역 중심)'){throw 'Automatic region center'}
+ $manual='{"name":"시험 위치","lat":37.5,"lon":127.1,"auto":false}'
+ Assert-P (Seat-Post 17451 '/api/weather/place' $manual) 200
+ $selected=School-Doc '/api/weather/place'
+ if($selected.auto -or $selected.name -cne '시험 위치' -or $selected.lat -ne 37.5){throw 'Manual location'}
+ $placeHash=(Get-FileHash $weatherFile).Hash
+ Assert-P (Seat-Post 17451 '/api/weather/place' ($manual.Replace('37.5','90'))) 502
+ Assert-P (Seat-Post 17451 '/api/weather/place' $manual 'cross-site') 403
+ if((Get-FileHash $weatherFile).Hash -cne $placeHash){throw 'Rejected location mutated settings'}
+ Assert-P (Raw-Request 17451 '/weather-place.json') 404
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"auto":true}') 200
+ if(Test-Path $weatherFile){throw 'Auto reset did not clear manual location'}
+ if(!(School-Doc '/api/weather/place').auto){throw 'Auto location after reset'}
+ $q='가상검색지'
+ $query='format=json&limit=5&countrycodes=kr&accept-language=ko&q='+[uri]::EscapeDataString($q)
+ $key=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('places?'+$query))).ToLowerInvariant()
+ [IO.File]::WriteAllText((Join-Path $fixtureDir ($key+'.json')),'[{"display_name":"시험동, 시험시, 대한민국","lat":"36.1234","lon":"127.1234"},{"display_name":"외부","lat":"90","lon":"127"}]',$utf8)
+ $remotePlace=School-Doc ('/api/weather/places?q='+[uri]::EscapeDataString($q))
+ if($remotePlace.list.Count -ne 1 -or $remotePlace.list[0].name -cne '시험시 시험동'){throw 'Place provider mapping'}
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ if(Test-Path $weatherFile){throw 'School change did not invalidate place'}
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $weatherBefore[$file])){throw 'Weather location altered ledger'}}
+ Write-Host 'PASS native weather offline region centers, manual/auto location, restricted geocoder mapping, school invalidation and private file guards'
+
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
 

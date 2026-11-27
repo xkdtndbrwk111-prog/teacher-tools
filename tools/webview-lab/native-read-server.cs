@@ -61,7 +61,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json","weather-place.json"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -361,6 +361,10 @@ internal static class NativeReadServer {
  // The provider constructs its own HTTPS URLs. No caller-supplied URL, credentials,
  // redirects, cookies, or certificate-validation bypass.
  static Uri UpstreamUri(string endpoint,string query){
+  if(endpoint=="places"){
+   if(query.Length>1024||!Regex.IsMatch(query,@"\Aformat=json&limit=[1-5]&countrycodes=kr&accept-language=ko&q=[A-Za-z0-9_%.-]+\z"))throw new FormatException("Place query");
+   return new Uri("https://nominatim.openstreetmap.org/search?"+query);
+  }
   if(endpoint=="sheet"){
    if(!Regex.IsMatch(query,@"\A[A-Za-z0-9_-]{20,80}/(?:htmlview|gviz/tq\?tqx=out:json&headers=0&gid=[0-9]{1,20}&range=A1:F30)\z"))throw new FormatException("Sheet route");
    return new Uri("https://docs.google.com/spreadsheets/d/"+query);
@@ -371,14 +375,14 @@ internal static class NativeReadServer {
  }
  [ThreadStatic] static Stopwatch upstreamBudget;
  static string HttpsText(Uri uri){
-  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"))throw new FormatException("Upstream origin");
+  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"&&uri.Host!="nominatim.openstreetmap.org"))throw new FormatException("Upstream origin");
   const int limit=2097152;
   int remaining=upstreamBudget==null?9000:Math.Min(9000,30000-(int)upstreamBudget.ElapsedMilliseconds);
   if(remaining<1)throw new IOException("Upstream budget exhausted");
   var request=(HttpWebRequest)WebRequest.Create(uri);
   request.Method="GET";request.Timeout=remaining;request.ReadWriteTimeout=remaining;
   request.AllowAutoRedirect=false;request.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
-  request.UserAgent="TeacherTools-WebView-Lab/1.0";request.Accept="application/json, text/html";
+  request.UserAgent=uri.Host=="nominatim.openstreetmap.org"?"TeacherTools/1.26 (classroom dashboard)":"TeacherTools-WebView-Lab/1.0";request.Accept="application/json, text/html";
   // Use OS certificate trust and configured proxy. Never opt out of certificate validation.
   request.KeepAlive=false;request.UseDefaultCredentials=false;request.Credentials=null;
   using(var abort=new System.Threading.Timer(_=>{try{request.Abort();}catch{}},null,remaining,Timeout.Infinite)){
@@ -587,6 +591,173 @@ internal static class NativeReadServer {
    Json(s,"502 Bad Gateway","{\"code\":\""+(path=="/api/meal"?"MEAL_FETCH_ERROR":"UPSTREAM_ERROR")+"\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");
   }
  }
+ static readonly string[] KnownPlaceRows=new[]{
+  "서울특별시 종로구|37.5735|126.9790",
+  "서울특별시 중구|37.5636|126.9976",
+  "서울특별시 용산구|37.5326|126.9906",
+  "서울특별시 성동구|37.5633|127.0369",
+  "서울특별시 광진구|37.5386|127.0823",
+  "서울특별시 동대문구|37.5744|127.0400",
+  "서울특별시 중랑구|37.6063|127.0928",
+  "서울특별시 성북구|37.5894|127.0167",
+  "서울특별시 강북구|37.6396|127.0255",
+  "서울특별시 도봉구|37.6688|127.0471",
+  "서울특별시 노원구|37.6542|127.0568",
+  "서울특별시 은평구|37.6027|126.9292",
+  "서울특별시 서대문구|37.5791|126.9368",
+  "서울특별시 마포구|37.5665|126.9015",
+  "서울특별시 양천구|37.5170|126.8665",
+  "서울특별시 강서구|37.5509|126.8495",
+  "서울특별시 구로구|37.4954|126.8874",
+  "서울특별시 금천구|37.4569|126.8955",
+  "서울특별시 영등포구|37.5264|126.8962",
+  "서울특별시 동작구|37.5124|126.9395",
+  "서울특별시 관악구|37.4780|126.9515",
+  "서울특별시 서초구|37.4837|127.0324",
+  "서울특별시 강남구|37.5172|127.0473",
+  "서울특별시 송파구|37.5146|127.1059",
+  "서울특별시 강동구|37.5301|127.1238",
+  "부산광역시|35.1796|129.0756",
+  "대구광역시|35.8714|128.6014",
+  "인천광역시|37.4563|126.7052",
+  "광주광역시|35.1595|126.8526",
+  "대전광역시|36.3504|127.3845",
+  "울산광역시|35.5384|129.3114",
+  "세종특별자치시|36.4800|127.2890",
+  "경기도 수원시|37.2636|127.0286",
+  "경기도 성남시|37.4200|127.1265",
+  "경기도 고양시|37.6584|126.8320",
+  "경기도 용인시|37.2411|127.1776",
+  "경기도 화성시|37.1995|126.8312",
+  "경기도 안양시|37.3943|126.9568",
+  "경기도 안산시|37.3219|126.8309",
+  "경기도 부천시|37.5034|126.7660",
+  "경기도 광명시|37.4780|126.8640",
+  "경기도 남양주시|37.6360|127.2165",
+  "경기도 김포시|37.6152|126.7156",
+  "경기도 의정부시|37.7381|127.0337",
+  "경기도 파주시|37.7603|126.7799",
+  "경기도 평택시|36.9920|127.0850",
+  "경기도 시흥시|37.3800|126.8030",
+  "충청남도 공주시|36.4465|127.1191",
+  "충청남도 천안시|36.8151|127.1139",
+  "충청남도 아산시|36.7898|127.0018",
+  "충청북도 청주시|36.6424|127.4890",
+  "충청북도 충주시|36.9910|127.9259",
+  "강원특별자치도 춘천시|37.8813|127.7298",
+  "강원특별자치도 원주시|37.3422|127.9202",
+  "강원특별자치도 강릉시|37.7519|128.8761",
+  "전북특별자치도 전주시|35.8242|127.1480",
+  "전북특별자치도 익산시|35.9483|126.9576",
+  "전북특별자치도 군산시|35.9677|126.7366",
+  "전라남도 목포시|34.8118|126.3922",
+  "전라남도 순천시|34.9506|127.4872",
+  "전라남도 여수시|34.7604|127.6622",
+  "경상북도 포항시|36.0190|129.3435",
+  "경상북도 구미시|36.1195|128.3446",
+  "경상북도 경주시|35.8562|129.2247",
+  "경상북도 안동시|36.5684|128.7294",
+  "경상남도 창원시|35.2279|128.6811",
+  "경상남도 김해시|35.2285|128.8894",
+  "경상남도 진주시|35.1803|128.1076",
+  "경상남도 거제시|34.8806|128.6210",
+  "제주특별자치도 제주시|33.4996|126.5312",
+  "제주특별자치도 서귀포시|33.2541|126.5601"
+ };
+ static Dictionary<string,object> Place(string name,double lat,double lon,bool auto){
+  return new Dictionary<string,object>{{"name",name},{"lat",lat},{"lon",lon},{"auto",auto}};
+ }
+ static bool Coordinate(object value,out double n){
+  n=0;return value!=null&&!(value is bool)&&Double.TryParse(Convert.ToString(value,CultureInfo.InvariantCulture),NumberStyles.Float,CultureInfo.InvariantCulture,out n)&&!Double.IsNaN(n)&&!Double.IsInfinity(n);
+ }
+ static bool ValidPlace(Dictionary<string,object> x){
+  double lat,lon;string name=TextVal(x,"name");
+  return name.Length>=1&&name.Length<=60&&Coordinate(Val(x,"lat"),out lat)&&lat>32&&lat<39.5&&Coordinate(Val(x,"lon"),out lon)&&lon>124&&lon<132;
+ }
+ static List<Dictionary<string,object>> KnownPlaces(){
+  var result=new List<Dictionary<string,object>>();
+  foreach(string row in KnownPlaceRows){string[] fields=row.Split('|');result.Add(Place(fields[0],Double.Parse(fields[1],CultureInfo.InvariantCulture),Double.Parse(fields[2],CultureInfo.InvariantCulture),false));}
+  return result;
+ }
+ static Dictionary<string,object> KnownAddress(string address){
+  string[] words=Regex.Split(address.Trim(),@"[\s,]+");if(words.Length==0||words[0]=="")return null;
+  string province=words[0],city=words.Length>1?words[1]:"";
+  string modern=province.Replace("강원도","강원특별자치도").Replace("전라북도","전북특별자치도");
+  foreach(var p in KnownPlaces()){
+   string name=TextVal(p,"name");
+   if((city!=""&&(name==province+" "+city||name==modern+" "+city))||name==province)return p;
+  }return null;
+ }
+ static readonly object PlaceSearchGate=new object();
+ static DateTime placeSearchNext;
+ static List<Dictionary<string,object>> FindPlaces(string q,int count){
+  q=q.Trim();var result=new List<Dictionary<string,object>>();
+  if(q==""||q.Length>60)throw new FormatException("Place search");
+  string needle=q.Replace("서울시","서울특별시").Replace("서울 ","서울특별시 ").Replace("전북도","전북특별자치도");
+  foreach(var p in KnownPlaces()){string name=TextVal(p,"name");if(name.Contains(needle)||name.EndsWith(" "+q,StringComparison.Ordinal)){result.Add(p);if(result.Count==count)break;}}
+  if(result.Count>0)return result;
+  // Only explicit user searches may reach the online geocoder; never auto-send
+  // a school's full street address. Rate limit live requests globally.
+  lock(PlaceSearchGate){
+   if(File.Exists(Path.Combine(labRoot,"neis-live.flag"))&&DateTime.UtcNow<placeSearchNext)throw new IOException("Place search interval");
+   placeSearchNext=DateTime.UtcNow.AddSeconds(1);
+   string query="format=json&limit="+count+"&countrycodes=kr&accept-language=ko&q="+Uri.EscapeDataString(q);
+   foreach(var item in Arr(Serializer().DeserializeObject(ProviderText("places",query)))){
+    var p=Obj(item);double lat,lon;if(!Coordinate(Val(p,"lat"),out lat)||!Coordinate(Val(p,"lon"),out lon))continue;
+    var names=new List<string>();foreach(string name in Regex.Split(TextVal(p,"display_name"),@",\s*"))if(name!=""&&name!="대한민국"&&!Regex.IsMatch(name,@"^\d"))names.Add(name);
+    names.Reverse();var place=Place(String.Join(" ",names),lat,lon,false);
+    if(ValidPlace(place))result.Add(place);if(result.Count>=count)break;
+   }
+  }return result;
+ }
+ static Dictionary<string,object> ReadPlace(){
+  byte[] raw=Read("weather-place.json");if(raw==null)return null;
+  try{var p=Obj(Serializer().DeserializeObject(Utf8.GetString(raw).TrimStart('\uFEFF')));return ValidPlace(p)?p:null;}catch(ArgumentException){return null;}catch(InvalidOperationException){return null;}
+ }
+ static void DeletePlace(){
+  string file=Path.Combine(root,"weather-place.json");
+  if(File.Exists(file)){if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked weather place");File.Delete(file);}
+ }
+ static void WeatherPlaceData(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
+  bool read=method=="GET";
+  if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  try{
+   if(path=="/api/weather/places"&&read){
+    var q=Query(target);var rows=FindPlaces(Get(q,"q"),5);
+    // Existing list contract exposes name/lat/lon, not internal settings.
+    var output=new List<object>();foreach(var p in rows)output.Add(new Dictionary<string,object>{{"name",Val(p,"name")},{"lat",Val(p,"lat")},{"lon",Val(p,"lon")}});
+    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"list",output}}));return;
+   }
+   if(path=="/api/weather/place"&&method=="POST"){
+    if(payload.Length>8192)throw new FormatException("Place size");
+    var sent=Obj(Serializer().DeserializeObject(Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)))));
+    if(True(Val(sent,"auto")))DeletePlace();
+    else{
+     if(!ValidPlace(sent))throw new FormatException("Invalid place");
+     double lat,lon;Coordinate(Val(sent,"lat"),out lat);Coordinate(Val(sent,"lon"),out lon);
+     AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(Place(TextVal(sent,"name"),lat,lon,false))));
+    }
+    Json(s,"200 OK","{\"ok\":true}");return;
+   }
+   // Location-only lab probe, never exposed by the production API. Forecast
+   // integration will use this same resolution under the weather endpoint.
+   if(path=="/api/weather/place"&&read){
+    var p=ReadPlace();
+    if(p==null){
+     var school=School();var known=KnownAddress(TextVal(school,"address"));
+     if(known==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
+     double lat,lon;Coordinate(Val(known,"lat"),out lat);Coordinate(Val(known,"lon"),out lon);
+     p=Place(TextVal(known,"name")+" (지역 중심)",lat,lon,true);
+     AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(p)));
+    }
+    Json(s,"200 OK",Serializer().Serialize(p));return;
+   }
+   Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");
+  }catch(Exception e){
+   if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_REQUEST_FAILED\",\"error\":\"날씨를 불러오지 못했어요. 다시 시도하거나 날씨 설정을 확인해 주세요.\"}");
+  }
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -597,7 +768,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -607,14 +778,15 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-   bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week");
+   bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week"||path=="/api/weather/places");
    if(remote){
     if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}
-    try{upstreamBudget=Stopwatch.StartNew();SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{upstreamBudget=null;RemoteSlots.Release();}
+    try{upstreamBudget=Stopwatch.StartNew();if(path=="/api/weather/places")WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);else SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{upstreamBudget=null;RemoteSlots.Release();}
     return;
    }
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
+   if(coinWrites&&(path=="/api/weather/place"||path=="/api/weather/places")){WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/presentation-board.js"||path=="/presentation-board.css"||path.StartsWith("/presentation/",StringComparison.Ordinal))){PresentationAsset(s,path,req[0],site);return;}
