@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 if((Split-Path $LabRoot -Leaf) -notmatch '^hoja-webview-lab-[a-f0-9]{32}$'){throw 'Not isolated'}
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $exe=Join-Path $Build 'HOJA-ReadServer-Lab.exe'
-& $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
+& $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Native server compilation failed'}
 foreach($port in @(17449,17450)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied port; no reuse'}}
 $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -400,6 +400,46 @@ try{
  }finally{
   if($ui -and !$ui.HasExited){$ui.Kill();$ui.WaitForExit()}
  }
+ # 4C-1: manager connection and theme contract. No presentation readiness claim.
+ $manager='https://xkdtndbrwk111-prog.github.io'
+ function Status-Doc{
+  $r=Raw-Request 17451 '/api/board-status' GET '' 'cross-site' $manager
+  if($r.status -ne 'HTTP/1.1 200 OK' -or $r.headers['Access-Control-Allow-Origin'] -cne $manager -or $r.headers['Access-Control-Allow-Private-Network'] -ne 'true'){throw 'Manager status CORS'}
+  ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($r.body))
+ }
+ $status=Status-Doc
+ if($status.wallpaper -or $status.presentationReady -or $status.rosterProtocol -ne 1 -or $status.coinProtocol -ne 3 -or $status.mode -ne ''){throw 'Offline status contract'}
+ $mode=Join-Path $crashStore 'board-mode.json'
+ foreach($m in @('window','wallpaper')){
+  $doc=@{mode=$m;release='2026-11-25-V1.66.43-STABLE-PILOT';window=123;pid=$PID}|ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($mode,$doc,$utf8)
+  $status=Status-Doc
+  if(!$status.wallpaper -or $status.mode -ne $m -or $status.presentationReady -or !$status.screen -or $status.screen.width -le 0){throw "Online status $m"}
+  if($status.PSObject.Properties.Name -contains 'pid' -or $status.PSObject.Properties.Name -contains 'window'){throw 'Private process metadata exposed'}
+  [IO.File]::SetLastWriteTimeUtc($mode,[DateTime]::UtcNow.AddSeconds(-14))
+  if((Status-Doc).wallpaper){throw 'Stale heartbeat accepted'}
+ }
+ Remove-Item -LiteralPath $mode -Force
+ foreach($route in @('/api/board-status','/api/theme')){
+  $pre=Raw-Request 17451 $route OPTIONS '' 'cross-site' $manager
+  if($pre.status -ne 'HTTP/1.1 204 No Content' -or $pre.headers['Access-Control-Allow-Origin'] -cne $manager -or $pre.body.Length -ne 0){throw 'Preflight contract'}
+  $denied=Raw-Request 17451 $route GET '' 'cross-site' 'https://evil.invalid'
+  if($denied.status -ne 'HTTP/1.1 403 Forbidden' -or $denied.headers['Access-Control-Allow-Origin']){throw 'Unexpected CORS'}
+ }
+ if((Raw-Request 17451 '/api/theme' GET '' 'cross-site' $manager).status -ne 'HTTP/1.1 503 Service Unavailable'){throw 'Theme advertised before publish'}
+ $theme='{"version":1,"theme":"custom","font":"Arial","custom":{"bg":"#AABBCC","panel":"#FFFFFF","text":"#222222","accent":"#CC8844","modal":"#112233"},"extra":"ignored"}'
+ $r=Raw-Request 17451 '/api/theme/publish' POST '' 'same-origin' 'http://127.0.0.1:17451' $theme
+ if($r.status -ne 'HTTP/1.1 200 OK'){throw 'Theme publish failed'}
+ $r=Raw-Request 17451 '/api/theme' GET '' 'cross-site' $manager
+ $v=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($r.body))
+ if($r.status -ne 'HTTP/1.1 200 OK' -or $v.theme -ne 'custom' -or $v.custom.bg -cne '#aabbcc' -or $v.font -ne 'Arial' -or $v.PSObject.Properties.Name -contains 'extra'){throw 'Theme sanitize'}
+ $hash=$r.hash
+ foreach($case in @('invalid','foreign')){
+  $r=if($case -eq 'invalid'){Raw-Request 17451 '/api/theme/publish' POST '' 'same-origin' 'http://127.0.0.1:17451' ($theme.Replace('#AABBCC','bad'))}else{Raw-Request 17451 '/api/theme/publish' POST '' 'cross-site' $manager $theme}
+  $expected=if($case -eq 'invalid'){400}else{403}
+  if($r.status -notmatch ("^HTTP/1.1 "+$expected+" ") -or (Raw-Request 17451 '/api/theme' GET '' 'cross-site' $manager).hash -cne $hash){throw 'Theme denial or state changed'}
+ }
+ Write-Host 'PASS native board status heartbeat/mode/screen, manager CORS/preflight, sanitized theme and denied publish'
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native UI server stop'}
 

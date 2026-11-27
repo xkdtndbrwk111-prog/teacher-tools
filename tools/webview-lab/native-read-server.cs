@@ -15,6 +15,8 @@ internal static class NativeReadServer {
  static int Port=17450;
  static bool coinWrites;
  static string root,release,labRoot;
+ static Dictionary<string,object> boardTheme;
+ static DateTime themeAt;
  static readonly Encoding Utf8=new UTF8Encoding(false,true);
  static readonly Dictionary<string,string> Assets=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){
   {"/","dashboard.html"},{"/index.html","dashboard.html"},{"/seating-inbox","seating-inbox.html"},
@@ -169,6 +171,47 @@ internal static class NativeReadServer {
   AtomicWrite("coins.log",next);
   Reply(s,"200 OK","application/json; charset=utf-8",Utf8.GetBytes("{\"ok\":true}"),"X-TT-Coin-Revision: "+Sha(next)+"\r\n");
  }
+ static bool ManagerOrigin(string o){return o=="https://xkdtndbrwk111-prog.github.io"||o=="http://127.0.0.1:4192"||o=="http://localhost:4192"||o=="http://127.0.0.1:4188"||o=="http://localhost:4188";}
+ static string Cors(string origin){return ManagerOrigin(origin)?"Access-Control-Allow-Origin: "+origin+"\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin, Access-Control-Request-Private-Network\r\n":"";}
+ static void CorsJson(Stream s,string status,string body,string origin){Reply(s,status,"application/json; charset=utf-8",Utf8.GetBytes(body),Cors(origin));}
+ static Dictionary<string,object> BoardStatus(){
+  bool online=false;string mode="";object screen=null;
+  try{
+   string file=Path.Combine(root,"board-mode.json");
+   byte[] raw=Read("board-mode.json");
+   if(raw!=null&&(DateTime.UtcNow-File.GetLastWriteTimeUtc(file)).TotalSeconds<13){
+    var b=Obj(Serializer().DeserializeObject(Utf8.GetString(raw).TrimStart('\uFEFF')));
+    string m=Val(b,"mode") as string;
+    if((m=="window"||m=="wallpaper")&&Equals(Val(b,"release"),release)&&IntValue(Val(b,"window"),1,Int64.MaxValue)&&IntValue(Val(b,"pid"),1,Int32.MaxValue)){
+     using(var p=Process.GetProcessById(Convert.ToInt32(Val(b,"pid")))){online=!p.HasExited;}
+     if(online)mode=m;
+    }
+   }
+  }catch{online=false;mode="";}
+  if(online)try{
+   byte[] raw=Read("display.txt");string device=raw==null?"":Utf8.GetString(raw).Trim();
+   var selected=System.Windows.Forms.Screen.PrimaryScreen;
+   foreach(var candidate in System.Windows.Forms.Screen.AllScreens)if(String.Equals(candidate.DeviceName,device,StringComparison.OrdinalIgnoreCase)){selected=candidate;break;}
+   if(selected!=null){var r=selected.Bounds;screen=new Dictionary<string,object>{{"left",r.X},{"top",r.Y},{"width",r.Width},{"height",r.Height}};}
+  }catch{}
+  // Do not advertise presentation until its protocol is implemented and tested.
+  return new Dictionary<string,object>{{"service","teacher-tools-local"},{"version",40},{"coinProtocol",3},{"presentationProtocol",1},{"presentationReady",false},{"rosterProtocol",1},{"wallpaper",online},{"mode",mode},{"screen",screen}};
+ }
+ static void PublishTheme(Stream s,byte[] payload){
+  if(payload.Length>2048){Json(s,"400 Bad Request","{\"error\":\"size\"}");return;}
+  try{
+   var x=Obj(Serializer().DeserializeObject(Utf8.GetString(payload)));string theme=Val(x,"theme") as string,font=Val(x,"font") as string;
+   if(!IntValue(Val(x,"version"),1,1)||theme==null||Array.IndexOf(new[]{"dark","sky","pink","green","black","custom"},theme)<0||font==null||font.Length>=60||!Regex.IsMatch(font,@"^[\p{L}\p{N} ._()-]*$"))throw new FormatException("Theme");
+   var output=new Dictionary<string,object>{{"version",1},{"theme",theme},{"font",font}};
+   if(theme=="custom"){
+    var colors=new Dictionary<string,object>();var c=Obj(Val(x,"custom"));
+    foreach(string k in new[]{"bg","panel","text","accent","modal"}){
+     string value=Val(c,k) as string;if(value==null||!Regex.IsMatch(value,"^#[a-fA-F0-9]{6}$"))throw new FormatException("Color");colors[k]=value.ToLowerInvariant();
+    }output["custom"]=colors;
+   }
+   boardTheme=output;themeAt=DateTime.UtcNow;Json(s,"200 OK","{\"ok\":true}");
+  }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid theme\"}");}
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -179,7 +222,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -192,7 +235,22 @@ internal static class NativeReadServer {
    if(write){
     if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
     if(path=="/api/roster"&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+    if(path=="/api/theme/publish"){
+     if(origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+     PublishTheme(s,payload);return;
+    }
     if(path=="/api/coins")AppendCoins(s,h,payload);else if(path=="/api/notice")AppendNotice(s,payload);else SaveSeating(s,payload,path=="/api/roster");return;
+   }
+   if(path=="/api/board-status"||path=="/api/theme"){
+    bool theme=path=="/api/theme";
+    if((theme||origin!="")&&!ManagerOrigin(origin)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+    if(req[0]=="OPTIONS"){CorsJson(s,"204 No Content","",origin);return;}
+    if(req[0]!="GET"){CorsJson(s,"405 Method Not Allowed","{\"error\":\"method\"}",origin);return;}
+    if(theme){
+     if(boardTheme==null||(DateTime.UtcNow-themeAt).TotalSeconds>45)CorsJson(s,"503 Service Unavailable","{\"error\":\"theme unavailable\"}",origin);
+     else CorsJson(s,"200 OK",Serializer().Serialize(boardTheme),origin);
+    }else CorsJson(s,"200 OK",Serializer().Serialize(BoardStatus()),origin);
+    return;
    }
    if(req[0]!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
    if(path=="/health"){Json(s,"200 OK","{\"service\":\"teacher-tools-local\",\"version\":493,\"release\":\""+release+"\"}");return;}
