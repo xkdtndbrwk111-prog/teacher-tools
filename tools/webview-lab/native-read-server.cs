@@ -14,7 +14,7 @@ using System.Threading;
 internal static class NativeReadServer {
  static int Port=17450;
  static bool coinWrites;
- static string root,release;
+ static string root,release,labRoot;
  static readonly Encoding Utf8=new UTF8Encoding(false,true);
  static readonly Dictionary<string,string> Assets=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){
   {"/","dashboard.html"},{"/index.html","dashboard.html"},{"/seating-inbox","seating-inbox.html"},
@@ -44,13 +44,34 @@ internal static class NativeReadServer {
  static bool True(object v){return v is bool&&(bool)v;}
  static bool IntValue(object v,long low,long high){return (v is int||v is long)&&Convert.ToInt64(v)>=low&&Convert.ToInt64(v)<=high;}
  static JavaScriptSerializer Serializer(){return new JavaScriptSerializer(){MaxJsonLength=8388608,RecursionLimit=100};}
+ // Explicit lab-only crash checkpoint; never used without the disposable write fixture.
+ static void CrashCheckpoint(string name,string stage){
+  if(!coinWrites||!File.Exists(Path.Combine(labRoot,"coin-write-fixture.flag")))return;
+  string control=Path.Combine(labRoot,"native-crash-control");
+  if(!File.Exists(control)||File.ReadAllText(control).Trim()!=name+":"+stage)return;
+  File.WriteAllText(Path.Combine(labRoot,"native-crash-reached"),name+":"+stage,Utf8);
+  // Harness must kill this exact process. Timeout fails closed before any further work.
+  Thread.Sleep(15000);throw new IOException("Crash injection timed out");
+ }
+ static void ClearAbandonedWrites(){
+  // Called only after successfully binding the isolated exclusive listener.
+  foreach(string name in new[]{"coins.log","seating.json","notice.log"}){
+   foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
+    if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
+    if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
+    File.Delete(file);
+   }
+  }
+ }
  static void AtomicWrite(string name,byte[] data){
   string dest=Path.Combine(root,name),tmp=dest+".native-"+Guid.NewGuid().ToString("N")+".tmp";
   // Read validates any existing file before replacing it.
   Read(name);
   try{
    using(var f=new FileStream(tmp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(data,0,data.Length);f.Flush(true);}
+   CrashCheckpoint(name,"before");
    if(File.Exists(dest))File.Replace(tmp,dest,null);else File.Move(tmp,dest);
+   CrashCheckpoint(name,"after");
   }finally{if(File.Exists(tmp))File.Delete(tmp);}
  }
  static Dictionary<string,object> MergeRoster(Dictionary<string,object> x,Dictionary<string,object> old){
@@ -145,12 +166,8 @@ internal static class NativeReadServer {
    }
    if(next.Length>64L*1024*1024)throw new FormatException("Lab ledger limit");
   }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;Json(s,"502 Bad Gateway","{\"code\":\"UPSTREAM_ERROR\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");return;}
-  string dest=Path.Combine(root,"coins.log"),tmp=Path.Combine(root,"coins.log.native-"+Guid.NewGuid().ToString("N")+".tmp");
-  try{
-   using(var f=new FileStream(tmp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(next,0,next.Length);f.Flush(true);}
-   if(File.Exists(dest))File.Replace(tmp,dest,null);else File.Move(tmp,dest);
-   Reply(s,"200 OK","application/json; charset=utf-8",Utf8.GetBytes("{\"ok\":true}"),"X-TT-Coin-Revision: "+Sha(next)+"\r\n");
-  }finally{if(File.Exists(tmp))File.Delete(tmp);}
+  AtomicWrite("coins.log",next);
+  Reply(s,"200 OK","application/json; charset=utf-8",Utf8.GetBytes("{\"ok\":true}"),"X-TT-Coin-Revision: "+Sha(next)+"\r\n");
  }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
@@ -220,12 +237,13 @@ internal static class NativeReadServer {
   string lab=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
   if(String.IsNullOrEmpty(lab)||String.IsNullOrEmpty(local))return 2;
   lab=Path.GetFullPath(lab);if(!Regex.IsMatch(Path.GetFileName(lab),"^hoja-webview-lab-[a-f0-9]{32}$")||!String.Equals(Path.GetFullPath(local),Path.Combine(lab,"local"),StringComparison.OrdinalIgnoreCase))return 2;
-  root=Path.Combine(local,"TeacherToolsLocal");
+  labRoot=lab;root=Path.Combine(local,"TeacherToolsLocal");
   if(coinWrites&&!File.Exists(Path.Combine(lab,"coin-write-fixture.flag")))return 2;
   var j=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"release.json")));
   release=(string)j["release"];if(!Regex.IsMatch(release,"^[0-9-]+-V[0-9.]+-STABLE-PILOT$"))return 2;
   var l=new TcpListener(IPAddress.Loopback,Port);l.ExclusiveAddressUse=true;
   try{NoInherit(l.Server);l.Start();NoInherit(l.Server);
+   if(coinWrites)ClearAbandonedWrites();
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
     if(!l.Pending()){Thread.Sleep(20);continue;}

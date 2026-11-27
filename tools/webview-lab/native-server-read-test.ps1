@@ -266,6 +266,86 @@ try{
  if((Get-FileHash (Join-Path $stores[17451] 'notice.log')).Hash -cne $noticeRaw.hash){throw 'Notice persisted hash mismatch'}
  Write-Host 'PASS native seating/roster geometry, exclusions, class isolation, stale seat and coin preservation'
  Write-Host 'PASS native notice exact persisted bytes'
+ # 4B-4a: forced process death at the real atomic file replacement boundary.
+ $crashRoot=$roots[17451];$crashStore=$stores[17451]
+ $env:HOJA_LAB_ROOT=$crashRoot;$env:LOCALAPPDATA=Join-Path $crashRoot 'local'
+ $stopFile=Join-Path $crashRoot 'native-read-server.stop'
+ $readyFile=Join-Path $crashRoot 'native-read-server.ready'
+ $control=Join-Path $crashRoot 'native-crash-control'
+ $reached=Join-Path $crashRoot 'native-crash-reached'
+ $sentinel=Join-Path $crashStore 'coins.log.native-unrelated.tmp'
+ Set-Content -LiteralPath $sentinel 'keep' -Encoding ASCII
+ function Start-CrashServer{
+  Remove-Item $stopFile,$readyFile,$control,$reached -Force -ErrorAction SilentlyContinue
+  $proc=Start-Process -FilePath $exe -ArgumentList '--lab-coin-server' -PassThru -WindowStyle Hidden
+  $null=$proc.Handle
+  try{
+   for($i=0;$i -lt 80;$i++){
+    if($proc.HasExited){throw "Crash server exited $($proc.ExitCode)"}
+    if((Test-Path $readyFile) -and (Get-Content $readyFile -Raw).Trim() -eq [string]$proc.Id){
+     if((Raw-Request 17451 '/health').status -eq 'HTTP/1.1 200 OK' -and (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17451 -State Listen).OwningProcess -eq $proc.Id){return $proc}
+    }
+    Start-Sleep -Milliseconds 100
+   }
+   throw 'Crash server readiness'
+  }catch{if(!$proc.HasExited){$proc.Kill();$proc.WaitForExit()};throw}
+ }
+ function Hash-Bytes([byte[]]$value){
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try{return [BitConverter]::ToString($sha.ComputeHash($value)).Replace('-','')}finally{$sha.Dispose()}
+ }
+ function Snapshot-CrashFiles{
+  $out=@{}
+  foreach($name in @('coins.log','seating.json','notice.log')){$out[$name]=[IO.File]::ReadAllBytes((Join-Path $crashStore $name))}
+  return $out
+ }
+ $native=Start-CrashServer
+ foreach($name in @('coins.log','seating.json','notice.log')){
+  foreach($stage in @('before','after')){
+   $before=Snapshot-CrashFiles
+   $coinRev=(Hash-Bytes $before['coins.log']).ToLowerInvariant()
+   $seatRev=(Hash-Bytes $before['seating.json']).ToLowerInvariant()
+   $route=switch($name){'coins.log'{'/api/coins'}'seating.json'{'/api/seating'}'notice.log'{'/api/notice'}}
+   $text=switch($name){
+    'coins.log'{'{"type":"spend","id":"lab1","amount":-1,"op":"crash-'+$stage+'"}'}
+    'seating.json'{$seatDoc.Replace('LAB_A','LAB_CRASH_'+$stage)}
+    'notice.log'{'{"id":"crash-'+$stage+'","text":"crash fixture"}'}
+   }
+   $expected=if($name -eq 'seating.json'){[Text.Encoding]::UTF8.GetBytes($text)}else{[byte[]]($before[$name]+[Text.Encoding]::UTF8.GetBytes($text+[char]10))}
+   $expectedHash=Hash-Bytes $expected
+   Set-Content -LiteralPath $control ($name+':'+$stage) -Encoding ASCII
+   $payload=B64 $text
+   $nl=[string][char]13+[char]10
+   $wire=[Text.Encoding]::ASCII.GetBytes(("POST $route HTTP/1.1"+$nl+"Host: 127.0.0.1:17451"+$nl+"Sec-Fetch-Site: same-origin"+$nl+"Origin: http://127.0.0.1:17451"+$nl+"X-TT-Coin-Revision: $coinRev"+$nl+"X-TT-Seating-Revision: $seatRev"+$nl+"Content-Length: "+$payload.Length+$nl+"Connection: close"+$nl+$nl+$payload))
+   $client=[Net.Sockets.TcpClient]::new()
+   try{
+    $client.Connect('127.0.0.1',17451);$client.GetStream().Write($wire,0,$wire.Length)
+    $hit=$false
+    for($i=0;$i -lt 100;$i++){
+     if($native.HasExited){throw 'Server died before checkpoint'}
+     if((Test-Path $reached) -and (Get-Content $reached -Raw) -ceq ($name+':'+$stage)){$hit=$true;break}
+     Start-Sleep -Milliseconds 50
+    }
+    if(!$hit){throw "Crash checkpoint not reached $name $stage"}
+    $native.Kill();if(!$native.WaitForExit(10000)){throw 'Crash kill timeout'}
+   }finally{$client.Dispose()}
+   $native=Start-CrashServer
+   foreach($file in @('coins.log','seating.json','notice.log')){
+    $hash=if($file -eq $name -and $stage -eq 'after'){$expectedHash}else{Hash-Bytes $before[$file]}
+    if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne $hash){throw "Crash recovery hash mismatch $name $stage $file"}
+   }
+   $read=Raw-Request 17451 $route
+   $want=if($stage -eq 'after'){$expectedHash}else{Hash-Bytes $before[$name]}
+   if($read.hash -cne $want){throw 'Crash restart API mismatch'}
+   if($name -eq 'coins.log' -and $stage -eq 'after' -and (Coin-Post 17451 $payload $coinRev $seatRev).status -ne 'HTTP/1.1 409 Conflict'){throw 'Committed coin retry accepted'}
+   if(@(Get-ChildItem -LiteralPath $crashStore -File|Where-Object {$_.Name -match '^(coins\.log|seating\.json|notice\.log)\.native-[a-f0-9]{32}\.tmp$'}).Count -ne 0 -or !(Test-Path $sentinel)){throw 'Unsafe staging recovery'}
+   Write-Host "PASS native crash recovery $name $stage"
+  }
+ }
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Crash server final stop'}
+ Write-Host 'PASS all six native atomic-write process-crash cases, restart readback and scoped staging cleanup'
+
 
 }finally{
  foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
