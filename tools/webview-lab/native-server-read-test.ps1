@@ -1418,6 +1418,58 @@ try{
  if(Test-Path (Join-Path $crashStore 'book-reader-sessions')){throw 'Validation unexpectedly created book session'}
  Write-Host 'PASS native book protocol Canva allowlist, layout/page bounds, exact interactive link, method/origin and unavailable owner without process launch'
 
+ # 5C-1: read-only status/library parity, entirely isolated, no media workers.
+ $mediaRoot=Join-Path (Join-Path $crashRoot 'local') 'TeacherToolsMedia'
+ $mediaFlag=Join-Path $crashRoot 'media-read-fixture.flag'
+ function Media-Doc{
+  $r=Raw-Request 17451 '/api/youtube/status' GET '' 'same-origin'
+  Assert-P $r 200
+  return ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($r.body))
+ }
+ Assert-P (Raw-Request 17451 '/api/youtube/status' GET '' 'same-origin') 503
+ Set-Content -LiteralPath $mediaFlag 'fixture-only' -Encoding ASCII
+ try{
+  $empty=Media-Doc
+  if(!$empty.ok -or !$empty.libraryReady -or $empty.job.state -ne 'idle' -or @($empty.library).Count -ne 0 -or $empty.token -cnotmatch '^[a-f0-9]{32}$'){throw 'Empty media status'}
+  if(Test-Path -LiteralPath $mediaRoot){throw 'Read-only status created media root'}
+  Assert-P (Raw-Request 17451 '/api/youtube/status' GET '' 'cross-site' 'https://evil.invalid') 403
+  Assert-P (Raw-Request 17451 '/api/youtube/status' GET '' '') 403
+  Assert-P (Raw-Request 17451 '/api/youtube/start' POST '' 'same-origin') 405
+  $lib=Join-Path $mediaRoot 'library'
+  $jobId=('d'*32);$videoId='LAB_VIDEO01'
+  $jobDir=Join-Path (Join-Path $mediaRoot 'jobs') $jobId
+  $legacyDir=Join-Path $lib ($videoId+'-720')
+  $badDir=Join-Path $lib ($videoId+'-1080')
+  New-Item -ItemType Directory -Path $lib,$jobDir,$legacyDir,$badDir -Force|Out-Null
+  $flat=Join-Path $lib 'LAB sample.mp4'
+  [IO.File]::WriteAllBytes($flat,[byte[]]@(1,2,3,4))
+  [IO.File]::WriteAllBytes((Join-Path $legacyDir 'video.mp4'),[byte[]]@(1,2,3))
+  [IO.File]::WriteAllBytes((Join-Path $badDir 'video.mp4'),[byte[]]@(1))
+  $created=[DateTime]::UtcNow.ToString('o')
+  $utf8NoBom=[Text.UTF8Encoding]::new($false)
+  [IO.File]::WriteAllText((Join-Path $legacyDir 'metadata.json'),(@{id=$videoId;quality='720';bytes=3;height=720;created=$created;originalTitle='LAB legacy';customTitle='LAB custom'}|ConvertTo-Json -Compress),$utf8NoBom)
+  [IO.File]::WriteAllText((Join-Path $badDir 'metadata.json'),(@{id=$videoId;quality='1080';bytes=999;height=1080;created=$created}|ConvertTo-Json -Compress),$utf8NoBom)
+  $last=Join-Path $mediaRoot 'last-job.json';$jobFile=Join-Path $jobDir 'state.json'
+  [IO.File]::WriteAllText($last,(@{job=$jobId;id=$videoId;quality='1080';created=$created}|ConvertTo-Json -Compress),$utf8NoBom)
+  [IO.File]::WriteAllText($jobFile,(@{state='running';phase='install';percent=15;updated=$created;install=@{component='FFmpeg';index=3;step='transfer';bytes=10;total=20}}|ConvertTo-Json -Depth 4 -Compress),$utf8NoBom)
+  $expected=@{}
+  Get-ChildItem -LiteralPath $mediaRoot -Recurse -File|ForEach-Object {$expected[$_.FullName]=(Get-FileHash -LiteralPath $_.FullName).Hash}
+  $status=Media-Doc
+  $flatEntry=@($status.library|Where-Object {$_.quality -eq 'local'})
+  $legacyEntry=@($status.library|Where-Object {$_.quality -eq '720'})
+  $flatId=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('LAB SAMPLE.MP4'))).ToLowerInvariant()
+  if(!$status.libraryReady -or $status.token -cne $empty.token -or @($status.library).Count -ne 2 -or $flatEntry.Count -ne 1 -or $flatEntry[0].id -cne $flatId -or $flatEntry[0].bytes -ne 4 -or $legacyEntry.Count -ne 1 -or $legacyEntry[0].customTitle -cne 'LAB custom'){throw 'Media flat/legacy library parity'}
+  if($status.job.job -cne $jobId -or $status.job.state -ne 'running' -or $status.job.quality -ne '1080' -or $status.job.install.component -ne 'FFmpeg' -or $status.job.install.total -ne 20){throw 'Media job status parity'}
+  foreach($file in $expected.Keys){if((Get-FileHash -LiteralPath $file).Hash -cne $expected[$file]){throw 'Media status altered original bytes'}}
+  if(@(Get-ChildItem -LiteralPath $mediaRoot -Recurse -File).Count -ne $expected.Count){throw 'Media status created files'}
+  [IO.File]::WriteAllText($last,(@{job=$jobId;id=$videoId;quality='1080';created=[DateTime]::UtcNow.AddMinutes(-5).ToString('o')}|ConvertTo-Json -Compress),$utf8NoBom)
+  if((Media-Doc).job.state -ne 'failed'){throw 'Stale media job not detected'}
+  [IO.File]::WriteAllText($jobFile,(@{state='failed';phase='error';percent=-1;updated=$created;errorCode='remote_auth';rawLog='LAB_PRIVATE_LOG'}|ConvertTo-Json -Compress),$utf8NoBom)
+  $failed=Media-Doc
+  if($failed.job.errorCode -ne 'remote_auth' -or ($failed|ConvertTo-Json -Depth 7 -Compress).Contains('LAB_PRIVATE_LOG')){throw 'Media error disclosure'}
+  Write-Host 'PASS isolated media status, read-only flat/legacy library, install progress, stale worker, sanitized failure and same-origin guards'
+ }finally{Remove-Item -LiteralPath $mediaFlag -Force -ErrorAction SilentlyContinue}
+
  # 5A-2a: use real native window ownership but a session model only.
  $bookFlag=Join-Path $crashRoot 'book-session-fixture.flag'
  $bookLaunch=$null
