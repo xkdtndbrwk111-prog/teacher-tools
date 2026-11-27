@@ -568,8 +568,75 @@ try{
  }finally{
   if($managerHost -and !$managerHost.HasExited){$managerHost.Kill();$managerHost.WaitForExit()}
  }
+ # 4D-1: school settings and deterministic NEIS responses. No live network.
+ $schoolFile=Join-Path $crashStore 'school.json'
+ $weatherFile=Join-Path $crashStore 'weather-place.json'
+ Remove-Item -LiteralPath $schoolFile -Force -ErrorAction SilentlyContinue
+ $fixtureDir=Join-Path $crashRoot 'neis-fixtures'
+ New-Item -ItemType Directory -Path $fixtureDir -Force|Out-Null
+ Set-Content (Join-Path $crashRoot 'neis-fixture.flag') 'fixture-only' -Encoding ASCII
+ function Put-Neis([string]$endpoint,[string]$query,[object[]]$rows,[int]$total=-1){
+  if($total -lt 0){$total=$rows.Count}
+  $obj=@{};$obj[$endpoint]=@(@{head=@(@{list_total_count=$total})},@{row=@($rows)})
+  $key=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes($endpoint+'?'+$query))).ToLowerInvariant()
+  [IO.File]::WriteAllText((Join-Path $fixtureDir ($key+'.json')),($obj|ConvertTo-Json -Depth 12 -Compress),$utf8)
+ }
+ function School-Doc([string]$route){
+  $r=Raw-Request 17451 $route GET '' 'same-origin'
+  if($r.status -ne 'HTTP/1.1 200 OK'){throw "School request $route $($r.status)"}
+  ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($r.body))
+ }
+ $beforeSchool=Snapshot-CrashFiles
+ $empty=School-Doc '/api/school'
+ if($null -ne $empty.school -or $empty.template -ne '1-vejhJz909ivFnhzNRkpbd31BSJsElEPzXUYkONdJRQ'){throw 'Empty school settings'}
+ if(@((School-Doc '/api/meal?date=20261123').rows).Count -ne 0){throw 'Unconfigured school meal'}
+ $name='시험초등학교'
+ $escaped=[uri]::EscapeDataString($name)
+ Put-Neis 'schoolInfo' ('SCHUL_NM='+$escaped+'&ATPT_OFCDC_SC_CODE=B10') @(@{ATPT_OFCDC_SC_CODE='B10';SD_SCHUL_CODE='1234567';SCHUL_NM=$name;SCHUL_KND_SC_NM='초등학교';ORG_RDNMA='시험 주소'})
+ $search=School-Doc ('/api/school/search?q='+$escaped+'&office=B10')
+ if($search.total -ne 1 -or $search.rows[0].name -cne $name -or $search.rows[0].code -cne '1234567'){throw 'NEIS school search mapping'}
+ $school='{"office":"B10","code":"1234567","name":"시험초등학교","kind":"초등학교","address":"시험 주소","grade":"6","cls":"1","sheet":""}'
+ [IO.File]::WriteAllText($weatherFile,'{"lab":true}',$utf8)
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200 '{"ok":true}'
+ if(Test-Path $weatherFile){throw 'School change did not clear cached weather place'}
+ if([IO.File]::ReadAllText($schoolFile,$utf8) -cne $school -or (School-Doc '/api/school').school.name -cne $name){throw 'School raw persistence'}
+ $schoolHash=(Get-FileHash $schoolFile).Hash
+ Assert-P (Seat-Post 17451 '/api/school' ($school.Replace('1234567','bad'))) 400
+ Assert-P (Seat-Post 17451 '/api/school' $school 'cross-site') 403
+ Assert-P (Raw-Request 17451 '/school.json') 404
+ if((Get-FileHash $schoolFile).Hash -cne $schoolHash){throw 'Rejected school changed data'}
+ $prefix='ATPT_OFCDC_SC_CODE=B10&SD_SCHUL_CODE=1234567&'
+ # A truncated range omits Monday. Also contains an older day, weekend, duplicate.
+ Put-Neis 'mealServiceDietInfo' ($prefix+'MLSV_FROM_YMD=20261123&MLSV_TO_YMD=20261202&MMEAL_SC_CODE=2') @(
+  @{MLSV_YMD='20261120';DDISH_NM='old'},@{MLSV_YMD='20261124';DDISH_NM='화요일'},@{MLSV_YMD='20261124';DDISH_NM='duplicate'},@{MLSV_YMD='20261128';DDISH_NM='weekend'},@{MLSV_YMD='20261125';DDISH_NM='수요일'}
+ )
+ Put-Neis 'mealServiceDietInfo' ($prefix+'MLSV_FROM_YMD=20261123&MLSV_TO_YMD=20261123&MMEAL_SC_CODE=2') @(@{MLSV_YMD='20261123';DDISH_NM='쌀밥 (1.2)<br/>국 &amp; 반찬'})
+ Put-Neis 'mealServiceDietInfo' ($prefix+'MLSV_FROM_YMD=20261203&MLSV_TO_YMD=20261217&MMEAL_SC_CODE=2') @(@{MLSV_YMD='20261204';DDISH_NM='금요일'},@{MLSV_YMD='20261207';DDISH_NM='월요일'},@{MLSV_YMD='20261208';DDISH_NM='extra'})
+ $meal=School-Doc '/api/meal?date=20261123'
+ if(($meal.rows.date -join ',') -cne '20261123,20261124,20261125,20261204,20261207' -or $meal.rows[0].menu -cne ('쌀밥'+[char]10+'국 & 반찬') -or $meal.rows[1].menu -cne '화요일'){throw 'NEIS meal date/cleanup contract'}
+ # Event cursor repeats last date, then deduplicates and excludes Saturday holidays.
+ Put-Neis 'SchoolSchedule' ($prefix+'AA_FROM_YMD=20261123&AA_TO_YMD=20270107') @(
+  @{AA_YMD='20261123';EVENT_NM='행사1'},@{AA_YMD='20261124';EVENT_NM='행사2'},@{AA_YMD='20261125';EVENT_NM='행사3'},@{AA_YMD='20261126';EVENT_NM='행사4'},@{AA_YMD='20261128';EVENT_NM='토요휴업일'}
+ )
+ Put-Neis 'SchoolSchedule' ($prefix+'AA_FROM_YMD=20261128&AA_TO_YMD=20270107') @(@{AA_YMD='20261128';EVENT_NM='토요휴업일'},@{AA_YMD='20261201';EVENT_NM='행사5'})
+ $events=School-Doc '/api/events?date=20261123'
+ if(($events.rows.name -join ',') -cne '행사1,행사2,행사3,행사4,행사5'){throw 'NEIS event pagination/filter'}
+ Assert-P (Raw-Request 17451 '/api/meal?date=20260230' GET '' 'same-origin') 502
+ Assert-P (Raw-Request 17451 '/api/meal?date=20261130' GET '' 'same-origin') 502
+ Assert-P (Raw-Request 17451 '/api/meal?date=20261123' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/%2e%2e/school.json') 400
+ $js=Raw-Request 17451 '/school.js'
+ if($js.status -ne 'HTTP/1.1 200 OK' -or $js.hash -cne (Get-FileHash (Join-Path $crashStore 'school.js')).Hash){throw 'School JS parity'}
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $beforeSchool[$file])){throw 'School altered existing ledger'}}
+ Write-Host 'PASS native school settings/search, date-specific meal recovery, range extension, event pagination, upstream failure and private data guards (fixture provider)'
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native manager server stop'}
+ $native=Start-CrashServer
+ if((School-Doc '/api/school').school.name -cne $name -or (Get-FileHash $schoolFile).Hash -cne $schoolHash){throw 'School restart persistence'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native school server stop'}
+ Write-Host 'PASS native school persisted through restart'
+
 
 
 

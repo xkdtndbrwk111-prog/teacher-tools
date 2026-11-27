@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -21,7 +22,7 @@ internal static class NativeReadServer {
  static readonly Encoding Utf8=new UTF8Encoding(false,true);
  static readonly Dictionary<string,string> Assets=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){
   {"/","dashboard.html"},{"/index.html","dashboard.html"},{"/seating-inbox","seating-inbox.html"},
-  {"/coins.js","coins.js"},{"/coins-ui.js","coins-ui.js"},{"/update-ui.js","update-ui.js"},{"/podo.js","podo.js"},{"/handmade-paper.png","handmade-paper.png"}
+  {"/school.js","school.js"},{"/coins.js","coins.js"},{"/coins-ui.js","coins-ui.js"},{"/update-ui.js","update-ui.js"},{"/podo.js","podo.js"},{"/handmade-paper.png","handmade-paper.png"}
  };
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetHandleInformation(IntPtr h,uint mask,uint flags);
  static void NoInherit(Socket s){if(!SetHandleInformation(s.Handle,1,0))throw new IOException("Socket inheritance");}
@@ -58,7 +59,7 @@ internal static class NativeReadServer {
  }
  static void ClearAbandonedWrites(){
   // Called only after successfully binding the isolated exclusive listener.
-  foreach(string name in new[]{"coins.log","seating.json","notice.log"}){
+  foreach(string name in new[]{"coins.log","seating.json","notice.log","school.json"}){
    foreach(string file in Directory.GetFiles(root,name+".native-*.tmp",SearchOption.TopDirectoryOnly)){
     if(!Regex.IsMatch(Path.GetFileName(file),"^"+Regex.Escape(name)+@"\.native-[a-f0-9]{32}\.tmp$"))continue;
     if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked staging file");
@@ -317,6 +318,125 @@ internal static class NativeReadServer {
   if(data==null){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
   Reply(s,"200 OK",mime,data);
  }
+ // Phase 4D-1: pure NEIS parsing and school configuration. The lab's provider
+ // accepts only exact, pre-seeded fixture responses; never contacts the Internet.
+ const string SheetTemplate="1-vejhJz909ivFnhzNRkpbd31BSJsElEPzXUYkONdJRQ";
+ static string TextVal(Dictionary<string,object> d,string k){return Val(d,k) as string??"";}
+ static bool MatchFull(string value,string pattern){return Regex.IsMatch(value,@"\A(?:"+pattern+@")\z",RegexOptions.CultureInvariant);}
+ static Dictionary<string,object> School(){
+  byte[] data=Read("school.json");if(data==null)return null;
+  try{return Obj(Serializer().DeserializeObject(Utf8.GetString(data).TrimStart('\uFEFF')));}catch(ArgumentException){return null;}catch(InvalidOperationException){return null;}
+ }
+ static bool ValidSchool(Dictionary<string,object> x){
+  return x!=null&&MatchFull(TextVal(x,"office"),"[A-Z][0-9]{2}")&&MatchFull(TextVal(x,"code"),"[0-9]{7}")&&TextVal(x,"name").Length>=1&&TextVal(x,"name").Length<=60&&MatchFull(TextVal(x,"grade"),"[0-9]{0,2}")&&MatchFull(TextVal(x,"cls"),@"[0-9A-Za-z\uAC00-\uD7A3]{0,4}")&&MatchFull(TextVal(x,"sheet"),"[A-Za-z0-9_-]{20,80}|");
+ }
+ static void SchoolWrite(Stream s,byte[] payload){
+  try{
+   if(payload.Length>65536)throw new FormatException("School size");
+   string raw=Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)));
+   var x=Obj(Serializer().DeserializeObject(raw));
+   if(!ValidSchool(x))throw new FormatException("School data");
+   AtomicWrite("school.json",Utf8.GetBytes(raw));
+   string weather=Path.Combine(root,"weather-place.json");
+   if(File.Exists(weather)&&(File.GetAttributes(weather)&FileAttributes.ReparsePoint)==0)File.Delete(weather);
+   Json(s,"200 OK","{\"ok\":true}");
+  }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid school\"}");}
+ }
+ static Dictionary<string,string> Query(string target){
+  var q=new Dictionary<string,string>(StringComparer.Ordinal);int i=target.IndexOf('?');
+  if(i<0)return q;
+  if(target.Length-i>4096)throw new FormatException("Query size");
+  foreach(string part in target.Substring(i+1).Split('&')){
+   int eq=part.IndexOf('=');if(eq<1)throw new FormatException("Query");
+   string key=part.Substring(0,eq),value=part.Substring(eq+1);
+   if(!MatchFull(key,"[A-Za-z_]+")||Regex.IsMatch(value,@"%(?![0-9A-Fa-f]{2})")||q.ContainsKey(key))throw new FormatException("Query");
+   value=Uri.UnescapeDataString(value.Replace("+","%20"));
+   if(Regex.IsMatch(value,@"[\x00-\x1f\x7f]"))throw new FormatException("Query control");
+   q.Add(key,value);
+  }return q;
+ }
+ static string NeisFixture(string endpoint,string query){
+  if(!coinWrites||!File.Exists(Path.Combine(labRoot,"neis-fixture.flag")))throw new IOException("NEIS lab provider not configured");
+  string dir=Path.Combine(labRoot,"neis-fixtures");
+  if(!Directory.Exists(dir)||(File.GetAttributes(dir)&FileAttributes.ReparsePoint)!=0)throw new IOException("Fixture directory");
+  string name=Sha(Utf8.GetBytes(endpoint+"?"+query))+".json",file=Path.Combine(dir,name);
+  if(!File.Exists(file))throw new IOException("Missing NEIS fixture");
+  var info=new FileInfo(file);if((info.Attributes&FileAttributes.ReparsePoint)!=0||info.Length>2097152)throw new IOException("Unsafe fixture");
+  return Utf8.GetString(File.ReadAllBytes(file)).TrimStart('\uFEFF');
+ }
+ sealed class NeisTable {public int Total;public List<Dictionary<string,object>> Rows=new List<Dictionary<string,object>>();}
+ static NeisTable Neis(string endpoint,string query,Dictionary<string,object> school=null){
+  if(Array.IndexOf(new[]{"schoolInfo","mealServiceDietInfo","SchoolSchedule"},endpoint)<0)throw new FormatException("Endpoint");
+  if(school!=null){if(!ValidSchool(school))throw new FormatException("School");query="ATPT_OFCDC_SC_CODE="+TextVal(school,"office")+"&SD_SCHUL_CODE="+TextVal(school,"code")+"&"+query;}
+  var x=Obj(Serializer().DeserializeObject(NeisFixture(endpoint,query)));if(x==null)throw new FormatException("NEIS envelope");
+  var result=Obj(Val(x,"RESULT"));if(result!=null&&TextVal(result,"CODE")!="INFO-200")throw new IOException("NEIS response error");
+  var table=Arr(Val(x,endpoint));var output=new NeisTable();
+  if(table.Length<2)return output;
+  var head=Arr(Val(Obj(table[0]),"head"));
+  if(head.Length>0){int n;object count=Val(Obj(head[0]),"list_total_count");if(Int32.TryParse(Convert.ToString(count,CultureInfo.InvariantCulture),out n))output.Total=n;}
+  foreach(var row in Arr(Val(Obj(table[1]),"row"))){var d=Obj(row);if(d!=null)output.Rows.Add(d);}
+  return output;
+ }
+ static string Ymd(DateTime d){return d.ToString("yyyyMMdd",CultureInfo.InvariantCulture);}
+ static bool DateValue(string value,out DateTime date){return DateTime.TryParseExact(value,"yyyyMMdd",CultureInfo.InvariantCulture,DateTimeStyles.None,out date);}
+ static bool Weekday(DateTime d){return d.DayOfWeek!=DayOfWeek.Saturday&&d.DayOfWeek!=DayOfWeek.Sunday;}
+ static List<Dictionary<string,object>> Meals(List<Dictionary<string,object>> rows,DateTime start){
+  var ordered=new SortedDictionary<string,Dictionary<string,object>>(StringComparer.Ordinal);
+  foreach(var row in rows){string day=TextVal(row,"MLSV_YMD");DateTime d;if(!DateValue(day,out d)||d<start||!Weekday(d)||String.IsNullOrEmpty(TextVal(row,"DDISH_NM")))continue;if(!ordered.ContainsKey(day))ordered.Add(day,row);}
+  return new List<Dictionary<string,object>>(ordered.Values);
+ }
+ static List<object> MealData(Dictionary<string,object> school,DateTime d){
+  var records=new List<Dictionary<string,object>>();Exception error=null;string from=Ymd(d);
+  Func<string,string,List<Dictionary<string,object>>> fetch=(a,b)=>Neis("mealServiceDietInfo","MLSV_FROM_YMD="+a+"&MLSV_TO_YMD="+b+"&MMEAL_SC_CODE=2",school).Rows;
+  try{records.AddRange(fetch(from,Ymd(d.AddDays(9))));}catch(Exception e){error=e;}
+  if(Weekday(d)&&!records.Exists(r=>TextVal(r,"MLSV_YMD")==from))try{records.AddRange(fetch(from,from));}catch(Exception e){if(records.Count==0)error=e;}
+  if(Meals(records,d).Count<5)try{records.AddRange(fetch(Ymd(d.AddDays(10)),Ymd(d.AddDays(24))));}catch(Exception e){if(records.Count==0)error=e;}
+  if(records.Count==0&&error!=null)throw new IOException("Meal fetch",error);
+  var output=new List<object>();
+  foreach(var row in Meals(records,d)){
+   string menu=Regex.Replace(TextVal(row,"DDISH_NM"),@"<br\s*/?\s*>","\n",RegexOptions.IgnoreCase);
+   menu=Regex.Replace(menu,@"\s*\([\d.]+\)","").Replace("&amp;","&");
+   output.Add(new Dictionary<string,object>{{"date",TextVal(row,"MLSV_YMD")},{"menu",menu}});if(output.Count==5)break;
+  }return output;
+ }
+ static List<object> EventData(Dictionary<string,object> school,DateTime d){
+  var rows=new List<object>();var seen=new HashSet<string>(StringComparer.Ordinal);string cursor=Ymd(d),end=Ymd(d.AddDays(45));int received=0;
+  for(int i=0;i<12&&String.CompareOrdinal(cursor,end)<=0;i++){
+   List<Dictionary<string,object>> batch;
+   try{batch=Neis("SchoolSchedule","AA_FROM_YMD="+cursor+"&AA_TO_YMD="+end,school).Rows;}catch{if(received==0)throw;break;}
+   string last=cursor;
+   foreach(var row in batch){string date=TextVal(row,"AA_YMD"),name=TextVal(row,"EVENT_NM");DateTime parsed;
+    if(!DateValue(date,out parsed)||String.CompareOrdinal(date,cursor)<0||String.CompareOrdinal(date,end)>0)continue;
+    if(String.CompareOrdinal(date,last)>0)last=date;
+    if(seen.Add(date+"|"+name)){received++;if(name!="토요휴업일")rows.Add(new Dictionary<string,object>{{"date",date},{"name",name}});}
+   }
+   if(batch.Count<5)break;
+   DateTime day;if(String.CompareOrdinal(last,cursor)>0)cursor=last;else if(DateValue(cursor,out day))cursor=Ymd(day.AddDays(1));else break;
+  }return rows;
+ }
+ static void SchoolData(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
+  bool read=method=="GET",localOrigin=origin==""||origin=="http://127.0.0.1:"+Port||origin=="http://localhost:"+Port;
+  if(!localOrigin||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(path=="/api/school"&&method=="POST"){SchoolWrite(s,payload);return;}
+  if(!read){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  try{
+   var school=School();var q=Query(target);
+   if(path=="/api/school"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"school",school},{"template",SheetTemplate}}));return;}
+   if(path=="/api/school/search"){
+    string name=Get(q,"q"),office=Get(q,"office");
+    if(name.Length<1||name.Length>60||!MatchFull(office,"[A-Z][0-9]{2}|"))throw new FormatException("School search");
+    var table=Neis("schoolInfo","SCHUL_NM="+Uri.EscapeDataString(name)+(office==""?"":"&ATPT_OFCDC_SC_CODE="+office));
+    var rows=new List<object>();foreach(var row in table.Rows)rows.Add(new Dictionary<string,object>{{"office",TextVal(row,"ATPT_OFCDC_SC_CODE")},{"code",TextVal(row,"SD_SCHUL_CODE")},{"name",TextVal(row,"SCHUL_NM")},{"kind",TextVal(row,"SCHUL_KND_SC_NM")},{"address",TextVal(row,"ORG_RDNMA")}});
+    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"total",table.Total},{"rows",rows}}));return;
+   }
+   DateTime d;if(!DateValue(Get(q,"date"),out d))throw new FormatException("Date");
+   var output=school==null?new List<object>():path=="/api/meal"?MealData(school,d):EventData(school,d);
+   Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"rows",output}}));
+  }catch(Exception e){
+   if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   Json(s,"502 Bad Gateway","{\"code\":\""+(path=="/api/meal"?"MEAL_FETCH_ERROR":"UPSTREAM_ERROR")+"\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");
+  }
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -324,10 +444,10 @@ internal static class NativeReadServer {
    int budget=32768;string[] req=ReadLine(s,ref budget).Split(' ');
    var h=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
    while(true){string line=ReadLine(s,ref budget);if(line=="")break;int i=line.IndexOf(':');if(i<1||!Regex.IsMatch(line.Substring(0,i),"^[A-Za-z0-9-]+$"))throw new IOException("Header");string k=line.Substring(0,i);if(h.ContainsKey(k))throw new IOException("Duplicate header");h.Add(k,line.Substring(i+1).Trim());}
-   if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
+   if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -337,6 +457,7 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+   if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/presentation-board.js"||path=="/presentation-board.css"||path.StartsWith("/presentation/",StringComparison.Ordinal))){PresentationAsset(s,path,req[0],site);return;}
    if(write){
