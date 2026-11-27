@@ -696,7 +696,7 @@ try{
  Assert-P (Seat-Post 17451 '/api/school' $school) 200
  if((Get-FileHash $schoolFile).Hash -cne $schoolHash){throw 'School settings restore'}
  Write-Host 'PASS native NEIS timetable weekend, missing 6/7 periods, cache/invalidation, public weekly sheet selection and cells/notices/events, ambiguity and missing week'
- # 4D-3a: slow provider isolation. Two independent GET requests occupy the
+ # 4D-3a: slow provider isolation. Four independent GET requests occupy the
  # bounded remote slots while actual local read/write contracts remain responsive.
  $delayQuery=$prefix+'MLSV_FROM_YMD=20261123&MLSV_TO_YMD=20261202&MMEAL_SC_CODE=2'
  $delayKey=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('mealServiceDietInfo?'+$delayQuery))).ToLowerInvariant()
@@ -715,30 +715,34 @@ try{
   for($i=0;$i -lt 100 -and !(Test-Path $entered);$i++){Start-Sleep -Milliseconds 30}
   if(!(Test-Path $entered)){throw 'Delayed provider not entered'}
  }
- $slow1=$null;$slow2=$null
+ $slow1=$null;$slow2=$null;$slow3=$null;$slow4=$null
  try{
   Remove-Item -LiteralPath $entered -ErrorAction SilentlyContinue
   $slow1=Start-SlowMeal;Wait-Entered
   Remove-Item -LiteralPath $entered -Force
   $slow2=Start-SlowMeal;Wait-Entered
+  Remove-Item -LiteralPath $entered -Force
+  $slow3=Start-SlowMeal;Wait-Entered
+  Remove-Item -LiteralPath $entered -Force
+  $slow4=Start-SlowMeal;Wait-Entered
   $timer=[Diagnostics.Stopwatch]::StartNew()
   Assert-P (Raw-Request 17451 '/api/meal?date=20261123' GET '' 'same-origin') 503
   Assert-P (Raw-Request 17451 '/health') 200
   $seatRevision=Raw-Request 17451 '/api/seating'
   $coinRevision=Raw-Request 17451 '/api/coins'
   Assert-P $coinRevision 200
-  # Real optimistic revision commit while both remote slots are busy.
+  # Real optimistic revision commit while all four remote slots are busy.
   $coinPayload=B64 '{"type":"LAB_REMOTE_ISOLATION"}'
   Assert-P (Coin-Post 17451 $coinPayload $coinRevision.headers['X-TT-Coin-Revision'] $seatRevision.headers['X-TT-Seating-Revision']) 200
   if($timer.ElapsedMilliseconds -ge 2500){throw 'Local API blocked behind remote provider'}
-  foreach($client in @($slow1,$slow2)){
+  foreach($client in @($slow1,$slow2,$slow3,$slow4)){
    $reader=[IO.StreamReader]::new($client.GetStream(),[Text.Encoding]::UTF8)
    try{$raw=$reader.ReadToEnd();if(!$raw.StartsWith('HTTP/1.1 200 OK') -or !$raw.Contains('20261123')){throw 'Delayed upstream response failed'}}finally{$reader.Dispose()}
   }
   if((Get-Content -LiteralPath (Join-Path $crashStore 'coins.log') -Raw -Encoding UTF8) -notmatch 'LAB_REMOTE_ISOLATION'){throw 'Concurrent coin commit missing'}
-  Write-Host 'PASS two delayed remote requests, saturation 503, independent local health/seat/coin reads and revision commit'
+  Write-Host 'PASS four delayed remote requests, saturation 503, independent local health/seat/coin reads and revision commit'
  }finally{
-  foreach($client in @($slow1,$slow2)){if($client){$client.Dispose()}}
+  foreach($client in @($slow1,$slow2,$slow3,$slow4)){if($client){$client.Dispose()}}
   Remove-Item -LiteralPath $delayPath,$entered -ErrorAction SilentlyContinue
  }
 
@@ -802,7 +806,7 @@ try{
  $airJson='{"current":{"pm10":0,"pm2_5":12},"hourly":{"time":["2026-11-27T09:00"],"pm10":[0],"pm2_5":[12]}}'
  $forecastPath=Weather-Fixture 'forecast' $forecastQuery $forecastJson
  $airPath=Weather-Fixture 'air' $airQuery $airJson
- $weather=School-Doc '/api/weather'
+ $weather=School-Doc '/api/weather?'
  if($weather.source -cne 'Open-Meteo' -or $weather.weather.current.temperature_2m -ne 0 -or $weather.weather.current.weather_code -ne 0 -or $weather.air.current.pm10 -ne 0 -or $weather.stale -or $weather.airStale -or $weather.at -ne $now){throw 'Weather initial data including zero values'}
  $cachePath=Join-Path $crashStore 'weather-cache.json'
  if(!(Test-Path $cachePath)){throw 'Weather persisted cache missing'}
@@ -899,11 +903,11 @@ try{
  $r=Raw-Request 17451 '/photo?i=0' GET '' 'same-origin'
  Assert-P $r 200
  if($r.hash -cne (Hash-Bytes $png) -or $r.headers['Content-Type'] -cne 'image/png'){throw 'PNG exact bytes/MIME'}
- $r=Raw-Request 17451 '/photo?i=1' GET '' 'same-origin'
+ $r=Raw-Request 17451 '/photo?i=1&t=1795734000000' GET '' 'same-origin'
  Assert-P $r 200
  if($r.hash -cne (Hash-Bytes $gif) -or $r.headers['Content-Type'] -cne 'image/gif'){throw 'Nested GIF exact bytes/MIME'}
  Assert-P (Raw-Request 17451 '/photo?i=2' GET '' 'same-origin') 404 '{"error":"too large"}'
- foreach($route in @('/photo?i=3','/photo?i=-1','/photo?i=0&i=1','/photo?path=secret.txt','/photos.txt','/photo-album/secret.txt')){
+ foreach($route in @('/photo?i=3','/photo?i=-1','/photo?i=0&i=1','/photo?i=0&t=bad','/photo?i=0&path=secret.txt','/photo?path=secret.txt','/photos.txt','/photo-album/secret.txt')){
   Assert-P (Raw-Request 17451 $route GET '' 'same-origin') 404
  }
  Assert-P (Raw-Request 17451 '/photo?i=0' GET '' 'cross-site' 'https://evil.invalid') 403

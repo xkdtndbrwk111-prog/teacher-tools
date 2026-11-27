@@ -17,7 +17,7 @@ internal static class NativeReadServer {
  static int Port=17450;
  static bool coinWrites;
  static readonly object LocalGate=new object(),WeekGate=new object();
- static readonly SemaphoreSlim ClientSlots=new SemaphoreSlim(16,16),RemoteSlots=new SemaphoreSlim(2,2);
+ static readonly SemaphoreSlim ClientSlots=new SemaphoreSlim(16,16),RemoteSlots=new SemaphoreSlim(4,4);
  static string root,release,labRoot;
  static Dictionary<string,object> boardTheme;
  static DateTime themeAt;
@@ -347,7 +347,7 @@ internal static class NativeReadServer {
  }
  static Dictionary<string,string> Query(string target){
   var q=new Dictionary<string,string>(StringComparer.Ordinal);int i=target.IndexOf('?');
-  if(i<0)return q;
+  if(i<0||i==target.Length-1)return q;
   if(target.Length-i>4096)throw new FormatException("Query size");
   foreach(string part in target.Substring(i+1).Split('&')){
    int eq=part.IndexOf('=');if(eq<1)throw new FormatException("Query");
@@ -1055,7 +1055,7 @@ internal static class NativeReadServer {
     }
     if(photoFolder!=SelectedPhotoFolder()||photoFiles.Count==0)RefreshPhotos();
     int index;var q=Query(target);
-    if(q.Count!=1||!MatchFull(Get(q,"i"),"[0-9]{1,5}")||!Int32.TryParse(Get(q,"i"),out index)||index<0||index>=photoFiles.Count){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
+    if((q.Count!=1&&!(q.Count==2&&q.ContainsKey("t")&&MatchFull(Get(q,"t"),"[0-9]{1,16}")))||!MatchFull(Get(q,"i"),"[0-9]{1,5}")||!Int32.TryParse(Get(q,"i"),out index)||index<0||index>=photoFiles.Count){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
     string file=photoFiles[index];
     if(!SafePhotoPath(file,false)||!file.StartsWith(Path.GetFullPath(photoFolder).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
     using(var input=new FileStream(file,FileMode.Open,FileAccess.Read,FileShare.Read)){
