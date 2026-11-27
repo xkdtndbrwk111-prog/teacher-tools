@@ -1730,6 +1730,25 @@ try{
   Write-Host $meetingText
   if(!$meetingText.StartsWith('PASS ')){throw 'Meeting UI regression failed'}
 
+  # 5C-3 actual WebView2 media decoding, with the real legacy local playback worker.
+  $mediaUiProbe=Join-Path $crashRoot 'media-ui-test.fixture'
+  $mediaUiResult=Join-Path $crashRoot 'media-ui-test.result'
+  Remove-Item -LiteralPath $mediaUiProbe,$mediaUiResult -Force -ErrorAction SilentlyContinue
+  Set-Content -LiteralPath $mediaFlag 'fixture-only' -Encoding ASCII
+  Set-Content -LiteralPath $writeFlag 'fixture-only' -Encoding ASCII
+  try{
+   Set-Content -LiteralPath $mediaUiProbe 'test' -Encoding ASCII
+   for($i=0;$i -lt 240 -and !(Test-Path $mediaUiResult);$i++){
+    if($bookLaunch.HasExited){throw 'Media UI owner exited'}
+    Start-Sleep -Milliseconds 250
+   }
+   if(!(Test-Path $mediaUiResult)){throw 'Media UI test timeout'}
+   $mediaUiText=Get-Content -LiteralPath $mediaUiResult -Raw -Encoding UTF8
+   Write-Host $mediaUiText
+   if(!$mediaUiText.StartsWith('PASS ')){throw 'Media UI regression failed'}
+  }finally{Remove-Item -LiteralPath $mediaFlag,$writeFlag -Force -ErrorAction SilentlyContinue}
+
+
   Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
   if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Book UI owner close failed'}
   Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue
