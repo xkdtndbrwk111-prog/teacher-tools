@@ -1560,6 +1560,82 @@ internal static class NativeReadServer {
   }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;}
   return result;
  }
+ // 5C-1: read-only legacy media status and library in the disposable lab.
+ // Never execute a downloader, touch the real media directory, or expose absolute paths.
+ static readonly string MediaToken=Guid.NewGuid().ToString("N");
+ static bool MediaSafeDirectory(string p){return Directory.Exists(p)&&(File.GetAttributes(p)&FileAttributes.ReparsePoint)==0;}
+ static bool MediaSafeFile(string p){return File.Exists(p)&&(File.GetAttributes(p)&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0;}
+ static Dictionary<string,object> MediaJson(string path){
+  if(!MediaSafeFile(path)||new FileInfo(path).Length>65536)return null;
+  byte[] bytes=File.ReadAllBytes(path);if(bytes.Length>65536)return null;
+  return Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));
+ }
+ static string MediaTitle(object o){
+  string s=o as string??"";s=Regex.Replace(s,@"[\p{Cc}\p{Zl}\p{Zp}]"," ").Trim();
+  if(s.Length>180){s=s.Substring(0,180);if(Char.IsHighSurrogate(s[s.Length-1]))s=s.Substring(0,s.Length-1);}
+  return s.Trim();
+ }
+ static bool MediaChoice(string s,params string[] choices){return Array.IndexOf(choices,s)>=0;}
+ static List<object> MediaLibrary(string media){
+  var list=new List<object>();if(!Directory.Exists(media))return list;
+  if(!MediaSafeDirectory(media))throw new IOException("Media root link");
+  string lib=Path.Combine(media,"library");if(!Directory.Exists(lib))return list;
+  if(!MediaSafeDirectory(lib))throw new IOException("Media library link");
+  var files=new DirectoryInfo(lib).GetFiles();Array.Sort(files,(x,y)=>StringComparer.OrdinalIgnoreCase.Compare(x.Name,y.Name));
+  foreach(var f in files){
+   if(list.Count>=2000)throw new IOException("Media library limit");
+   if(!MediaChoice(f.Extension.ToLowerInvariant(),".mp4",".webm",".ogv",".ogg")||f.Length<=0||(f.Attributes&FileAttributes.ReparsePoint)!=0)continue;
+   list.Add(new Dictionary<string,object>{{"id",Sha(Utf8.GetBytes(f.Name.ToUpperInvariant()))},{"quality","local"},{"height",0},{"bytes",f.Length},{"created",f.LastWriteTimeUtc.ToString("o")},{"originalTitle",Path.GetFileNameWithoutExtension(f.Name)},{"customTitle",""},{"filename",f.Name}});
+  }
+  var dirs=new DirectoryInfo(lib).GetDirectories();Array.Sort(dirs,(x,y)=>y.LastWriteTimeUtc.CompareTo(x.LastWriteTimeUtc));
+  for(int i=0;i<Math.Min(200,dirs.Length);i++){
+   var dir=dirs[i];var m=Regex.Match(dir.Name,@"\A([A-Za-z0-9_-]{11})-(720|1080)\z");
+   if(!m.Success||!MediaSafeDirectory(dir.FullName))continue;
+   try{
+    string file=Path.Combine(dir.FullName,"video.mp4");if(!MediaSafeFile(file))continue;
+    long len=new FileInfo(file).Length;var meta=MediaJson(Path.Combine(dir.FullName,"metadata.json"));
+    if(len<=0||meta==null||TextVal(meta,"id")!=m.Groups[1].Value||TextVal(meta,"quality")!=m.Groups[2].Value||!IntValue(Val(meta,"bytes"),len,len)||!IntValue(Val(meta,"height"),0,1080))continue;
+    list.Add(new Dictionary<string,object>{{"id",m.Groups[1].Value},{"quality",m.Groups[2].Value},{"height",LongVal(meta,"height")},{"bytes",len},{"created",TextVal(meta,"created")},{"originalTitle",MediaTitle(Val(meta,"originalTitle"))},{"customTitle",MediaTitle(Val(meta,"customTitle"))}});
+   }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;}
+  }
+  return list;
+ }
+ static Dictionary<string,object> MediaJob(string media){
+  var idle=new Dictionary<string,object>{{"state","idle"},{"phase",""},{"percent",-1}};
+  if(!MediaSafeDirectory(media))return idle;
+  try{
+   var last=MediaJson(Path.Combine(media,"last-job.json"));if(last==null)return idle;
+   string job=TextVal(last,"job"),id=TextVal(last,"id"),quality=TextVal(last,"quality");
+   if(!MatchFull(job,"[a-f0-9]{32}")||!MatchFull(id,"[A-Za-z0-9_-]{11}")||!MediaChoice(quality,"720","1080"))return idle;
+   var state=new Dictionary<string,object>{{"job",job},{"id",id},{"quality",quality},{"state","running"},{"phase","starting"},{"percent",-1}};
+   string jobs=Path.Combine(media,"jobs"),dir=Path.Combine(jobs,job);
+   var x=MediaSafeDirectory(jobs)&&MediaSafeDirectory(dir)?MediaJson(Path.Combine(dir,"state.json")):null;
+   if(x!=null&&MediaChoice(TextVal(x,"state"),"running","complete","cancelled","failed")&&MediaChoice(TextVal(x,"phase"),"install","download","verify","saved","stopped","error")){
+    state["state"]=TextVal(x,"state");state["phase"]=TextVal(x,"phase");
+    if(IntValue(Val(x,"percent"),Int32.MinValue,Int32.MaxValue))state["percent"]=Math.Max(-1,Math.Min(100,LongVal(x,"percent")));
+    DateTime updated;if(DateTime.TryParse(TextVal(x,"updated"),CultureInfo.InvariantCulture,DateTimeStyles.AdjustToUniversal,out updated))state["age"]=(long)Math.Max(0,(DateTime.UtcNow-updated).TotalSeconds);
+    if(TextVal(x,"state")=="failed"&&MediaChoice(TextVal(x,"errorCode"),"tls_certificate","remote_rejected","remote_auth","timeout","download_failed","engine_integrity","install_failed","verify_failed"))state["errorCode"]=TextVal(x,"errorCode");
+    var v=Obj(Val(x,"install"));
+    if(TextVal(x,"phase")=="install"&&v!=null&&MediaChoice(TextVal(v,"component"),"yt-dlp","Deno","FFmpeg")&&MediaChoice(TextVal(v,"step"),"connect","transfer","verify","extract","finalize")&&IntValue(Val(v,"index"),1,3)&&IntValue(Val(v,"bytes"),0,419430400)&&IntValue(Val(v,"total"),-1,419430400))state["install"]=new Dictionary<string,object>{{"component",TextVal(v,"component")},{"step",TextVal(v,"step")},{"index",LongVal(v,"index")},{"bytes",LongVal(v,"bytes")},{"total",LongVal(v,"total")}};
+   }
+   if(TextVal(state,"state")=="running"){
+    bool busy=false;string lockFile=Path.Combine(media,".download.lock");
+    if(MediaSafeFile(lockFile)){try{using(var guard=new FileStream(lockFile,FileMode.Open,FileAccess.Read,FileShare.None)){} }catch(IOException){busy=true;}}
+    DateTime created;bool recent=DateTime.TryParse(TextVal(last,"created"),CultureInfo.InvariantCulture,DateTimeStyles.AdjustToUniversal,out created)&&(DateTime.UtcNow-created).TotalSeconds<20;
+    if(!busy&&!recent){state["state"]="failed";state["phase"]="error";}
+   }
+   return state;
+  }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;return idle;}
+ }
+ static void MediaStatus(Stream s,string path,string method,string site,string origin){
+  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(path!="/api/youtube/status"||method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  if(!File.Exists(Path.Combine(labRoot,"media-read-fixture.flag"))){Json(s,"503 Service Unavailable","{\"error\":\"media unavailable\"}");return;}
+  string media=Path.Combine(labRoot,"local","TeacherToolsMedia");
+  bool ready=true;var files=new List<object>();
+  try{files=MediaLibrary(media);}catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException))throw;ready=false;}
+  Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"token",MediaToken},{"job",MediaJob(media)},{"libraryReady",ready},{"library",files}}));
+ }
  static void BookProtocol(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
   if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   if((path=="/api/book-reader/status"&&method!="GET"&&method!="POST")||(path!="/api/book-reader/status"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
@@ -1746,6 +1822,7 @@ internal static class NativeReadServer {
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
    if(coinWrites&&(path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close")){BookProtocol(s,path,req[1],req[0],site,origin,payload);return;}
+   if(coinWrites&&path.StartsWith("/api/youtube/",StringComparison.Ordinal)){MediaStatus(s,path,req[0],site,origin);return;}
    if(coinWrites&&path=="/api/backup/export"){BackupExportData(s,req[0],site,origin);return;}
    if(coinWrites&&(path=="/api/backup/token"||path=="/api/backup/restore")){BackupRestoreData(s,path,req[0],site,origin,Get(h,"X-TT-Backup-Token"),payload);return;}
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
