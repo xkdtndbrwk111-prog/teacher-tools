@@ -1597,6 +1597,21 @@ try{
   $bookUiText=Get-Content -LiteralPath $bookUiResult -Raw -Encoding UTF8
   Write-Host $bookUiText
   if(!$bookUiText.StartsWith('PASS ')){throw 'Book UI regression failed'}
+  # Phase 5B: the unchanged meeting module runs on this same native dashboard.
+  Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue
+  $meetingProbe=Join-Path $crashRoot 'meeting-ui-test.fixture'
+  $meetingResult=Join-Path $crashRoot 'meeting-ui-test.result'
+  Remove-Item -LiteralPath $meetingProbe,$meetingResult -Force -ErrorAction SilentlyContinue
+  Set-Content -LiteralPath $meetingProbe 'test' -Encoding ASCII
+  for($i=0;$i -lt 240 -and !(Test-Path $meetingResult);$i++){
+   if($bookLaunch.HasExited){throw 'Meeting UI owner exited'}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $meetingResult)){throw 'Meeting UI test timeout'}
+  $meetingText=Get-Content -LiteralPath $meetingResult -Raw -Encoding UTF8
+  Write-Host $meetingText
+  if(!$meetingText.StartsWith('PASS ')){throw 'Meeting UI regression failed'}
+
   Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
   if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Book UI owner close failed'}
   Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue
