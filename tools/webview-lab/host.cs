@@ -394,8 +394,23 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         await GameAction("window.__labLessonClock=Date.parse('2026-11-24T08:59:30+09:00')");
         await BoardWait(core,"!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')&&window.__labLessonStatus().plan.locked","actual deadline closes iframe",35);
         await BoardWait(core,@"(()=>{const a=window.__labLessonMessages,m=a.find(x=>x.type==='hoja-close'&&x.reason==='lesson-end'),s=window.__labLessonStatus();return !!m&&a.some(x=>x.type==='hoja-ready'&&x.sessionId===m.sessionId)&&m.start===Date.parse('2026-11-24T09:00:00+09:00')&&m.portrait&&!!m.id&&!!m.line&&s.farewell.includes(m.line)&&s.image})()","actual game farewell cue rendered by board",25);
-        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await TTCoins.snapshot(true),st=TTCoins.stateOf(s.events,'LAB_CLASS');document.documentElement.dataset.labTimedRefund=TTCoins.balanceOf(st,'lab1')===14&&TTCoins.balanceOf(st,'lab2')===10?'ok':'bad'}catch(e){document.documentElement.dataset.labTimedRefund='error'}})()");
-        await BoardWait(core,"document.documentElement.dataset.labTimedRefund==='ok'","timed exit refunds eligible round",35);
+        // Refund is a real asynchronous revision-checked ledger commit. Reading
+        // once after iframe close may observe the earlier spend-only revision.
+        // Poll fresh durable snapshots; require the exact charge and one refund.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          for(let i=0;i<60;i++){
+            const s=await TTCoins.snapshot(true),st=TTCoins.stateOf(s.events,'LAB_CLASS');
+            const paid=s.events.filter(e=>e.cls==='LAB_CLASS'&&e.type==='spend'&&e.id==='lab1').at(-1);
+            const refunds=s.events.filter(e=>e.cls==='LAB_CLASS'&&e.type==='refund'&&e.charge===paid?.charge);
+            const b1=TTCoins.balanceOf(st,'lab1'),b2=TTCoins.balanceOf(st,'lab2');
+            document.documentElement.dataset.labTimedRefundDetail=JSON.stringify({balance1:b1,balance2:b2,charge:paid?.charge,spend:paid?.amount,refunds:refunds.map(e=>({id:e.id,amount:e.amount})),revision:s.revision});
+            if(b1===14&&b2===10&&paid?.amount===-2&&refunds.length===1&&refunds[0].id==='lab1'&&refunds[0].amount===2){document.documentElement.dataset.labTimedRefund='ok';return}
+            await new Promise(r=>setTimeout(r,100))
+          }
+          document.documentElement.dataset.labTimedRefund='bad'
+        }catch(e){document.documentElement.dataset.labTimedRefund='error';document.documentElement.dataset.labTimedRefundDetail=String(e)}})()");
+        string refundResult=await WaitResult(core,"document.documentElement.dataset.labTimedRefund||''");
+        Require(refundResult=="\"ok\"","timed exit refunds eligible round: "+refundResult+" "+await core.ExecuteScriptAsync("document.documentElement.dataset.labTimedRefundDetail||''"));
         await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
         await BoardWait(core,"!document.getElementById('miniGames').open&&window.__labLessonStatus().plan.locked&&window.__labLessonStatus().farewell.includes('다음 쉬는 시간에 만나')","re-entry blocked at cutoff");
         await core.ExecuteScriptAsync("window.__labLessonClock=Date.parse('2026-11-24T09:40:00+09:00');document.getElementById('openMiniGames').click()");
