@@ -1539,7 +1539,7 @@ try{
    $synthetic.saved=4;$synthetic.owned=$false
    [IO.File]::WriteAllText($statePath,($synthetic|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
    $unowned=Book-Doc (Book-Status $readerSession.session)
-   if($unowned.ready -or $unowned.visible -or $unowned.owned){throw 'Unowned reader claimed ready'}
+   if($unowned.ready -or $unowned.visible -or $unowned.owned -or $unowned.bookmarkValid -or $unowned.saved -ne 0 -or $unowned.page -ne 0){throw 'Unowned reader claimed ready or bookmark'}
   }finally{Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue}
   Write-Host 'PASS original reader state page/bookmark/ack/fullscreen/visibility and fail-closed malformed/unowned state'
   Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$readerSession.session) POST '' 'same-origin') 200
@@ -1572,6 +1572,34 @@ try{
    Write-Host ('PASS pinned BookReader original WebView2 '+$case.name+' page '+$case.expected+' bookmark and close')
   }
 
+
+
+  # 5A-3c: real native dashboard, real HTTP protocol, explicitly synthetic reader state.
+  # Do not start an external Canva session or mutate the original dashboard.
+  Remove-Item -LiteralPath $bundleFlag,$shareReady,$shareStop -Force -ErrorAction SilentlyContinue
+  $bookUiResult=Join-Path $crashRoot 'book-ui-test.result'
+  $bookUiProbe=Join-Path $crashRoot 'book-ui-test.fixture'
+  Remove-Item -LiteralPath $bookUiResult,$bookUiProbe,$statePath -Force -ErrorAction SilentlyContinue
+  Set-Content -LiteralPath $stateFlag 'fixture-only' -Encoding ASCII
+  $bookLaunch=Start-Process -FilePath $shareExe -ArgumentList '--lab-launch window' -PassThru
+  $null=$bookLaunch.Handle
+  for($i=0;$i -lt 120 -and !(Test-Path $shareReady);$i++){
+   if($bookLaunch.HasExited){throw 'Book UI owner startup failed'}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $shareReady)){throw 'Book UI owner readiness timeout'}
+  Set-Content -LiteralPath $bookUiProbe 'test' -Encoding ASCII
+  for($i=0;$i -lt 240 -and !(Test-Path $bookUiResult);$i++){
+   if($bookLaunch.HasExited){throw 'Book UI owner exited'}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $bookUiResult)){throw 'Book UI test timeout'}
+  $bookUiText=Get-Content -LiteralPath $bookUiResult -Raw -Encoding UTF8
+  Write-Host $bookUiText
+  if(!$bookUiText.StartsWith('PASS ')){throw 'Book UI regression failed'}
+  Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
+  if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Book UI owner close failed'}
+  Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue
 
   Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
   Assert-BackupSnapshot $backupBefore
