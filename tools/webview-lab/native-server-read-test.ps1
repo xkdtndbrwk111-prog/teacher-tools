@@ -1494,12 +1494,56 @@ try{
   if(!(Book-Doc (Book-Status $fresh.session)).closed){throw 'Book session survived owner exit'}
   if(Test-Path -LiteralPath $stagePath){throw 'Book stage survived owner exit'}
   Write-Host 'PASS original book reader pinned bundle, tamper rejection, exact staged files and owner-exit cleanup without launch'
+
+  # 5A-2b2: actual pinned BookReader binary, offline WebView2 profile.
+  Remove-Item -LiteralPath $shareReady,$shareStop -Force -ErrorAction SilentlyContinue
+  $bookLaunch=Start-Process -FilePath $shareExe -ArgumentList '--lab-launch window' -PassThru
+  $null=$bookLaunch.Handle
+  for($i=0;$i -lt 120 -and !(Test-Path $shareReady);$i++){
+   if($bookLaunch.HasExited){throw ('Reader owner startup failed '+$bookLaunch.ExitCode)}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $shareReady)){throw 'Reader owner readiness timeout'}
+  $processFlag=Join-Path $crashRoot 'book-reader-process-fixture.flag'
+  Set-Content -LiteralPath $processFlag 'offline-only' -Encoding ASCII
+  $readerSession=Book-Doc (Book-Post $book)
+  $readerState=Book-Doc (Book-Status $readerSession.session)
+  $readerDir=Join-Path $crashRoot ('book-stage-'+$readerSession.session)
+  if($readerState.fixturePid -le 0 -or $readerState.closed -or $readerState.ready){throw 'Real reader process not active or false playback claim'}
+  $readerProc=Get-Process -Id $readerState.fixturePid
+  $null=$readerProc.Handle
+  if($readerProc.Path -cne (Join-Path $readerDir 'BookReader.exe')){throw 'Reader executable identity'}
+  $request=Get-Content -LiteralPath (Join-Path $readerDir 'request.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($request.ownerPid -ne $bookLaunch.Id -or $request.pages -ne 5 -or $request.saved -ne 2){throw 'Original request shape'}
+  $sync=@{layout=$bookLayout;command=@{seq=5;kind='seek';page=4}}
+  $null=Book-Doc (Book-Status $readerSession.session POST $sync)
+  $cmd=Get-Content -LiteralPath (Join-Path $readerDir 'command.json') -Raw|ConvertFrom-Json
+  if($cmd.seq -ne 5 -or $cmd.page -ne 4){throw 'Actual reader command file'}
+  $sync.command.page=3
+  $null=Book-Doc (Book-Status $readerSession.session POST $sync)
+  if((Get-Content -LiteralPath (Join-Path $readerDir 'command.json') -Raw|ConvertFrom-Json).page -ne 4){throw 'Duplicate command changed reader command file'}
+  Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$readerSession.session) POST '' 'same-origin') 200
+  if(!$readerProc.WaitForExit(8000)){throw 'Explicit close left actual reader running'}
+  $readerSession=Book-Doc (Book-Post $other)
+  $readerState=Book-Doc (Book-Status $readerSession.session)
+  if($readerState.fixturePid -le 0){throw 'Reader re-open failed'}
+  $readerProc=Get-Process -Id $readerState.fixturePid
+  $null=$readerProc.Handle
+  Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
+  if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Reader owner close failed'}
+  # No HTTP status poll triggers the cleanup: the server monitor must do it.
+  if(!$readerProc.WaitForExit(10000)){throw 'Actual reader survived owner exit'}
+  if(!(Book-Doc (Book-Status $readerSession.session)).closed){throw 'Reader closed state missing'}
+  Remove-Item -LiteralPath $processFlag -Force
+  Write-Host 'PASS actual pinned reader offline process launch, exact owner request and command, duplicate rejection, close/reopen and autonomous owner-exit cleanup'
+
   Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
   Assert-BackupSnapshot $backupBefore
   Write-Host 'PASS native book fixture actual window owner, retry, single session, command validation, close and owner exit'
  }finally{
   Remove-Item -LiteralPath $bookFlag -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path $crashRoot 'book-bundle-fixture.flag') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $crashRoot 'book-reader-process-fixture.flag') -Force -ErrorAction SilentlyContinue
   if($bookLaunch -and !$bookLaunch.HasExited){$bookLaunch.Kill();$bookLaunch.WaitForExit()}
  }
 
