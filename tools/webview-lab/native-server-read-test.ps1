@@ -1388,6 +1388,37 @@ try{
   Write-Host 'PASS native backup UI restore and source file hashes'
  }finally{if($backupHost -and !$backupHost.HasExited){$backupHost.Kill();$backupHost.WaitForExit()}}
 
+ # Phase 5A-1: legacy book contract, no renderer launch or external requests.
+ $bookLayout=@{vw=1280;vh=720;x=10;y=20;w=1200;h=650;visible=1;immersive=0}
+ $book=@{url='https://www.canva.com/design/LAB_ID/LAB_KEY/view?embed';id='LAB_ID';title='LAB BOOK';pages=5;start=2;saved=2;interactive=$false;openId=('a'*32);layout=$bookLayout}
+ function Book-Post($doc,[string]$site='same-origin',[string]$origin=''){
+  $encoded=B64 ($doc|ConvertTo-Json -Depth 8 -Compress)
+  return Raw-Request 17451 '/api/book-reader/open' POST '' $site $origin $encoded
+ }
+ Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
+ Assert-P (Book-Post $book 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/book-reader/open' GET '' 'same-origin') 405
+ Assert-P (Raw-Request 17451 ('/api/book-reader/status?session='+('a'*32)) GET '' 'same-origin') 404
+ Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+('a'*32)) POST '' 'same-origin') 404
+ foreach($bad in @('http://www.canva.com/design/LAB_ID/LAB_KEY/view?embed','https://www.canva.com.evil.invalid/design/LAB_ID/LAB_KEY/view?embed','https://www.canva.com/design/WRONG/LAB_KEY/view?embed','https://www.canva.com/design/LAB_ID/LAB_KEY/edit')){
+  $copy=$book.Clone();$copy.url=$bad
+  Assert-P (Book-Post $copy) 409 '{"error":"native unavailable","reason":"BOOK_URL_INVALID"}'
+ }
+ foreach($bad in @(0,4096,'5')){
+  $copy=$book.Clone();$copy.pages=$bad
+  Assert-P (Book-Post $copy) 409 '{"error":"native unavailable","reason":"BOOK_URL_INVALID"}'
+ }
+ $copy=$book.Clone();$copy.layout=$bookLayout.Clone();$copy.layout.w=2000
+ Assert-P (Book-Post $copy) 409 '{"error":"native unavailable","reason":"BOOK_URL_INVALID"}'
+ $copy=$book.Clone();$copy.interactive=$true;$copy.id='DAHbOZ_XOJI';$copy.url='https://canva.link/9qxk3zuhh93ts2s'
+ Assert-P (Book-Post $copy) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
+ $copy.url='https://canva.link/another'
+ Assert-P (Book-Post $copy) 409 '{"error":"native unavailable","reason":"BOOK_URL_INVALID"}'
+ Assert-BackupSnapshot $backupBefore
+ if(Test-Path (Join-Path $crashStore 'book-reader-sessions')){throw 'Validation unexpectedly created book session'}
+ Write-Host 'PASS native book protocol Canva allowlist, layout/page bounds, exact interactive link, method/origin and unavailable owner without process launch'
+
+
 
 
 
