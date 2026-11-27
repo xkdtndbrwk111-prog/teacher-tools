@@ -1242,6 +1242,47 @@ try{
   Write-Host 'PASS actual native wallpaper helper hook, stop/restart same owner, settings reapply, no-op running and close cleanup'
  }finally{if($shareLaunch -and !$shareLaunch.HasExited){$shareLaunch.Kill();$shareLaunch.WaitForExit()}}
 
+ # 4E-4a: exact legacy backup envelope, only five private data files.
+ $backupNames=@('school.json','weather-place.json','seating.json','coins.log','notice.log')
+ $backupBefore=@{}
+ foreach($file in $backupNames){
+  $p=Join-Path $crashStore $file
+  if(Test-Path -LiteralPath $p -PathType Leaf){$backupBefore[$file]=[IO.File]::ReadAllBytes($p)}
+ }
+ $backupDoc=School-Doc '/api/backup/export'
+ if($backupDoc.format -cne 'teacher-tools-server-files' -or $backupDoc.version -ne 1){throw 'Backup format mismatch'}
+ $exportNames=@($backupDoc.files.PSObject.Properties.Name|Sort-Object)
+ if(($exportNames -join ',') -cne ((@($backupBefore.Keys|Sort-Object)) -join ',')){throw 'Backup allowlist mismatch'}
+ foreach($file in $backupBefore.Keys){
+  $bytes=[Convert]::FromBase64String($backupDoc.files.PSObject.Properties[$file].Value)
+  if((Hash-Bytes $bytes) -cne (Hash-Bytes $backupBefore[$file])){throw ('Backup exact bytes mismatch '+$file)}
+ }
+ Assert-P (Raw-Request 17451 '/api/backup/export') 403
+ Assert-P (Raw-Request 17451 '/api/backup/export' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/backup/export' GET '' 'same-origin' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/backup/export' POST '' 'same-origin') 405
+ # A directory in the allowlist must fail rather than silently omitting its contents.
+ $backupProbe=Join-Path $crashStore 'notice.log'
+ $hadNotice=$backupBefore.ContainsKey('notice.log')
+ try{
+  if(Test-Path -LiteralPath $backupProbe){Remove-Item -LiteralPath $backupProbe -Force}
+  New-Item -ItemType Directory -Path $backupProbe|Out-Null
+  Assert-P (Raw-Request 17451 '/api/backup/export' GET '' 'same-origin') 400
+  Remove-Item -LiteralPath $backupProbe -Force
+  # 16 MiB per-file boundary; no oversized content is returned.
+  $stream=[IO.File]::Open($backupProbe,[IO.FileMode]::CreateNew)
+  try{$stream.SetLength(16777217)}finally{$stream.Dispose()}
+  Assert-P (Raw-Request 17451 '/api/backup/export' GET '' 'same-origin') 400
+ }finally{
+  if(Test-Path -LiteralPath $backupProbe){Remove-Item -LiteralPath $backupProbe -Force}
+  if($hadNotice){[IO.File]::WriteAllBytes($backupProbe,$backupBefore['notice.log'])}
+ }
+ foreach($file in $backupBefore.Keys){
+  if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $backupBefore[$file])){throw 'Backup export altered source'}
+ }
+ Write-Host 'PASS native backup legacy format, exact bytes, private five-file allowlist, origin/method and unsafe/oversize denial'
+
+
 
 
 
