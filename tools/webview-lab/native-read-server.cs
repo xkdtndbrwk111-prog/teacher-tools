@@ -1627,11 +1627,127 @@ internal static class NativeReadServer {
    return state;
   }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;return idle;}
  }
- static void MediaStatus(Stream s,string path,string method,string site,string origin){
-  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-  if(path!="/api/youtube/status"||method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+ // Phase 5C-2/3: original file contracts, local capability and bounded child lifecycle.
+ static Process mediaDownload,mediaPlayback;
+ static IntPtr mediaDownloadJob,mediaPlaybackJob;
+ static string mediaPlaySession,mediaPlayDirectory;
+ static DateTime mediaPlayStarted;
+ static Dictionary<string,object> MediaOk(){return new Dictionary<string,object>{{"ok",true}};}
+ static void MediaEnsureDirectory(string path){
+  if(File.Exists(path)||Directory.Exists(path)&&!MediaSafeDirectory(path))throw new IOException("Media directory");
+  Directory.CreateDirectory(path);
+  if(!MediaSafeDirectory(path))throw new IOException("Media directory");
+ }
+ static void MediaWrite(string directory,string name,object value){
+  if(!MediaSafeDirectory(directory))throw new IOException("Media directory");
+  string file=Path.Combine(directory,name),temp=file+"."+Guid.NewGuid().ToString("N")+".tmp";
+  try{
+   using(var fs=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){byte[] bytes=Utf8.GetBytes(Serializer().Serialize(value));fs.Write(bytes,0,bytes.Length);fs.Flush(true);}
+   if(File.Exists(file)){if(!MediaSafeFile(file))throw new IOException("Media file");File.Replace(temp,file,null);}else File.Move(temp,file);
+  }finally{if(File.Exists(temp))File.Delete(temp);}
+ }
+ static Process MediaLaunch(string script,string args,ref IntPtr job){
+  if(!MediaSafeFile(script))throw new IOException("Media worker missing");
+  string exe=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"System32","WindowsPowerShell","v1.0","powershell.exe");
+  job=CreateJobObject(IntPtr.Zero,null);if(job==IntPtr.Zero)throw new IOException("Media job");
+  var limits=new BookJobExtended();limits.BasicLimitInformation.LimitFlags=0x2000;
+  Process p=null;
+  try{
+   if(!SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(typeof(BookJobExtended))))throw new IOException("Media job limits");
+   var info=new ProcessStartInfo(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" "+args);
+   info.UseShellExecute=false;info.CreateNoWindow=true;info.WorkingDirectory=labRoot;
+   info.RedirectStandardOutput=true;info.RedirectStandardError=true;
+   p=Process.Start(info);if(p==null||!AssignProcessToJobObject(job,p.Handle))throw new IOException("Media worker start");
+   p.BeginOutputReadLine();p.BeginErrorReadLine();return p;
+  }catch{if(p!=null){try{if(!p.HasExited)p.Kill();}catch{}p.Dispose();}CloseHandle(job);job=IntPtr.Zero;throw;}
+ }
+ static void MediaReap(ref Process p,ref IntPtr job,bool stop){
+  if(p!=null&&(stop||p.HasExited)){
+   try{if(!p.HasExited&&!p.WaitForExit(1500)){p.Kill();p.WaitForExit(3000);}}
+   finally{if(job!=IntPtr.Zero){CloseHandle(job);job=IntPtr.Zero;}p.Dispose();p=null;}
+  }
+ }
+ static void MediaStopPlay(){
+  if(mediaPlayDirectory!=null&&MediaSafeDirectory(mediaPlayDirectory)){
+   string stop=Path.Combine(mediaPlayDirectory,"stop");if(!File.Exists(stop))using(var f=new FileStream(stop,FileMode.CreateNew,FileAccess.Write,FileShare.Read))f.WriteByte(49);
+  }
+  MediaReap(ref mediaPlayback,ref mediaPlaybackJob,true);mediaPlaySession=null;mediaPlayDirectory=null;
+ }
+ static void MediaExpire(){
+  MediaReap(ref mediaDownload,ref mediaDownloadJob,false);
+  if(mediaPlayback!=null&&(mediaPlayback.HasExited||!File.Exists(Path.Combine(labRoot,"media-write-fixture.flag"))||!MediaSafeDirectory(mediaPlayDirectory)))MediaStopPlay();
+ }
+ static bool MediaEntry(string media,string id,string quality){
+  if(!(quality=="local"?MatchFull(id,"[a-f0-9]{64}"):MediaChoice(quality,"720","1080")&&MatchFull(id,"[A-Za-z0-9_-]{11}")))return false;
+  foreach(var item in MediaLibrary(media)){var d=Obj(item);if(TextVal(d,"id")==id&&TextVal(d,"quality")==quality)return true;}return false;
+ }
+ static Dictionary<string,object> MediaAction(string media,string action,Dictionary<string,object> x){
+  string id=TextVal(x,"id"),q=TextVal(x,"quality");
+  if(action=="/api/youtube/start"){
+   if(x.Count!=3||!True(Val(x,"authorized"))||!MatchFull(id,"LAB_[A-Z0-9]{7}")||!MediaChoice(q,"720","1080")||!File.Exists(Path.Combine(labRoot,"media-download-fixture.flag")))throw new FormatException("Fixture download");
+   MediaReap(ref mediaDownload,ref mediaDownloadJob,false);
+   if(mediaDownload!=null||TextVal(MediaJob(media),"state")=="running")throw new IOException("Download busy");
+   MediaEnsureDirectory(media);string jobs=Path.Combine(media,"jobs");MediaEnsureDirectory(jobs);
+   string lib=Path.Combine(media,"library");if(Directory.Exists(lib)){
+    if(!MediaSafeDirectory(lib))throw new IOException("Media library");
+    if(File.Exists(Path.Combine(lib,id+"-"+q,"video.mp4")))throw new IOException("Duplicate media");
+    foreach(var file in Directory.GetFiles(lib)){if(Path.GetFileName(file).EndsWith(" ["+id+"-"+q+"].mp4",StringComparison.Ordinal))throw new IOException("Duplicate media");}
+   }
+   string job=Guid.NewGuid().ToString("N");
+   MediaWrite(media,"last-job.json",new Dictionary<string,object>{{"job",job},{"id",id},{"quality",q},{"created",DateTime.UtcNow.ToString("o")}});
+   // Explicitly offline fixture worker: never download real content during CI.
+   mediaDownload=MediaLaunch(Path.Combine(labRoot,"media-download-fixture.ps1"),"-YoutubeJob "+job+" -YoutubeVideoId "+id+" -YoutubeQuality "+q,ref mediaDownloadJob);
+   return new Dictionary<string,object>{{"ok",true},{"job",job}};
+  }
+  if(action=="/api/youtube/cancel"){
+   string job=TextVal(x,"job");var state=MediaJob(media);
+   if(x.Count!=1||!MatchFull(job,"[a-f0-9]{32}")||TextVal(state,"job")!=job||TextVal(state,"state")!="running"||mediaDownload==null||mediaDownload.HasExited)throw new FormatException("Cancel");
+   string jobs=Path.Combine(media,"jobs"),dir=Path.Combine(jobs,job);
+   if(!MediaSafeDirectory(media)||!MediaSafeDirectory(jobs)||!MediaSafeDirectory(dir))throw new IOException("Job directory");
+   string flag=Path.Combine(dir,"cancel");if(!File.Exists(flag))using(var f=new FileStream(flag,FileMode.CreateNew,FileAccess.Write,FileShare.Read))f.WriteByte(49);
+   return MediaOk();
+  }
+  if(action=="/api/youtube/play-start"){
+   if(x.Count!=2||!MediaEntry(media,id,q))throw new FormatException("Playback entry");
+   MediaExpire();if(mediaPlayback!=null)throw new IOException("Playback busy");
+   string playRoot=Path.Combine(media,"playback");MediaEnsureDirectory(playRoot);
+   mediaPlaySession=Guid.NewGuid().ToString("N");mediaPlayDirectory=Path.Combine(playRoot,mediaPlaySession);MediaEnsureDirectory(mediaPlayDirectory);mediaPlayStarted=DateTime.UtcNow;
+   try{
+    // Reuse the original offline range server; no remote download or media rewrite.
+    mediaPlayback=MediaLaunch(Path.Combine(root,"server.ps1"),"-Port "+Port+" -YoutubePlayback "+mediaPlaySession+" -YoutubeVideoId "+id+" -YoutubeQuality "+q+" -YoutubeParentPid "+Process.GetCurrentProcess().Id,ref mediaPlaybackJob);
+   }catch{MediaStopPlay();throw;}
+   return new Dictionary<string,object>{{"ok",true},{"session",mediaPlaySession},{"state","starting"}};
+  }
+  if(action=="/api/youtube/play-status"||action=="/api/youtube/play-stop"){
+   string session=TextVal(x,"session");if(x.Count!=1||!MatchFull(session,"[a-f0-9]{32}"))throw new FormatException("Playback token");
+   MediaExpire();
+   if(action=="/api/youtube/play-stop"){if(session==mediaPlaySession)MediaStopPlay();return MediaOk();}
+   if(session!=mediaPlaySession||mediaPlayback==null)return new Dictionary<string,object>{{"ok",true},{"state","ended"}};
+   string file=Path.Combine(mediaPlayDirectory,"port");int port;
+   if(MediaSafeFile(file)&&new FileInfo(file).Length<=16&&Int32.TryParse(File.ReadAllText(file).Trim(),out port)&&port>0&&port<=65535&&port!=Port)return new Dictionary<string,object>{{"ok",true},{"state","ready"},{"url","http://127.0.0.1:"+port+"/"+session+"/video.mp4"}};
+   if((DateTime.UtcNow-mediaPlayStarted).TotalSeconds>25){MediaStopPlay();return new Dictionary<string,object>{{"ok",true},{"state","ended"}};}
+   return new Dictionary<string,object>{{"ok",true},{"state","starting"}};
+  }
+  throw new FormatException("Unsupported media action");
+ }
+ static void MediaStatus(Stream s,string path,string method,string site,string origin,string token,byte[] payload){
+  string board="http://127.0.0.1:"+Port,alt="http://localhost:"+Port;
+  if(site!="same-origin"||(origin!=""&&origin!=board&&origin!=alt)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  bool read=path=="/api/youtube/status"&&method=="GET";
+  bool action=method=="POST"&&MediaChoice(path,"/api/youtube/start","/api/youtube/cancel","/api/youtube/play-start","/api/youtube/play-status","/api/youtube/play-stop");
+  if(!read&&!action){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  if(action&&!File.Exists(Path.Combine(labRoot,"media-write-fixture.flag"))){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
   if(!File.Exists(Path.Combine(labRoot,"media-read-fixture.flag"))){Json(s,"503 Service Unavailable","{\"error\":\"media unavailable\"}");return;}
   string media=Path.Combine(labRoot,"local","TeacherToolsMedia");
+  if(action){
+   if((origin!=board&&origin!=alt)||token!=MediaToken){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+   if(payload.Length==0||payload.Length>1024){Json(s,"400 Bad Request","{\"error\":\"size\"}");return;}
+   try{
+    var x=Obj(Serializer().DeserializeObject(Utf8.GetString(payload)));if(x==null)throw new FormatException("Media request");
+    Json(s,"200 OK",Serializer().Serialize(MediaAction(media,path,x)));
+   }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;Json(s,"409 Conflict","{\"error\":\"request rejected or worker busy\"}");}
+   return;
+  }
   bool ready=true;var files=new List<object>();
   try{files=MediaLibrary(media);}catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException))throw;ready=false;}
   Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"token",MediaToken},{"job",MediaJob(media)},{"libraryReady",ready},{"library",files}}));
@@ -1800,7 +1916,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Split('?')[0].Contains("\\")||req[1].Split('?')[0].Contains("%")||req[1].Split('?')[0].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart"||path=="/api/backup/restore"||path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack"||path=="/api/school"||path=="/api/weather/place"||path=="/api/open-web"||path=="/api/open-manager"||path=="/api/open-sheet-copy"||path=="/api/open-sound-settings"||path=="/api/speakers/set"||path=="/api/volume"||path=="/api/share-input"||path=="/api/share-input/restart"||path=="/api/backup/restore"||path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close"||path.StartsWith("/api/youtube/",StringComparison.Ordinal));
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>(path=="/api/backup/restore"&&coinWrites?33554432:8388608)){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -1822,7 +1938,7 @@ internal static class NativeReadServer {
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
    if(coinWrites&&(path=="/api/book-reader/open"||path=="/api/book-reader/status"||path=="/api/book-reader/close")){BookProtocol(s,path,req[1],req[0],site,origin,payload);return;}
-   if(coinWrites&&path.StartsWith("/api/youtube/",StringComparison.Ordinal)){MediaStatus(s,path,req[0],site,origin);return;}
+   if(coinWrites&&path.StartsWith("/api/youtube/",StringComparison.Ordinal)){MediaStatus(s,path,req[0],site,origin,Get(h,"X-TT-Youtube-Token"),payload);return;}
    if(coinWrites&&path=="/api/backup/export"){BackupExportData(s,req[0],site,origin);return;}
    if(coinWrites&&(path=="/api/backup/token"||path=="/api/backup/restore")){BackupRestoreData(s,path,req[0],site,origin,Get(h,"X-TT-Backup-Token"),payload);return;}
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
@@ -1904,7 +2020,7 @@ internal static class NativeReadServer {
    if(coinWrites){ClearAbandonedWrites();RecoverBackup();}
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
-    if(coinWrites&&bookLab!=null){lock(LocalGate){BookExpire();}}
+    if(coinWrites){lock(LocalGate){if(bookLab!=null)BookExpire();MediaExpire();}}
     if(!l.Pending()){Thread.Sleep(20);continue;}
     if(!ClientSlots.Wait(0)){Thread.Sleep(20);continue;}
     TcpClient c;
@@ -1921,7 +2037,7 @@ internal static class NativeReadServer {
    l.Stop();
    // Bounded graceful drain. Never report a clean stop while a writer is active.
    int acquired=0;try{while(acquired<16&&ClientSlots.Wait(10000))acquired++;return acquired==16?0:1;}finally{if(acquired>0)ClientSlots.Release(acquired);}
-  }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();lock(LocalGate){if(bookLab!=null&&!bookLab.Closed)CloseBookStage(bookLab);}}
+  }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();lock(LocalGate){if(bookLab!=null&&!bookLab.Closed)CloseBookStage(bookLab);MediaStopPlay();MediaReap(ref mediaDownload,ref mediaDownloadJob,true);}}
  }
 }
 
