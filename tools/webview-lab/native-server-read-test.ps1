@@ -1461,17 +1461,45 @@ try{
   if((Book-Doc (Book-Status $session POST $sync)).fixtureSeq -ne 2){throw 'Stale command replay'}
   Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$session) POST '' 'same-origin') 200
   if(!(Book-Doc (Book-Status $session)).closed){throw 'Book close state'}
+
+  # 5A-2b1: the actual, pinned runtime bundle, with no child execution.
+  $bundleFlag=Join-Path $crashRoot 'book-bundle-fixture.flag'
+  $bundlePath=Join-Path $crashStore 'asset-book-reader-host.zip'
+  $bundleBytes=[IO.File]::ReadAllBytes($bundlePath)
+  if((Hash-Bytes $bundleBytes).ToLowerInvariant() -cne '20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c'){throw 'Original reader bundle hash'}
+  Set-Content -LiteralPath $bundleFlag 'fixture-only' -Encoding ASCII
+  try{
+   [IO.File]::WriteAllBytes($bundlePath,[byte[]]@(1,2,3))
+   Assert-P (Book-Post $other) 409 '{"error":"native unavailable","reason":"BUNDLE_MISMATCH"}'
+   if(@(Get-ChildItem -LiteralPath $crashRoot -Directory -Filter 'book-stage-*').Count){throw 'Tampered reader bundle staged'}
+  }finally{[IO.File]::WriteAllBytes($bundlePath,$bundleBytes)}
   $fresh=Book-Doc (Book-Post $other)
+  $stagePath=Join-Path $crashRoot ('book-stage-'+$fresh.session)
+  if(!(Test-Path -LiteralPath $stagePath -PathType Container)){throw 'Original reader not staged'}
+  $zip=[IO.Compression.ZipFile]::OpenRead($bundlePath)
+  try{
+   foreach($entry in $zip.Entries){
+    $stream=$entry.Open();$memory=[IO.MemoryStream]::new()
+    try{$stream.CopyTo($memory);$expected=Hash-Bytes $memory.ToArray()}finally{$stream.Dispose();$memory.Dispose()}
+    if((Get-FileHash -LiteralPath (Join-Path $stagePath $entry.FullName)).Hash -cne $expected){throw ('Staged reader bytes '+$entry.FullName)}
+   }
+   if(@(Get-ChildItem -LiteralPath $stagePath -File).Count -ne $zip.Entries.Count){throw 'Extra staged reader files'}
+  }finally{$zip.Dispose()}
+  if(@(Get-Process -Name BookReader -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq (Join-Path $stagePath 'BookReader.exe')}).Count){throw 'Staging unexpectedly launched reader'}
+
   if($fresh.session -ceq $session){throw 'Book session reused after close'}
   Assert-P (Book-Status $session) 404
   Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
   if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Book owner close failed'}
   if(!(Book-Doc (Book-Status $fresh.session)).closed){throw 'Book session survived owner exit'}
+  if(Test-Path -LiteralPath $stagePath){throw 'Book stage survived owner exit'}
+  Write-Host 'PASS original book reader pinned bundle, tamper rejection, exact staged files and owner-exit cleanup without launch'
   Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
   Assert-BackupSnapshot $backupBefore
   Write-Host 'PASS native book fixture actual window owner, retry, single session, command validation, close and owner exit'
  }finally{
   Remove-Item -LiteralPath $bookFlag -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $crashRoot 'book-bundle-fixture.flag') -Force -ErrorAction SilentlyContinue
   if($bookLaunch -and !$bookLaunch.HasExited){$bookLaunch.Kill();$bookLaunch.WaitForExit()}
  }
 
