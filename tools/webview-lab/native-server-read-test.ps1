@@ -1178,6 +1178,55 @@ try{
  }
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $shareBefore[$file])){throw 'Share helper status altered ledger'}}
  Write-Host 'PASS native helper absent/stale/forged/malformed status and offline restart denied, raw/cross-site blocked'
+ # 4E-3b2: actual owning wallpaper launcher on 17451. No legacy server or process launch by HTTP.
+ $shareBin=Join-Path $crashRoot 'share-bin'
+ New-Item -ItemType Directory -Path $shareBin -Force|Out-Null
+ foreach($name in @('Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll')){
+  Copy-Item -LiteralPath (Join-Path $Build $name) -Destination $shareBin
+ }
+ $shareExe=Join-Path $shareBin 'HOJA-Native-Launch-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_SHARE_LAB /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$shareExe" "/reference:$shareBin\Microsoft.Web.WebView2.Core.dll" "/reference:$shareBin\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native share launcher compilation'}
+ $shareLaunch=$null;$shareReady=Join-Path $crashRoot 'native-launch.ready';$shareStop=Join-Path $crashRoot 'native-launch.stop'
+ $shareRequest=Join-Path $crashStore 'share-input-restart.json'
+ function Wait-Share([bool]$running,[bool]$hook){
+  for($i=0;$i -lt 50;$i++){
+   if($shareLaunch.HasExited){throw ('Share launcher exited '+$shareLaunch.ExitCode+' '+(Get-Content (Join-Path $crashRoot 'native-launch.result') -ErrorAction SilentlyContinue))}
+   $st=School-Doc '/api/share-input/status'
+   if($st.running -eq $running -and $st.hook -eq $hook){return $st}
+   Start-Sleep -Milliseconds 200
+  }
+  throw ('Share helper status timeout '+($st|ConvertTo-Json -Compress))
+ }
+ try{
+  Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":true,"cursor":false}') 200
+  $shareLaunch=Start-Process -FilePath $shareExe -ArgumentList '--lab-launch wallpaper' -PassThru
+  $null=$shareLaunch.Handle
+  for($i=0;$i -lt 120 -and !(Test-Path $shareReady);$i++){if($shareLaunch.HasExited){throw ('Share launcher startup failed '+(Get-Content (Join-Path $crashRoot 'native-launch.result') -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
+  if(!(Test-Path $shareReady)){throw 'Share launcher readiness timeout'}
+  $st=Wait-Share $true $true
+  if(!$st.keyboard -or $st.cursor){throw 'Live share settings'}
+  Assert-P (Raw-Request 17451 '/api/share-input/restart' POST '' 'same-origin') 200
+  if(Test-Path $shareRequest){throw 'Running helper must not queue restart'}
+  Set-Content -LiteralPath (Join-Path $crashRoot 'share-helper-stop.fixture') 'stop' -Encoding ASCII
+  $null=Wait-Share $false $false
+  Assert-P (Raw-Request 17451 '/api/share-input/restart' POST '' 'same-origin') 202
+  $st=Wait-Share $true $true
+  if(!$st.keyboard -or $st.cursor){throw 'Restart did not reapply keyboard configuration'}
+  if(Test-Path $shareRequest){throw 'Restart request not consumed'}
+  $disk=Get-Content -LiteralPath $shareStatusFile -Raw|ConvertFrom-Json
+  if($disk.pid -ne $shareLaunch.Id){throw 'Restarted helper changed owner'}
+  Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":false,"cursor":false}') 200
+  $st=Wait-Share $true $false
+  if($st.keyboard -or $st.cursor){throw 'Share helper did not disable'}
+  Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
+  if(!$shareLaunch.WaitForExit(15000) -or $shareLaunch.ExitCode -ne 0){throw 'Share launcher close failed'}
+  if((School-Doc '/api/share-input/status').running -or (Test-Path $shareStatusFile)){throw 'Share helper survives close'}
+  Assert-P (Raw-Request 17451 '/api/share-input/restart' POST '' 'same-origin') 503
+  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $shareBefore[$file])){throw 'Share restart altered ledger'}}
+  Write-Host 'PASS actual native wallpaper helper hook, stop/restart same owner, settings reapply, no-op running and close cleanup'
+ }finally{if($shareLaunch -and !$shareLaunch.HasExited){$shareLaunch.Kill();$shareLaunch.WaitForExit()}}
+
 
 
 
