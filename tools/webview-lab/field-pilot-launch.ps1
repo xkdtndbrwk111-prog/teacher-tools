@@ -109,6 +109,10 @@ try{
   if($managerPage.Content -notmatch '교실 매니저' -or $link.Content -notmatch '127\.0\.0\.1:17451' -or $link.Content -match '127\.0\.0\.1:17439' -or $game.Content -notmatch "DASHBOARD_ORIGIN='http://127.0.0.1:17451'" -or $game.Content -match '127\.0\.0\.1:17439'){throw 'Packaged origins mismatch'}
   if($managerPage.Headers['Content-Security-Policy'] -notmatch 'connect-src.*127\.0\.0\.1:17451' -or $game.Headers['Content-Security-Policy'] -notmatch 'frame-ancestors http://127\.0\.0\.1:17451'){throw 'Static origin isolation policy missing'}
   Write-Host 'PASS packaged local manager/game origins and production manager isolation'
+  if($env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
+   & node $env:HOJA_FIELD_MANAGER_SMOKE
+   if($LASTEXITCODE -ne 0){throw 'Packaged manager browser smoke failed'}
+  }
   Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII
  }
  while(!$board.WaitForExit(500)){if($server.HasExited){throw 'Pilot server exited'};foreach($proc in $static.Values){if($proc.HasExited){throw 'Static pilot server exited'}}}
