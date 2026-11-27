@@ -91,6 +91,8 @@ internal sealed class NativeBoardLaunch : Form {
             }
             Publish();
 #if NATIVE_SHARE_LAB
+            string bookProbe=Path.Combine(root,"book-ui-test.fixture");
+            if(mode=="window"&&File.Exists(bookProbe)){File.Delete(bookProbe);VerifyBookUi();}
             if(mode=="wallpaper"){
                 string pause=Path.Combine(root,"share-helper-stop.fixture");
                 if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
@@ -103,6 +105,60 @@ internal sealed class NativeBoardLaunch : Form {
         }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
     }
 #if NATIVE_SHARE_LAB
+
+    bool bookUiTesting;
+    async Task WaitBookUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<120;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Book UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({open:window.__bookOpen,reply:window.__bookReply,status:window.__bookStatus,dialog:document.getElementById('ttMediaDialog').className})"));
+    }
+    void BookUiState(int page,int saved,int ack,bool valid,bool exit){
+        var state=new System.Collections.Generic.Dictionary<string,object>{{"ready",true},{"closed",false},{"page",page},{"saved",saved},{"total",394},{"status","fixture"},{"manual",false},{"ack",ack},{"owned",true},{"visible",true},{"immersive",!exit},{"exitFull",exit},{"cleanControls",false},{"bookmarkValid",valid},{"seekFailed",false},{"seekPage",0},{"navigationMode","direct"}};
+        string file=Path.Combine(root,"book-state-fixture.json"),tmp=file+".tmp";
+        File.WriteAllText(tmp,new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state),new UTF8Encoding(false));
+        if(File.Exists(file))File.Replace(tmp,file,null);else File.Move(tmp,file);
+    }
+    async void VerifyBookUi(){
+        if(bookUiTesting)return;
+        bookUiTesting=true;
+        string result=Path.Combine(root,"book-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            await core.ExecuteScriptAsync("(()=>{window.__bookFetch=window.fetch;window.__bookOpen=null;window.__bookReply=null;window.__bookStatus=null;window.__bookClose=false;window.fetch=async function(input,init){const p=String(input);if(p.startsWith('/api/book-reader/')&&init?.body){const x=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(init.body),c=>c.charCodeAt(0))));if(p.includes('/open'))window.__bookOpen=x;if(p.includes('/status'))window.__bookStatus=x;}const r=await window.__bookFetch.call(this,input,init);if(p.includes('/api/book-reader/status'))window.__bookReply=await r.clone().json();if(p.includes('/api/book-reader/close')&&r.ok)window.__bookClose=true;return r;};localStorage.setItem('tt-books-v1:mark:DAHbOZ_XOJI',JSON.stringify({page:125,at:1}));localStorage.removeItem('tt-books-v1:total:DAHbOZ_XOJI');document.getElementById('ttMediaOpen').click()})()");
+            await WaitBookUi("!!document.querySelector('[data-media-tool=books]')","media menu");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=books]').click()");
+            await WaitBookUi("!!document.querySelector('[data-book-id=DAHbOZ_XOJI] button')","book list");
+            await core.ExecuteScriptAsync("document.querySelector('[data-book-id=DAHbOZ_XOJI] button').click()");
+            await WaitBookUi("window.__bookOpen?.start===125&&window.__bookOpen.saved===125&&window.__bookOpen.interactive===true&&window.__bookOpen.layout.immersive===1&&window.__bookReply?.ok===true&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-head')).display==='none'&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-foot')).display==='none'","resume and automatic full-screen");
+            BookUiState(2,2,0,false,false);
+            await WaitBookUi("window.__bookReply?.page===2&&window.__bookReply.bookmarkValid===false&&JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===125","unconfirmed bookmark preserved");
+            BookUiState(126,126,0,true,false);
+            await WaitBookUi("JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===126","confirmed bookmark stored");
+            BookUiState(126,126,0,true,true);
+            await WaitBookUi("!document.getElementById('ttMediaDialog').classList.contains('mm-full')&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-foot')).display!=='none'&&window.__bookStatus?.layout.immersive===0","reader Escape restores controls");
+            BookUiState(126,126,0,true,false);
+            await core.ExecuteScriptAsync("(()=>{const p=document.querySelector('#ttMediaDialog .mm-book-page');p.focus();p.value='200';p.dispatchEvent(new Event('input',{bubbles:true}));p.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})()");
+            await WaitBookUi("window.__bookStatus?.command?.kind==='seek'&&window.__bookStatus.command.page===200&&window.__bookReply?.fixtureSeq===1","numeric seek request accepted");
+            BookUiState(200,200,1,true,false);
+            await WaitBookUi("JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===200&&document.querySelector('#ttMediaDialog .mm-book-page').value==='200'&&window.__bookReply?.ack===1&&window.__bookStatus?.command===null","seek acknowledged and saved");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitBookUi("window.__bookClose===true&&!document.getElementById('ttMediaDialog').open","close session");
+            File.Delete(Path.Combine(root,"book-state-fixture.json"));
+            await core.ExecuteScriptAsync("window.__bookOpen=null;window.__bookReply=null;document.getElementById('ttMediaOpen').click()");
+            await WaitBookUi("!!document.querySelector('[data-media-tool=books]')","reopen media");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=books]').click()");
+            await WaitBookUi("!!document.querySelector('[data-book-id=DAHbOZ_XOJI] button')","reopen book list");
+            await core.ExecuteScriptAsync("document.querySelector('[data-book-id=DAHbOZ_XOJI] button').click()");
+            await WaitBookUi("window.__bookOpen?.start===200&&window.__bookOpen.saved===200&&window.__bookReply?.ok===true","reopen saved page");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitBookUi("!document.getElementById('ttMediaDialog').open","final close");
+            File.WriteAllText(result,"PASS actual native dashboard book UI: resume, hidden controls, unconfirmed/confirmed bookmark, Escape, seek ack, close and reopen (synthetic reader state)");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        finally{try{await core.ExecuteScriptAsync("if(window.__bookFetch)window.fetch=window.__bookFetch");}catch{}bookUiTesting=false;}
+    }
     bool shareUiTesting;
     async Task WaitShareUi(string expression,string label){
         var core=browser.CoreWebView2;
