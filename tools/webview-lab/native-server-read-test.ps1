@@ -345,6 +345,64 @@ try{
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Crash server final stop'}
  Write-Host 'PASS all six native atomic-write process-crash cases, restart readback and scoped staging cleanup'
+ # 4B-4b: full original board and pinned real mini-game, with native HTTP only.
+ $uiExe=Join-Path $Build 'HOJA-Native-Storage-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB /target:winexe /platform:x64 "/out:$uiExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native storage UI compilation failed'}
+ $crashRoot=Join-Path $LabRoot ('hoja-webview-lab-'+[guid]::NewGuid().ToString('N'))
+ $env:HOJA_LAB_ROOT=$crashRoot;$env:LOCALAPPDATA=Join-Path $crashRoot 'local'
+ $crashStore=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+ New-Item -ItemType Directory -Path $crashStore -Force|Out-Null
+ Get-ChildItem -LiteralPath $Runtime -File|ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $crashStore}
+ foreach($name in @('board-mode.json','notice.log')){Remove-Item -LiteralPath (Join-Path $crashStore $name) -Force -ErrorAction SilentlyContinue}
+ $stopFile=Join-Path $crashRoot 'native-read-server.stop'
+ $readyFile=Join-Path $crashRoot 'native-read-server.ready'
+ $control=Join-Path $crashRoot 'native-crash-control'
+ $reached=Join-Path $crashRoot 'native-crash-reached'
+ Set-Content (Join-Path $crashRoot 'coin-write-fixture.flag') 'fixture' -Encoding ASCII
+ $at=[DateTime]::UtcNow.ToString('o')
+ $seed=@('{"type":"LAB_SENTINEL"}',(@{type='setting';cls='LAB_CLASS';at=$at;enabled=$true;weeklyOn=$false;cap=20}|ConvertTo-Json -Compress),(@{type='grant';cls='LAB_CLASS';at=$at;id='lab1';name='LAB_STUDENT';amount=5;source='lab-seed'}|ConvertTo-Json -Compress),(@{type='grant';cls='LAB_CLASS';at=$at;id='lab2';name='LAB_STUDENT_TWO';amount=5;source='lab-seed'}|ConvertTo-Json -Compress))
+ $utf8=[Text.UTF8Encoding]::new($false)
+ [IO.File]::WriteAllText((Join-Path $crashStore 'coins.log'),($seed -join [Environment]::NewLine)+[Environment]::NewLine,$utf8)
+ [IO.File]::WriteAllText((Join-Path $crashStore 'seating.json'),'{"classId":"LAB_CLASS","className":"LAB_CLASS","students":[{"id":"lab1","name":"LAB_STUDENT"},{"id":"lab2","name":"LAB_STUDENT_TWO"}],"assignments":[{"studentId":"lab1","seatId":"s1"},{"studentId":"lab2","seatId":"s2"}],"layout":{"rows":1,"cols":2}}',$utf8)
+ $seatHash=(Get-FileHash (Join-Path $crashStore 'seating.json')).Hash
+ if($legacy -and !$legacy.HasExited){$legacy.Kill();$legacy.WaitForExit()}
+ foreach($port in @(17449,17450,17452)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Unexpected legacy listener $port"}}
+ $native=Start-CrashServer
+ $ui=$null
+ try{
+  $result=Join-Path $crashRoot 'result.txt';$profile=Join-Path $crashRoot 'profile'
+  $ui=Start-Process -FilePath $uiExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$ui.Handle
+  if(!$ui.WaitForExit(180000)){throw 'Native storage UI timed out'}
+  if(Test-Path (Join-Path $crashRoot 'real-game.trace')){Get-Content (Join-Path $crashRoot 'real-game.trace')}
+  if(!(Test-Path $result)){throw 'Native storage UI missing result'}
+  Get-Content $result
+  if($ui.ExitCode -ne 0 -or !(Test-Path (Join-Path $crashRoot 'real-game.pass'))){throw 'Native storage UI failed'}
+  if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17451 -State Listen).OwningProcess -ne $native.Id){throw 'Native storage listener changed'}
+  $events=@(Get-Content (Join-Path $crashStore 'coins.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
+  $spends=@($events|Where-Object {$_.type -eq 'spend'})
+  $refunds=@($events|Where-Object {$_.type -eq 'refund'})
+  if($events.Count -ne 15 -or $spends.Count -ne 5 -or $refunds.Count -ne 5){throw 'Native UI ledger count'}
+  foreach($event in $spends){if(@($refunds|Where-Object {$_.charge -eq $event.charge -and $_.id -eq $event.id -and $_.amount -eq -$event.amount}).Count -ne 1){throw 'Native UI refund match'}}
+  $duo=@($spends|Group-Object charge|Where-Object {$_.Count -eq 2})
+  if($duo.Count -ne 1 -or @($duo[0].Group|Where-Object {$_.amount -ne -0.5}).Count -ne 0 -or (($duo[0].Group.id|Sort-Object) -join ',') -ne 'lab1,lab2'){throw 'Native UI duo debit denomination'}
+  $solo=@($spends|Group-Object charge|Where-Object {$_.Count -eq 1}|ForEach-Object {$_.Group})
+  if($solo.Count -ne 3 -or @($solo|Where-Object {$_.id -ne 'lab1' -or $_.amount -ne -1}).Count -ne 0){throw 'Native UI solo debit denomination'}
+  foreach($person in @(@{id='lab1';balance=14},@{id='lab2';balance=10})){
+   $sum=($events|Where-Object {$_.cls -eq 'LAB_CLASS' -and $_.id -eq $person.id}|Measure-Object amount -Sum).Sum
+   if(($sum*2) -ne $person.balance){throw 'Native UI final balance'}
+  }
+  if((Get-FileHash (Join-Path $crashStore 'seating.json')).Hash -cne $seatHash){throw 'Native UI seat mutated'}
+  $notice=@(Get-Content (Join-Path $crashStore 'notice.log') -Encoding UTF8|ForEach-Object {$_|ConvertFrom-Json})
+  if($notice.Count -ne 1 -or $notice[0].id -ne 'lab-ui' -or $notice[0].text -ne 'LAB_NOTICE'){throw 'Native UI notice ledger'}
+  Write-Host 'PASS actual WebView2 and pinned real mini-game native server only: exact 15 rows, solo/duo/timed refunds, final balances and unchanged seat, browser notice write'
+ }finally{
+  if($ui -and !$ui.HasExited){$ui.Kill();$ui.WaitForExit()}
+ }
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native UI server stop'}
+
 
 
 }finally{

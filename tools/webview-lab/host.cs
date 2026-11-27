@@ -8,7 +8,13 @@ using Microsoft.Web.WebView2.WinForms;
 
 // Phase 1 research only. No production directory, updater, host objects or native bridge.
 internal sealed class Lab : Form {
-    const string Origin = "http://127.0.0.1:17449";
+#if NATIVE_STORAGE_LAB
+    const int LabPort=17451;
+    const string Origin="http://127.0.0.1:17451";
+#else
+    const int LabPort=17449;
+    const string Origin="http://127.0.0.1:17449";
+#endif
     readonly WebView2 view = new WebView2();
     readonly string profile, result;
     string fixture, realGame;
@@ -25,11 +31,11 @@ internal sealed class Lab : Form {
     internal int ExitCode { get { return exitCode; } }
     internal Lab(string profile, string result) {
         this.profile=profile; this.result=result;
-        fixture=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mini-fixture.html"));
+        fixture=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mini-fixture.html")).Replace("http://127.0.0.1:17449",Origin);
         realGame=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"real-mini.html"));
         string original="const DASHBOARD_ORIGIN='http://127.0.0.1:17439';";
         Require(realGame.IndexOf(original,StringComparison.Ordinal)>=0&&realGame.IndexOf(original,StringComparison.Ordinal)==realGame.LastIndexOf(original,StringComparison.Ordinal),"exact real game origin anchor");
-        realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='http://127.0.0.1:17449';");
+        realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='"+Origin+"';");
         // Only the lesson guard's clock is controllable in this isolated test.
         string clockAnchor="const now=Date.now(),state=lessonPhase(lessonStart,now);";
         Require(realGame.IndexOf(clockAnchor,StringComparison.Ordinal)>=0&&realGame.IndexOf(clockAnchor,StringComparison.Ordinal)==realGame.LastIndexOf(clockAnchor,StringComparison.Ordinal),"exact lesson clock anchor");
@@ -57,7 +63,7 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     }
     internal static bool Local(string raw) {
         Uri u;
-        return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="http" && u.Host=="127.0.0.1" && u.Port==17449 && String.IsNullOrEmpty(u.UserInfo);
+        return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="http" && u.Host=="127.0.0.1" && u.Port==LabPort && String.IsNullOrEmpty(u.UserInfo);
     }
     static bool GameFixture(string raw) {
         Uri u; return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="https" && u.Host=="xkdtndbrwk111-prog.github.io" && u.Port==443 && String.IsNullOrEmpty(u.UserInfo) && u.AbsolutePath=="/hoja-minigames/" && u.Query.StartsWith("?mode=board&embed=dashboard&coin=4&fresh=",StringComparison.Ordinal);
@@ -65,6 +71,9 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_STORAGE_LAB
+        if(p=="/api/notice")return method=="GET"||method=="POST";
+#endif
         if(method=="POST")return p=="/api/coins" || p=="/api/seating" || p=="/api/presentation/ack";
         if(method!="GET" && method!="HEAD")return false;
         if(p.StartsWith("/api/",StringComparison.Ordinal))return p=="/api/coins"||p=="/api/seating"||p=="/api/board-status"||p=="/api/theme"||p=="/api/presentation/poll";
@@ -128,13 +137,23 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
         await VerifyGame(core);
         await VerifyRealGame(core);
+#if NATIVE_STORAGE_LAB
+        // 4B-4b: no legacy API fallback. Presentation remains Phase 4C.
+        await core.ExecuteScriptAsync(@"(async()=>{try{const r=await fetch('/api/notice',{method:'POST',headers:{'Content-Type':'text/plain'},body:btoa(unescape(encodeURIComponent(JSON.stringify({id:'lab-ui',text:'LAB_NOTICE',done:false}))))});const text=await (await fetch('/api/notice')).text();document.documentElement.dataset.labNotice=r.ok&&text.includes('LAB_NOTICE')?'ok':'bad'}catch(e){document.documentElement.dataset.labNotice='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labNotice||''")=="\"ok\"","actual WebView2 notice API write/read");
+#else
         await VerifyManager(core);
+#endif
         Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
         SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
+#if NATIVE_STORAGE_LAB
+        Finish(0,"PASS: actual WebView2 dashboard and pinned real mini-game against native C# storage server, solo/duo trusted input, coin grant/spend/refund/revision, lesson deadline/return, notice browser write/read");
+#else
         Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; real timetable-driven lesson end; Chrome manager seating and offline seating/PE presentation");
+#endif
     }
     async Task<string> WaitResult(CoreWebView2 core,string expression) {
         for(int i=0;i<100;i++){
