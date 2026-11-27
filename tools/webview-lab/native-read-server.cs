@@ -1730,6 +1730,12 @@ internal static class NativeReadServer {
    if(x.Count!=0)throw new FormatException("Library folder");
    MediaEnsureDirectory(media);string lib=Path.Combine(media,"library");MediaEnsureDirectory(lib);
    // No actual Explorer side effect in CI. Record only the fixed application directory operation.
+#if NATIVE_FIELD_PILOT
+   if(File.Exists(Path.Combine(labRoot,"field-system-live.flag"))){
+    using(var p=Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"explorer.exe"),"\""+lib+"\""){UseShellExecute=false})){}
+    return MediaOk();
+   }
+#endif
    if(!File.Exists(Path.Combine(labRoot,"media-folder-fixture.flag")))throw new IOException("Folder fixture disabled");
    File.WriteAllText(Path.Combine(labRoot,"media-folder-opened.fixture"),"library",Utf8);return MediaOk();
   }
@@ -1873,10 +1879,14 @@ internal static class NativeReadServer {
   lock(AudioGate){
    try{
     var fixture=ReadAudioFixture();
-    if(!read&&fixture==null){Json(s,"503 Service Unavailable","{\"error\":\"audio mutation disabled\"}");return;}
+    bool fieldAudio=false;
+#if NATIVE_FIELD_PILOT
+    fieldAudio=File.Exists(Path.Combine(labRoot,"field-audio-live.flag"))&&site=="same-origin"&&(origin=="http://127.0.0.1:"+Port||origin=="http://localhost:"+Port);
+#endif
+    if(!read&&fixture==null&&!fieldAudio){Json(s,"503 Service Unavailable","{\"error\":\"audio mutation disabled\"}");return;}
     var devices=new List<object>();
     if(fixture!=null){foreach(var item in Arr(Val(fixture,"list")))devices.Add(item);}
-    else if(path=="/api/speakers"){foreach(var d in TTSpeakers.All())devices.Add(new Dictionary<string,object>{{"id",d.Id},{"name",d.Name},{"current",d.IsDefault}});}
+    else if(path=="/api/speakers"||path=="/api/speakers/set"){foreach(var d in TTSpeakers.All())devices.Add(new Dictionary<string,object>{{"id",d.Id},{"name",d.Name},{"current",d.IsDefault}});}
     if(path=="/api/speakers"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"list",devices}}));return;}
     Dictionary<string,object> body=null;
     if(!read){
@@ -1888,9 +1898,10 @@ internal static class NativeReadServer {
      string id=TextVal(body,"id");bool found=false;
      foreach(var item in devices)if(TextVal(Obj(item),"id")==id)found=true;
      if(id==""||!found)throw new FormatException("Speaker not found");
-     foreach(var item in devices){var d=Obj(item);d["current"]=TextVal(d,"id")==id;}
-     fixture["list"]=devices;
-     AtomicWrite("audio-lab.json",Utf8.GetBytes(Serializer().Serialize(fixture)));
+     if(fixture!=null){
+      foreach(var item in devices){var d=Obj(item);d["current"]=TextVal(d,"id")==id;}
+      fixture["list"]=devices;AtomicWrite("audio-lab.json",Utf8.GetBytes(Serializer().Serialize(fixture)));
+     }else TTSpeakers.Set(id);
      Json(s,"200 OK","{\"ok\":true}");return;
     }
     double level;bool muted;
@@ -1902,8 +1913,14 @@ internal static class NativeReadServer {
      double desired;
      if(Val(body,"level")!=null){if(!Coordinate(Val(body,"level"),out desired))throw new FormatException("Volume level");level=Math.Max(0,Math.Min(100,desired));}
      if(Val(body,"muted")!=null){if(!(Val(body,"muted") is bool))throw new FormatException("Volume mute");muted=True(Val(body,"muted"));}
-     fixture["level"]=level;fixture["muted"]=muted;
-     AtomicWrite("audio-lab.json",Utf8.GetBytes(Serializer().Serialize(fixture)));
+     if(fixture!=null){
+      fixture["level"]=level;fixture["muted"]=muted;AtomicWrite("audio-lab.json",Utf8.GetBytes(Serializer().Serialize(fixture)));
+     }else{
+      // Both fields validated before changing the active physical endpoint.
+      if(Val(body,"level")!=null)TTVolume.SetLevel((float)(level/100));
+      if(Val(body,"muted")!=null)TTVolume.SetMute(muted);
+      level=TTVolume.Level()*100;muted=TTVolume.Muted();
+     }
     }
     Json(s,"200 OK",Serializer().Serialize(AudioVolume(level,muted)));
    }catch(Exception e){
