@@ -110,6 +110,18 @@ internal static class NativeReadServer {
   }
   AtomicWrite("seating.json",next);Json(s,"200 OK","{\"ok\":true}");
  }
+ static void AppendNotice(Stream s,byte[] payload){
+  byte[] next;
+  try{
+   string text=Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)));
+   if(Obj(Serializer().DeserializeObject(text))==null)throw new FormatException("Notice object");
+   byte[] old=Read("notice.log")??new byte[0];
+   byte[] append=Utf8.GetBytes(text+"\n");
+   if(old.LongLength+append.LongLength>64L*1024*1024)throw new FormatException("Notice log limit");
+   using(var m=new MemoryStream()){m.Write(old,0,old.Length);m.Write(append,0,append.Length);next=m.ToArray();}
+  }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;Json(s,"502 Bad Gateway","{\"code\":\"UPSTREAM_ERROR\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");return;}
+  AtomicWrite("notice.log",next);Json(s,"200 OK","{\"ok\":true}");
+ }
  static void AppendCoins(Stream s,Dictionary<string,string> h,byte[] payload){
   // One accept loop serializes the revision comparison and the durable atomic replacement.
   byte[] old=Read("coins.log")??new byte[0];
@@ -150,7 +162,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -163,10 +175,14 @@ internal static class NativeReadServer {
    if(write){
     if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
     if(path=="/api/roster"&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-    if(path=="/api/coins")AppendCoins(s,h,payload);else SaveSeating(s,payload,path=="/api/roster");return;
+    if(path=="/api/coins")AppendCoins(s,h,payload);else if(path=="/api/notice")AppendNotice(s,payload);else SaveSeating(s,payload,path=="/api/roster");return;
    }
    if(req[0]!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
    if(path=="/health"){Json(s,"200 OK","{\"service\":\"teacher-tools-local\",\"version\":493,\"release\":\""+release+"\"}");return;}
+   if(path=="/api/notice"){
+    if((site!=""&&site!="same-origin")||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+    Reply(s,"200 OK","text/plain; charset=utf-8",Read("notice.log")??new byte[0]);return;
+   }
    if(path=="/api/coins"||path=="/api/seating"){
     if((site!=""&&site!="same-origin")||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
     bool coin=path=="/api/coins";byte[] data=Read(coin?"coins.log":"seating.json");string extra=(coin?"X-TT-Coin-Revision: ":"X-TT-Seating-Revision: ")+Sha(data??new byte[0])+"\r\n";

@@ -68,14 +68,14 @@ try{
   for($i=0;$i -lt 80;$i++){if($proc.HasExited){throw ('Server exited port '+$port+' code '+$proc.ExitCode+' '+(Get-Content (Join-Path $LabRoot 'native-read-err.log') -Raw -ErrorAction SilentlyContinue))};try{if((Raw-Request $port '/health').status -eq 'HTTP/1.1 200 OK'){$ok=$true;break}}catch{};Start-Sleep -Milliseconds 250}
   if(!$ok -or (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen).OwningProcess -ne $proc.Id){throw 'Server ownership/readiness failure'}
  }
- $routes=@('/health','/','/index.html','/seating-inbox','/coins.js','/coins-ui.js','/update-ui.js','/podo.js','/handmade-paper.png','/museum-clouds/sky','/museum-clouds/far','/museum-clouds/near','/museum-sway/base/spring','/museum-sway/sheet/summer','/museum-sway/sheet/winter/left','/api/coins','/api/seating','/unknown')
+ $routes=@('/health','/','/index.html','/seating-inbox','/coins.js','/coins-ui.js','/update-ui.js','/podo.js','/handmade-paper.png','/museum-clouds/sky','/museum-clouds/far','/museum-clouds/near','/museum-sway/base/spring','/museum-sway/sheet/summer','/museum-sway/sheet/winter/left','/api/coins','/api/seating','/api/notice','/unknown')
  foreach($route in $routes){
   $a=Raw-Request 17449 $route;$b=Raw-Request 17450 $route
   if($a.status -cne $b.status -or $a.hash -cne $b.hash){throw "Parity mismatch $route"}
   foreach($key in @('Content-Type','Cache-Control','X-Content-Type-Options','X-TT-Coin-Revision','X-TT-Seating-Revision')){if($a.headers[$key] -cne $b.headers[$key]){throw "Header parity mismatch $route $key"}}
   Write-Host "PASS native read parity $route"
  }
- foreach($route in @('/api/coins','/api/seating')){
+ foreach($route in @('/api/coins','/api/seating','/api/notice')){
   foreach($case in @('foreign-host','cross-site','foreign-origin','post')){
    Write-Host "CHECK native guard $route $case"
    $res=switch($case){'foreign-host'{Raw-Request 17450 $route GET 'evil.invalid'}'cross-site'{Raw-Request 17450 $route GET '' 'cross-site'}'foreign-origin'{Raw-Request 17450 $route GET '' '' 'https://evil.invalid'}'post'{Raw-Request 17450 $route POST '' 'same-origin'}}
@@ -83,7 +83,7 @@ try{
    if($res.status -ne $expected){throw "Native guard failed $route $case"}
   }
  }
- foreach($route in @('/coins.log','/seating.json','/server.ps1','/release.json','/native-profile','/../coins.log','/%2e%2e/coins.log')){
+ foreach($route in @('/coins.log','/seating.json','/notice.log','/server.ps1','/release.json','/native-profile','/../coins.log','/%2e%2e/coins.log')){
   Write-Host "CHECK native private path $route"
   if((Raw-Request 17450 $route).status -notmatch '^HTTP/1.1 (400|404) '){throw "Native private file exposed $route"}
  }
@@ -225,11 +225,47 @@ try{
  }
  if((Raw-Request 17451 '/api/coins').hash -cne $after.hash){throw 'Roster altered coins'}
  if((Coin-Post 17451 $batch $after.headers['X-TT-Coin-Revision'] $seedRev).status -ne 'HTTP/1.1 409 Conflict'){throw 'Old seat revision not rejected after roster'}
+ # 4B-3: notice log parity, absent file, existing file, Unicode and invalid requests.
+ foreach($port in @(17451,17452)){
+  $path=Join-Path $stores[$port] 'notice.log'
+  if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}
+  $empty=Raw-Request $port '/api/notice'
+  if($empty.status -ne 'HTTP/1.1 200 OK' -or $empty.body.Length -ne 0){throw "Notice absent file $port"}
+ }
+ $notice1='{"id":"lab-1","text":"내일 준비물: 색연필 🎨","done":false}'
+ $notice2='{"id":"lab-1","text":"수정한 알림","done":true}'
+ foreach($case in @('create','cross-site','invalid-json','append')){
+  $before=(Raw-Request 17451 '/api/notice').hash
+  $answers=@()
+  foreach($port in @(17451,17452)){
+   $response=switch($case){
+    'create'{Seat-Post $port '/api/notice' $notice1}
+    'cross-site'{Seat-Post $port '/api/notice' $notice2 'cross-site'}
+    'invalid-json'{Seat-Post $port '/api/notice' '{"id":'}
+    'append'{Seat-Post $port '/api/notice' $notice2}
+   }
+   $answers+=@($response)
+  }
+  $expected=switch($case){'cross-site'{403}'invalid-json'{502}default{200}}
+  if($answers[0].status -notmatch ("^HTTP/1.1 "+$expected+" ") -or $answers[0].status -cne $answers[1].status -or $answers[0].hash -cne $answers[1].hash){throw "Notice POST parity $case"}
+  $n=Raw-Request 17451 '/api/notice';$l=Raw-Request 17452 '/api/notice'
+  if($n.hash -cne $l.hash){throw "Notice ledger parity $case"}
+  if($expected -ne 200 -and $n.hash -cne $before){throw "Denied notice altered file $case"}
+  Write-Host "PASS native notice $case"
+ }
+ $noticeRaw=Raw-Request 17451 '/api/notice'
+ if([Text.Encoding]::UTF8.GetString($noticeRaw.body) -cne ($notice1+[char]10+$notice2+[char]10)){throw 'Notice raw bytes mismatch'}
+ if((Raw-Request 17451 '/api/notice' GET '' 'cross-site').status -ne 'HTTP/1.1 403 Forbidden'){throw 'Notice cross-site read'}
+ if((Raw-Request 17451 '/notice.log').status -ne 'HTTP/1.1 404 Not Found'){throw 'Notice raw file exposed'}
+ if((Raw-Request 17451 '/api/coins').hash -cne $after.hash){throw 'Notice changed coins'}
+ Write-Host 'PASS native notice UTF8 append parity and protected read'
  $persist=(Raw-Request 17451 '/api/seating').hash
  Set-Content (Join-Path $roots[17451] 'native-read-server.stop') 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Coin server clean stop'}
  if((Get-FileHash (Join-Path $stores[17451] 'seating.json')).Hash -cne $persist){throw 'Seat persisted hash mismatch'}
+ if((Get-FileHash (Join-Path $stores[17451] 'notice.log')).Hash -cne $noticeRaw.hash){throw 'Notice persisted hash mismatch'}
  Write-Host 'PASS native seating/roster geometry, exclusions, class isolation, stale seat and coin preservation'
+ Write-Host 'PASS native notice exact persisted bytes'
 
 }finally{
  foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
