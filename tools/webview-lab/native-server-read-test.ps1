@@ -401,6 +401,8 @@ try{
   if($ui -and !$ui.HasExited){$ui.Kill();$ui.WaitForExit()}
  }
  # 4C-1: manager connection and theme contract. No presentation readiness claim.
+ # Actual dashboard can now poll presentation; wait for the last live poll to expire.
+ Start-Sleep -Milliseconds 5100
  $manager='https://xkdtndbrwk111-prog.github.io'
  function Status-Doc{
   $r=Raw-Request 17451 '/api/board-status' GET '' 'cross-site' $manager
@@ -441,8 +443,6 @@ try{
  }
  Write-Host 'PASS native board status heartbeat/mode/screen, manager CORS/preflight, sanitized theme and denied publish'
  # 4C-2: transient presentation protocol and exact offline ZIP asset contract.
- # The real board may have polled during the previous UI case; wait for readiness to expire.
- Start-Sleep -Milliseconds 5100
  $manager='https://xkdtndbrwk111-prog.github.io'
  $boardOrigin='http://127.0.0.1:17451'
  function PReq([string]$route,[string]$method='GET',[string]$payload='', [switch]$Board){
