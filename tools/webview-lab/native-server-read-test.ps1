@@ -1609,22 +1609,7 @@ try{
   Remove-Item -LiteralPath $processFlag -Force
   Write-Host 'PASS actual pinned reader offline process launch, exact owner request and command, duplicate rejection, close/reopen and autonomous owner-exit cleanup'
 
-  # 5A-3b: execute the unchanged pinned binary's own WebView2 fixture,
-  # not a reimplementation of the page/bookmark/immersive algorithms.
-  foreach($case in @(@{name='immersive';request=@{url='';title='Fixture';pages=5;start=3;saved=0};expected=3;interactive=$false},@{name='almond-resume';request=@{url='https://canva.link/9qxk3zuhh93ts2s';title='Almond';interactive=1;pages=394;start=125;saved=125};expected=125;interactive=$true})){
-   $fixtureDir=Join-Path $crashRoot ('book-selftest-'+$case.name)
-   [IO.Compression.ZipFile]::ExtractToDirectory($bundlePath,$fixtureDir)
-   [IO.File]::WriteAllText((Join-Path $fixtureDir 'request.json'),($case.request|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
-   $probe=Start-Process -FilePath (Join-Path $fixtureDir 'BookReader.exe') -ArgumentList ('--self-test "'+$fixtureDir+'"') -PassThru
-   $null=$probe.Handle
-   if(!$probe.WaitForExit(35000)){try{$probe.Kill();$probe.WaitForExit()}catch{};throw ('Original BookReader self-test timeout '+$case.name)}
-   if($probe.ExitCode -ne 0){throw ('Original BookReader self-test failed '+$case.name)}
-   $actual=Get-Content -LiteralPath (Join-Path $fixtureDir 'state.json') -Raw|ConvertFrom-Json
-   if($actual.page -ne $case.expected -or $actual.saved -ne $case.expected -or !$actual.closed -or ($case.interactive -and !$actual.bookmarkValid)){throw ('Original BookReader bookmark/immersive mismatch '+$case.name)}
-   Write-Host ('PASS pinned BookReader original WebView2 '+$case.name+' page '+$case.expected+' bookmark and close')
-  }
-
-
+  # Original reader self-tests run as a separate required Windows CI job.
 
   # 5A-3c: real native dashboard, real HTTP protocol, explicitly synthetic reader state.
   # Do not start an external Canva session or mutate the original dashboard.
