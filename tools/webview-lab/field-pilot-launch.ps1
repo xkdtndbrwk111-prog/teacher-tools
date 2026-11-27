@@ -74,7 +74,22 @@ try{
  $boardReady=Join-Path $root 'native-launch.ready'
  for($i=0;$i -lt 240 -and !(Test-Path -LiteralPath $boardReady);$i++){if($board.HasExited -or $server.HasExited){throw ('Pilot launch failed: '+(Get-Content -LiteralPath (Join-Path $root 'native-launch.result') -ErrorAction SilentlyContinue))};Start-Sleep -Milliseconds 250}
  if(!(Test-Path -LiteralPath $boardReady)){throw 'Pilot dashboard readiness timeout'}
- if($Smoke){Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII}
+ if($Smoke){
+  foreach($name in @('field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','neis-live.flag','book-state-fixture.flag','media-download-fixture.flag','audio-fixture.flag')){
+   if(Test-Path -LiteralPath (Join-Path $root $name)){throw ('Unexpected field activation: '+$name)}
+  }
+  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'='http://127.0.0.1:17451'}
+  $health=Invoke-RestMethod -Uri 'http://127.0.0.1:17451/health' -TimeoutSec 3
+  if($health.service -cne 'teacher-tools-local'){throw 'Field service identity'}
+  $media=Invoke-RestMethod -Uri 'http://127.0.0.1:17451/api/youtube/status' -Headers $headers -TimeoutSec 3
+  if(!$media.ok -or $media.job.state -ne 'idle' -or $media.token -cnotmatch '^[a-f0-9]{32}$'){throw 'Field default media state'}
+  try{
+   Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17451/api/open-manager' -Headers $headers -ContentType 'text/plain' -TimeoutSec 3|Out-Null
+   throw 'Published manager unexpectedly accepted'
+  }catch{if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 409){throw}}
+  Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII
+  Write-Host 'PASS field default activation guards and published manager isolation'
+ }
  while(!$board.WaitForExit(500)){if($server.HasExited){throw 'Pilot server exited'}}
  if($board.ExitCode -ne 0){throw "Pilot launcher exit: $($board.ExitCode)"}
  Write-Host 'PASS isolated field pilot dashboard launch and close'
