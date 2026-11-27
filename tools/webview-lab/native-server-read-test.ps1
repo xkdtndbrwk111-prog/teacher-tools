@@ -1418,6 +1418,64 @@ try{
  if(Test-Path (Join-Path $crashStore 'book-reader-sessions')){throw 'Validation unexpectedly created book session'}
  Write-Host 'PASS native book protocol Canva allowlist, layout/page bounds, exact interactive link, method/origin and unavailable owner without process launch'
 
+ # 5A-2a: use real native window ownership but a session model only.
+ $bookFlag=Join-Path $crashRoot 'book-session-fixture.flag'
+ $bookLaunch=$null
+ function Book-Status([string]$token,[string]$method='GET',$doc=$null){
+  $payload=if($null -eq $doc){''}else{B64 ($doc|ConvertTo-Json -Depth 8 -Compress)}
+  return Raw-Request 17451 ('/api/book-reader/status?session='+$token) $method '' 'same-origin' '' $payload
+ }
+ function Book-Doc($response){
+  Assert-P $response 200
+  return ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($response.body))
+ }
+ try{
+  Remove-Item -LiteralPath $shareReady,$shareStop -Force -ErrorAction SilentlyContinue
+  $bookLaunch=Start-Process -FilePath $shareExe -ArgumentList '--lab-launch window' -PassThru
+  $null=$bookLaunch.Handle
+  for($i=0;$i -lt 120 -and !(Test-Path $shareReady);$i++){
+   if($bookLaunch.HasExited){throw ('Book owner startup failed '+$bookLaunch.ExitCode)}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $shareReady)){throw 'Book owner readiness timeout'}
+  Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"BUNDLE_MISMATCH"}'
+  Set-Content -LiteralPath $bookFlag 'fixture-only' -Encoding ASCII
+  $opened=Book-Doc (Book-Post $book)
+  $session=$opened.session
+  if(!$opened.ok -or $session -cnotmatch '^[a-f0-9]{32}$'){throw 'Book session token'}
+  if((Book-Doc (Book-Post $book)).session -cne $session){throw 'Book retry duplicated session'}
+  $other=$book.Clone();$other.openId=('b'*32)
+  Assert-P (Book-Post $other) 409 '{"error":"native unavailable","reason":"READER_ALREADY_RUNNING"}'
+  Assert-P (Book-Status ('c'*32)) 404
+  $state=Book-Doc (Book-Status $session)
+  if($state.ready -or $state.closed -or $state.page -ne 0 -or $state.saved -ne 0 -or $state.total -ne 5){throw 'Fixture must not claim actual playback'}
+  $sync=@{layout=$bookLayout;command=@{seq=1;kind='seek';page=4}}
+  $state=Book-Doc (Book-Status $session POST $sync)
+  if($state.fixtureSeq -ne 1 -or $state.ready -or $state.page -ne 0){throw 'Book command sequence'}
+  $sync.command.seq=2;$sync.command.kind='next';$sync.command.page=0
+  Assert-P (Book-Status $session POST $sync) 400
+  $sync.layout=$bookLayout.Clone();$sync.layout.immersive=1
+  $state=Book-Doc (Book-Status $session POST $sync)
+  if($state.fixtureSeq -ne 2){throw 'Immersive navigation command'}
+  $sync.command.seq=1
+  if((Book-Doc (Book-Status $session POST $sync)).fixtureSeq -ne 2){throw 'Stale command replay'}
+  Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$session) POST '' 'same-origin') 200
+  if(!(Book-Doc (Book-Status $session)).closed){throw 'Book close state'}
+  $fresh=Book-Doc (Book-Post $other)
+  if($fresh.session -ceq $session){throw 'Book session reused after close'}
+  Assert-P (Book-Status $session) 404
+  Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
+  if(!$bookLaunch.WaitForExit(15000) -or $bookLaunch.ExitCode -ne 0){throw 'Book owner close failed'}
+  if(!(Book-Doc (Book-Status $fresh.session)).closed){throw 'Book session survived owner exit'}
+  Assert-P (Book-Post $book) 409 '{"error":"native unavailable","reason":"OWNER_NOT_FOUND"}'
+  Assert-BackupSnapshot $backupBefore
+  Write-Host 'PASS native book fixture actual window owner, retry, single session, command validation, close and owner exit'
+ }finally{
+  Remove-Item -LiteralPath $bookFlag -Force -ErrorAction SilentlyContinue
+  if($bookLaunch -and !$bookLaunch.HasExited){$bookLaunch.Kill();$bookLaunch.WaitForExit()}
+ }
+
+
 
 
 
