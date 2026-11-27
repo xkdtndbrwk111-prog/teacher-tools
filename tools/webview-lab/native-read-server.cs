@@ -16,6 +16,8 @@ using System.Threading;
 internal static class NativeReadServer {
  static int Port=17450;
  static bool coinWrites;
+ static readonly object LocalGate=new object(),WeekGate=new object();
+ static readonly SemaphoreSlim ClientSlots=new SemaphoreSlim(16,16),RemoteSlots=new SemaphoreSlim(2,2);
  static string root,release,labRoot;
  static Dictionary<string,object> boardTheme;
  static DateTime themeAt;
@@ -337,7 +339,7 @@ internal static class NativeReadServer {
    var x=Obj(Serializer().DeserializeObject(raw));
    if(!ValidSchool(x))throw new FormatException("School data");
    AtomicWrite("school.json",Utf8.GetBytes(raw));
-   timetableCache.Clear();
+   lock(WeekGate){schoolGeneration++;timetableCache.Clear();}
    string weather=Path.Combine(root,"weather-place.json");
    if(File.Exists(weather)&&(File.GetAttributes(weather)&FileAttributes.ReparsePoint)==0)File.Delete(weather);
    Json(s,"200 OK","{\"ok\":true}");
@@ -363,6 +365,14 @@ internal static class NativeReadServer {
   string name=Sha(Utf8.GetBytes(endpoint+"?"+query))+".json",file=Path.Combine(dir,name);
   if(!File.Exists(file))throw new IOException("Missing NEIS fixture");
   var info=new FileInfo(file);if((info.Attributes&FileAttributes.ReparsePoint)!=0||info.Length>2097152)throw new IOException("Unsafe fixture");
+  // Delay is lab-only and exact-request scoped; never reachable from HTTP parameters.
+  string delay=file+".delay";
+  if(File.Exists(delay)){
+   int milliseconds;
+   if((File.GetAttributes(delay)&FileAttributes.ReparsePoint)!=0||!Int32.TryParse(File.ReadAllText(delay).Trim(),out milliseconds)||milliseconds<0||milliseconds>5000)throw new IOException("Fixture delay");
+   File.WriteAllText(file+".entered","entered",Utf8);
+   Thread.Sleep(milliseconds);
+  }
   return Utf8.GetString(File.ReadAllBytes(file)).TrimStart('\uFEFF');
  }
  sealed class NeisTable {public int Total;public List<Dictionary<string,object>> Rows=new List<Dictionary<string,object>>();}
@@ -417,6 +427,8 @@ internal static class NativeReadServer {
  }
  sealed class WeekException:Exception {public WeekException(string message):base(message){}}
  sealed class CachedWeek {public DateTime Until;public SortedDictionary<int,string[]> Slots;}
+ static long schoolGeneration;
+ [ThreadStatic] static long requestSchoolGeneration;
  static readonly Dictionary<string,CachedWeek> timetableCache=new Dictionary<string,CachedWeek>(StringComparer.Ordinal);
  static DateTime SeoulToday(){
   string fixture=Path.Combine(labRoot,"neis-today.txt");DateTime today;
@@ -441,7 +453,8 @@ internal static class NativeReadServer {
   string query="AY="+year+"&GRADE="+TextVal(school,"grade")+"&CLASS_NM="+Uri.EscapeDataString(TextVal(school,"cls"));
   string key=TextVal(school,"office")+"|"+TextVal(school,"code")+"|"+endpoint+"|"+query+"|"+Ymd(monday);
   CachedWeek cached;SortedDictionary<int,string[]> slots;
-  if(timetableCache.TryGetValue(key,out cached)&&cached.Until>DateTime.UtcNow)slots=cached.Slots;
+  cached=null;lock(WeekGate){if(requestSchoolGeneration==schoolGeneration)timetableCache.TryGetValue(key,out cached);}
+  if(cached!=null&&cached.Until>DateTime.UtcNow)slots=cached.Slots;
   else{
    slots=new SortedDictionary<int,string[]>();
    for(int day=0;day<5;day++){
@@ -455,8 +468,7 @@ internal static class NativeReadServer {
      if(!slots.ContainsKey(period))slots.Add(period,Five());slots[period][day]=TextVal(row,"ITRT_CNTNT").Trim();
     }
    }
-   if(timetableCache.Count>=16)timetableCache.Clear();
-   timetableCache[key]=new CachedWeek{Slots=slots,Until=DateTime.UtcNow.AddHours(1)};
+   lock(WeekGate){if(requestSchoolGeneration==schoolGeneration){if(timetableCache.Count>=16)timetableCache.Clear();timetableCache[key]=new CachedWeek{Slots=slots,Until=DateTime.UtcNow.AddHours(1)};}}
   }
   if(slots.Count==0)throw new WeekException("나이스에 이번 주 시간표가 아직 없습니다.");
   var lessons=new List<object>();foreach(var pair in slots)lessons.Add(Lesson(pair.Key+"교시",pair.Value,Five()));
@@ -511,7 +523,7 @@ internal static class NativeReadServer {
   if(path=="/api/school"&&method=="POST"){SchoolWrite(s,payload);return;}
   if(!read){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
   try{
-   var school=School();var q=Query(target);
+   Dictionary<string,object> school;lock(LocalGate){school=School();requestSchoolGeneration=schoolGeneration;}var q=Query(target);
    if(path=="/api/school"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"school",school},{"template",SheetTemplate}}));return;}
    if(path=="/api/school/search"){
     string name=Get(q,"q"),office=Get(q,"office");
@@ -549,6 +561,14 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+   bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week");
+   if(remote){
+    if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}
+    try{SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{RemoteSlots.Release();}
+    return;
+   }
+   // All local writes, presentation transitions, and revision checks are serialized.
+   lock(LocalGate){
    if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/presentation-board.js"||path=="/presentation-board.css"||path.StartsWith("/presentation/",StringComparison.Ordinal))){PresentationAsset(s,path,req[0],site);return;}
@@ -603,6 +623,7 @@ internal static class NativeReadServer {
    if(bytes==null){Json(s,"404 Not Found","{\"error\":\"missing asset\"}");return;}
    if(name=="dashboard.html"){using(var reader=new StreamReader(new MemoryStream(bytes),Encoding.UTF8,true))bytes=Utf8.GetBytes(reader.ReadToEnd());}
    Reply(s,"200 OK",Type(name),bytes);
+   }
    }finally{
     // NetworkStream owns the socket. Half-close before disposing it, never afterward.
     try{c.Client.Shutdown(SocketShutdown.Send);}catch(SocketException){}catch(ObjectDisposedException){}
@@ -620,13 +641,26 @@ internal static class NativeReadServer {
   var j=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"release.json")));
   release=(string)j["release"];if(!Regex.IsMatch(release,"^[0-9-]+-V[0-9.]+-STABLE-PILOT$"))return 2;
   var l=new TcpListener(IPAddress.Loopback,Port);l.ExclusiveAddressUse=true;
-  try{NoInherit(l.Server);l.Start();NoInherit(l.Server);
+  try{ThreadPool.SetMinThreads(20,20);NoInherit(l.Server);l.Start();NoInherit(l.Server);
    if(coinWrites)ClearAbandonedWrites();
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
     if(!l.Pending()){Thread.Sleep(20);continue;}
-    using(var c=l.AcceptTcpClient()){try{Serve(c);}catch(IOException e){Console.Error.WriteLine("Rejected connection: "+e.GetType().Name);}catch(SocketException e){Console.Error.WriteLine("Socket: "+e.SocketErrorCode);}catch(UnauthorizedAccessException){Console.Error.WriteLine("File access rejected");}}
-   }return 0;
+    if(!ClientSlots.Wait(0)){Thread.Sleep(20);continue;}
+    TcpClient c;
+    try{c=l.AcceptTcpClient();NoInherit(c.Client);}catch{ClientSlots.Release();throw;}
+    ThreadPool.QueueUserWorkItem(_=>{
+     try{using(c){Serve(c);}}
+     catch(IOException e){Console.Error.WriteLine("Rejected connection: "+e.GetType().Name);}
+     catch(SocketException e){Console.Error.WriteLine("Socket: "+e.SocketErrorCode);}
+     catch(UnauthorizedAccessException){Console.Error.WriteLine("File access rejected");}
+     catch(Exception e){Console.Error.WriteLine("Request rejected: "+e.GetType().Name);}
+     finally{ClientSlots.Release();}
+    });
+   }
+   l.Stop();
+   // Bounded graceful drain. Never report a clean stop while a writer is active.
+   int acquired=0;try{while(acquired<16&&ClientSlots.Wait(10000))acquired++;return acquired==16?0:1;}finally{if(acquired>0)ClientSlots.Release(acquired);}
   }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();}
  }
 }

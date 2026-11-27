@@ -696,6 +696,52 @@ try{
  Assert-P (Seat-Post 17451 '/api/school' $school) 200
  if((Get-FileHash $schoolFile).Hash -cne $schoolHash){throw 'School settings restore'}
  Write-Host 'PASS native NEIS timetable weekend, missing 6/7 periods, cache/invalidation, public weekly sheet selection and cells/notices/events, ambiguity and missing week'
+ # 4D-3a: slow provider isolation. Two independent GET requests occupy the
+ # bounded remote slots while actual local read/write contracts remain responsive.
+ $delayQuery=$prefix+'MLSV_FROM_YMD=20261123&MLSV_TO_YMD=20261202&MMEAL_SC_CODE=2'
+ $delayKey=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('mealServiceDietInfo?'+$delayQuery))).ToLowerInvariant()
+ $delayPath=Join-Path $fixtureDir ($delayKey+'.json.delay')
+ $entered=Join-Path $fixtureDir ($delayKey+'.json.entered')
+ Set-Content -LiteralPath $delayPath '4000' -Encoding ASCII
+ function Start-SlowMeal{
+  $client=[Net.Sockets.TcpClient]::new()
+  $client.ReceiveTimeout=15000;$client.Connect('127.0.0.1',17451)
+  $nl=[string][char]13+[char]10
+  $req='GET /api/meal?date=20261123 HTTP/1.1'+$nl+'Host: 127.0.0.1:17451'+$nl+'Sec-Fetch-Site: same-origin'+$nl+'Connection: close'+$nl+$nl
+  $bytes=[Text.Encoding]::ASCII.GetBytes($req);$client.GetStream().Write($bytes,0,$bytes.Length)
+  return $client
+ }
+ function Wait-Entered{
+  for($i=0;$i -lt 100 -and !(Test-Path $entered);$i++){Start-Sleep -Milliseconds 30}
+  if(!(Test-Path $entered)){throw 'Delayed provider not entered'}
+ }
+ $slow1=$null;$slow2=$null
+ try{
+  Remove-Item -LiteralPath $entered -ErrorAction SilentlyContinue
+  $slow1=Start-SlowMeal;Wait-Entered
+  Remove-Item -LiteralPath $entered -Force
+  $slow2=Start-SlowMeal;Wait-Entered
+  $timer=[Diagnostics.Stopwatch]::StartNew()
+  Assert-P (Raw-Request 17451 '/api/meal?date=20261123' GET '' 'same-origin') 503
+  Assert-P (Raw-Request 17451 '/health') 200
+  $seatRevision=Raw-Request 17451 '/api/seating'
+  $coinRevision=Raw-Request 17451 '/api/coins'
+  Assert-P $coinRevision 200
+  # Real optimistic revision commit while both remote slots are busy.
+  $coinPayload=B64 '{"type":"LAB_REMOTE_ISOLATION"}'
+  Assert-P (Coin-Post 17451 $coinPayload $coinRevision.headers['X-TT-Coin-Revision'] $seatRevision.headers['X-TT-Seating-Revision']) 200
+  if($timer.ElapsedMilliseconds -ge 2500){throw 'Local API blocked behind remote provider'}
+  foreach($client in @($slow1,$slow2)){
+   $reader=[IO.StreamReader]::new($client.GetStream(),[Text.Encoding]::UTF8)
+   try{$raw=$reader.ReadToEnd();if(!$raw.StartsWith('HTTP/1.1 200 OK') -or !$raw.Contains('20261123')){throw 'Delayed upstream response failed'}}finally{$reader.Dispose()}
+  }
+  if((Get-Content -LiteralPath (Join-Path $crashStore 'coins.log') -Raw -Encoding UTF8) -notmatch 'LAB_REMOTE_ISOLATION'){throw 'Concurrent coin commit missing'}
+  Write-Host 'PASS two delayed remote requests, saturation 503, independent local health/seat/coin reads and revision commit'
+ }finally{
+  foreach($client in @($slow1,$slow2)){if($client){$client.Dispose()}}
+  Remove-Item -LiteralPath $delayPath,$entered -ErrorAction SilentlyContinue
+ }
+
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
 
