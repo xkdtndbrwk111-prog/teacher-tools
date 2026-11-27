@@ -1393,14 +1393,59 @@ internal static class NativeReadServer {
  sealed class BookLabSession{
   public string Token,OpenId,Url,OwnerStart;public long OwnerPid,OwnerWindow,Pages,Seq;
   public DateTime Lease;public bool Closed;public Dictionary<string,object> Layout;
+  public string StageDirectory;
  }
  static BookLabSession bookLab;
+ // 5A-2b1: exact production bundle, staged only in a disposable lab directory.
+ const string BookBundleHash="20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c";
+ static readonly string[] BookBundleRequired={"BookReader.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll","LICENSE.txt"};
+ static bool BookStageEnabled(){return File.Exists(Path.Combine(labRoot,"book-bundle-fixture.flag"));}
+ static string StageBookBundle(string token){
+  byte[] bundle=Read("asset-book-reader-host.zip");
+  if(bundle==null||bundle.Length>3000000||Sha(bundle)!=BookBundleHash||!Environment.Is64BitOperatingSystem)throw new IOException("Bundle mismatch");
+  string dir=Path.Combine(labRoot,"book-stage-"+token);
+  if(Directory.Exists(dir)||File.Exists(dir))throw new IOException("Stage collision");
+  Directory.CreateDirectory(dir);
+  try{
+   var seen=new HashSet<string>(StringComparer.Ordinal);long total=0;
+   using(var input=new MemoryStream(bundle,false))
+   using(var zip=new ZipArchive(input,ZipArchiveMode.Read)){
+    foreach(var entry in zip.Entries){
+     string name=entry.FullName;total+=entry.Length;
+     if((Array.IndexOf(BookBundleRequired,name)<0&&name!="ThirdPartyNotices.txt")||!seen.Add(name)||entry.Length<1||entry.Length>1500000||total>3000000)throw new IOException("Invalid reader archive");
+     using(var src=entry.Open())using(var dst=new FileStream(Path.Combine(dir,name),FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+      byte[] buf=new byte[8192];long copied=0;int n;
+      while((n=src.Read(buf,0,buf.Length))>0){copied+=n;if(copied>entry.Length)throw new IOException("Archive expansion");dst.Write(buf,0,n);}
+      if(copied!=entry.Length)throw new IOException("Archive truncated");dst.Flush(true);
+     }
+    }
+   }
+   foreach(string required in BookBundleRequired)if(!seen.Contains(required))throw new IOException("Missing reader file");
+   return dir;
+  }catch{try{Directory.Delete(dir,true);}catch{}throw;}
+ }
+ static void CloseBookStage(BookLabSession session){
+  if(session==null)return;
+  session.Closed=true;
+  string dir=session.StageDirectory;
+  if(dir==null)return;
+  // Delete only the exact staged files, never recurse through untrusted paths.
+  if((File.GetAttributes(dir)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked stage");
+  foreach(string name in BookBundleRequired){
+   string file=Path.Combine(dir,name);
+   if(File.Exists(file)){if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked stage file");File.Delete(file);}
+  }
+  string extra=Path.Combine(dir,"ThirdPartyNotices.txt");
+  if(File.Exists(extra)){if((File.GetAttributes(extra)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked stage file");File.Delete(extra);}
+  Directory.Delete(dir,false);session.StageDirectory=null;
+ }
+
  static bool BookFixture(){return File.Exists(Path.Combine(labRoot,"book-session-fixture.flag"));}
  static bool BookOwnerMatches(BookLabSession b,Dictionary<string,object> owner){
   return owner!=null&&LongVal(owner,"pid")==b.OwnerPid&&LongVal(owner,"window")==b.OwnerWindow&&TextVal(owner,"startTicks")==b.OwnerStart;
  }
  static void BookExpire(){
-  if(bookLab!=null&&!bookLab.Closed&&(!BookFixture()||(DateTime.UtcNow-bookLab.Lease).TotalSeconds>35||!BookOwnerMatches(bookLab,NativeBoardOwner(false))))bookLab.Closed=true;
+  if(bookLab!=null&&!bookLab.Closed&&(!BookFixture()||(DateTime.UtcNow-bookLab.Lease).TotalSeconds>35||!BookOwnerMatches(bookLab,NativeBoardOwner(false))))CloseBookStage(bookLab);
  }
  static Dictionary<string,object> BookCommand(object v,long pages,Dictionary<string,object> layout){
   var c=Obj(v);
@@ -1430,11 +1475,15 @@ internal static class NativeReadServer {
     Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"READER_ALREADY_RUNNING\"}");return;
    }
    bookLab=new BookLabSession{Token=Guid.NewGuid().ToString("N"),OpenId=openId,Url=url,OwnerPid=LongVal(owner,"pid"),OwnerWindow=LongVal(owner,"window"),OwnerStart=TextVal(owner,"startTicks"),Pages=LongVal(x,"pages"),Lease=DateTime.UtcNow,Layout=DictVal(x,"layout")};
+   if(BookStageEnabled()){
+    try{bookLab.StageDirectory=StageBookBundle(bookLab.Token);}
+    catch(Exception ex){if(!(ex is IOException||ex is UnauthorizedAccessException||ex is ArgumentException||ex is InvalidOperationException))throw;bookLab=null;Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BUNDLE_MISMATCH\"}");return;}
+   }
    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"session",bookLab.Token}}));return;
   }
   if(bookLab==null||target!=path+"?session="+bookLab.Token){Json(s,"404 Not Found","{\"error\":\"session\"}");return;}
   if(path=="/api/book-reader/close"){
-   bookLab.Closed=true;Json(s,"200 OK","{\"ok\":true}");return;
+   CloseBookStage(bookLab);Json(s,"200 OK","{\"ok\":true}");return;
   }
   if(!bookLab.Closed){
    try{
