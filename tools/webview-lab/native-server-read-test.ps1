@@ -1491,6 +1491,20 @@ try{
    throw ('Media state timeout '+$state+'/'+$phase+' actual '+($v|ConvertTo-Json -Compress))
   }
   try{
+   $folderFlag=Join-Path $crashRoot 'media-folder-fixture.flag'
+   Set-Content -LiteralPath $folderFlag 'offline-only' -Encoding ASCII
+   try{
+    Assert-P (Media-Post 'open-library' @{path='C:\'}) 409
+    $null=Media-Answer (Media-Post 'open-library' @{})
+    if((Get-Content -LiteralPath (Join-Path $crashRoot 'media-folder-opened.fixture') -Raw) -cne 'library'){throw 'Wrong library folder operation'}
+    Assert-P (Media-Post 'rename' @{id=$flatId;quality='local';title='Forbidden'}) 409
+    $oldBytes=(Get-FileHash -LiteralPath (Join-Path $legacyDir 'video.mp4')).Hash
+    $null=Media-Answer (Media-Post 'rename' @{id=$videoId;quality='720';title='LAB renamed'})
+    if(@((Media-Doc).library|Where-Object {$_.quality -eq '720'})[0].customTitle -cne 'LAB renamed'){throw 'Legacy media title update'}
+    if((Get-FileHash -LiteralPath (Join-Path $legacyDir 'video.mp4')).Hash -cne $oldBytes){throw 'Rename altered video'}
+   }finally{Remove-Item -LiteralPath $folderFlag -Force -ErrorAction SilentlyContinue}
+   Assert-P (Media-Post 'start' @{id='abcdefghijk';quality='720';authorized=$true}) 409
+   Write-Host 'PASS media library folder fixture and legacy title-only update; live download forbidden in offline CI'
    $req=@{id='LAB_VIDEO02';quality='720';authorized=$true}
    Assert-P (Media-Post 'start' $req ('0'*32)) 403
    Assert-P (Media-Post 'start' $req $status.token '') 403
