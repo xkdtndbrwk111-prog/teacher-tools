@@ -1223,6 +1223,43 @@ internal static class NativeReadServer {
   catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException))throw;Json(s,"500 Internal Server Error","{\"error\":\"restart request unavailable\"}");return;}
   Json(s,"202 Accepted","{\"ok\":true,\"pending\":true}");
  }
+ // 4E-4a: preserve the legacy backup envelope and strict five-file allowlist.
+ // Restore is intentionally unavailable until transactional recovery is verified.
+ static readonly string[] BackupNames={"school.json","weather-place.json","seating.json","coins.log","notice.log"};
+ static byte[] BackupRead(string name){
+  if((File.GetAttributes(root)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked root");
+  string p=Path.Combine(root,name);
+  FileAttributes attr;
+  try{attr=File.GetAttributes(p);}catch(FileNotFoundException){return null;}catch(DirectoryNotFoundException){return null;}
+  if((attr&(FileAttributes.Directory|FileAttributes.ReparsePoint))!=0)throw new IOException("Unsafe backup file");
+  using(var f=new FileStream(p,FileMode.Open,FileAccess.Read,FileShare.Read)){
+   if(f.Length>16777216)throw new IOException("Backup file size");
+   byte[] bytes=new byte[(int)f.Length];
+   for(int pos=0;pos<bytes.Length;){int n=f.Read(bytes,pos,bytes.Length-pos);if(n==0)throw new EndOfStreamException();pos+=n;}
+   return bytes;
+  }
+ }
+ static void BackupExportData(Stream s,string method,string site,string origin){
+  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
+  try{
+   var files=new Dictionary<string,object>(StringComparer.Ordinal);
+   long total=0;
+   foreach(string name in BackupNames){
+    byte[] bytes=BackupRead(name);
+    if(bytes==null)continue;
+    total+=bytes.Length;
+    // An exported archive must also fit the legacy restore decoded size limit.
+    if(total>25165824)throw new IOException("Backup total size");
+    files.Add(name,Convert.ToBase64String(bytes));
+   }
+   var serializer=new JavaScriptSerializer(){MaxJsonLength=40*1024*1024,RecursionLimit=20};
+   Json(s,"200 OK",serializer.Serialize(new Dictionary<string,object>{{"format","teacher-tools-server-files"},{"version",1},{"files",files}}));
+  }catch(Exception e){
+   if(!(e is IOException||e is UnauthorizedAccessException||e is InvalidOperationException||e is ArgumentException))throw;
+   Json(s,"400 Bad Request","{\"error\":\"backup unavailable\"}");
+  }
+ }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -1356,6 +1393,7 @@ internal static class NativeReadServer {
    }
    // All local writes, presentation transitions, and revision checks are serialized.
    lock(LocalGate){
+   if(coinWrites&&path=="/api/backup/export"){BackupExportData(s,req[0],site,origin);return;}
    if(coinWrites&&path=="/api/share-input"){ShareOptionsData(s,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/share-input/status"||path=="/api/share-input/restart")){ShareHelperData(s,path,req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/api/weather/place"||path=="/api/weather/places")){WeatherPlaceData(s,path,req[1],req[0],site,origin,payload);return;}
