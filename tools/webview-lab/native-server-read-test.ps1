@@ -400,10 +400,22 @@ try{
  }finally{
   if($ui -and !$ui.HasExited){$ui.Kill();$ui.WaitForExit()}
  }
- # 4C-1: manager connection and theme contract. No presentation readiness claim.
- # Actual dashboard can now poll presentation; wait for the last live poll to expire.
- Start-Sleep -Milliseconds 5100
+ # The actual dashboard now publishes its real theme. Verify it before resetting
+ # transient state for independent cold-start status/theme/presentation tests.
  $manager='https://xkdtndbrwk111-prog.github.io'
+ $published=Raw-Request 17451 '/api/theme' GET '' 'cross-site' $manager
+ if($published.status -ne 'HTTP/1.1 200 OK' -or $published.headers['Access-Control-Allow-Origin'] -cne $manager){throw 'Actual board theme publication missing'}
+ $themeDoc=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($published.body))
+ if($themeDoc.version -ne 1 -or $themeDoc.theme -notin @('dark','sky','pink','green','black','custom') -or $themeDoc.font -isnot [string]){throw 'Actual board theme contract'}
+ Write-Host 'PASS actual WebView2 board publishes theme to native server'
+ $beforeReset=Snapshot-CrashFiles
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native UI reset stop failed'}
+ $native=Start-CrashServer
+ foreach($file in @('coins.log','seating.json','notice.log')){
+  if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $beforeReset[$file])){throw 'Transient reset mutated persistent data'}
+ }
+ # 4C-1: independent cold-start manager connection and theme contract.
  function Status-Doc{
   $r=Raw-Request 17451 '/api/board-status' GET '' 'cross-site' $manager
   if($r.status -ne 'HTTP/1.1 200 OK' -or $r.headers['Access-Control-Allow-Origin'] -cne $manager -or $r.headers['Access-Control-Allow-Private-Network'] -ne 'true'){throw 'Manager status CORS'}
