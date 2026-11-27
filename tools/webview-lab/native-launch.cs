@@ -95,11 +95,49 @@ internal sealed class NativeBoardLaunch : Form {
                 string pause=Path.Combine(root,"share-helper-stop.fixture");
                 if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
                 ConsumeShareRestart();
+                string uiProbe=Path.Combine(root,"share-ui-test.fixture");
+                if(File.Exists(uiProbe)){File.Delete(uiProbe);VerifyShareUi();}
+
             }
 #endif
         }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
     }
 #if NATIVE_SHARE_LAB
+    bool shareUiTesting;
+    async Task WaitShareUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<120;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Share UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({notice:document.getElementById('shareNotice').textContent,helper:document.getElementById('shareHelper').textContent,keyboard:document.getElementById('shareKeyboard').checked,cursor:document.getElementById('shareCursor').checked})"));
+    }
+    async void VerifyShareUi(){
+        if(shareUiTesting)return;
+        shareUiTesting=true;
+        string result=Path.Combine(root,"share-ui-test.result");
+        try{
+            var core=browser.CoreWebView2;
+            await core.ExecuteScriptAsync(@"(()=>{const q=id=>document.getElementById(id);if(!q('settings').open)q('settings').showModal();window.__labShareStatus=null;window.__labSharePoll=setInterval(async()=>{try{const r=await fetch('/api/share-input/status',{cache:'no-store'});window.__labShareStatus=r.ok?await r.json():null}catch{}},150)})()");
+            await WaitShareUi("!document.getElementById('shareKeyboard').checked&&!document.getElementById('shareCursor').checked&&window.__labShareStatus?.running===true&&document.getElementById('shareHelper').textContent.includes('도우미 실행 중')","initial settings");
+            foreach(var pair in new[]{"shareKeyboard:true:false","shareCursor:true:true","shareKeyboard:false:true","shareCursor:false:false"}){
+                var p=pair.Split(':');
+                await core.ExecuteScriptAsync("document.getElementById('"+p[0]+"').click()");
+                await WaitShareUi("window.__labShareStatus?.running===true&&window.__labShareStatus.keyboard==="+p[1]+"&&window.__labShareStatus.cursor==="+p[2]+"&&window.__labShareStatus.hook==="+((p[1]=="true"||p[2]=="true")?"true":"false")+"&&document.getElementById('shareKeyboard').checked==="+p[1]+"&&document.getElementById('shareCursor').checked==="+p[2]+"&&document.getElementById('shareNotice').textContent.includes('저장했습니다')",pair);
+            }
+            // Both switches are off: the dashboard's automatic retry will not race manual restart.
+            NativeShareInput.Stop();
+            await core.ExecuteScriptAsync("document.getElementById('settings').close()");
+            await Task.Delay(200);
+            await core.ExecuteScriptAsync("document.getElementById('settings').showModal()");
+            await WaitShareUi("window.__labShareStatus?.running===false&&document.getElementById('shareHelper').textContent.includes('도우미가 꺼져')","offline notice");
+            await core.ExecuteScriptAsync("document.getElementById('shareRestart').click()");
+            await WaitShareUi("window.__labShareStatus?.running===true&&window.__labShareStatus.hook===false&&document.getElementById('shareHelper').textContent.includes('도우미 실행 중')","manual restart");
+            await core.ExecuteScriptAsync("clearInterval(window.__labSharePoll);document.getElementById('settings').close()");
+            File.WriteAllText(result,"PASS actual dashboard share checkboxes, helper state, offline notice and manual restart");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        finally{shareUiTesting=false;}
+    }
     void ConsumeShareRestart(){
         string file=Path.Combine(runtime,"share-input-restart.json");
         string claimed=file+".claimed";
