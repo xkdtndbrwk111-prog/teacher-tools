@@ -79,6 +79,10 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         if(p=="/api/share-input")return method=="GET"||method=="POST";
         if(p=="/api/share-input/status")return method=="GET";
         if(p=="/api/share-input/restart")return method=="POST";
+        // Native board lab only. Keep external frame/network restrictions intact.
+        if(p=="/api/book-reader/open"||p=="/api/book-reader/close")return method=="POST";
+        if(p=="/api/book-reader/status")return method=="GET"||method=="POST";
+        if(p=="/api/youtube/status")return method=="GET";
 #endif
 #if NATIVE_AUDIO_LAB
         if(p=="/api/speakers")return method=="GET";
