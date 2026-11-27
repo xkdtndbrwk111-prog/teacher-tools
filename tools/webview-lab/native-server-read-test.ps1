@@ -1372,6 +1372,23 @@ try{
  }
  Write-Host 'PASS native multi-file restore crash recovery 7/7'
 
+ # 4E-4d: exercise original dashboard backup handlers using a separate WebView2 profile.
+ $backupExe=Join-Path $Build 'HOJA-Native-Backup-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_BACKUP_LAB /target:winexe /platform:x64 "/out:$backupExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native backup UI compilation'}
+ $backupHost=$null;$result=Join-Path $crashRoot 'backup-ui-result.txt';$profile=Join-Path $crashRoot 'backup-ui-profile'
+ try{
+  $backupHost=Start-Process -FilePath $backupExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$backupHost.Handle
+  if(!$backupHost.WaitForExit(60000)){throw 'Native backup UI timeout'}
+  if(Test-Path $result){Get-Content $result}
+  if($backupHost.ExitCode -ne 0 -or !(Test-Path $result)){throw 'Native backup UI failed'}
+  Assert-BackupSnapshot $backupBefore
+  if(Test-Path -LiteralPath $journalPath){throw 'Backup UI journal survived'}
+  Write-Host 'PASS native backup UI restore and source file hashes'
+ }finally{if($backupHost -and !$backupHost.HasExited){$backupHost.Kill();$backupHost.WaitForExit()}}
+
+
 
 
 
