@@ -30,8 +30,14 @@ foreach($license in @(Get-ChildItem (Join-Path $sdkRoot 'sdk') -File|Where-Objec
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 & $csc /nologo /codepage:65001 /define:NATIVE_FIELD_PILOT /target:exe /platform:x64 "/out:$bin\HOJA-Native-Server.exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Field server build failed'}
-& $csc /nologo /codepage:65001 /define:NATIVE_FIELD_PILOT,NATIVE_STORAGE_LAB,NATIVE_SHARE_LAB,NATIVE_DATA_LAB,NATIVE_AUDIO_LAB,NATIVE_PHOTO_LAB,NATIVE_BACKUP_LAB /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$bin\HOJA-Native-Launch-Lab.exe" "/reference:$bin\Microsoft.Web.WebView2.Core.dll" "/reference:$bin\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs')
+& $csc /nologo /codepage:65001 /define:NATIVE_FIELD_PILOT,NATIVE_STORAGE_LAB,NATIVE_SHARE_LAB,NATIVE_DATA_LAB,NATIVE_AUDIO_LAB,NATIVE_PHOTO_LAB,NATIVE_BACKUP_LAB /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$bin\HOJA-Native-Launch-Lab.exe" "/reference:$bin\Microsoft.Web.WebView2.Core.dll" "/reference:$bin\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs') (Join-Path $PSScriptRoot 'field-provider-policy.cs')
 if($LASTEXITCODE -ne 0){throw 'Field host build failed'}
+$policyTest=Join-Path $sdkRoot 'field-policy-test.exe'
+& $csc /nologo /codepage:65001 /define:FIELD_POLICY_TEST /target:exe "/out:$policyTest" (Join-Path $PSScriptRoot 'field-provider-policy.cs')
+if($LASTEXITCODE -ne 0){throw 'Field policy compile failed'}
+& $policyTest
+if($LASTEXITCODE -ne 0){throw 'Field policy test failed'}
+
 $payload=Join-Path $Output 'payload'
 $inventory=@(Get-ChildItem -LiteralPath $payload -File -Recurse|Sort-Object FullName|ForEach-Object {@{path=$_.FullName.Substring($payload.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
 @{schema='HOJA-FIELD-PILOT-1';version='1.66.43-field-a1';source=(git -C $repo rev-parse HEAD);files=$inventory}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $Output 'manifest.json') -Encoding UTF8
