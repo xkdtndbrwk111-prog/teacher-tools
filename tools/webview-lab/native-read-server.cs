@@ -1561,11 +1561,12 @@ internal static class NativeReadServer {
     if(method=="POST"){
      var x=BookRequest(payload);var layout=BookLayout(Val(x,"layout"));
      object v=Val(x,"command");
-     if(v!=null){var c=BookCommand(v,bookLab.Pages,layout);if(LongVal(c,"seq")>bookLab.Seq)bookLab.Seq=LongVal(c,"seq");}
+     bool newCommand=false;
+     if(v!=null){var c=BookCommand(v,bookLab.Pages,layout);newCommand=LongVal(c,"seq")>bookLab.Seq;if(newCommand)bookLab.Seq=LongVal(c,"seq");}
      bookLab.Layout=layout;
      if(bookLab.ProcessFixture){
       BookSessionWrite(bookLab,"layout.json",layout);
-      if(v!=null&&LongVal(Obj(v),"seq")==bookLab.Seq)BookSessionWrite(bookLab,"command.json",Obj(v));
+      if(newCommand)BookSessionWrite(bookLab,"command.json",Obj(v));
      }
     }
     if(bookLab.ProcessFixture)File.SetLastWriteTimeUtc(Path.Combine(bookLab.StageDirectory,"lease"),DateTime.UtcNow);
