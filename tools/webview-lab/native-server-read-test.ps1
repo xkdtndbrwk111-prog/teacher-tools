@@ -1111,6 +1111,40 @@ try{
  Assert-P (Seat-Post 17451 '/api/volume' '{"muted":false}') 503
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $audioBefore[$file])){throw 'Audio API altered ledger'}}
  Write-Host 'PASS native isolated audio protocol, device selection, level clamp/mute, invalid and cross-site rejection, restart, OS writes disabled'
+ # 4E-3a: settings only; no hook, helper launch or physical input in this server test.
+ $shareBefore=Snapshot-CrashFiles
+ $shareFile=Join-Path $crashStore 'share-input.json'
+ Remove-Item -LiteralPath $shareFile -Force -ErrorAction SilentlyContinue
+ $share=School-Doc '/api/share-input'
+ if($share.keyboard -or $share.cursor){throw 'Share settings default'}
+ foreach($pair in @(@{keyboard=$true;cursor=$false},@{keyboard=$false;cursor=$true},@{keyboard=$true;cursor=$true},@{keyboard=$false;cursor=$false})){
+  Assert-P (Seat-Post 17451 '/api/share-input' ($pair|ConvertTo-Json -Compress)) 200
+  $share=School-Doc '/api/share-input'
+  $disk=Get-Content -LiteralPath $shareFile -Raw -Encoding UTF8|ConvertFrom-Json
+  if($share.keyboard -ne $pair.keyboard -or $share.cursor -ne $pair.cursor -or $disk.keyboard -ne $pair.keyboard -or $disk.cursor -ne $pair.cursor){throw 'Share settings readback'}
+ }
+ Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":true,"cursor":false}') 200
+ $shareHash=(Get-FileHash $shareFile).Hash
+ foreach($bad in @('{}','{"keyboard":true}','{"keyboard":"true","cursor":false}','{"keyboard":true,"cursor":false,"extra":true}','null','[]','{')){
+  Assert-P (Seat-Post 17451 '/api/share-input' $bad) 400
+ }
+ Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":false,"cursor":true}' 'cross-site') 403
+ Assert-P (Raw-Request 17451 '/api/share-input' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/share-input.json') 404
+ if((Get-FileHash $shareFile).Hash -cne $shareHash){throw 'Rejected share setting altered disk'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Share settings restart stop'}
+ $native=Start-CrashServer
+ $share=School-Doc '/api/share-input'
+ if(!$share.keyboard -or $share.cursor){throw 'Share settings restart state'}
+ [IO.File]::WriteAllText($shareFile,'invalid',$utf8)
+ Assert-P (Raw-Request 17451 '/api/share-input' GET '' 'same-origin') 500
+ Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":false,"cursor":false}') 200
+ $share=School-Doc '/api/share-input'
+ if($share.keyboard -or $share.cursor){throw 'Share settings explicit repair'}
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $shareBefore[$file])){throw 'Share settings altered ledger'}}
+ Write-Host 'PASS native input-sharing defaults, independent booleans, strict validation, cross-site/raw denial, restart and explicit recovery'
+
 
 
 
