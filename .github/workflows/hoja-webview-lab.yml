@@ -27,3 +27,13 @@ jobs:
       - name: Compile native WinForms host and verify actual isolated board
         shell: powershell
         run: tools/webview-lab/build-test.ps1
+  book-reader:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify pinned original reader in independent clean Windows runner
+        shell: powershell
+        run: tools/webview-lab/book-reader-self-test.ps1
