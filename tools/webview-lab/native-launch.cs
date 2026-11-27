@@ -437,6 +437,12 @@ internal sealed class NativeBoardLaunch : Form {
             File.Move(temp,ready);
         }finally{if(File.Exists(temp))File.Delete(temp);}
     }
+#if NATIVE_FIELD_PILOT
+    bool FieldGame(string raw){
+        Uri u;
+        return File.Exists(Path.Combine(root,"game.static.ready"))&&Uri.TryCreate(raw,UriKind.Absolute,out u)&&u.Scheme=="http"&&u.Host=="127.0.0.1"&&u.Port==4189&&u.UserInfo==""&&u.Fragment==""&&u.AbsolutePath=="/hoja-minigames/"&&System.Text.RegularExpressions.Regex.IsMatch(u.Query,@"\A\?mode=board&embed=dashboard&coin=4&fresh=[0-9]+-[0-9]+\z");
+    }
+#endif
     async Task StartBoard(){
         if(updateToken!=null)updateJournal=ValidateUpdateJournal();
 #if NATIVE_SHARE_LAB
@@ -470,6 +476,7 @@ internal sealed class NativeBoardLaunch : Form {
         core.FrameNavigationStarting+=(s,e)=>{
             bool allowed=Lab.Local(e.Uri)||e.Uri=="about:blank";
 #if NATIVE_FIELD_PILOT
+            if(!allowed&&FieldGame(e.Uri))allowed=true;
             if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Frame(e.Uri);
 #endif
             if(!allowed)e.Cancel=true;
@@ -513,6 +520,8 @@ internal sealed class NativeBoardLaunch : Form {
             if(!allowed&&e.ResourceContext==CoreWebView2WebResourceContext.Media)allowed=AllowedLocalMedia(e.Request.Uri,e.Request.Method);
 #endif
 #if NATIVE_FIELD_PILOT
+            if(!allowed&&e.Request.Method=="GET"&&FieldGame(e.Request.Uri)&&e.ResourceContext==CoreWebView2WebResourceContext.Document)allowed=true;
+            if(!allowed&&e.Request.Uri==Origin+"/api/open-manager"&&e.Request.Method=="POST")allowed=true;
             if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Resource(e.Request.Uri,e.Request.Method,e.ResourceContext==CoreWebView2WebResourceContext.Document);
 #endif
             if(!allowed)e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
