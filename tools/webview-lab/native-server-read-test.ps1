@@ -636,6 +636,69 @@ try{
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native school server stop'}
  Write-Host 'PASS native school persisted through restart'
+ # 4D-2: deterministic calendar and actual legacy response shapes, no network.
+ $native=Start-CrashServer
+ $todayFile=Join-Path $crashRoot 'neis-today.txt'
+ Set-Content -LiteralPath $todayFile '20261121' -Encoding ASCII
+ $baseQuery=$prefix+'AY=2026&GRADE=6&CLASS_NM=1&ALL_TI_YMD='
+ for($day=23;$day -le 27;$day++){
+  $q=$baseQuery+'202611'+$day
+  $rows=@(1..5|ForEach-Object {@{PERIO=[string]$_;ITRT_CNTNT=('과목'+$_)}})
+  if($day -eq 23){
+   Put-Neis 'elsTimetable' $q $rows 7
+   Put-Neis 'elsTimetable' ($q+'&PERIO=6') @(@{PERIO='6';ITRT_CNTNT='체육'})
+   Put-Neis 'elsTimetable' ($q+'&PERIO=7') @(@{PERIO='7';ITRT_CNTNT='창체'})
+  }else{Put-Neis 'elsTimetable' $q $rows}
+ }
+ $week=School-Doc '/api/week'
+ if($week.referenceDate -cne '2026-11-23' -or $week.selection -cne 'next-week' -or ($week.dates -join ',') -cne '11/23,11/24,11/25,11/26,11/27' -or $week.rows.Count -ne 7 -or $week.rows[5].cells[0] -cne '체육' -or $week.rows[6].cells[0] -cne '창체' -or $week.rows[6].cells[1] -cne ''){throw 'NEIS timetable weekend/period fallback'}
+ # Remove the Monday fixture: second query must be served from the one-hour cache.
+ $key=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('elsTimetable?'+$baseQuery+'20261123'))).ToLowerInvariant()
+ Remove-Item -LiteralPath (Join-Path $fixtureDir ($key+'.json')) -Force
+ Set-Content -LiteralPath $todayFile '20261124' -Encoding ASCII
+ $cached=School-Doc '/api/week'
+ if($cached.referenceDate -cne '2026-11-24' -or $cached.selection -cne 'today' -or $cached.rows[6].cells[0] -cne '창체'){throw 'NEIS timetable cache/reference'}
+ $noClass=$school.Replace('"cls":"1"','"cls":""')
+ Assert-P (Seat-Post 17451 '/api/school' $noClass) 200
+ $missing=Raw-Request 17451 '/api/week' GET '' 'same-origin'
+ Assert-P $missing 404
+ if((ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($missing.body))).code -ne 'WEEK_NOT_FOUND'){throw 'No class error contract'}
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ Assert-P (Raw-Request 17451 '/api/week' GET '' 'same-origin') 502
+ # Public sheet fixture: only the selected weekly tab is readable.
+ $sheetId='LAB_sheet_1234567890123456'
+ $sheetSchool=$school.Replace('"sheet":""',('"sheet":"'+$sheetId+'"'))
+ Assert-P (Seat-Post 17451 '/api/school' $sheetSchool) 200
+ function Put-Sheet([string]$route,[string]$content){
+  $key=(Hash-Bytes ([Text.Encoding]::UTF8.GetBytes('sheet?'+$sheetId+$route))).ToLowerInvariant()
+  [IO.File]::WriteAllText((Join-Path $fixtureDir ($key+'.json')),$content,$utf8)
+ }
+ $tabs='items.push({name:"12주(11.16 ~ 11.20)",pageUrl:"old",gid:"10"});items.push({name:"13주차(11.23 ~ 11.27)",pageUrl:"new",gid:"20"});'
+ Put-Sheet '/htmlview' $tabs
+ $grid=@(
+  ,@('2026학년도','','','','','')
+  ,@('날짜','11/23','11/24','11/25','11/26','11/27')
+  ,@('요일','월','화','수','목','금')
+  ,@('교육활동',('행사'+[char]10+'준비'),'','','','')
+  ,@('1교시 국어','국어','수학','영어','사회','과학')
+  ,@('',' 준비물 ','','','','')
+ )
+ $table=@(foreach($row in $grid){@{c=@(foreach($cell in $row){@{v=$cell}})}})
+ $body=@{status='ok';table=@{rows=$table}}|ConvertTo-Json -Depth 12 -Compress
+ Put-Sheet '/gviz/tq?tqx=out:json&headers=0&gid=20&range=A1:F30' ('google.visualization.Query.setResponse('+$body+');')
+ $week=School-Doc '/api/week'
+ if($week.title -cne '13주차(11.23 ~ 11.27)' -or $week.referenceDate -cne '2026-11-24' -or $week.rows[0].label -cne '1교시' -or $week.rows[0].cells[1] -cne '수학' -or $week.rows[0].notices[0] -cne '준비물' -or $week.events[0] -cne ('행사'+[char]10+'준비')){throw 'Public weekly sheet mapping'}
+ Put-Sheet '/htmlview' ($tabs+'items.push({name:"중복주(11.23 ~ 11.27)",pageUrl:"dup",gid:"30"});')
+ Assert-P (Raw-Request 17451 '/api/week' GET '' 'same-origin') 502
+ Put-Sheet '/htmlview' 'items.push({name:"12주(11.16 ~ 11.20)",pageUrl:"old",gid:"10"});'
+ Assert-P (Raw-Request 17451 '/api/week' GET '' 'same-origin') 404
+ Assert-P (Raw-Request 17451 '/api/week' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ if((Get-FileHash $schoolFile).Hash -cne $schoolHash){throw 'School settings restore'}
+ Write-Host 'PASS native NEIS timetable weekend, missing 6/7 periods, cache/invalidation, public weekly sheet selection and cells/notices/events, ambiguity and missing week'
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
+
 
 
 

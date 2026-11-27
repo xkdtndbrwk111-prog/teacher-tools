@@ -337,6 +337,7 @@ internal static class NativeReadServer {
    var x=Obj(Serializer().DeserializeObject(raw));
    if(!ValidSchool(x))throw new FormatException("School data");
    AtomicWrite("school.json",Utf8.GetBytes(raw));
+   timetableCache.Clear();
    string weather=Path.Combine(root,"weather-place.json");
    if(File.Exists(weather)&&(File.GetAttributes(weather)&FileAttributes.ReparsePoint)==0)File.Delete(weather);
    Json(s,"200 OK","{\"ok\":true}");
@@ -366,7 +367,7 @@ internal static class NativeReadServer {
  }
  sealed class NeisTable {public int Total;public List<Dictionary<string,object>> Rows=new List<Dictionary<string,object>>();}
  static NeisTable Neis(string endpoint,string query,Dictionary<string,object> school=null){
-  if(Array.IndexOf(new[]{"schoolInfo","mealServiceDietInfo","SchoolSchedule"},endpoint)<0)throw new FormatException("Endpoint");
+  if(Array.IndexOf(new[]{"schoolInfo","mealServiceDietInfo","SchoolSchedule","elsTimetable","misTimetable","hisTimetable"},endpoint)<0)throw new FormatException("Endpoint");
   if(school!=null){if(!ValidSchool(school))throw new FormatException("School");query="ATPT_OFCDC_SC_CODE="+TextVal(school,"office")+"&SD_SCHUL_CODE="+TextVal(school,"code")+"&"+query;}
   var x=Obj(Serializer().DeserializeObject(NeisFixture(endpoint,query)));if(x==null)throw new FormatException("NEIS envelope");
   var result=Obj(Val(x,"RESULT"));if(result!=null&&TextVal(result,"CODE")!="INFO-200")throw new IOException("NEIS response error");
@@ -414,6 +415,96 @@ internal static class NativeReadServer {
    DateTime day;if(String.CompareOrdinal(last,cursor)>0)cursor=last;else if(DateValue(cursor,out day))cursor=Ymd(day.AddDays(1));else break;
   }return rows;
  }
+ sealed class WeekException:Exception {public WeekException(string message):base(message){}}
+ sealed class CachedWeek {public DateTime Until;public SortedDictionary<int,string[]> Slots;}
+ static readonly Dictionary<string,CachedWeek> timetableCache=new Dictionary<string,CachedWeek>(StringComparer.Ordinal);
+ static DateTime SeoulToday(){
+  string fixture=Path.Combine(labRoot,"neis-today.txt");DateTime today;
+  if(coinWrites&&File.Exists(Path.Combine(labRoot,"neis-fixture.flag"))&&File.Exists(fixture)){
+   if((File.GetAttributes(fixture)&FileAttributes.ReparsePoint)!=0||!DateValue(File.ReadAllText(fixture).Trim(),out today))throw new FormatException("Fixture date");
+   return today;
+  }
+  return TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow,"Korea Standard Time").Date;
+ }
+ static DateTime WeekReference(DateTime today){return today.DayOfWeek==DayOfWeek.Saturday?today.AddDays(2):today.DayOfWeek==DayOfWeek.Sunday?today.AddDays(1):today;}
+ static string ShortDate(DateTime d){return d.Month.ToString(CultureInfo.InvariantCulture)+"/"+d.Day.ToString(CultureInfo.InvariantCulture);}
+ static string[] Five(){return new[]{"","","","",""};}
+ static Dictionary<string,object> Lesson(string label,string[] cells,string[] notes){return new Dictionary<string,object>{{"label",label},{"cells",cells},{"notices",notes}};}
+ static Dictionary<string,object> WeekResult(string title,string[] dates,List<object> rows,string[] events,DateTime today,DateTime reference){
+  return new Dictionary<string,object>{{"title",title},{"dates",dates},{"rows",rows},{"events",events},{"referenceDate",reference.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture)},{"selection",today==reference?"today":"next-week"}};
+ }
+ static Dictionary<string,object> TimetableData(Dictionary<string,object> school,DateTime today,DateTime reference){
+  if(school==null||TextVal(school,"cls")==""||TextVal(school,"grade")=="")throw new WeekException("설정에서 학년과 반을 고르면 기본 시간표가 나옵니다.");
+  DateTime monday=reference.AddDays(1-(int)reference.DayOfWeek);
+  string kind=TextVal(school,"kind"),endpoint=kind=="중학교"?"misTimetable":kind=="고등학교"?"hisTimetable":"elsTimetable";
+  string year=(monday.Month<3?monday.Year-1:monday.Year).ToString(CultureInfo.InvariantCulture);
+  string query="AY="+year+"&GRADE="+TextVal(school,"grade")+"&CLASS_NM="+Uri.EscapeDataString(TextVal(school,"cls"));
+  string key=TextVal(school,"office")+"|"+TextVal(school,"code")+"|"+endpoint+"|"+query+"|"+Ymd(monday);
+  CachedWeek cached;SortedDictionary<int,string[]> slots;
+  if(timetableCache.TryGetValue(key,out cached)&&cached.Until>DateTime.UtcNow)slots=cached.Slots;
+  else{
+   slots=new SortedDictionary<int,string[]>();
+   for(int day=0;day<5;day++){
+    string q=query+"&ALL_TI_YMD="+Ymd(monday.AddDays(day));var answer=Neis(endpoint,q,school);
+    var rows=new List<Dictionary<string,object>>(answer.Rows);
+    for(int period=1;period<=8&&rows.Count<answer.Total;period++){
+     if(!rows.Exists(r=>Convert.ToString(Val(r,"PERIO"),CultureInfo.InvariantCulture)==period.ToString(CultureInfo.InvariantCulture)))rows.AddRange(Neis(endpoint,q+"&PERIO="+period,school).Rows);
+    }
+    foreach(var row in rows){
+     int period;if(!Int32.TryParse(Convert.ToString(Val(row,"PERIO"),CultureInfo.InvariantCulture),out period)||period<1||period>8)continue;
+     if(!slots.ContainsKey(period))slots.Add(period,Five());slots[period][day]=TextVal(row,"ITRT_CNTNT").Trim();
+    }
+   }
+   if(timetableCache.Count>=16)timetableCache.Clear();
+   timetableCache[key]=new CachedWeek{Slots=slots,Until=DateTime.UtcNow.AddHours(1)};
+  }
+  if(slots.Count==0)throw new WeekException("나이스에 이번 주 시간표가 아직 없습니다.");
+  var lessons=new List<object>();foreach(var pair in slots)lessons.Add(Lesson(pair.Key+"교시",pair.Value,Five()));
+  string[] dates=Five();for(int i=0;i<5;i++)dates[i]=ShortDate(monday.AddDays(i));
+  return WeekResult("나이스 기본 시간표",dates,lessons,Five(),today,reference);
+ }
+ static string[] SliceFive(string[] cells){var result=Five();Array.Copy(cells,1,result,0,5);return result;}
+ static Dictionary<string,object> SheetWeek(Dictionary<string,object> school,DateTime today,DateTime reference){
+  string sheet=TextVal(school,"sheet");if(!MatchFull(sheet,"[A-Za-z0-9_-]{20,80}"))throw new FormatException("Sheet");
+  string page=NeisFixture("sheet",sheet+"/htmlview");
+  var matches=Regex.Matches(page,@"items\.push\(\{name:\s*(""(?:\\.|[^""\\])*""),\s*pageUrl:[\s\S]*?gid:\s*""(\d+)""");
+  string title=null,gid=null;int candidates=0,found=0;
+  foreach(Match match in matches){
+   string tab=Serializer().Deserialize<string>(match.Groups[1].Value);
+   if(tab==null||!Regex.IsMatch(tab,@"주(?:차)?\s*\("))continue;
+   candidates++;
+   var m=Regex.Match(tab,@"(\d{1,2})\.(\d{1,2})\s*~\s*(\d{1,2})\.(\d{1,2})");if(!m.Success)continue;
+   int sm=Int32.Parse(m.Groups[1].Value),sd=Int32.Parse(m.Groups[2].Value),em=Int32.Parse(m.Groups[3].Value),ed=Int32.Parse(m.Groups[4].Value);
+   for(int year=reference.Year-1;year<=reference.Year;year++)try{
+    DateTime start=new DateTime(year,sm,sd),end=new DateTime(em<sm?year+1:year,em,ed);
+    if(reference>=start&&reference<=end){found++;title=tab;gid=match.Groups[2].Value;break;}
+   }catch(ArgumentOutOfRangeException){}
+  }
+  if(candidates==0)throw new FormatException("No public weekly tabs");
+  if(found==0)throw new WeekException("시트에 이번 주 탭이 없습니다. 시트에서 이번 주 탭을 만들면 나타납니다.");
+  if(found!=1)throw new FormatException("Ambiguous week");
+  string raw=NeisFixture("sheet",sheet+"/gviz/tq?tqx=out:json&headers=0&gid="+gid+"&range=A1:F30");
+  int begin=raw.IndexOf('{'),endIndex=raw.LastIndexOf('}');if(begin<0||endIndex<=begin)throw new FormatException("Sheet response");
+  var data=Obj(Serializer().DeserializeObject(raw.Substring(begin,endIndex-begin+1)));
+  if(TextVal(data,"status")!="ok")throw new FormatException("Sheet status");
+  var rows=new List<string[]>();foreach(var r in Arr(Val(Obj(Val(data,"table")),"rows"))){
+   var cells=new string[6];var values=Arr(Val(Obj(r),"c"));
+   for(int i=0;i<6;i++){var cell=i<values.Length?Obj(values[i]):null;cells[i]=Convert.ToString(Val(cell,"f")??Val(cell,"v"),CultureInfo.InvariantCulture)??"";}
+   rows.Add(cells);
+  }
+  string[] dates=Five(),events=Five();var lessons=new List<object>();
+  for(int r=0;r<rows.Count;r++){
+   var cells=rows[r];int datesFound=0;for(int i=1;i<6;i++)if(MatchFull(cells[i],@"\d{1,2}/\d{1,2}"))datesFound++;
+   if(datesFound>=3)dates=SliceFive(cells);
+   if(r==3)events=SliceFive(cells);
+   Match label=Regex.Match(cells[0],@"^[1-7]교시");
+   if(label.Success){var notes=Five();if(r+1<rows.Count&&String.IsNullOrWhiteSpace(rows[r+1][0])){notes=SliceFive(rows[r+1]);for(int i=0;i<5;i++)notes[i]=notes[i].Trim();}lessons.Add(Lesson(label.Value,SliceFive(cells),notes));}
+  }
+  if(Array.IndexOf(dates,ShortDate(reference))<0||lessons.Count==0)throw new FormatException("Week cells mismatch");
+  var y=Regex.Match(rows[0][0],@"20\d{2}");
+  if(y.Success){int year=Int32.Parse(y.Value);if(year!=reference.Year&&!(reference.Month<3&&year==reference.Year-1))throw new FormatException("Week year mismatch");}
+  return WeekResult(title,dates,lessons,events,today,reference);
+ }
  static void SchoolData(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
   bool read=method=="GET",localOrigin=origin==""||origin=="http://127.0.0.1:"+Port||origin=="http://localhost:"+Port;
   if(!localOrigin||(site!="same-origin"&&!(read&&(site==""||site=="none")))){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
@@ -429,10 +520,11 @@ internal static class NativeReadServer {
     var rows=new List<object>();foreach(var row in table.Rows)rows.Add(new Dictionary<string,object>{{"office",TextVal(row,"ATPT_OFCDC_SC_CODE")},{"code",TextVal(row,"SD_SCHUL_CODE")},{"name",TextVal(row,"SCHUL_NM")},{"kind",TextVal(row,"SCHUL_KND_SC_NM")},{"address",TextVal(row,"ORG_RDNMA")}});
     Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"total",table.Total},{"rows",rows}}));return;
    }
+   if(path=="/api/week"){DateTime today=SeoulToday(),reference=WeekReference(today);Json(s,"200 OK",Serializer().Serialize(school!=null&&TextVal(school,"sheet")!=""?SheetWeek(school,today,reference):TimetableData(school,today,reference)));return;}
    DateTime d;if(!DateValue(Get(q,"date"),out d))throw new FormatException("Date");
    var output=school==null?new List<object>():path=="/api/meal"?MealData(school,d):EventData(school,d);
    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"rows",output}}));
-  }catch(Exception e){
+  }catch(WeekException e){Json(s,"404 Not Found",Serializer().Serialize(new Dictionary<string,object>{{"code","WEEK_NOT_FOUND"},{"error",e.Message}}));}catch(Exception e){
    if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
    Json(s,"502 Bad Gateway","{\"code\":\""+(path=="/api/meal"?"MEAL_FETCH_ERROR":"UPSTREAM_ERROR")+"\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");
   }
@@ -457,7 +549,7 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
-   if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
+   if(coinWrites&&(path=="/api/school"||path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week")){SchoolData(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
    if(coinWrites&&(path=="/presentation-board.js"||path=="/presentation-board.css"||path.StartsWith("/presentation/",StringComparison.Ordinal))){PresentationAsset(s,path,req[0],site);return;}
    if(write){
