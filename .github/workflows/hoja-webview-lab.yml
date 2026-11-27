@@ -62,3 +62,45 @@ jobs:
           if($env:NATIVE_RESULT -ne 'success' -or $env:READER_RESULT -ne 'success'){throw "Phase 5D blocked: native=$env:NATIVE_RESULT reader=$env:READER_RESULT"}
           Write-Host 'PASS Phase 5D isolated regression: native board, manager, ledger, book, meeting, media, rollback and pinned original sources'
           Write-Host 'FIELD GATES REMAIN: actual Canva/account, actual external video download, physical display/input/audio and installed production candidate'
+  field-pilot:
+    name: Phase 6A isolated installable field pilot
+    needs: [phase5-gate]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build separate field pilot
+        shell: powershell
+        run: tools/webview-lab/field-pilot-build.ps1
+      - name: Install and launch in separate test user data directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('field-pilot-smoke-'+[guid]::NewGuid().ToString('N'))
+          $legacy=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          New-Item -ItemType Directory -Path $legacy -Force|Out-Null
+          Set-Content -LiteralPath (Join-Path $legacy 'keep.txt') 'untouched' -Encoding ASCII
+          $hash=(Get-FileHash (Join-Path $legacy 'keep.txt')).Hash
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke -Mode wallpaper
+          if((Get-FileHash (Join-Path $legacy 'keep.txt')).Hash -cne $hash -or @(Get-ChildItem $legacy -Force).Count -ne 1){throw 'Existing installation changed'}
+          if(Get-NetTCPConnection -LocalPort 17451 -State Listen -ErrorAction SilentlyContinue){throw 'Pilot listener survived close'}
+          $original=Join-Path $package 'payload/local/TeacherToolsLocal/release.json'
+          $bytes=[IO.File]::ReadAllBytes($original)
+          try{
+            [IO.File]::WriteAllText($original,'tampered')
+            $rejected=$false
+            try{& (Join-Path $package 'Start-Pilot.ps1') -Smoke}catch{if($_.Exception.Message -notmatch 'Package file mismatch'){throw};$rejected=$true}
+            if(!$rejected){throw 'Tampered package accepted'}
+          }finally{[IO.File]::WriteAllBytes($original,$bytes)}
+          Write-Host 'PASS pilot manual installation, window/wallpaper close and reopen, legacy directory untouched, tamper rejection'
+      - name: Upload verified field pilot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-WebView2-FieldPilot-A1
+          path: ${{ runner.temp }}/HOJA-WebView2-FieldPilot-A1
+          if-no-files-found: error
+          retention-days: 14
