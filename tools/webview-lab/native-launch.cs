@@ -95,6 +95,8 @@ internal sealed class NativeBoardLaunch : Form {
             if(mode=="window"&&File.Exists(bookProbe)){File.Delete(bookProbe);VerifyBookUi();}
             string meetingProbe=Path.Combine(root,"meeting-ui-test.fixture");
             if(mode=="window"&&File.Exists(meetingProbe)){File.Delete(meetingProbe);VerifyMeetingUi();}
+            string mediaProbe=Path.Combine(root,"media-ui-test.fixture");
+            if(mode=="window"&&File.Exists(mediaProbe)){File.Delete(mediaProbe);VerifyMediaUi();}
             if(mode=="wallpaper"){
                 string pause=Path.Combine(root,"share-helper-stop.fixture");
                 if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
@@ -177,6 +179,34 @@ internal sealed class NativeBoardLaunch : Form {
         bookUiTesting=false;
     }
 
+
+    bool mediaUiTesting;
+    async void VerifyMediaUi(){
+        if(mediaUiTesting)return;mediaUiTesting=true;
+        string result=Path.Combine(root,"media-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            // Real locally generated WebM: no network and no downloaded copyrighted content.
+            await core.ExecuteScriptAsync("(()=>{window.__mediaBlob=null;window.__mediaBlobError=null;(async()=>{try{const c=document.createElement('canvas');c.width=64;c.height=64;const x=c.getContext('2d'),s=c.captureStream(10),r=new MediaRecorder(s,{mimeType:'video/webm'}),chunks=[];r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};r.onstop=()=>{s.getTracks().forEach(t=>t.stop());const f=new FileReader();f.onload=()=>window.__mediaBlob=f.result.split(',')[1];f.readAsDataURL(new Blob(chunks,{type:'video/webm'}))};r.start();let n=0;const t=setInterval(()=>{x.fillStyle=n++%2?'#137':'#eac';x.fillRect(0,0,64,64)},80);setTimeout(()=>{clearInterval(t);r.stop()},1200)}catch(e){window.__mediaBlobError=String(e)}})()})()");
+            await WaitMeetingUi("typeof window.__mediaBlob==='string'&&window.__mediaBlob.length>50","generated WebM");
+            string raw=await core.ExecuteScriptAsync("window.__mediaBlob");
+            string encoded=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<string>(raw);
+            byte[] bytes=Convert.FromBase64String(encoded);
+            Require(bytes.Length>50&&bytes.Length<1048576,"WebM fixture bounds");
+            string lib=Path.Combine(root,"local","TeacherToolsMedia","library");
+            File.WriteAllBytes(Path.Combine(lib,"LAB actual playback.webm"),bytes);
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaOpen').click()");
+            await WaitMeetingUi("!!document.querySelector('[data-media-tool=youtube-downloader]')","downloader menu");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=youtube-downloader]').click()");
+            await WaitMeetingUi("document.querySelector('[data-youtube-state]')?.textContent.includes('다운로드 준비 완료')&&[...document.querySelectorAll('[data-youtube-library] strong')].some(x=>x.textContent==='LAB actual playback')","media list and idle");
+            await core.ExecuteScriptAsync("(()=>{const row=[...document.querySelectorAll('[data-youtube-library] .mm-book-row')].find(r=>r.querySelector('strong')?.textContent==='LAB actual playback');row.querySelector('button:last-child').click()})()");
+            await WaitMeetingUi("(()=>{const v=document.querySelector('#ttMediaStage video');return !!v&&v.readyState>=2&&v.videoWidth===64&&v.videoHeight===64&&!v.error&&v.src.startsWith('http://127.0.0.1:')})()","actual decoded local WebM through private port");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open&&!document.querySelector('#ttMediaStage video')","offline video close");
+            File.WriteAllText(result,"PASS native dashboard offline media library and actual generated WebM decode through original local worker, close");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        mediaUiTesting=false;
+    }
     bool meetingUiTesting;
     async Task WaitMeetingUi(string expression,string label){
         var core=browser.CoreWebView2;
