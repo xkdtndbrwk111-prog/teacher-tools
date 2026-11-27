@@ -71,6 +71,11 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_SHARE_LAB
+        if(p=="/api/share-input")return method=="GET"||method=="POST";
+        if(p=="/api/share-input/status")return method=="GET";
+        if(p=="/api/share-input/restart")return method=="POST";
+#endif
 #if NATIVE_AUDIO_LAB
         if(p=="/api/speakers")return method=="GET";
         if(p=="/api/speakers/set"||p=="/api/open-sound-settings")return method=="POST";
