@@ -1174,14 +1174,15 @@ internal static class NativeReadServer {
   return Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));
  }
  // A restart can address only the validated, currently owned wallpaper launcher.
- static Dictionary<string,object> ShareOwner(){
+ static Dictionary<string,object> ShareOwner(){return NativeBoardOwner(true);}
+ static Dictionary<string,object> NativeBoardOwner(bool wallpaperOnly){
   try{
    var mode=FreshShareDocument("board-mode.json");
    var proofBytes=Read("native-mode-owner.json");
    if(mode==null||proofBytes==null||proofBytes.Length>8192)return null;
    var proof=Obj(Serializer().DeserializeObject(Utf8.GetString(proofBytes).TrimStart('\uFEFF')));
    object pid=Val(mode,"pid"),window=Val(mode,"window");
-   if(!IntValue(pid,1,Int32.MaxValue)||!IntValue(window,1,Int64.MaxValue)||!Equals(pid,Val(proof,"pid"))||!Equals(window,Val(proof,"window"))||TextVal(mode,"mode")!="wallpaper"||TextVal(proof,"mode")!="wallpaper"||TextVal(mode,"release")!=release||TextVal(proof,"release")!=release)return null;
+   if(!IntValue(pid,1,Int32.MaxValue)||!IntValue(window,1,Int64.MaxValue)||!Equals(pid,Val(proof,"pid"))||!Equals(window,Val(proof,"window"))||(wallpaperOnly?TextVal(mode,"mode")!="wallpaper":(TextVal(mode,"mode")!="wallpaper"&&TextVal(mode,"mode")!="window"))||TextVal(proof,"mode")!=TextVal(mode,"mode")||TextVal(mode,"release")!=release||TextVal(proof,"release")!=release)return null;
    int id=Convert.ToInt32(pid);uint owner;
    if(GetWindowThreadProcessId(new IntPtr(Convert.ToInt64(window)),out owner)==0||owner!=(uint)id)return null;
    using(var p=Process.GetProcessById(id)){
@@ -1388,14 +1389,66 @@ internal static class NativeReadServer {
   if(url.Length>500||!valid||title.Length>80||String.IsNullOrWhiteSpace(title)||!IntValue(Val(x,"pages"),1,4095)||!IntValue(Val(x,"start"),1,LongVal(x,"pages"))||!IntValue(Val(x,"saved"),0,LongVal(x,"pages"))||(openId!=""&&!MatchFull(openId,"[a-f0-9]{32}")))throw new FormatException("book");
   x["layout"]=BookLayout(Val(x,"layout"));return x;
  }
+ // 5A-2a: isolated session model. No real worker or external navigation is authorized here.
+ sealed class BookLabSession{
+  public string Token,OpenId,Url,OwnerStart;public long OwnerPid,OwnerWindow,Pages,Seq;
+  public DateTime Lease;public bool Closed;public Dictionary<string,object> Layout;
+ }
+ static BookLabSession bookLab;
+ static bool BookFixture(){return File.Exists(Path.Combine(labRoot,"book-session-fixture.flag"));}
+ static bool BookOwnerMatches(BookLabSession b,Dictionary<string,object> owner){
+  return owner!=null&&LongVal(owner,"pid")==b.OwnerPid&&LongVal(owner,"window")==b.OwnerWindow&&TextVal(owner,"startTicks")==b.OwnerStart;
+ }
+ static void BookExpire(){
+  if(bookLab!=null&&!bookLab.Closed&&(!BookFixture()||(DateTime.UtcNow-bookLab.Lease).TotalSeconds>35||!BookOwnerMatches(bookLab,NativeBoardOwner(false))))bookLab.Closed=true;
+ }
+ static Dictionary<string,object> BookCommand(object v,long pages,Dictionary<string,object> layout){
+  var c=Obj(v);
+  if(c==null||!IntValue(Val(c,"seq"),1,1000000)||!IntValue(Val(c,"page"),Int32.MinValue,Int32.MaxValue))throw new FormatException("command");
+  string k=TextVal(c,"kind");
+  if(Array.IndexOf(new[]{"auto","manual","prev","next","seek"},k)<0)throw new FormatException("command kind");
+  if((k=="manual"||k=="seek")&&!IntValue(Val(c,"page"),1,pages))throw new FormatException("page");
+  if((k=="prev"||k=="next")&&(LongVal(layout,"immersive")!=1||LongVal(c,"page")!=0))throw new FormatException("navigation");
+  return c;
+ }
  static void BookProtocol(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
   if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   if((path=="/api/book-reader/status"&&method!="GET"&&method!="POST")||(path!="/api/book-reader/status"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
-  if(path!="/api/book-reader/open"){Json(s,"404 Not Found","{\"error\":\"session\"}");return;}
-  try{BookOpen(payload);}
-  catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BOOK_URL_INVALID\"}");return;}
-  // The next stage must prove exact native owner and pinned reader bundle before starting a child.
-  Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"OWNER_NOT_FOUND\"}");
+  BookExpire();
+  if(path=="/api/book-reader/open"){
+   Dictionary<string,object> x;
+   try{x=BookOpen(payload);}
+   catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BOOK_URL_INVALID\"}");return;}
+   var owner=NativeBoardOwner(false);
+   if(owner==null){Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"OWNER_NOT_FOUND\"}");return;}
+   if(!BookFixture()){Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BUNDLE_MISMATCH\"}");return;}
+   string openId=TextVal(x,"openId"),url=TextVal(x,"url");
+   if(bookLab!=null&&!bookLab.Closed){
+    if(openId!=""&&openId==bookLab.OpenId&&url==bookLab.Url&&BookOwnerMatches(bookLab,owner)){
+     Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"session",bookLab.Token}}));return;
+    }
+    Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"READER_ALREADY_RUNNING\"}");return;
+   }
+   bookLab=new BookLabSession{Token=Guid.NewGuid().ToString("N"),OpenId=openId,Url=url,OwnerPid=LongVal(owner,"pid"),OwnerWindow=LongVal(owner,"window"),OwnerStart=TextVal(owner,"startTicks"),Pages=LongVal(x,"pages"),Lease=DateTime.UtcNow,Layout=DictVal(x,"layout")};
+   Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"session",bookLab.Token}}));return;
+  }
+  if(bookLab==null||target!=path+"?session="+bookLab.Token){Json(s,"404 Not Found","{\"error\":\"session\"}");return;}
+  if(path=="/api/book-reader/close"){
+   bookLab.Closed=true;Json(s,"200 OK","{\"ok\":true}");return;
+  }
+  if(!bookLab.Closed){
+   try{
+    if(method=="POST"){
+     var x=BookRequest(payload);var layout=BookLayout(Val(x,"layout"));
+     object v=Val(x,"command");
+     if(v!=null){var c=BookCommand(v,bookLab.Pages,layout);if(LongVal(c,"seq")>bookLab.Seq)bookLab.Seq=LongVal(c,"seq");}
+     bookLab.Layout=layout;
+    }
+    bookLab.Lease=DateTime.UtcNow;
+   }catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid layout or command\"}");return;}
+  }
+  // Never claim rendered pages, bookmarks or command acknowledgement from the fixture.
+  Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",bookLab.Closed},{"page",0},{"saved",0},{"total",bookLab.Pages},{"status",bookLab.Closed?"격리 세션 종료":"격리 세션 (실제 재생 없음)"},{"navigationMode","fixture"},{"fixtureSeq",bookLab.Seq}}));
  }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
