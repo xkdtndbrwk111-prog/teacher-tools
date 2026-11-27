@@ -48,7 +48,7 @@ try{
  if((Get-Content -LiteralPath (Join-Path $root 'field-pilot.flag') -Raw) -cne '1.66.43-field-a1'){throw 'Pilot identity mismatch'}
  Verify-Payload $root
  $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=Join-Path $root 'local'
- foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag','field-manager-live.flag','manager.static.ready','manager.static.stop','game.static.ready','game.static.stop')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
+ foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag','field-manager-live.flag','manager.static.ready','manager.static.stop','game.static.ready','game.static.stop','field-smoke.flag','field-game-smoke.result')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
  foreach($name in @('coin-write-fixture.flag','media-read-fixture.flag','media-write-fixture.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'isolated-field-data' -Encoding ASCII}
  if($LiveBook){Set-Content -LiteralPath (Join-Path $root 'field-book-live.flag') 'explicit' -Encoding ASCII}
  if($LiveDownload){Set-Content -LiteralPath (Join-Path $root 'media-download-live.flag') 'explicit' -Encoding ASCII}
@@ -57,6 +57,7 @@ try{
  if($LiveSystem){foreach($name in @('field-system-live.flag','system-open-live.flag','photo-picker-live.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'explicit' -Encoding ASCII}}
  if($Transfer){Set-Content -LiteralPath (Join-Path $root 'field-transfer-live.flag') 'explicit' -Encoding ASCII}
  if($LocalManager){Set-Content -LiteralPath (Join-Path $root 'field-manager-live.flag') 'explicit' -Encoding ASCII}
+ if($Smoke){Set-Content -LiteralPath (Join-Path $root 'field-smoke.flag') 'offline-smoke-only' -Encoding ASCII}
  foreach($kind in @('manager','game')){
   $port=if($kind -eq 'manager'){4188}else{4189}
   $proc=Start-Process -FilePath (Join-Path $root 'bin/HOJA-Field-Static.exe') -ArgumentList "$kind $PID" -PassThru -WindowStyle Hidden
@@ -100,13 +101,15 @@ try{
    Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17451/api/open-manager' -Headers $headers -ContentType 'text/plain' -TimeoutSec 3|Out-Null
    throw 'Published manager unexpectedly accepted'
   }catch{if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 409){throw}}
-  Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII
+  if((Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw) -notmatch '^PASS real packaged mini-game'){throw 'Field game handshake not verified'}
+  Write-Host (Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw)
   $managerPage=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/seating/' -TimeoutSec 3
   $link=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/classroom/host/dashboard-link.js' -TimeoutSec 3
   $game=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4189/hoja-minigames/?mode=board&embed=dashboard&coin=4&fresh=1-1' -TimeoutSec 10
   if($managerPage.Content -notmatch '교실 매니저' -or $link.Content -notmatch '127\.0\.0\.1:17451' -or $link.Content -match '127\.0\.0\.1:17439' -or $game.Content -notmatch "DASHBOARD_ORIGIN='http://127.0.0.1:17451'" -or $game.Content -match '127\.0\.0\.1:17439'){throw 'Packaged origins mismatch'}
   if($managerPage.Headers['Content-Security-Policy'] -notmatch 'connect-src.*127\.0\.0\.1:17451' -or $game.Headers['Content-Security-Policy'] -notmatch 'frame-ancestors http://127\.0\.0\.1:17451'){throw 'Static origin isolation policy missing'}
   Write-Host 'PASS packaged local manager/game origins and production manager isolation'
+  Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII
  }
  while(!$board.WaitForExit(500)){if($server.HasExited){throw 'Pilot server exited'};foreach($proc in $static.Values){if($proc.HasExited){throw 'Static pilot server exited'}}}
  if($board.ExitCode -ne 0){throw "Pilot launcher exit: $($board.ExitCode)"}
@@ -116,6 +119,7 @@ try{
  if($server -and !$server.HasExited){Set-Content -LiteralPath (Join-Path $root 'native-read-server.stop') 'stop' -Encoding ASCII;if(!$server.WaitForExit(15000)){$server.Kill();$server.WaitForExit()}}
  foreach($kind in $static.Keys){$proc=$static[$kind];if(!$proc.HasExited){Set-Content -LiteralPath (Join-Path $root "$kind.static.stop") 'stop' -Encoding ASCII;if(!$proc.WaitForExit(5000)){$proc.Kill();$proc.WaitForExit()}};$proc.Dispose()}
  if($board){$board.Dispose()};if($server){$server.Dispose()}
+ Remove-Item -LiteralPath (Join-Path $root 'field-smoke.flag') -Force -ErrorAction SilentlyContinue
  $env:LOCALAPPDATA=$realLocal;$env:HOJA_LAB_ROOT=$oldLab
  $lock.Dispose()
 }
