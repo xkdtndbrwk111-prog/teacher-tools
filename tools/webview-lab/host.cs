@@ -191,7 +191,9 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         string backupResult="";
         for(int i=0;i<180;i++){
             backupResult=await core.ExecuteScriptAsync("document.documentElement.dataset.labBackup||((sessionStorage.getItem('lab-backup-reload')==='pending'&&typeof window.__labFull==='undefined'&&localStorage.getItem('teacher-note')==='LAB BACKUP MEMO')?'ok':'')");
-            if(backupResult!="\"\"")break;
+            // ExecuteScriptAsync can return JSON null while the restored page is navigating.
+            // It is neither a failure nor success; wait for the committed reload predicate.
+            if(backupResult=="\"ok\""||backupResult.StartsWith("\"error:",StringComparison.Ordinal))break;
             await Task.Delay(150);
         }
         Require(backupResult=="\"ok\"","actual backup/restore UI: "+backupResult);
