@@ -1144,6 +1144,41 @@ try{
  if($share.keyboard -or $share.cursor){throw 'Share settings explicit repair'}
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $shareBefore[$file])){throw 'Share settings altered ledger'}}
  Write-Host 'PASS native input-sharing defaults, independent booleans, strict validation, cross-site/raw denial, restart and explicit recovery'
+ # 4E-3b1: do not claim a live helper from stale or forged status; no process launch.
+ $shareStatusFile=Join-Path $crashStore 'share-input-status.json'
+ $shareProofFile=Join-Path $crashStore 'native-mode-owner.json'
+ $shareModeFile=Join-Path $crashStore 'board-mode.json'
+ $shareStatus=School-Doc '/api/share-input/status'
+ if($shareStatus.running -or $shareStatus.hook){throw 'Absent helper status'}
+ Assert-P (Raw-Request 17451 '/api/share-input/restart' POST '' 'same-origin') 503
+ Assert-P (Raw-Request 17451 '/api/share-input/restart' GET '' 'same-origin') 405
+ Assert-P (Raw-Request 17451 '/api/share-input/status' GET '' 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Raw-Request 17451 '/api/share-input/restart' POST '' 'cross-site') 403
+ $shareStatusBackup=@{}
+ foreach($p in @($shareStatusFile,$shareProofFile,$shareModeFile)){if(Test-Path -LiteralPath $p){$shareStatusBackup[$p]=[IO.File]::ReadAllBytes($p)}}
+ try{
+  $modeDoc=@{pid=$PID;window=1;mode='wallpaper';release='2026-11-25-V1.66.43-STABLE-PILOT'}|ConvertTo-Json -Compress
+  $statusDoc=@{pid=$PID;hook=$true;keyboard=$true;cursor=$false;release='2026-11-25-V1.66.43-STABLE-PILOT'}|ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($shareModeFile,$modeDoc,$utf8)
+  [IO.File]::WriteAllText($shareProofFile,$modeDoc,$utf8)
+  [IO.File]::WriteAllText($shareStatusFile,$statusDoc,$utf8)
+  $shareStatus=School-Doc '/api/share-input/status'
+  if($shareStatus.running -or $shareStatus.hook){throw 'Forged live helper'}
+  [IO.File]::SetLastWriteTimeUtc($shareStatusFile,[DateTime]::UtcNow.AddMinutes(-2))
+  if((School-Doc '/api/share-input/status').running){throw 'Stale helper'}
+  [IO.File]::WriteAllText($shareStatusFile,'invalid',$utf8)
+  if((School-Doc '/api/share-input/status').running){throw 'Malformed helper'}
+  Assert-P (Raw-Request 17451 '/share-input-status.json') 404
+  Assert-P (Raw-Request 17451 '/native-mode-owner.json') 404
+ }finally{
+  foreach($p in @($shareStatusFile,$shareProofFile,$shareModeFile)){
+   if($shareStatusBackup.ContainsKey($p)){[IO.File]::WriteAllBytes($p,$shareStatusBackup[$p])}
+   else{Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+  }
+ }
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $shareBefore[$file])){throw 'Share helper status altered ledger'}}
+ Write-Host 'PASS native helper absent/stale/forged/malformed status and offline restart denied, raw/cross-site blocked'
+
 
 
 
