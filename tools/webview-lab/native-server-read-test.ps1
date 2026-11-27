@@ -1,4 +1,4 @@
-param([string]$LabRoot,[string]$Runtime,[string]$Build)
+﻿param([string]$LabRoot,[string]$Runtime,[string]$Build)
 $ErrorActionPreference='Stop'
 if((Split-Path $LabRoot -Leaf) -notmatch '^hoja-webview-lab-[a-f0-9]{32}$'){throw 'Not isolated'}
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
