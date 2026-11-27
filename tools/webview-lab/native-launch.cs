@@ -13,7 +13,11 @@ using Microsoft.Web.WebView2.WinForms;
 // Phase 3A research launcher. This executable accepts only the CI isolation root.
 // The existing server remains a separate process. No production profile or updater access.
 internal sealed class NativeBoardLaunch : Form {
+#if NATIVE_SHARE_LAB
+    const string Origin="http://127.0.0.1:17451";
+#else
     const string Origin="http://127.0.0.1:17449";
+#endif
     const string Release="2026-11-25-V1.66.43-STABLE-PILOT";
     readonly string root,runtime,mode,modeFile,stopFile,resultFile;
     readonly WebView2 browser=new WebView2();
@@ -86,8 +90,36 @@ internal sealed class NativeBoardLaunch : Form {
                 if(next!=lastBounds){if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0014))throw new IOException("display resize");lastBounds=next;}
             }
             Publish();
+#if NATIVE_SHARE_LAB
+            if(mode=="wallpaper"){
+                string pause=Path.Combine(root,"share-helper-stop.fixture");
+                if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
+                ConsumeShareRestart();
+            }
+#endif
         }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
     }
+#if NATIVE_SHARE_LAB
+    void ConsumeShareRestart(){
+        string file=Path.Combine(runtime,"share-input-restart.json");
+        string claimed=file+".claimed";
+        if(!File.Exists(file))return;
+        try{
+            if(File.Exists(claimed))File.Delete(claimed);
+            File.Move(file,claimed);
+            if((File.GetAttributes(claimed)&FileAttributes.ReparsePoint)!=0||new FileInfo(claimed).Length>8192)return;
+            var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(claimed));
+            long issued;
+            using(var self=Process.GetCurrentProcess()){
+                if(Convert.ToInt32(d["pid"])!=self.Id||Convert.ToInt64(d["window"])!=Handle.ToInt64()||(string)d["mode"]!="wallpaper"||(string)d["release"]!=Release||(string)d["startTicks"]!=self.StartTime.ToUniversalTime().Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)||!Int64.TryParse((string)d["issuedTicks"],out issued))return;
+            }
+            long age=DateTime.UtcNow.Ticks-issued;
+            if(age<0||age>TimeSpan.FromSeconds(10).Ticks)return;
+            if(!NativeShareInput.IsActive)NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
+        }catch(Exception ex){ServerLog("share-restart.log","Rejected restart: "+ex.GetType().Name);}
+        finally{try{File.Delete(claimed);}catch{}}
+    }
+#endif
     Screen TargetScreen(){
         string path=Path.Combine(runtime,"display.txt");
         string device=File.Exists(path)?File.ReadAllText(path).Trim():"";
@@ -186,6 +218,9 @@ internal sealed class NativeBoardLaunch : Form {
     }
     async Task StartBoard(){
         if(updateToken!=null)updateJournal=ValidateUpdateJournal();
+#if NATIVE_SHARE_LAB
+        Require(!startOwned&&migrationSource==null&&updateToken==null,"native share lab external server only");
+#endif
         if(startOwned)await StartOwnedServer();
         string health=await Task.Run(()=>Health());
         var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
