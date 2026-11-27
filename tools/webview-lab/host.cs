@@ -71,6 +71,11 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_AUDIO_LAB
+        if(p=="/api/speakers")return method=="GET";
+        if(p=="/api/speakers/set"||p=="/api/open-sound-settings")return method=="POST";
+        if(p=="/api/volume")return method=="GET"||method=="POST";
+#endif
 #if NATIVE_DATA_LAB
         if(p=="/api/school")return method=="GET"||method=="POST";
         if(p=="/api/school/search"||p=="/api/week"||p=="/api/meal"||p=="/api/events"||p=="/api/weather"||p=="/api/weather/places")return method=="GET";
@@ -166,6 +171,38 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         await core.ExecuteScriptAsync(@"(async()=>{try{await photoRefresh();photoShowIndex(0,true);for(let i=0;i<80;i++){if(photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t=')))break;await new Promise(r=>setTimeout(r,50))}document.documentElement.dataset.labPhotoReload=photoCount===2&&photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t='))?'ok':'bad'}catch(e){document.documentElement.dataset.labPhotoReload='error:'+e.message}})()");
         Require(await WaitResult(core,"document.documentElement.dataset.labPhotoReload||''")=="\"ok\"","actual image decode after dashboard reload");
         Finish(0,"PASS actual dashboard photoRefresh/photoShowIndex, GIF layer and cache-busted URL, reload and raw settings blocked");
+        return;
+#endif
+#if NATIVE_AUDIO_LAB
+        // Drive the existing dashboard handlers; all device state is an isolated fixture.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const q=id=>document.getElementById(id);
+          const wait=async(fn)=>{for(let i=0;i<100;i++){if(await fn())return;await new Promise(r=>setTimeout(r,80))}throw Error('wait')};
+          const get=async(path)=>{const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(path+' '+r.status);return r.json()};
+          await wait(()=>window.ttSystemVolume?.get().ok&&window.ttSystemVolume.get().level===50);
+          if(q('ttMediaVolume').value!=='50')throw Error('initial media volume');
+          q('settings').showModal();
+          q('speakerRefresh').click();
+          await wait(()=>[...q('speakerA').options].some(o=>o.value==='lab-a')&&[...q('speakerB').options].some(o=>o.value==='lab-b'));
+          q('speakerA').value='lab-a';q('speakerB').value='lab-b';q('speakerLabelA').value='LAB A';q('speakerLabelB').value='LAB B';
+          q('speakerSave').click();
+          await wait(()=>JSON.parse(localStorage.getItem('class-speakers')||'null')?.b?.id==='lab-b');
+          q('settings').close();
+          q('toggleSpeaker').click();
+          await wait(async()=> (await get('/api/speakers')).list.some(d=>d.id==='lab-b'&&d.current)&&q('speakerToast').textContent.includes('LAB B'));
+          const slider=q('ttMediaVolume');
+          slider.value='65';slider.dispatchEvent(new Event('input',{bubbles:true}));
+          await wait(async()=>{const v=await get('/api/volume');return v.level===65&&!v.muted});
+          document.querySelector('.spk-mute').click();
+          await wait(async()=>{const v=await get('/api/volume');return v.level===65&&v.muted});
+          if(!document.querySelector('.spk-vol').classList.contains('is-muted')||q('ttMediaMute').getAttribute('aria-pressed')!=='true')throw Error('shared mute state');
+          document.documentElement.dataset.labAudio='ok';
+        }catch(e){document.documentElement.dataset.labAudio='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labAudio||''")=="\"ok\"","actual dashboard audio controls");
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{for(let i=0;i<100;i++){const v=window.ttSystemVolume?.get();if(v?.ok&&v.level===65&&v.muted&&document.getElementById('ttMediaMute')?.getAttribute('aria-pressed')==='true'&&JSON.parse(localStorage.getItem('class-speakers')||'null')?.b?.id==='lab-b'&&document.getElementById('toggleSpeaker').textContent.includes('LAB B')){document.documentElement.dataset.labAudioReload='ok';return}await new Promise(r=>setTimeout(r,80))}document.documentElement.dataset.labAudioReload='bad'}catch(e){document.documentElement.dataset.labAudioReload='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labAudioReload||''")=="\"ok\"","audio controls reload");
+        Finish(0,"PASS existing dashboard speaker selector, switch, shared multimedia volume/mute and reload (fixture only)");
         return;
 #endif
         // ExecuteScriptAsync does not await a Promise: publish an asynchronous result to DOM state.
