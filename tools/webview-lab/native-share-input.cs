@@ -145,6 +145,11 @@ internal static class NativeShareInput {
         logFile=Path.Combine(dir,"share-input.log");statusFile=Path.Combine(dir,"share-input-status.json");
         release=releaseName;board=window;optionsFile=options;
         traceFlag=Path.Combine(dir,"share-input-trace.on");traceFile=Path.Combine(dir,"share-input-trace.txt");
+        // A restarted helper must not retain a previous click, drag, or cursor anchor.
+        keyboard=cursor=clickedIn=haveReal=touchJump=tracing=false;
+        clickTick=lastRealTick=stillTicks=0;
+        lastReal=default(POINT);lastSeen=default(POINT);area=Rectangle.Empty;
+        NoActivate(false);
         ticks=0;active=true;
         try {
             ReadOptions();WriteStatus();
@@ -159,6 +164,7 @@ internal static class NativeShareInput {
             timer.Start();Log("native helper started");
         } catch {Stop();throw;}
     }
+    public static bool IsActive { get { return active; } }
     public static void Stop(){
         if(!active)return;active=false;
         if(timer!=null){timer.Stop();timer.Dispose();timer=null;}
