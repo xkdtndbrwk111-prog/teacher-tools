@@ -589,6 +589,20 @@ internal sealed class NativeBoardLaunch : Form {
             File.Move(temp,migrationMarker);
         }
         Publish();heartbeat.Start();
+#if NATIVE_FIELD_PILOT
+        if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
+            // Fresh isolated pilot data only, no clock override or fake game message.
+            Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('openMiniGames').click();return document.getElementById('miniGames').open})()")=="true","field game menu open");
+            bool ready=false;
+            for(int i=0;i<250;i++){
+                if(await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame');return f.src.startsWith('http://127.0.0.1:4189/hoja-minigames/')&&document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden})()")=="true"){ready=true;break;}
+                await Task.Delay(100);
+            }
+            Require(ready,"field game actual protocol 4 ready");
+            Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('miniBack').click();return !document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')})()")=="true","field game close");
+            File.WriteAllText(Path.Combine(root,"field-game-smoke.result"),"PASS real packaged mini-game protocol 4 ready and close");
+        }
+#endif
         PublishUpdateReady();
         File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
     }
