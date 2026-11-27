@@ -73,6 +73,7 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         var p=new Uri(raw).AbsolutePath;
 #if NATIVE_STORAGE_LAB
         if(p=="/api/notice")return method=="GET"||method=="POST";
+        if(p=="/api/theme/publish")return method=="POST";
 #endif
         if(method=="POST")return p=="/api/coins" || p=="/api/seating" || p=="/api/presentation/ack";
         if(method!="GET" && method!="HEAD")return false;
@@ -135,6 +136,9 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         Require(await core.ExecuteScriptAsync("localStorage.setItem('hoja-webview-lab','persist');localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage write");
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
+#if NATIVE_MANAGER_LAB
+        await VerifyManager(core);
+#else
         await VerifyGame(core);
         await VerifyRealGame(core);
 #if NATIVE_STORAGE_LAB
@@ -144,12 +148,15 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
 #else
         await VerifyManager(core);
 #endif
+#endif
         Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
         SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
         core.Navigate("http://127.0.0.1:17439/");
         await Task.Delay(500);
         Require(Local(core.Source),"production origin rejected");
-#if NATIVE_STORAGE_LAB
+#if NATIVE_MANAGER_LAB
+        Finish(0,"PASS: actual Chrome classroom sender and inbox, seating, roster update, confirmation auto-send, seating and PE offline render receipts and close via native C# server");
+#elif NATIVE_STORAGE_LAB
         Finish(0,"PASS: actual WebView2 dashboard and pinned real mini-game against native C# storage server, solo/duo trusted input, coin grant/spend/refund/revision, lesson deadline/return, notice browser write/read");
 #else
         Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; real timetable-driven lesson end; Chrome manager seating and offline seating/PE presentation");

@@ -520,6 +520,45 @@ try{
 
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native UI server stop'}
+ # 4C-3: run only after all earlier native API/asset/mini-game checks pass.
+ # Restart the same isolated server to discard synthetic presentation receipts/heartbeat.
+ $native=Start-CrashServer
+ $managerExe=Join-Path $Build 'HOJA-Native-Manager-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_MANAGER_LAB /target:winexe /platform:x64 "/out:$managerExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native manager UI compilation failed'}
+ $managerHost=$null
+ try{
+  foreach($file in @('manager.ready','manager.close','manager.done','result.txt')){Remove-Item -LiteralPath (Join-Path $crashRoot $file) -Force -ErrorAction SilentlyContinue}
+  $coinBefore=(Get-FileHash (Join-Path $crashStore 'coins.log')).Hash
+  $noticeBefore=(Get-FileHash (Join-Path $crashStore 'notice.log')).Hash
+  $profile=Join-Path $crashRoot 'manager-profile';$result=Join-Path $crashRoot 'manager-result.txt'
+  if((Status-Doc).presentationReady){throw 'Fresh server presentation state not empty'}
+  $managerHost=Start-Process -FilePath $managerExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$managerHost.Handle
+  for($i=0;$i -lt 240 -and !(Test-Path (Join-Path $crashRoot 'manager.ready'));$i++){
+   if($managerHost.HasExited){throw ('Native manager host exited: '+(Get-Content $result -ErrorAction SilentlyContinue))}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path (Join-Path $crashRoot 'manager.ready'))){throw 'Native manager ready timeout'}
+  node (Join-Path $PSScriptRoot 'manager-test.cjs') $crashRoot --native-storage
+  if($LASTEXITCODE -ne 0){throw 'Native manager Chrome test failed'}
+  if(!$managerHost.WaitForExit(30000)){throw 'Native manager host timed out'}
+  if(!(Test-Path $result)){throw 'Native manager result missing'}
+  Get-Content $result
+  if($managerHost.ExitCode -ne 0){throw 'Native manager host failed'}
+  $seat=Get-Content -LiteralPath (Join-Path $crashStore 'seating.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($seat.classId -ne 'LAB_CLASS_2' -or @($seat.students).Count -ne 2 -or @($seat.assignments).Count -ne 2 -or @($seat.students|Where-Object {$_.id -eq 'm1' -and $_.name -eq 'LAB_MANAGER_RENAMED'}).Count -ne 1 -or @($seat.assignments|Where-Object {$_.studentId -eq 'm1' -and $_.seatId -eq 's1'}).Count -ne 1){throw 'Native manager final seat mismatch'}
+  if((Get-FileHash (Join-Path $crashStore 'coins.log')).Hash -cne $coinBefore -or (Get-FileHash (Join-Path $crashStore 'notice.log')).Hash -cne $noticeBefore){throw 'Native manager mutated unrelated ledger'}
+  if((Status-Doc).wallpaper){throw 'Closed native manager host still connected'}
+  if((Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17451 -State Listen).OwningProcess -ne $native.Id){throw 'Native manager listener ownership'}
+  foreach($port in @(17449,17450,17452)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Legacy listener unexpectedly active $port"}}
+  Write-Host 'PASS actual Chrome manager native C# only: seating, roster, confirmation auto-send, seating and PE displayed receipts, close and ledger preservation'
+ }finally{
+  if($managerHost -and !$managerHost.HasExited){$managerHost.Kill();$managerHost.WaitForExit()}
+ }
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native manager server stop'}
+
 
 
 

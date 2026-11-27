@@ -1,7 +1,9 @@
 // Phase 2B: real Chrome, real manager sender scripts, real inbox/server and native board.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 const {chromium}=require('playwright');
-const root=process.argv[2],repo=path.resolve(__dirname,'../..'),manager='http://127.0.0.1:4188',board='http://127.0.0.1:17449';
+const root=process.argv[2],repo=path.resolve(__dirname,'../..'),manager='http://127.0.0.1:4188';
+assert(process.argv.length===3||(process.argv.length===4&&process.argv[3]==='--native-storage'));
+const nativeStorage=process.argv[3]==='--native-storage',board=nativeStorage?'http://127.0.0.1:17451':'http://127.0.0.1:17449';
 assert(root&&fs.existsSync(path.join(root,'manager.ready')));
 const files=new Set(['/classroom/host/dashboard-link.js','/classroom/host/board-status.js','/classroom/host/presentation-link.js','/classroom/host/presentation-protocol.mjs','/classroom/host/life-public-url.mjs','/classroom/host/life-cloud-config.mjs','/classroom/grades/model.mjs']);
 const html='<!doctype html><meta charset=utf-8><div class="top-actions"></div><button id="confirmAssignment">confirm</button><button id="lab-roster" onclick="__TT_SEND_ROSTER()">send roster</button><div id="tt-hud-more-menu"></div><script>window.logs=[];window.__TT_STAGE031_CLASS={activeId:"LAB_CLASS_2",installId:"lab"};window.__TT_STORE={read:async()=>({memberships:[]})};window.setSaveStatus=(...a)=>logs.push(a[0]);window.historyView=false;window.confirmedRevision=1;window.previewRevision=1;const sprite="../shared/assets/students/boy1_black_green.png";const students=[{id:"m1",name:"LAB_MANAGER_ONE",gender:"male",visual:sprite},{id:"m2",name:"LAB_MANAGER_TWO",gender:"male",visual:sprite}];const layout={rows:2,cols:2,cells:Array.from({length:4},(_,i)=>({id:"s"+i,row:Math.floor(i/2),col:i%2,type:"seat"}))};window.classState={className:"LAB CLASS TWO",students,layout,assignments:[{studentId:"m1",seatId:"s0"},{studentId:"m2",seatId:"s1"}],rules:{completeRandom:true},ui:{numberMode:"ordered"}};window.buildPlaybackInput=()=>({className:classState.className,students:classState.students,assignments:classState.assignments,layout,groups:[],teacherAvatar:{gender:"female",skin:0,eyes:0,hair:0,hairColor:0,glasses:0,beard:0,outfit:2}});window.addEventListener("tt-board-presentation-status",e=>logs.push(e.detail.message));</script><script src="/classroom/host/dashboard-link.js"></script><script src="/classroom/host/board-status.js"></script><script src="/classroom/host/presentation-link.js"></script>';
@@ -12,7 +14,7 @@ const s=http.createServer((req,res)=>{
  if(!files.has(u.pathname)){res.writeHead(404);return res.end()}
  let source=fs.readFileSync(path.join(repo,u.pathname.slice(1)),'utf8');
  // Only the isolated Chrome response is adapted to the lab port, never the repository/production code.
- if(/\/(dashboard-link|board-status|presentation-link)\.js$/.test(u.pathname))source=source.replaceAll('127.0.0.1:17439','127.0.0.1:17449');
+ if(/\/(dashboard-link|board-status|presentation-link)\.js$/.test(u.pathname))source=source.replaceAll('127.0.0.1:17439',new URL(board).host);
  if(u.pathname==='/classroom/host/presentation-link.js')source=source.replace('}catch(error){','}catch(error){console.error("LAB presentation exception",String(error));');
  res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'});res.end(source);
 });
