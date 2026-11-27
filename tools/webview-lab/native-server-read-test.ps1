@@ -1471,10 +1471,10 @@ try{
   try{
    [IO.File]::WriteAllBytes($bundlePath,[byte[]]@(1,2,3))
    Assert-P (Book-Post $other) 409 '{"error":"native unavailable","reason":"BUNDLE_MISMATCH"}'
-   if(@(Get-ChildItem -LiteralPath $crashRoot -Directory -Filter 'book-stage-*').Count){throw 'Tampered reader bundle staged'}
+   if((Test-Path (Join-Path $crashStore 'book-reader-sessions')) -and @(Get-ChildItem -LiteralPath (Join-Path $crashStore 'book-reader-sessions') -Directory).Count){throw 'Tampered reader bundle staged'}
   }finally{[IO.File]::WriteAllBytes($bundlePath,$bundleBytes)}
   $fresh=Book-Doc (Book-Post $other)
-  $stagePath=Join-Path $crashRoot ('book-stage-'+$fresh.session)
+  $stagePath=Join-Path (Join-Path $crashStore 'book-reader-sessions') $fresh.session
   if(!(Test-Path -LiteralPath $stagePath -PathType Container)){throw 'Original reader not staged'}
   $zip=[IO.Compression.ZipFile]::OpenRead($bundlePath)
   try{
@@ -1508,7 +1508,7 @@ try{
   Set-Content -LiteralPath $processFlag 'offline-only' -Encoding ASCII
   $readerSession=Book-Doc (Book-Post $book)
   $readerState=Book-Doc (Book-Status $readerSession.session)
-  $readerDir=Join-Path $crashRoot ('book-stage-'+$readerSession.session)
+  $readerDir=Join-Path (Join-Path $crashStore 'book-reader-sessions') $readerSession.session
   if($readerState.fixturePid -le 0 -or $readerState.closed -or $readerState.ready){throw 'Real reader process not active or false playback claim'}
   $readerProc=Get-Process -Id $readerState.fixturePid
   $null=$readerProc.Handle
@@ -1522,6 +1522,26 @@ try{
   $sync.command.page=3
   $null=Book-Doc (Book-Status $readerSession.session POST $sync)
   if((Get-Content -LiteralPath (Join-Path $readerDir 'command.json') -Raw|ConvertFrom-Json).page -ne 4){throw 'Duplicate command changed reader command file'}
+
+  # 5A-3a: status adapter reads exact legacy state.json fields, never an inferred bookmark.
+  $stateFlag=Join-Path $crashRoot 'book-state-fixture.flag'
+  $statePath=Join-Path $crashRoot 'book-state-fixture.json'
+  $synthetic=@{ready=$true;closed=$false;page=4;saved=4;total=5;status='자동 저장됨';manual=$false;ack=5;owned=$true;visible=$true;immersive=$true;exitFull=$false;cleanControls=$true;bookmarkValid=$true;seekFailed=$false;seekPage=0;navigationMode='direct'}
+  try{
+   Set-Content -LiteralPath $stateFlag 'fixture-only' -Encoding ASCII
+   [IO.File]::WriteAllText($statePath,($synthetic|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+   $mapped=Book-Doc (Book-Status $readerSession.session)
+   if(!$mapped.ready -or !$mapped.owned -or !$mapped.visible -or !$mapped.immersive -or !$mapped.bookmarkValid -or !$mapped.cleanControls -or $mapped.saved -ne 4 -or $mapped.page -ne 4 -or $mapped.total -ne 5 -or $mapped.ack -ne 5 -or $mapped.navigationMode -ne 'direct'){throw 'BookReader state mapping failed'}
+   $synthetic.saved=4096
+   [IO.File]::WriteAllText($statePath,($synthetic|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+   $invalid=Book-Doc (Book-Status $readerSession.session)
+   if($invalid.ready -or $invalid.saved -ne 0 -or $invalid.page -ne 0 -or $invalid.ack -ne 0){throw 'Invalid bookmark trusted'}
+   $synthetic.saved=4;$synthetic.owned=$false
+   [IO.File]::WriteAllText($statePath,($synthetic|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+   $unowned=Book-Doc (Book-Status $readerSession.session)
+   if($unowned.ready -or $unowned.visible -or $unowned.owned){throw 'Unowned reader claimed ready'}
+  }finally{Remove-Item -LiteralPath $stateFlag,$statePath -Force -ErrorAction SilentlyContinue}
+  Write-Host 'PASS original reader state page/bookmark/ack/fullscreen/visibility and fail-closed malformed/unowned state'
   Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$readerSession.session) POST '' 'same-origin') 200
   if(!$readerProc.WaitForExit(8000)){throw 'Explicit close left actual reader running'}
   $readerSession=Book-Doc (Book-Post $other)
@@ -1544,6 +1564,7 @@ try{
   Remove-Item -LiteralPath $bookFlag -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path $crashRoot 'book-bundle-fixture.flag') -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath (Join-Path $crashRoot 'book-reader-process-fixture.flag') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $crashRoot 'book-state-fixture.flag'),(Join-Path $crashRoot 'book-state-fixture.json') -Force -ErrorAction SilentlyContinue
   if($bookLaunch -and !$bookLaunch.HasExited){$bookLaunch.Kill();$bookLaunch.WaitForExit()}
  }
 
