@@ -8,7 +8,7 @@ if($LASTEXITCODE -ne 0){throw 'Native server compilation failed'}
 foreach($port in @(17449,17450)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied port; no reuse'}}
 $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $legacy=$null;$native=$null
-function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin='', [string]$payload='', [string]$coinRevision='', [string]$seatRevision='', [string]$backupToken=''){
+function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin='', [string]$payload='', [string]$coinRevision='', [string]$seatRevision='', [string]$backupToken='', [string]$mediaToken='', [string]$range=''){
  $c=[Net.Sockets.TcpClient]::new()
  try{
   $c.ReceiveTimeout=10000;$c.SendTimeout=10000;$c.Connect('127.0.0.1',$port)
@@ -22,6 +22,8 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
   if($coinRevision){$request+="X-TT-Coin-Revision: $coinRevision"+$nl}
   if($seatRevision){$request+="X-TT-Seating-Revision: $seatRevision"+$nl}
   if($backupToken){$request+="X-TT-Backup-Token: $backupToken"+$nl}
+  if($mediaToken){$request+="X-TT-Youtube-Token: $mediaToken"+$nl}
+  if($range){$request+="Range: $range"+$nl}
   $request+="Connection: close"+$nl+$nl+$payload
   $bytes=[Text.Encoding]::ASCII.GetBytes($request);$stream.Write($bytes,0,$bytes.Length)
   # Read exactly the declared response, not EOF: a peer may reset after a valid denial.
@@ -1468,6 +1470,71 @@ try{
   $failed=Media-Doc
   if($failed.job.errorCode -ne 'remote_auth' -or ($failed|ConvertTo-Json -Depth 7 -Compress).Contains('LAB_PRIVATE_LOG')){throw 'Media error disclosure'}
   Write-Host 'PASS isolated media status, read-only flat/legacy library, install progress, stale worker, sanitized failure and same-origin guards'
+
+  # 5C-2 and 5C-3: real process lifecycle with an explicitly offline download fixture,
+  # plus the unchanged original local range server against the isolated library.
+  $writeFlag=Join-Path $crashRoot 'media-write-fixture.flag'
+  $downloadFlag=Join-Path $crashRoot 'media-download-fixture.flag'
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'media-download-fixture.ps1') -Destination (Join-Path $crashRoot 'media-download-fixture.ps1')
+  Set-Content -LiteralPath $writeFlag 'fixture-only' -Encoding ASCII
+  Set-Content -LiteralPath $downloadFlag 'offline-only' -Encoding ASCII
+  function Media-Post([string]$action,$obj,[string]$token=$status.token,[string]$origin='http://127.0.0.1:17451'){
+   Raw-Request 17451 ('/api/youtube/'+$action) POST '' 'same-origin' $origin ($obj|ConvertTo-Json -Compress) '' '' '' $token
+  }
+  function Media-Answer($response){Assert-P $response 200;ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($response.body))}
+  function Media-Wait([string]$state,[string]$phase,[string]$job){
+   for($i=0;$i -lt 120;$i++){
+    $v=(Media-Doc).job
+    if($v.job -ceq $job -and $v.state -ceq $state -and $v.phase -ceq $phase){return $v}
+    Start-Sleep -Milliseconds 100
+   }
+   throw ('Media state timeout '+$state+'/'+$phase+' actual '+($v|ConvertTo-Json -Compress))
+  }
+  try{
+   $req=@{id='LAB_VIDEO02';quality='720';authorized=$true}
+   Assert-P (Media-Post 'start' $req ('0'*32)) 403
+   Assert-P (Media-Post 'start' $req $status.token '') 403
+   Assert-P (Media-Post 'start' @{id='LAB_VIDEO02';quality='720';authorized=$false}) 409
+   Assert-P (Media-Post 'start' @{id='LAB_VIDEO02';quality='480';authorized=$true}) 409
+   Assert-P (Media-Post 'start' @{id='../unsafe00';quality='720';authorized=$true}) 409
+   $started=Media-Answer (Media-Post 'start' $req)
+   $v=Media-Wait 'running' 'download' $started.job
+   if($v.percent -ne 25 -or $v.quality -ne '720'){throw 'Download fixture progress'}
+   Assert-P (Media-Post 'start' $req) 409
+   Assert-P (Media-Post 'cancel' @{job=('0'*32)}) 409
+   $null=Media-Answer (Media-Post 'cancel' @{job=$started.job})
+   $null=Media-Wait 'cancelled' 'stopped' $started.job
+   $req.quality='1080'
+   # Give the exact worker a bounded exit interval before a second launch.
+   Start-Sleep -Milliseconds 500
+   $second=Media-Answer (Media-Post 'start' $req)
+   $null=Media-Wait 'running' 'download' $second.job
+   Set-Content -LiteralPath (Join-Path (Join-Path (Join-Path $mediaRoot 'jobs') $second.job) 'complete.fixture') '1' -Encoding ASCII
+   $v=Media-Wait 'complete' 'saved' $second.job
+   if($v.percent -ne 100 -or $v.quality -ne '1080'){throw 'Completed fixture state'}
+   Write-Host 'PASS media authenticated start/duplicate rejection, exact cancel, 720/1080 fixture worker progress and completion (no network)'
+   Assert-P (Media-Post 'play-start' @{id=('0'*64);quality='local'}) 409
+   $play=Media-Answer (Media-Post 'play-start' @{id=$flatId;quality='local'})
+   Assert-P (Media-Post 'play-start' @{id=$flatId;quality='local'}) 409
+   for($i=0;$i -lt 160;$i++){
+    $ready=Media-Answer (Media-Post 'play-status' @{session=$play.session})
+    if($ready.state -eq 'ready'){break}
+    if($ready.state -eq 'ended'){throw 'Original playback worker exited early'}
+    Start-Sleep -Milliseconds 100
+   }
+   if($ready.state -ne 'ready'){throw 'Original playback worker readiness timeout'}
+   $mediaUri=[uri]$ready.url
+   if($mediaUri.Host -cne '127.0.0.1' -or $mediaUri.AbsolutePath -cne ('/'+$play.session+'/video.mp4')){throw 'Playback URL capability'}
+   $raw=Raw-Request $mediaUri.Port $mediaUri.AbsolutePath GET '' 'same-site' 'http://127.0.0.1:17451' '' '' '' '' '' 'bytes=1-2'
+   Assert-P $raw 206
+   if($raw.body.Length -ne 2 -or $raw.body[0] -ne 2 -or $raw.body[1] -ne 3 -or $raw.headers['Content-Range'] -cne 'bytes 1-2/4'){throw 'Original playback byte range'}
+   $bad=Raw-Request $mediaUri.Port ('/'+('0'*32)+'/video.mp4') GET '' 'same-site' 'http://127.0.0.1:17451'
+   if($bad.status -match '^HTTP/1.1 2'){throw 'Invalid playback capability accepted'}
+   $null=Media-Answer (Media-Post 'play-stop' @{session=$play.session})
+   if((Media-Answer (Media-Post 'play-status' @{session=$play.session})).state -ne 'ended'){throw 'Playback stop failed'}
+   Write-Host 'PASS original local media worker, exact range bytes, capability rejection, single playback and stop (synthetic bytes, not decoding)'
+  }finally{Remove-Item -LiteralPath $writeFlag,$downloadFlag -Force -ErrorAction SilentlyContinue}
+
  }finally{Remove-Item -LiteralPath $mediaFlag -Force -ErrorAction SilentlyContinue}
 
  # 5A-2a: use real native window ownership but a session model only.
