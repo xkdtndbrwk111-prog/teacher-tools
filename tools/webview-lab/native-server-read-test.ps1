@@ -1219,6 +1219,21 @@ try{
   Assert-P (Seat-Post 17451 '/api/share-input' '{"keyboard":false,"cursor":false}') 200
   $st=Wait-Share $true $false
   if($st.keyboard -or $st.cursor){throw 'Share helper did not disable'}
+  # 4E-3c: exercise the original dashboard handlers in the same real WebView2.
+  $shareUiResult=Join-Path $crashRoot 'share-ui-test.result'
+  Set-Content -LiteralPath (Join-Path $crashRoot 'share-ui-test.fixture') 'test' -Encoding ASCII
+  for($i=0;$i -lt 200 -and !(Test-Path $shareUiResult);$i++){
+   if($shareLaunch.HasExited){throw ('Share UI launcher exited '+$shareLaunch.ExitCode)}
+   Start-Sleep -Milliseconds 250
+  }
+  if(!(Test-Path $shareUiResult)){throw 'Share UI test timeout'}
+  $shareUiText=Get-Content -LiteralPath $shareUiResult -Raw -Encoding UTF8
+  if($shareUiText -notlike 'PASS actual dashboard share checkboxes*'){throw $shareUiText}
+  Write-Host $shareUiText
+  $st=Wait-Share $true $false
+  if($st.keyboard -or $st.cursor){throw 'Share UI final settings'}
+  $shareSettings=School-Doc '/api/share-input'
+  if($shareSettings.keyboard -or $shareSettings.cursor){throw 'Share UI persisted settings'}
   Set-Content -LiteralPath $shareStop 'stop' -Encoding ASCII
   if(!$shareLaunch.WaitForExit(15000) -or $shareLaunch.ExitCode -ne 0){throw 'Share launcher close failed'}
   if((School-Doc '/api/share-input/status').running -or (Test-Path $shareStatusFile)){throw 'Share helper survives close'}
