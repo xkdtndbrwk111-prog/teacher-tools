@@ -363,6 +363,10 @@ internal static class NativeReadServer {
  const string ForecastTail="&current=temperature_2m,weather_code,wind_speed_10m,precipitation&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=5";
  const string AirTail="&current=pm10,pm2_5&hourly=pm10,pm2_5&timezone=Asia%2FSeoul&forecast_days=5";
  static Uri UpstreamUri(string endpoint,string query){
+  if(endpoint=="met"){
+   if(!Regex.IsMatch(query,@"\Alat=[0-9]{2}\.[0-9]{4}&lon=[0-9]{3}\.[0-9]{4}\z"))throw new FormatException("MET query");
+   return new Uri("https://api.met.no/weatherapi/locationforecast/2.0/compact?"+query);
+  }
   if(endpoint=="forecast"||endpoint=="air"){
    string tail=endpoint=="forecast"?ForecastTail:AirTail;
    if(!query.EndsWith(tail,StringComparison.Ordinal)||!Regex.IsMatch(query.Substring(0,query.Length-tail.Length),@"\Alatitude=[0-9]{2}\.[0-9]{4}&longitude=[0-9]{3}\.[0-9]{4}\z"))throw new FormatException("Weather query");
@@ -382,14 +386,14 @@ internal static class NativeReadServer {
  }
  [ThreadStatic] static Stopwatch upstreamBudget;
  static string HttpsText(Uri uri){
-  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"&&uri.Host!="nominatim.openstreetmap.org"&&uri.Host!="api.open-meteo.com"&&uri.Host!="air-quality-api.open-meteo.com"))throw new FormatException("Upstream origin");
+  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"&&uri.Host!="nominatim.openstreetmap.org"&&uri.Host!="api.open-meteo.com"&&uri.Host!="air-quality-api.open-meteo.com"&&uri.Host!="api.met.no"))throw new FormatException("Upstream origin");
   const int limit=2097152;
   int remaining=upstreamBudget==null?9000:Math.Min(9000,30000-(int)upstreamBudget.ElapsedMilliseconds);
   if(remaining<1)throw new IOException("Upstream budget exhausted");
   var request=(HttpWebRequest)WebRequest.Create(uri);
   request.Method="GET";request.Timeout=remaining;request.ReadWriteTimeout=remaining;
   request.AllowAutoRedirect=false;request.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
-  request.UserAgent=uri.Host=="nominatim.openstreetmap.org"?"TeacherTools/1.26 (classroom dashboard)":"TeacherTools-WebView-Lab/1.0";request.Accept="application/json, text/html";
+  request.UserAgent=uri.Host=="api.met.no"?"HOJA-Board/1.66.5 (contact: xkdtndbrwk111@gmail.com)":uri.Host=="nominatim.openstreetmap.org"?"TeacherTools/1.26 (classroom dashboard)":"TeacherTools-WebView-Lab/1.0";request.Accept="application/json, text/html";
   // Use OS certificate trust and configured proxy. Never opt out of certificate validation.
   request.KeepAlive=false;request.UseDefaultCredentials=false;request.Credentials=null;
   using(var abort=new System.Threading.Timer(_=>{try{request.Abort();}catch{}},null,remaining,Timeout.Infinite)){
@@ -769,12 +773,109 @@ internal static class NativeReadServer {
   try{byte[] raw=Utf8.GetBytes(Serializer().Serialize(store));if(raw.Length>4194304)return false;AtomicWrite("weather-cache.json",raw);return true;}
   catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}catch(InvalidOperationException){return false;}
  }
+ sealed class WeatherResponse{
+  public int Status;public string Text,Modified;public long Retry,Expires;
+ }
+ static long HeaderDate(string text,long now,bool seconds){
+  long n;DateTimeOffset date;
+  if(seconds&&Int64.TryParse(text,out n)&&n>=0&&n<=31536000)return now+n*1000;
+  return DateTimeOffset.TryParse(text,CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal,out date)?(long)(date.UtcDateTime-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalMilliseconds:0;
+ }
+ static WeatherResponse FetchWeather(string endpoint,string query,long now,string modified=""){
+  Uri uri=UpstreamUri(endpoint,query);
+  bool fixture=File.Exists(Path.Combine(labRoot,"neis-fixture.flag")),live=File.Exists(Path.Combine(labRoot,"neis-live.flag"));
+  if(fixture&&live)throw new IOException("Ambiguous weather provider");
+  if(fixture){
+   string raw=NeisFixture(endpoint,query);
+   // Lab-only envelope for simulated HTTP status/headers.
+   var obj=Obj(Serializer().DeserializeObject(raw));
+   if(obj!=null&&Val(obj,"labHttpStatus")!=null){
+    return new WeatherResponse{Status=(int)LongVal(obj,"labHttpStatus"),Text=Serializer().Serialize(Val(obj,"data")),Modified=TextVal(obj,"modified"),Retry=LongVal(obj,"retry"),Expires=LongVal(obj,"expires")};
+   }
+   return new WeatherResponse{Status=200,Text=raw,Modified=""};
+  }
+  if(!coinWrites||!live)throw new IOException("Weather provider not configured");
+  int remaining=upstreamBudget==null?4000:Math.Min(4000,30000-(int)upstreamBudget.ElapsedMilliseconds);
+  if(remaining<1)throw new IOException("Weather budget");
+  var req=(HttpWebRequest)WebRequest.Create(uri);req.Method="GET";req.Timeout=remaining;req.ReadWriteTimeout=remaining;req.AllowAutoRedirect=false;req.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;req.KeepAlive=false;req.Credentials=null;req.UseDefaultCredentials=false;
+  req.UserAgent="HOJA-Board/1.66.5 (contact: xkdtndbrwk111@gmail.com)";
+  DateTimeOffset since;if(DateTimeOffset.TryParse(modified,CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal,out since))req.IfModifiedSince=since.UtcDateTime;
+  using(var abort=new System.Threading.Timer(_=>{try{req.Abort();}catch{}},null,remaining,Timeout.Infinite)){
+   HttpWebResponse response=null;
+   try{
+    try{response=(HttpWebResponse)req.GetResponse();}catch(WebException e){response=e.Response as HttpWebResponse;if(response==null)throw new IOException("Weather unavailable",e);}
+    var result=new WeatherResponse{Status=(int)response.StatusCode,Modified=response.Headers["Last-Modified"]??"",Retry=HeaderDate(response.Headers["Retry-After"],now,true),Expires=HeaderDate(response.Headers["Expires"],now,false)};
+    if(result.Status==200||result.Status==203){
+     if(response.ContentLength>2097152)throw new IOException("Weather response limit");
+     using(var input=response.GetResponseStream())using(var output=new MemoryStream()){
+      byte[] buffer=new byte[8192];int n;while((n=input.Read(buffer,0,buffer.Length))>0){if(output.Length+n>2097152)throw new IOException("Weather response limit");output.Write(buffer,0,n);}
+      result.Text=Utf8.GetString(output.ToArray()).TrimStart('\uFEFF');
+     }
+    }return result;
+   }finally{if(response!=null)response.Dispose();}
+  }
+ }
+ static int? MetCode(string symbol){
+  string v=Regex.Replace(symbol??"",@"_(day|night|polartwilight)$","");
+  if(v.Contains("thunder"))return 95;if(v.Contains("sleet"))return 66;if(v.Contains("snow"))return v.Contains("heavy")?75:71;
+  if(v.Contains("rain"))return v.Contains("heavy")?65:v.Contains("light")?61:63;
+  switch(v){case "clearsky":return 0;case "fair":return 1;case "partlycloudy":return 2;case "cloudy":return 3;case "fog":return 45;default:return null;}
+ }
+ sealed class MetPoint {public long Stamp;public string Time;public double Temp;public int? Code;public object Wind,Rain,Precip,SixRain;}
+ static Dictionary<string,object> ConvertMet(Dictionary<string,object> raw,long now){
+  var series=Arr(Val(DictVal(raw,"properties"),"timeseries"));if(series.Length<2)throw new FormatException("MET series");
+  var points=new List<MetPoint>();
+  foreach(var item in series){
+   var p=Obj(item);DateTimeOffset timestamp;
+   if(!DateTimeOffset.TryParse(TextVal(p,"time"),CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal,out timestamp))continue;
+   var data=DictVal(p,"data");var instant=DictVal(DictVal(data,"instant"),"details");double temp,wind;
+   if(!Coordinate(Val(instant,"air_temperature"),out temp))continue;
+   var one=DictVal(data,"next_1_hours");var six=DictVal(data,"next_6_hours");var part=one??six??DictVal(data,"next_12_hours");
+   points.Add(new MetPoint{Stamp=(long)(timestamp.UtcDateTime-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalMilliseconds,Time=timestamp.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-ddTHH:mm",CultureInfo.InvariantCulture),Temp=temp,Code=MetCode(TextVal(DictVal(part,"summary"),"symbol_code")),Wind=Coordinate(Val(instant,"wind_speed"),out wind)?(object)Math.Round(wind*3.6,1):null,Rain=Val(DictVal(one,"details"),"probability_of_precipitation"),Precip=Val(DictVal(one,"details"),"precipitation_amount"),SixRain=Val(DictVal(six,"details"),"probability_of_precipitation")});
+  }
+  points.Sort((a,b)=>a.Stamp.CompareTo(b.Stamp));if(points.Count==0)throw new FormatException("MET points");
+  MetPoint current=points[0];foreach(var p in points)if(p.Stamp<=now)current=p;else break;
+  if(Math.Abs(current.Stamp-now)>21600000||!current.Code.HasValue)throw new FormatException("MET outdated");
+  var ht=new List<object>();var htemp=new List<object>();var hc=new List<object>();var hr=new List<object>();
+  foreach(var p in points)if(p.Stamp>=now-3600000&&p.Stamp<now+43200000){ht.Add(p.Time);htemp.Add(p.Temp);hc.Add(p.Code);hr.Add(p.Rain);}
+  var dt=new List<object>();var dx=new List<object>();var dn=new List<object>();var dc=new List<object>();var dr=new List<object>();
+  DateTime local=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddMilliseconds(now).AddHours(9);
+  for(int day=0;day<5;day++){
+   string date=local.AddDays(day).ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);double min=Double.MaxValue,max=Double.MinValue,rain=-1;int code=-1;
+   foreach(var p in points)if(p.Time.StartsWith(date,StringComparison.Ordinal)){
+    min=Math.Min(min,p.Temp);max=Math.Max(max,p.Temp);if(p.Code.HasValue)code=Math.Max(code,p.Code.Value);
+    double n;if(Coordinate(p.Rain,out n))rain=Math.Max(rain,n);if(Coordinate(p.SixRain,out n))rain=Math.Max(rain,n);
+   }
+   if(min==Double.MaxValue)continue;dt.Add(date);dx.Add(max);dn.Add(min);dc.Add(code<0?null:(object)code);dr.Add(rain<0?null:(object)Math.Round(rain));
+  }
+  if(ht.Count==0||dt.Count==0)throw new FormatException("MET forecast missing");
+  return new Dictionary<string,object>{{"current",new Dictionary<string,object>{{"time",current.Time},{"temperature_2m",current.Temp},{"weather_code",current.Code},{"wind_speed_10m",current.Wind},{"precipitation",current.Precip}}},{"hourly",new Dictionary<string,object>{{"time",ht},{"temperature_2m",htemp},{"weather_code",hc},{"precipitation_probability",hr}}},{"daily",new Dictionary<string,object>{{"time",dt},{"temperature_2m_max",dx},{"temperature_2m_min",dn},{"weather_code",dc},{"precipitation_probability_max",dr}}}};
+ }
+ static bool RefreshMet(Dictionary<string,object> store,Dictionary<string,object> entry,string query,long now){
+  if(now<LongVal(entry,"metNext")||(store.Count>12&&DictVal(entry,"met")==null))return false;
+  entry["metNext"]=now+10800000;
+  // A failed durable write must suppress the provider request.
+  if(!SaveWeather(store))return false;
+  try{
+   var old=DictVal(entry,"met");var r=FetchWeather("met",query,now,TextVal(old,"modified"));
+   entry["metNext"]=Math.Max(LongVal(entry,"metNext"),Math.Max(r.Retry,r.Expires));
+   if(r.Status==304&&old!=null)old["at"]=now;
+   else if(r.Status==200||r.Status==203){
+    var raw=Obj(Serializer().DeserializeObject(r.Text));ConvertMet(raw,now);
+    entry["met"]=new Dictionary<string,object>{{"data",raw},{"at",now},{"modified",r.Modified??""},{"deprecated",r.Status==203}};
+   }
+  }catch(Exception e){if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;}
+  return true;
+ }
  static bool RefreshWeatherPart(Dictionary<string,object> entry,string part,string nextKey,string query,long now,bool fresh){
   var old=DictVal(entry,part);
   if(now<LongVal(entry,nextKey)||(!fresh&&old!=null&&now-LongVal(old,"at")<1800000))return false;
   entry[nextKey]=now+300000;
   try{
-   var data=Obj(Serializer().DeserializeObject(ProviderText(part=="weather"?"forecast":"air",query)));
+   var response=FetchWeather(part=="weather"?"forecast":"air",query,now);
+   entry[nextKey]=Math.Max(LongVal(entry,nextKey),response.Retry);
+   if(response.Status!=200)throw new IOException("Weather status");
+   var data=Obj(Serializer().DeserializeObject(response.Text));
    if(!(part=="weather"?ValidForecast(data):ValidAir(data)))throw new FormatException("Weather schema");
    entry[part]=new Dictionary<string,object>{{"data",data},{"at",now}};entry[nextKey]=0L;
   }catch(Exception e){
@@ -786,7 +887,7 @@ internal static class NativeReadServer {
  static void WeatherForecastData(Stream s,string target,string site,string origin){
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!=""&&site!="same-origin"&&site!="none")){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   try{
-   var q=Query(target);bool fresh=Get(q,"fresh")=="1";
+   var q=Query(target);bool fresh=Get(q,"fresh")=="1",allowMet=Get(q,"met")=="1";
    Dictionary<string,object> p;lock(LocalGate)p=ResolveKnownPlace();
    if(p==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
    double la,lo;Coordinate(Val(p,"lat"),out la);Coordinate(Val(p,"lon"),out lo);
@@ -803,6 +904,9 @@ internal static class NativeReadServer {
     }
     foreach(string k in expired){store.Remove(k);dirty=true;}
     if(RefreshWeatherPart(entry,"weather","primaryNext",baseQuery+ForecastTail,now,fresh))dirty=true;
+    var primary=DictVal(entry,"weather");
+    bool primaryFresh=ValidForecast(DictVal(primary,"data"))&&now-LongVal(primary,"at")<1800000&&!True(Val(primary,"attemptFailed"));
+    if(!primaryFresh&&allowMet&&RefreshMet(store,entry,"lat="+lat+"&lon="+lon,now))dirty=true;
     if(RefreshWeatherPart(entry,"air","airNext",baseQuery+AirTail,now,fresh))dirty=true;
     if(dirty)SaveWeather(store);
     var w=DictVal(entry,"weather");var a=DictVal(entry,"air");
@@ -810,9 +914,14 @@ internal static class NativeReadServer {
     long at=LongVal(w,"at"),airAt=LongVal(a,"at");
     if(!ValidForecast(wd)||now-at>=86400000){wd=null;at=0;}
     if(!ValidAir(ad)||now-airAt>=86400000){ad=null;airAt=0;}
+    string source=wd==null?"":"Open-Meteo";bool metDeprecated=false;
+    if(!primaryFresh&&allowMet){
+     var met=DictVal(entry,"met");long mt=LongVal(met,"at");
+     if(met!=null&&now-mt<86400000)try{wd=ConvertMet(DictVal(met,"data"),now);at=mt;source="MET Norway";metDeprecated=True(Val(met,"deprecated"));}catch(FormatException){}
+    }
     if(wd==null&&ad==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_API_UNAVAILABLE\",\"error\":\"위치는 확인했지만 날씨 서비스에 연결하지 못했어요.\"}");return;}
-    bool stale=wd!=null&&(now-at>=1800000||True(Val(w,"attemptFailed"))),airStale=ad!=null&&(now-airAt>=1800000||True(Val(a,"attemptFailed")));
-    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"place",new Dictionary<string,object>{{"name",Val(p,"name")},{"lat",la},{"lon",lo}}},{"weather",wd},{"air",ad},{"at",at},{"source",wd==null?"":"Open-Meteo"},{"stale",stale},{"airAt",airAt},{"airStale",airStale},{"metDeprecated",false}}));
+    bool stale=wd!=null&&(source=="MET Norway"?now-at>=21600000:now-at>=1800000||True(Val(w,"attemptFailed"))),airStale=ad!=null&&(now-airAt>=1800000||True(Val(a,"attemptFailed")));
+    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"place",new Dictionary<string,object>{{"name",Val(p,"name")},{"lat",la},{"lon",lo}}},{"weather",wd},{"air",ad},{"at",at},{"source",source},{"stale",stale},{"airAt",airAt},{"airStale",airStale},{"metDeprecated",metDeprecated}}));
    }
   }catch(Exception e){
    if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;

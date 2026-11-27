@@ -835,6 +835,42 @@ try{
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $weatherBefore[$file])){throw 'Weather cache altered ledger'}}
  Remove-Item -LiteralPath $clock -Force
  Write-Host 'PASS native Open-Meteo forecast/air, zero values, independent cache, stale fallback, refresh backoff, restart recovery and 24h expiry'
+ # 4D-4c: explicit MET fallback, persisted 3h floor, 203/304/retry metadata.
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"name":"MET 시험","lat":37.5,"lon":127.125,"auto":false}') 200
+ Remove-Item -LiteralPath $cachePath -Force -ErrorAction SilentlyContinue
+ Set-Content -LiteralPath $clock ([string]$now) -Encoding ASCII
+ $time=[DateTimeOffset]::FromUnixTimeMilliseconds($now)
+ $series=@(0..13|ForEach-Object {
+  @{time=$time.AddHours($_).ToString('yyyy-MM-ddTHH:mm:ssZ');data=@{instant=@{details=@{air_temperature=0;wind_speed=2}};next_1_hours=@{summary=@{symbol_code='heavyrain_day'};details=@{probability_of_precipitation=80;precipitation_amount=2}}}}
+ })
+ $metRaw=@{properties=@{timeseries=$series}}
+ $metQuery='lat=37.5000&lon=127.1250'
+ $metPath=Weather-Fixture 'met' $metQuery (@{labHttpStatus=203;data=$metRaw;modified='Fri, 27 Nov 2026 00:00:00 GMT';retry=0;expires=($now+3600000)}|ConvertTo-Json -Depth 20 -Compress)
+ $airPath=Weather-Fixture 'air' $airQuery $airJson
+ $weather=School-Doc '/api/weather'
+ if($null -ne $weather.weather -or $null -eq $weather.air){throw 'MET must be explicitly enabled'}
+ $weather=School-Doc '/api/weather?met=1'
+ if($weather.source -cne 'MET Norway' -or !$weather.metDeprecated -or $weather.weather.current.weather_code -ne 65 -or $weather.weather.current.wind_speed_10m -ne 7.2 -or $weather.weather.current.temperature_2m -ne 0 -or $weather.stale){throw 'MET conversion'}
+ $cache=Get-Content -LiteralPath $cachePath -Raw -Encoding UTF8|ConvertFrom-Json
+ if($cache.'37.5000,127.1250'.metNext -ne ($now+10800000)){throw 'MET persisted floor'}
+ $metPath=Weather-Fixture 'met' $metQuery (@{labHttpStatus=304;retry=($now+18000000);expires=0}|ConvertTo-Json -Compress)
+ Set-Content -LiteralPath $clock ([string]($now+3600000)) -Encoding ASCII
+ $weather=School-Doc '/api/weather?fresh=1&met=1'
+ if($weather.at -ne $now){throw 'MET floor bypassed'}
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'MET restart stop'}
+ $native=Start-CrashServer
+ $weather=School-Doc '/api/weather?fresh=1&met=1'
+ if($weather.at -ne $now){throw 'MET floor lost after restart'}
+ Set-Content -LiteralPath $clock ([string]($now+10801000)) -Encoding ASCII
+ $weather=School-Doc '/api/weather?fresh=1&met=1'
+ if($weather.at -ne ($now+10801000) -or $weather.source -cne 'MET Norway'){throw 'MET 304 refresh'}
+ $cache=Get-Content -LiteralPath $cachePath -Raw -Encoding UTF8|ConvertFrom-Json
+ if($cache.'37.5000,127.1250'.metNext -ne ($now+21601000)){throw 'MET 3h floor vs Retry-After'}
+ Assert-P (Seat-Post 17451 '/api/weather/place' '{"auto":true}') 200
+ Remove-Item -LiteralPath $clock,$metPath,$airPath -Force
+ Write-Host 'PASS native optional MET fallback conversion, 203/304 metadata, durable 3h floor and restart protection'
+
 
 
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
