@@ -1938,6 +1938,11 @@ internal static class NativeReadServer {
    try{
     if(path=="/api/fonts"){Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"list",InstalledFonts()}}));return;}
     string target;
+#if NATIVE_FIELD_PILOT
+    // Published manager still uses the operational 17439 origin. Fail closed
+    // until its explicit pilot-origin pairing has been reviewed.
+    if(path=="/api/open-manager"){Json(s,"409 Conflict","{\"error\":\"pilot manager pairing unavailable\"}");return;}
+#endif
     if(path=="/api/open-manager")target="https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/";
     else if(path=="/api/open-sheet-copy")target="https://docs.google.com/spreadsheets/d/"+SheetTemplate+"/copy";
     else if(path=="/api/open-sound-settings")target="ms-settings:sound";
