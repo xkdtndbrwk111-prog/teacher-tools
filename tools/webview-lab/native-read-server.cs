@@ -1010,6 +1010,30 @@ internal static class NativeReadServer {
   }
   return new Dictionary<string,object>{{"folder",photoFolder},{"count",photoFiles.Count},{"skipped",skipped},{"missing",missing}};
  }
+ // Explicitly enabled lab dialog. Run on an STA thread and do not hold the
+ // local data lock. A dismissed dialog returns null and preserves the setting.
+ static string NativePhotoPicker(){
+  string selected=null;Exception failure=null;
+  var thread=new Thread(()=>{
+   try{
+    using(var owner=new System.Windows.Forms.Form())
+    using(var dialog=new System.Windows.Forms.FolderBrowserDialog()){
+     owner.TopMost=true;owner.ShowInTaskbar=false;owner.Opacity=0;
+     owner.StartPosition=System.Windows.Forms.FormStartPosition.CenterScreen;
+     dialog.Description="대시보드 사진첩에 표시할 사진 폴더를 고르세요. 하위 폴더의 사진도 함께 표시됩니다.";
+     dialog.ShowNewFolderButton=false;
+     string old=SelectedPhotoFolder();
+     dialog.SelectedPath=SafePhotoPath(old,true)?old:Path.Combine(labRoot,"photo-album");
+     owner.Show();owner.Activate();
+     if(dialog.ShowDialog(owner)==System.Windows.Forms.DialogResult.OK)selected=dialog.SelectedPath;
+     owner.Close();
+    }
+   }catch(Exception e){failure=e;}
+  });
+  thread.IsBackground=true;thread.SetApartmentState(ApartmentState.STA);thread.Start();thread.Join();
+  if(failure!=null)throw new IOException("Photo picker failed",failure);
+  return selected;
+ }
  static void PhotoData(Stream s,string path,string target,string method,string host,string site,string origin){
   if(host!="127.0.0.1:"+Port||(site!=""&&site!="same-origin")||(origin!=""&&origin!="http://127.0.0.1:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   if(method!="GET"){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
@@ -1017,12 +1041,13 @@ internal static class NativeReadServer {
    try{
     if(path=="/api/photos"){Json(s,"200 OK",Serializer().Serialize(RefreshPhotos()));return;}
     if(path=="/api/photos/pick"){
-     // Lab-only deterministic picker result; no path accepted over HTTP.
-     // Native STA dialog is integrated in the next checkpoint.
-     string fixture=Path.Combine(labRoot,"photo-picker-result.txt");
-     if(!File.Exists(fixture)||(File.GetAttributes(fixture)&FileAttributes.ReparsePoint)!=0){Json(s,"503 Service Unavailable","{\"error\":\"picker unavailable\"}");return;}
-     string folder=File.ReadAllText(fixture).Trim();
-     if(folder!=""){
+     // No path accepted from HTTP; fixture and interactive picker are mutually exclusive.
+     if(Query(target).Count!=0){Json(s,"400 Bad Request","{\"error\":\"invalid picker request\"}");return;}
+     string fixture=Path.Combine(labRoot,"photo-picker-result.txt"),interactive=Path.Combine(labRoot,"photo-picker-live.flag");
+     bool hasFixture=File.Exists(fixture),hasInteractive=File.Exists(interactive);
+     if(hasFixture==hasInteractive||(hasFixture&&(File.GetAttributes(fixture)&FileAttributes.ReparsePoint)!=0)||(hasInteractive&&(File.GetAttributes(interactive)&FileAttributes.ReparsePoint)!=0)){Json(s,"503 Service Unavailable","{\"error\":\"picker unavailable\"}");return;}
+     string folder=hasFixture?File.ReadAllText(fixture).Trim():NativePhotoPicker();
+     if(!String.IsNullOrEmpty(folder)){
       if(!SafePhotoPath(folder,true)){Json(s,"400 Bad Request","{\"error\":\"invalid folder\"}");return;}
       AtomicWrite("photos.txt",Utf8.GetBytes(Path.GetFullPath(folder)));
      }

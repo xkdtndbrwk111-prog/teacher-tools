@@ -927,6 +927,26 @@ try{
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $albumBefore[$file])){throw 'Photo album altered ledger'}}
  [IO.Directory]::Delete($junction)
  Write-Host 'PASS native private photo album nested list, exact image bytes, MIME, HEIC/size cap, picker cancel, junction/external denial and restart'
+ # 4D-5b: actual WebView2 decoder on native photo service, no legacy listener.
+ Assert-P (Raw-Request 17451 '/api/photos/pick?path=outside' GET '' 'same-origin') 400
+ $interactiveFlag=Join-Path $crashRoot 'photo-picker-live.flag'
+ Set-Content -LiteralPath $interactiveFlag 'interactive' -Encoding ASCII
+ try{Assert-P (Raw-Request 17451 '/api/photos/pick' GET '' 'same-origin') 503}finally{Remove-Item -LiteralPath $interactiveFlag -Force}
+ $photoExe=Join-Path $Build 'HOJA-Native-Photo-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_PHOTO_LAB /target:winexe /platform:x64 "/out:$photoExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native photo UI compilation'}
+ $photoHost=$null;$result=Join-Path $crashRoot 'photo-result.txt';$profile=Join-Path $crashRoot 'photo-profile'
+ try{
+  $photoHost=Start-Process -FilePath $photoExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$photoHost.Handle
+  if(!$photoHost.WaitForExit(60000)){throw 'Native photo UI timeout'}
+  if(Test-Path $result){Get-Content $result}
+  if($photoHost.ExitCode -ne 0 -or !(Test-Path $result)){throw 'Native photo UI failed'}
+  if((Get-FileHash $albumSetting).Hash -cne $albumHash){throw 'Photo UI altered selected folder'}
+  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $albumBefore[$file])){throw 'Photo UI altered ledger'}}
+  Write-Host 'PASS real WebView2 image decode/reload using native private photo endpoint'
+ }finally{if($photoHost -and !$photoHost.HasExited){$photoHost.Kill();$photoHost.WaitForExit()}}
+
 
 
 

@@ -71,6 +71,9 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_PHOTO_LAB
+        if(p=="/api/photos"||p=="/api/photos/pick"||p=="/photo")return method=="GET";
+#endif
 #if NATIVE_STORAGE_LAB
         if(p=="/api/notice")return method=="GET"||method=="POST";
         if(p=="/api/theme/publish")return method=="POST";
@@ -128,6 +131,15 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
         core.ProcessFailed+=(s,e)=>Fail("renderer failure: "+e.ProcessFailedKind);
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("document.body.innerText.includes('1.66.43') || document.documentElement.outerHTML.includes('1.66.43')")=="true","exact dashboard version");
+#if NATIVE_PHOTO_LAB
+        await core.ExecuteScriptAsync(@"(async()=>{try{const r=await fetch('/api/photos',{cache:'no-store'}),list=await r.json();if(!r.ok||list.count!==2)throw Error('list');const img=document.createElement('img');img.id='labPhoto';img.style.cssText='position:fixed;left:20px;top:20px;width:40px;height:40px;z-index:2147483647';document.body.appendChild(img);img.src='/photo?i=0';await img.decode();const denied=await fetch('/photos.txt');document.documentElement.dataset.labPhoto=img.naturalWidth===1&&img.naturalHeight===1&&denied.status===403?'ok':'bad'}catch(e){document.documentElement.dataset.labPhoto='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labPhoto||''")=="\"ok\"","actual WebView2 photo list, decoded GIF and blocked raw settings");
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{const list=await(await fetch('/api/photos')).json();const img=new Image();img.src='/photo?i=0';await img.decode();document.documentElement.dataset.labPhotoReload=list.count===2&&img.naturalWidth===1?'ok':'bad'}catch(e){document.documentElement.dataset.labPhotoReload='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labPhotoReload||''")=="\"ok\"","actual image decode after dashboard reload");
+        Finish(0,"PASS actual WebView2 native photo endpoint list, GIF decode, reload and raw settings blocked");
+        return;
+#endif
         // ExecuteScriptAsync does not await a Promise: publish an asynchronous result to DOM state.
         await core.ExecuteScriptAsync("(async()=>{try{let r=await fetch('/api/coins');let t=await r.text();let s=await fetch('/api/seating');document.documentElement.dataset.hojaLab=(r.ok&&r.headers.has('X-TT-Coin-Revision')&&t.includes('LAB_SENTINEL')&&s.ok&&(await s.text()).includes('LAB_STUDENT'))?'ok':'bad'}catch(e){document.documentElement.dataset.hojaLab='error'}})();");
         string status="";
