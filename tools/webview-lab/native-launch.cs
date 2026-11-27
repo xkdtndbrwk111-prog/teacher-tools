@@ -157,7 +157,9 @@ internal sealed class NativeBoardLaunch : Form {
             await WaitBookUi("!document.getElementById('ttMediaDialog').open","final close");
             File.WriteAllText(result,"PASS actual native dashboard book UI: resume, hidden controls, unconfirmed/confirmed bookmark, Escape, seek ack, close and reopen (synthetic reader state)");
         }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
-        finally{try{await core.ExecuteScriptAsync("if(window.__bookFetch)window.fetch=window.__bookFetch");}catch{}bookUiTesting=false;}
+        // Framework csc uses C# 5; await cannot appear in a finally block.
+        try{await core.ExecuteScriptAsync("if(window.__bookFetch)window.fetch=window.__bookFetch");}catch{}
+        bookUiTesting=false;
     }
     bool shareUiTesting;
     async Task WaitShareUi(string expression,string label){
