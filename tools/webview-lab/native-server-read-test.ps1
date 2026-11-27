@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 if((Split-Path $LabRoot -Leaf) -notmatch '^hoja-webview-lab-[a-f0-9]{32}$'){throw 'Not isolated'}
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $exe=Join-Path $Build 'HOJA-ReadServer-Lab.exe'
-& $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
+& $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Native server compilation failed'}
 foreach($port in @(17449,17450)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied port; no reuse'}}
 $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -440,6 +440,84 @@ try{
   if($r.status -notmatch ("^HTTP/1.1 "+$expected+" ") -or (Raw-Request 17451 '/api/theme' GET '' 'cross-site' $manager).hash -cne $hash){throw 'Theme denial or state changed'}
  }
  Write-Host 'PASS native board status heartbeat/mode/screen, manager CORS/preflight, sanitized theme and denied publish'
+ # 4C-2: transient presentation protocol and exact offline ZIP asset contract.
+ # The real board may have polled during the previous UI case; wait for readiness to expire.
+ Start-Sleep -Milliseconds 5100
+ $manager='https://xkdtndbrwk111-prog.github.io'
+ $boardOrigin='http://127.0.0.1:17451'
+ function PReq([string]$route,[string]$method='GET',[string]$payload='', [switch]$Board){
+  $site=if($Board){'same-origin'}else{'cross-site'}
+  $origin=if($Board){$boardOrigin}else{$manager}
+  $r=Raw-Request 17451 ("/api/presentation/"+$route) $method '' $site $origin $payload
+  if(!$Board -and ($r.headers['Access-Control-Allow-Origin'] -cne $manager -or $r.headers['Access-Control-Allow-Methods'] -cne 'GET, POST, OPTIONS' -or $r.headers['Access-Control-Allow-Headers'] -cne 'Content-Type')){throw "Presentation CORS $route"}
+  return $r
+ }
+ function Assert-P($r,[int]$code,[string]$body=''){
+  if($r.status -notmatch ("^HTTP/1.1 "+$code+" ")){throw "Presentation status expected $code actual $($r.status)"}
+  if($body -and ([Text.Encoding]::UTF8.GetString($r.body) -cne $body)){throw "Presentation body mismatch $body"}
+ }
+ function Present-Body([string]$id,[string]$kind){B64 ('{"id":"'+$id+'","kind":"'+$kind+'","payload":{"student":"LAB_PRESENT_PRIVATE"}}')}
+ $a='11111111111111111111111111111111';$b='22222222222222222222222222222222';$c='33333333333333333333333333333333';$d='44444444444444444444444444444444'
+ $snapshot=Snapshot-CrashFiles
+ Assert-P (PReq 'send' POST (Present-Body $a 'seating')) 409 '{"error":"board unavailable"}'
+ Assert-P (PReq 'send' OPTIONS) 204
+ Assert-P (PReq 'poll' GET '' -Board) 200 '{"id":null}'
+ if(!(Status-Doc).presentationReady){throw 'Live board poll not advertised'}
+ Assert-P (PReq 'send' POST (Present-Body $a 'seating')) 200 ('{"id":"'+$a+'"}')
+ Assert-P (PReq ('receipt?id='+$a)) 200 '{"state":"pending"}'
+ $poll=PReq 'poll' GET '' -Board
+ $data=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($poll.body))
+ if($data.id -cne $a -or $data.data.kind -cne 'seating' -or $data.data.payload.student -cne 'LAB_PRESENT_PRIVATE'){throw 'Presentation payload mismatch'}
+ Assert-P (PReq 'ack' POST ($a+':displayed') -Board) 200 '{"ok":true}'
+ Assert-P (PReq ('receipt?id='+$a)) 200 '{"state":"displayed"}'
+ Assert-P (PReq 'send' POST (Present-Body $a 'seating')) 409 '{"error":"duplicate"}'
+ Assert-P (PReq 'send' POST (Present-Body $b 'pe')) 200 ('{"id":"'+$b+'"}')
+ Assert-P (PReq ('receipt?id='+$a)) 200 '{"state":"superseded"}'
+ Assert-P (PReq 'ack' POST ($a+':closed') -Board) 409 '{"error":"stale"}'
+ Assert-P (PReq 'ack' POST ($b+':failed') -Board) 200 '{"ok":true}'
+ Assert-P (PReq ('receipt?id='+$b)) 200 '{"state":"failed"}'
+ Assert-P (PReq 'send' POST (Present-Body $c 'life-qr')) 200 ('{"id":"'+$c+'"}')
+ Assert-P (PReq 'close' POST $c) 200 '{"ok":true}'
+ Assert-P (PReq ('receipt?id='+$c)) 200 '{"state":"closed"}'
+ Assert-P (PReq 'poll' GET '' -Board) 200 '{"id":null}'
+ Assert-P (PReq 'send' POST (Present-Body $d 'invalid')) 400
+ Assert-P (Raw-Request 17451 '/api/presentation/poll' GET '' 'cross-site' $manager) 403
+ Assert-P (Raw-Request 17451 '/api/presentation/send' POST '' 'cross-site' 'https://evil.invalid' (Present-Body $d 'seating')) 403
+ Assert-P (PReq 'send' POST (Present-Body $d 'seating')) 200
+ Start-Sleep -Milliseconds 5100
+ if((Status-Doc).presentationReady){throw 'Expired board poll still ready'}
+ Assert-P (PReq ('receipt?id='+$d)) 200 '{"state":"expired"}'
+ Assert-P (PReq 'poll' GET '' -Board) 200 '{"id":null}'
+ foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $snapshot[$file])){throw 'Presentation mutated persisted data'}}
+ Write-Host 'PASS native presentation pending/displayed/superseded/failed/closed/expired, duplicate/stale rejection, manager-only receipt, board-only payload and persistent data unchanged'
+ Add-Type -AssemblyName System.IO.Compression.FileSystem
+ $archive=[IO.Compression.ZipFile]::OpenRead((Join-Path $crashStore 'presentation-assets.zip'))
+ try{
+  $entries=@($archive.Entries|Where-Object {$_.FullName -cmatch '^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+\.(html|css|js|mjs|png|svg|txt)$' -and $_.Length -le 2097152})
+  if($entries.Count -lt 1){throw 'Missing presentation ZIP entries'}
+  $sample=@($entries|Where-Object {$_.FullName -match '\.(html|css|mjs|js)$'}|Select-Object -First 8)
+  $webp=$archive.Entries|Where-Object {$_.FullName -cmatch '^shared/assets/(playback|students|teacher)/[A-Za-z0-9_-]+\.webp$' -and $_.Length -le 2097152}|Select-Object -First 1
+  if(!$webp){throw 'Missing presentation WebP fallback fixture'}
+  $sample+=@($webp)
+  foreach($entry in $sample){
+   $route='/presentation/'+$entry.FullName
+   if($entry -eq $webp){$route=$route.Substring(0,$route.Length-5)+'.png'}
+   $input=$entry.Open();$buffer=[IO.MemoryStream]::new()
+   try{$input.CopyTo($buffer);$hash=Hash-Bytes $buffer.ToArray()}finally{$input.Dispose();$buffer.Dispose()}
+   $r=Raw-Request 17451 $route GET '' 'same-origin'
+   if($r.status -ne 'HTTP/1.1 200 OK' -or $r.hash -cne $hash){throw "Presentation ZIP parity $route"}
+   if($entry -eq $webp -and $r.headers['Content-Type'] -cne 'image/webp'){throw 'WebP fallback MIME'}
+  }
+ }finally{$archive.Dispose()}
+ foreach($file in @('presentation-board.js','presentation-board.css')){
+  $r=Raw-Request 17451 ('/'+$file) GET '' 'same-origin'
+  if($r.status -ne 'HTTP/1.1 200 OK' -or $r.hash -cne (Get-FileHash (Join-Path $crashStore $file)).Hash){throw "Presentation static parity $file"}
+ }
+ Assert-P (Raw-Request 17451 '/presentation-assets.zip') 404
+ Assert-P (Raw-Request 17451 '/presentation/../coins.log') 400
+ Assert-P (Raw-Request 17451 '/presentation-board.js' GET '' 'cross-site') 403
+ Write-Host 'PASS native offline presentation static and ZIP assets, WebP fallback, traversal and external access rejection'
+
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native UI server stop'}
 

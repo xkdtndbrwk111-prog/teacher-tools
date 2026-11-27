@@ -1,6 +1,7 @@
 // Phase 4A: isolated read-only HTTP server, no product port or writes.
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -195,7 +196,7 @@ internal static class NativeReadServer {
    if(selected!=null){var r=selected.Bounds;screen=new Dictionary<string,object>{{"left",r.X},{"top",r.Y},{"width",r.Width},{"height",r.Height}};}
   }catch{}
   // Do not advertise presentation until its protocol is implemented and tested.
-  return new Dictionary<string,object>{{"service","teacher-tools-local"},{"version",40},{"coinProtocol",3},{"presentationProtocol",1},{"presentationReady",false},{"rosterProtocol",1},{"wallpaper",online},{"mode",mode},{"screen",screen}};
+  return new Dictionary<string,object>{{"service","teacher-tools-local"},{"version",40},{"coinProtocol",3},{"presentationProtocol",1},{"presentationReady",PresentReady()},{"rosterProtocol",1},{"wallpaper",online},{"mode",mode},{"screen",screen}};
  }
  static void PublishTheme(Stream s,byte[] payload){
   if(payload.Length>2048){Json(s,"400 Bad Request","{\"error\":\"size\"}");return;}
@@ -212,6 +213,110 @@ internal static class NativeReadServer {
    boardTheme=output;themeAt=DateTime.UtcNow;Json(s,"200 OK","{\"ok\":true}");
   }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid theme\"}");}
  }
+ // Presentation payloads and receipts are transient, never written to disk.
+ sealed class Receipt {public string State;public DateTime Time;}
+ static readonly Dictionary<string,Receipt> receipts=new Dictionary<string,Receipt>(StringComparer.Ordinal);
+ static string presentId;
+ static Dictionary<string,object> presentData;
+ static DateTime presentUntil,lastBoard;
+ static bool PresentReady(){
+  try{
+   string file=Path.Combine(root,"presentation-assets.zip");
+   return coinWrites&&(DateTime.UtcNow-lastBoard).TotalSeconds<5&&File.Exists(file)&&(File.GetAttributes(file)&FileAttributes.ReparsePoint)==0;
+  }catch{return false;}
+ }
+ static bool PresentId(string id){return id!=null&&Regex.IsMatch(id,@"\A[a-f0-9]{32}\z");}
+ static void SetReceipt(string id,string state){
+  if(!PresentId(id))return;
+  DateTime now=DateTime.UtcNow;
+  receipts[id]=new Receipt{State=state,Time=now};
+  var remove=new List<string>();foreach(var pair in receipts)if((now-pair.Value.Time).TotalMinutes>5)remove.Add(pair.Key);
+  foreach(var key in remove)receipts.Remove(key);
+  while(receipts.Count>64){
+   string oldest=null;DateTime time=DateTime.MaxValue;
+   foreach(var pair in receipts)if(pair.Value.Time<time){oldest=pair.Key;time=pair.Value.Time;}
+   receipts.Remove(oldest);
+  }
+ }
+ static void ClearPresent(string state){if(presentId!=null)SetReceipt(presentId,state);presentId=null;presentData=null;}
+ static void ExpirePresent(){if(presentId!=null&&(DateTime.UtcNow>presentUntil||!PresentReady()))ClearPresent("expired");}
+ static string PresentCors(string origin){return ManagerOrigin(origin)?"Access-Control-Allow-Origin: "+origin+"\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin, Access-Control-Request-Private-Network\r\n":"";}
+ static void PresentReply(Stream s,string status,string body,string origin=""){Reply(s,status,"application/json; charset=utf-8",Utf8.GetBytes(body),PresentCors(origin));}
+ static void Presentation(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
+  const string bad="{\"error\":\"invalid presentation\"}";
+  const string denied="{\"error\":\"forbidden\"}";
+  bool managerRoute=path=="/api/presentation/send"||path=="/api/presentation/receipt"||path=="/api/presentation/close";
+  if(managerRoute){
+   if(!ManagerOrigin(origin)){PresentReply(s,"403 Forbidden",denied);return;}
+   ExpirePresent();
+   if(method=="OPTIONS"){PresentReply(s,"204 No Content","",origin);return;}
+   if(path=="/api/presentation/receipt"){
+    var m=Regex.Match(target,@"\A/api/presentation/receipt\?id=([a-f0-9]{32})\z");
+    if(method!="GET"||!m.Success){PresentReply(s,"400 Bad Request",bad,origin);return;}
+    Receipt receipt;string state=receipts.TryGetValue(m.Groups[1].Value,out receipt)?receipt.State:"expired";
+    PresentReply(s,"200 OK","{\"state\":\""+state+"\"}",origin);return;
+   }
+   if(method!="POST"){PresentReply(s,"400 Bad Request",bad,origin);return;}
+   if(path=="/api/presentation/close"){
+    string id=Encoding.ASCII.GetString(payload);
+    if(!PresentId(id)){PresentReply(s,"400 Bad Request",bad,origin);return;}
+    if(id==presentId)ClearPresent("closed");
+    PresentReply(s,"200 OK","{\"ok\":true}",origin);return;
+   }
+   if(!PresentReady()){PresentReply(s,"409 Conflict","{\"error\":\"board unavailable\"}",origin);return;}
+   try{
+    if(payload.Length>240000)throw new FormatException();
+    var item=Obj(Serializer().DeserializeObject(Utf8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(payload)))));
+    string id=Val(item,"id") as string,kind=Val(item,"kind") as string;object data=Val(item,"payload");
+    if(item==null||item.Count!=3||!PresentId(id)||Array.IndexOf(new[]{"seating","pe","life-qr"},kind)<0||data==null)throw new FormatException();
+    if(receipts.ContainsKey(id)){PresentReply(s,"409 Conflict","{\"error\":\"duplicate\"}",origin);return;}
+    ClearPresent("superseded");presentId=id;presentData=new Dictionary<string,object>{{"kind",kind},{"payload",data}};presentUntil=DateTime.UtcNow.AddSeconds(35);
+    SetReceipt(id,"pending");PresentReply(s,"200 OK","{\"id\":\""+id+"\"}",origin);return;
+   }catch(Exception e){if(!(e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;PresentReply(s,"400 Bad Request",bad,origin);return;}
+  }
+  if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){PresentReply(s,"403 Forbidden",denied);return;}
+  if(path=="/api/presentation/poll"&&method=="GET"){
+   ExpirePresent();lastBoard=DateTime.UtcNow;
+   PresentReply(s,"200 OK",presentId==null?"{\"id\":null}":Serializer().Serialize(new Dictionary<string,object>{{"id",presentId},{"data",presentData}}));return;
+  }
+  if(path=="/api/presentation/ack"&&method=="POST"){
+   var m=Regex.Match(Encoding.ASCII.GetString(payload),@"\A([a-f0-9]{32}):(displayed|failed|closed)\z");
+   if(!m.Success){PresentReply(s,"400 Bad Request",bad);return;}
+   if(presentId==null||m.Groups[1].Value!=presentId){PresentReply(s,"409 Conflict","{\"error\":\"stale\"}");return;}
+   string state=m.Groups[2].Value;
+   if(state=="displayed"){presentUntil=DateTime.UtcNow.AddMinutes(90);SetReceipt(presentId,state);}else ClearPresent(state);
+   PresentReply(s,"200 OK","{\"ok\":true}");return;
+  }
+  PresentReply(s,"400 Bad Request",bad);
+ }
+ static void PresentationAsset(Stream s,string path,string method,string site){
+  if(method!="GET"||(site!=""&&site!="same-origin"&&site!="none")){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+  if(!Regex.IsMatch(path,@"\A/presentation(?:-board\.(?:js|css)|/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+\.(?:html|css|js|mjs|png|svg|txt))\z")||path.Contains("..")){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
+  string ext=Path.GetExtension(path),mime=ext==".html"?"text/html; charset=utf-8":ext==".css"?"text/css; charset=utf-8":ext==".js"||ext==".mjs"?"text/javascript; charset=utf-8":ext==".png"?"image/png":ext==".svg"?"image/svg+xml":"text/plain; charset=utf-8";
+  byte[] data=null;
+  if(path=="/presentation-board.js"||path=="/presentation-board.css")data=Read(path.Substring(1));
+  else try{
+   string zip=Path.Combine(root,"presentation-assets.zip");
+   if(File.Exists(zip)&&(File.GetAttributes(zip)&FileAttributes.ReparsePoint)==0){
+    using(var archive=ZipFile.OpenRead(zip)){
+     string key=path.Substring("/presentation/".Length);
+     var entry=archive.GetEntry(key);
+     if(entry==null&&Regex.IsMatch(key,@"\Ashared/assets/(?:playback|students|teacher)/[A-Za-z0-9_-]+\.png\z")){
+      entry=archive.GetEntry(key.Substring(0,key.Length-4)+".webp");if(entry!=null)mime="image/webp";
+     }
+     if(entry!=null&&entry.Length<=2097152){
+      using(var input=entry.Open())using(var output=new MemoryStream()){
+       var buffer=new byte[8192];int n;
+       while((n=input.Read(buffer,0,buffer.Length))>0){if(output.Length+n>2097152)throw new InvalidDataException("Asset limit");output.Write(buffer,0,n);}
+       data=output.ToArray();
+      }
+     }
+    }
+   }
+  }catch(InvalidDataException){}catch(IOException){}
+  if(data==null){Json(s,"404 Not Found","{\"error\":\"not found\"}");return;}
+  Reply(s,"200 OK",mime,data);
+ }
  static void Serve(TcpClient c){
   c.ReceiveTimeout=1000;c.SendTimeout=10000;NoInherit(c.Client);
   using(var s=c.GetStream()){
@@ -222,7 +327,7 @@ internal static class NativeReadServer {
    if(req.Length!=3||!req[1].StartsWith("/")||req[1].StartsWith("//")||req[1].Contains("\\")||req[1].Contains("%")||req[1].Contains("..")||req[1].Contains("#")||(req[2]!="HTTP/1.1"&&req[2]!="HTTP/1.0")){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
    string host=Get(h,"Host"),site=Get(h,"Sec-Fetch-Site"),origin=Get(h,"Origin");
    string path=req[1].Split('?')[0];
-   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish");
+   bool write=coinWrites&&req[0]=="POST"&&(path=="/api/coins"||path=="/api/seating"||path=="/api/roster"||path=="/api/notice"||path=="/api/theme/publish"||path=="/api/presentation/send"||path=="/api/presentation/close"||path=="/api/presentation/ack");
    int length=0;
    string cl=Get(h,"Content-Length");
    if(Get(h,"Transfer-Encoding")!=""||(cl!=""&&(!Regex.IsMatch(cl,"^[0-9]{1,8}$")||!Int32.TryParse(cl,out length)))||length>8388608){Json(s,"400 Bad Request","{\"error\":\"request\"}");return;}
@@ -232,6 +337,8 @@ internal static class NativeReadServer {
     for(int pos=0;pos<length;){int n=s.Read(payload,pos,length-pos);if(n<=0)throw new EndOfStreamException();pos+=n;}
    }
    if(host!="127.0.0.1:"+Port&&host!="localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
+   if(coinWrites&&path.StartsWith("/api/presentation/",StringComparison.Ordinal)){Presentation(s,path,req[1],req[0],site,origin,payload);return;}
+   if(coinWrites&&(path=="/presentation-board.js"||path=="/presentation-board.css"||path.StartsWith("/presentation/",StringComparison.Ordinal))){PresentationAsset(s,path,req[0],site);return;}
    if(write){
     if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
     if(path=="/api/roster"&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
