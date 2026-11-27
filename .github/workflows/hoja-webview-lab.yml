@@ -104,3 +104,20 @@ jobs:
           path: ${{ runner.temp }}/HOJA-WebView2-FieldPilot-A1
           if-no-files-found: error
           retention-days: 14
+  field-release-gate:
+    name: Phase 6E candidate readiness (not production approval)
+    needs: [phase5-gate, field-pilot]
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 3
+    env:
+      REGRESSION_RESULT: ${{ needs.phase5-gate.result }}
+      FIELD_PACKAGE_RESULT: ${{ needs.field-pilot.result }}
+    steps:
+      - name: Record automated candidate status without production promotion
+        shell: powershell
+        run: |
+          if($env:REGRESSION_RESULT -ne 'success' -or $env:FIELD_PACKAGE_RESULT -ne 'success'){throw "Candidate blocked: regression=$env:REGRESSION_RESULT package=$env:FIELD_PACKAGE_RESULT"}
+          Write-Host 'PASS automated candidate readiness only'
+          Write-Host 'PRODUCTION RELEASE BLOCKED: provider and device field acceptance, manager/game origin migration, approved data transfer, signed native server update and code-signing trust remain required'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value 'Automated candidate ready. Production release remains blocked pending Phase 6B/6C/6D field acceptance and signed update approval.'
