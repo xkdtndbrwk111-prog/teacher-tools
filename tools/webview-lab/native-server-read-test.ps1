@@ -8,7 +8,7 @@ if($LASTEXITCODE -ne 0){throw 'Native server compilation failed'}
 foreach($port in @(17449,17450)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Occupied port; no reuse'}}
 $ps="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $legacy=$null;$native=$null
-function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin='', [string]$payload='', [string]$coinRevision='', [string]$seatRevision=''){
+function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hostName='', [string]$site='', [string]$origin='', [string]$payload='', [string]$coinRevision='', [string]$seatRevision='', [string]$backupToken=''){
  $c=[Net.Sockets.TcpClient]::new()
  try{
   $c.ReceiveTimeout=10000;$c.SendTimeout=10000;$c.Connect('127.0.0.1',$port)
@@ -21,6 +21,7 @@ function Raw-Request([int]$port,[string]$path,[string]$method='GET',[string]$hos
   if($method -eq 'POST'){$request+="Content-Length: "+[Text.Encoding]::ASCII.GetByteCount($payload)+$nl+"Content-Type: text/plain"+$nl}
   if($coinRevision){$request+="X-TT-Coin-Revision: $coinRevision"+$nl}
   if($seatRevision){$request+="X-TT-Seating-Revision: $seatRevision"+$nl}
+  if($backupToken){$request+="X-TT-Backup-Token: $backupToken"+$nl}
   $request+="Connection: close"+$nl+$nl+$payload
   $bytes=[Text.Encoding]::ASCII.GetBytes($request);$stream.Write($bytes,0,$bytes.Length)
   # Read exactly the declared response, not EOF: a peer may reset after a valid denial.
@@ -1281,6 +1282,84 @@ try{
   if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $backupBefore[$file])){throw 'Backup export altered source'}
  }
  Write-Host 'PASS native backup legacy format, exact bytes, private five-file allowlist, origin/method and unsafe/oversize denial'
+
+ # 4E-4b: restore only disposable fixture files, then restore the exact original snapshot.
+ function Backup-Body($files,[string]$mode='with-students'){
+  return (@{format='teacher-tools-server-files';version=1;mode=$mode;files=$files}|ConvertTo-Json -Depth 5 -Compress)
+ }
+ function Backup-Post([string]$body,[string]$token,[string]$site='same-origin',[string]$origin=''){
+  return Raw-Request 17451 '/api/backup/restore' POST '' $site $origin $body '' '' $token
+ }
+ function Assert-BackupSnapshot($expected){
+  foreach($name in $backupNames){
+   $p=Join-Path $crashStore $name
+   if($expected.ContainsKey($name)){
+    if(!(Test-Path -LiteralPath $p -PathType Leaf) -or (Get-FileHash $p).Hash -cne (Hash-Bytes $expected[$name])){throw ('Restore byte mismatch '+$name)}
+   }elseif(Test-Path -LiteralPath $p){throw ('Unexpected restore file '+$name)}
+  }
+ }
+ $originalEncoded=@{}
+ foreach($name in $backupBefore.Keys){$originalEncoded[$name]=[Convert]::ToBase64String($backupBefore[$name])}
+ $originalBody=Backup-Body $originalEncoded
+ $token=(School-Doc '/api/backup/token').token
+ if($token -cnotmatch '^[a-f0-9]{32}
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
+ if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
+
+
+
+
+
+
+}finally{
+ foreach($proc in @($native,$legacy)){if($proc -and !$proc.HasExited){$proc.Kill();$proc.WaitForExit()}}
+ $env:HOJA_LAB_ROOT=$envRoot;$env:LOCALAPPDATA=$envLocal
+}
+){throw 'Restore token format'}
+ Assert-P (Raw-Request 17451 '/api/backup/token') 403
+ Assert-P (Backup-Post $originalBody '') 403
+ Assert-P (Backup-Post $originalBody ('0'*32)) 403
+ Assert-P (Backup-Post $originalBody $token 'cross-site' 'https://evil.invalid') 403
+ Assert-P (Backup-Post (Backup-Body @{'../other.json'='e30='}) $token) 400
+ Assert-P (Backup-Post (Backup-Body @{'coins.log'='not base64'}) $token) 400
+ Assert-P (Backup-Post (Backup-Body @{'seating.json'='eA=='}) $token) 400
+ Assert-P (Backup-Post (Backup-Body @{'notice.log'='eA=='}) $token) 400
+ Assert-P (Backup-Post (Backup-Body @{'school.json'='e30='} 'settings-only') $token) 400
+ Assert-P (Backup-Post '{"format":"teacher-tools-server-files","version":2,"mode":"with-students","files":{}}' $token) 400
+ Assert-BackupSnapshot $backupBefore
+ if(Test-Path (Join-Path $crashStore 'backup-restore-journal.json')){throw 'Rejected restore wrote journal'}
+ $modified=@{}
+ foreach($name in $originalEncoded.Keys){$modified[$name]=$originalEncoded[$name]}
+ $noticeBytes=[Text.Encoding]::UTF8.GetBytes('{"id":"lab-restore","text":"restore fixture"}'+[char]10)
+ $modified['notice.log']=[Convert]::ToBase64String($noticeBytes)
+ $modified.Remove('weather-place.json')
+ $modifiedExpected=@{}
+ foreach($name in $modified.Keys){$modifiedExpected[$name]=[Convert]::FromBase64String($modified[$name])}
+ Assert-P (Backup-Post (Backup-Body $modified) $token) 200 '{"ok":true}'
+ Assert-BackupSnapshot $modifiedExpected
+ Assert-P (Backup-Post $originalBody $token) 403
+ $token=(School-Doc '/api/backup/token').token
+ Assert-P (Backup-Post (Backup-Body @{} 'settings-only') $token) 200
+ Assert-BackupSnapshot @{}
+ $token=(School-Doc '/api/backup/token').token
+ Assert-P (Backup-Post $originalBody $token) 200
+ Assert-BackupSnapshot $backupBefore
+ if(Test-Path (Join-Path $crashStore 'backup-restore-journal.json')){throw 'Committed restore journal remains'}
+ Write-Host 'PASS native legacy restore valid bytes, missing file deletion, settings-only empty, token rotation and invalid request preservation'
+
 
 
 
