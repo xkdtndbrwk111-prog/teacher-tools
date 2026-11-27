@@ -358,6 +358,52 @@ internal static class NativeReadServer {
    q.Add(key,value);
   }return q;
  }
+ // The provider constructs its own HTTPS URLs. No caller-supplied URL, credentials,
+ // redirects, cookies, or certificate-validation bypass.
+ static Uri UpstreamUri(string endpoint,string query){
+  if(endpoint=="sheet"){
+   if(!Regex.IsMatch(query,@"\A[A-Za-z0-9_-]{20,80}/(?:htmlview|gviz/tq\?tqx=out:json&headers=0&gid=[0-9]{1,20}&range=A1:F30)\z"))throw new FormatException("Sheet route");
+   return new Uri("https://docs.google.com/spreadsheets/d/"+query);
+  }
+  if(Array.IndexOf(new[]{"schoolInfo","mealServiceDietInfo","SchoolSchedule","elsTimetable","misTimetable","hisTimetable"},endpoint)<0)throw new FormatException("NEIS endpoint");
+  if(query.Length>4096||!Regex.IsMatch(query,@"\A[A-Za-z0-9_%=&.-]+\z"))throw new FormatException("NEIS query");
+  return new Uri("https://open.neis.go.kr/hub/"+endpoint+"?Type=json&pSize=100&"+query);
+ }
+ [ThreadStatic] static Stopwatch upstreamBudget;
+ static string HttpsText(Uri uri){
+  if(uri.Scheme!="https"||uri.Port!=443||uri.UserInfo!=""||uri.Fragment!=""||(uri.Host!="open.neis.go.kr"&&uri.Host!="docs.google.com"))throw new FormatException("Upstream origin");
+  const int limit=2097152;
+  int remaining=upstreamBudget==null?9000:Math.Min(9000,30000-(int)upstreamBudget.ElapsedMilliseconds);
+  if(remaining<1)throw new IOException("Upstream budget exhausted");
+  var request=(HttpWebRequest)WebRequest.Create(uri);
+  request.Method="GET";request.Timeout=remaining;request.ReadWriteTimeout=remaining;
+  request.AllowAutoRedirect=false;request.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
+  request.UserAgent="TeacherTools-WebView-Lab/1.0";request.Accept="application/json, text/html";
+  // Use OS certificate trust and configured proxy. Never opt out of certificate validation.
+  request.KeepAlive=false;request.UseDefaultCredentials=false;request.Credentials=null;
+  using(var abort=new System.Threading.Timer(_=>{try{request.Abort();}catch{}},null,remaining,Timeout.Infinite)){
+   try{
+    using(var response=(HttpWebResponse)request.GetResponse()){
+     if(response.StatusCode!=HttpStatusCode.OK||response.ContentLength>limit)throw new IOException("Upstream response");
+     using(var input=response.GetResponseStream())using(var output=new MemoryStream()){
+      byte[] buffer=new byte[8192];int n;
+      while((n=input.Read(buffer,0,buffer.Length))>0){if(output.Length+n>limit)throw new IOException("Upstream response too large");output.Write(buffer,0,n);}
+      return Utf8.GetString(output.ToArray()).TrimStart('\uFEFF');
+     }
+    }
+   }catch(WebException e){throw new IOException("Upstream unavailable",e);}
+  }
+ }
+ static string ProviderText(string endpoint,string query){
+  // Fixtures and live HTTPS are mutually exclusive; no fallback from missing fixture
+  // to the real network. Live mode must be explicitly enabled in this isolated root.
+  Uri uri=UpstreamUri(endpoint,query);
+  bool fixture=File.Exists(Path.Combine(labRoot,"neis-fixture.flag")),live=File.Exists(Path.Combine(labRoot,"neis-live.flag"));
+  if(fixture&&live)throw new IOException("Ambiguous upstream provider");
+  if(fixture)return NeisFixture(endpoint,query);
+  if(coinWrites&&live)return HttpsText(uri);
+  throw new IOException("NEIS lab provider not configured");
+ }
  static string NeisFixture(string endpoint,string query){
   if(!coinWrites||!File.Exists(Path.Combine(labRoot,"neis-fixture.flag")))throw new IOException("NEIS lab provider not configured");
   string dir=Path.Combine(labRoot,"neis-fixtures");
@@ -379,7 +425,7 @@ internal static class NativeReadServer {
  static NeisTable Neis(string endpoint,string query,Dictionary<string,object> school=null){
   if(Array.IndexOf(new[]{"schoolInfo","mealServiceDietInfo","SchoolSchedule","elsTimetable","misTimetable","hisTimetable"},endpoint)<0)throw new FormatException("Endpoint");
   if(school!=null){if(!ValidSchool(school))throw new FormatException("School");query="ATPT_OFCDC_SC_CODE="+TextVal(school,"office")+"&SD_SCHUL_CODE="+TextVal(school,"code")+"&"+query;}
-  var x=Obj(Serializer().DeserializeObject(NeisFixture(endpoint,query)));if(x==null)throw new FormatException("NEIS envelope");
+  var x=Obj(Serializer().DeserializeObject(ProviderText(endpoint,query)));if(x==null)throw new FormatException("NEIS envelope");
   var result=Obj(Val(x,"RESULT"));if(result!=null&&TextVal(result,"CODE")!="INFO-200")throw new IOException("NEIS response error");
   var table=Arr(Val(x,endpoint));var output=new NeisTable();
   if(table.Length<2)return output;
@@ -478,7 +524,7 @@ internal static class NativeReadServer {
  static string[] SliceFive(string[] cells){var result=Five();Array.Copy(cells,1,result,0,5);return result;}
  static Dictionary<string,object> SheetWeek(Dictionary<string,object> school,DateTime today,DateTime reference){
   string sheet=TextVal(school,"sheet");if(!MatchFull(sheet,"[A-Za-z0-9_-]{20,80}"))throw new FormatException("Sheet");
-  string page=NeisFixture("sheet",sheet+"/htmlview");
+  string page=ProviderText("sheet",sheet+"/htmlview");
   var matches=Regex.Matches(page,@"items\.push\(\{name:\s*(""(?:\\.|[^""\\])*""),\s*pageUrl:[\s\S]*?gid:\s*""(\d+)""");
   string title=null,gid=null;int candidates=0,found=0;
   foreach(Match match in matches){
@@ -495,7 +541,7 @@ internal static class NativeReadServer {
   if(candidates==0)throw new FormatException("No public weekly tabs");
   if(found==0)throw new WeekException("시트에 이번 주 탭이 없습니다. 시트에서 이번 주 탭을 만들면 나타납니다.");
   if(found!=1)throw new FormatException("Ambiguous week");
-  string raw=NeisFixture("sheet",sheet+"/gviz/tq?tqx=out:json&headers=0&gid="+gid+"&range=A1:F30");
+  string raw=ProviderText("sheet",sheet+"/gviz/tq?tqx=out:json&headers=0&gid="+gid+"&range=A1:F30");
   int begin=raw.IndexOf('{'),endIndex=raw.LastIndexOf('}');if(begin<0||endIndex<=begin)throw new FormatException("Sheet response");
   var data=Obj(Serializer().DeserializeObject(raw.Substring(begin,endIndex-begin+1)));
   if(TextVal(data,"status")!="ok")throw new FormatException("Sheet status");
@@ -564,7 +610,7 @@ internal static class NativeReadServer {
    bool remote=coinWrites&&req[0]=="GET"&&(path=="/api/school/search"||path=="/api/meal"||path=="/api/events"||path=="/api/week");
    if(remote){
     if(!RemoteSlots.Wait(0)){Json(s,"503 Service Unavailable","{\"error\":\"upstream busy\"}");return;}
-    try{SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{RemoteSlots.Release();}
+    try{upstreamBudget=Stopwatch.StartNew();SchoolData(s,path,req[1],req[0],site,origin,payload);}finally{upstreamBudget=null;RemoteSlots.Release();}
     return;
    }
    // All local writes, presentation transitions, and revision checks are serialized.

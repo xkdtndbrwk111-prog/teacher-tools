@@ -742,6 +742,18 @@ try{
   Remove-Item -LiteralPath $delayPath,$entered -ErrorAction SilentlyContinue
  }
 
+ # 4D-3b: provider selection and URL construction are exercised with the
+ # existing exact-request fixtures. Never contact live services during regression.
+ $liveFlag=Join-Path $crashRoot 'neis-live.flag'
+ Set-Content -LiteralPath $liveFlag 'ambiguous' -Encoding ASCII
+ try{
+  Assert-P (Raw-Request 17451 '/api/meal?date=20261123' GET '' 'same-origin') 502
+  Assert-P (Raw-Request 17451 '/health') 200
+ }finally{Remove-Item -LiteralPath $liveFlag -Force}
+ $meal=School-Doc '/api/meal?date=20261123'
+ if($meal.rows[0].date -cne '20261123'){throw 'Fixture provider selection'}
+ Assert-P (Raw-Request 17451 '/api/school/search?q=https%3A%2F%2Fevil.invalid&office=B10' GET '' 'same-origin') 502
+ Write-Host 'PASS fixed HTTPS URL construction, mutually exclusive provider selection, no live-network fixture fallback'
  Set-Content -LiteralPath $stopFile 'stop' -Encoding ASCII
  if(!$native.WaitForExit(10000) -or $native.ExitCode -ne 0){throw 'Native timetable server stop'}
 
