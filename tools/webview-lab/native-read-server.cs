@@ -340,6 +340,7 @@ internal static class NativeReadServer {
    if(!ValidSchool(x))throw new FormatException("School data");
    AtomicWrite("school.json",Utf8.GetBytes(raw));
    lock(WeekGate){schoolGeneration++;timetableCache.Clear();}
+   placeGeneration++;
    string weather=Path.Combine(root,"weather-place.json");
    if(File.Exists(weather)&&(File.GetAttributes(weather)&FileAttributes.ReparsePoint)==0)File.Delete(weather);
    Json(s,"200 OK","{\"ok\":true}");
@@ -700,6 +701,7 @@ internal static class NativeReadServer {
   }return null;
  }
  static readonly object PlaceSearchGate=new object();
+ static long placeGeneration;
  static DateTime placeSearchNext;
  static List<Dictionary<string,object>> FindPlaces(string q,int count){
   q=q.Trim();var result=new List<Dictionary<string,object>>();
@@ -707,8 +709,8 @@ internal static class NativeReadServer {
   string needle=q.Replace("서울시","서울특별시").Replace("서울 ","서울특별시 ").Replace("전북도","전북특별자치도");
   foreach(var p in KnownPlaces()){string name=TextVal(p,"name");if(name.Contains(needle)||name.EndsWith(" "+q,StringComparison.Ordinal)){result.Add(p);if(result.Count==count)break;}}
   if(result.Count>0)return result;
-  // Only explicit user searches may reach the online geocoder; never auto-send
-  // a school's full street address. Rate limit live requests globally.
+  // Explicit searches or bounded administrative-region lookup only.
+  // Automatic resolution never sends a full school street address.
   lock(PlaceSearchGate){
    if(File.Exists(Path.Combine(labRoot,"neis-live.flag"))&&DateTime.UtcNow<placeSearchNext)throw new IOException("Place search interval");
    placeSearchNext=DateTime.UtcNow.AddSeconds(1);
@@ -728,6 +730,57 @@ internal static class NativeReadServer {
  static void DeletePlace(){
   string file=Path.Combine(root,"weather-place.json");
   if(File.Exists(file)){if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked weather place");File.Delete(file);}
+ }
+ sealed class WeatherLocationException:Exception{
+  public string Code;
+  public WeatherLocationException(string code,string message):base(message){Code=code;}
+ }
+ static Dictionary<string,object> ResolveWeatherPlace(){
+  Dictionary<string,object> school,p;long generation;
+  lock(LocalGate){p=ReadPlace();if(p!=null)return p;school=School();generation=placeGeneration;}
+  if(school==null)throw new WeatherLocationException("WEATHER_NO_SCHOOL_ADDRESS","학교 주소를 찾지 못했어요. 설정에서 학교를 다시 선택하거나 날씨 위치를 직접 지정해 주세요.");
+  string address=TextVal(school,"address");
+  if(address==""){
+   try{
+    string name=TextVal(school,"name"),office=TextVal(school,"office");
+    if(name.Length>0&&name.Length<=60&&MatchFull(office,"[A-Z][0-9]{2}")){
+     var result=Neis("schoolInfo","SCHUL_NM="+Uri.EscapeDataString(name)+"&ATPT_OFCDC_SC_CODE="+office);
+     foreach(var row in result.Rows)if(TextVal(row,"SD_SCHUL_CODE")==TextVal(school,"code")&&TextVal(row,"ATPT_OFCDC_SC_CODE")==office){address=TextVal(row,"ORG_RDNMA");break;}
+    }
+   }catch(Exception e){if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;}
+  }
+  if(address=="")throw new WeatherLocationException("WEATHER_NO_SCHOOL_ADDRESS","학교 주소를 찾지 못했어요. 설정에서 학교를 다시 선택하거나 날씨 위치를 직접 지정해 주세요.");
+  var known=KnownAddress(address);
+  string label="";
+  if(known!=null)label=TextVal(known,"name")+" (지역 중심)";
+  else{
+   // Only administrative tokens are sent. No street number or school name.
+   var words=Regex.Split(address.Trim(),@"[\s,]+");
+   var parts=new List<string>();
+   for(int i=0;i<Math.Min(words.Length,3);i++){
+    if(!MatchFull(words[i],@"[\uAC00-\uD7A3]{2,20}")||!Regex.IsMatch(words[i],i==0?"(시|도|서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)$":"(시|군|구)$"))break;
+    parts.Add(words[i]);
+   }
+   if(parts.Count>0){
+    for(int count=parts.Count;count>=1;count=count==1?0:1){
+     string query=String.Join(" ",parts.GetRange(0,count));
+     try{var hits=FindPlaces(query,1);if(hits.Count>0){known=hits[0];label=query;break;}}
+     catch(Exception e){if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;}
+    }
+   }
+  }
+  if(known==null)throw new WeatherLocationException("WEATHER_PLACE_UNAVAILABLE","자동 위치 확인에 실패했어요. 설정의 날씨 위치에서 시·군·구를 선택해 주세요.");
+  double lat,lon;Coordinate(Val(known,"lat"),out lat);Coordinate(Val(known,"lon"),out lon);
+  p=Place(label,lat,lon,true);
+  lock(LocalGate){
+   // A late remote result must not overwrite a new school or manual selection.
+   if(generation!=placeGeneration){
+    var current=ReadPlace();if(current!=null)return current;
+    throw new WeatherLocationException("WEATHER_PLACE_UNAVAILABLE","날씨 위치가 변경되었습니다. 다시 시도해 주세요.");
+   }
+   var existing=ReadPlace();if(existing!=null)return existing;
+   AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(p)));
+  }return p;
  }
  static Dictionary<string,object> ResolveKnownPlace(){
   // Called only under LocalGate. Slow online resolution is a later checkpoint.
@@ -888,8 +941,7 @@ internal static class NativeReadServer {
   if((origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)||(site!=""&&site!="same-origin"&&site!="none")){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   try{
    var q=Query(target);bool fresh=Get(q,"fresh")=="1",allowMet=Get(q,"met")=="1";
-   Dictionary<string,object> p;lock(LocalGate)p=ResolveKnownPlace();
-   if(p==null){Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_NO_SCHOOL_ADDRESS\",\"error\":\"학교 주소 또는 날씨 위치를 지정해 주세요.\"}");return;}
+   Dictionary<string,object> p=ResolveWeatherPlace();
    double la,lo;Coordinate(Val(p,"lat"),out la);Coordinate(Val(p,"lon"),out lo);
    string lat=(Math.Truncate(la*10000)/10000).ToString("0.0000",CultureInfo.InvariantCulture),lon=(Math.Truncate(lo*10000)/10000).ToString("0.0000",CultureInfo.InvariantCulture);
    string key=lat+","+lon,baseQuery="latitude="+lat+"&longitude="+lon;
@@ -923,7 +975,7 @@ internal static class NativeReadServer {
     bool stale=wd!=null&&(source=="MET Norway"?now-at>=21600000:now-at>=1800000||True(Val(w,"attemptFailed"))),airStale=ad!=null&&(now-airAt>=1800000||True(Val(a,"attemptFailed")));
     Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"place",new Dictionary<string,object>{{"name",Val(p,"name")},{"lat",la},{"lon",lo}}},{"weather",wd},{"air",ad},{"at",at},{"source",source},{"stale",stale},{"airAt",airAt},{"airStale",airStale},{"metDeprecated",metDeprecated}}));
    }
-  }catch(Exception e){
+  }catch(WeatherLocationException e){Json(s,"502 Bad Gateway",Serializer().Serialize(new Dictionary<string,object>{{"code",e.Code},{"error",e.Message}}));}catch(Exception e){
    if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
    Json(s,"502 Bad Gateway","{\"code\":\"WEATHER_REQUEST_FAILED\",\"error\":\"날씨를 불러오지 못했어요. 다시 시도하거나 날씨 설정을 확인해 주세요.\"}");
   }
@@ -947,6 +999,7 @@ internal static class NativeReadServer {
      double lat,lon;Coordinate(Val(sent,"lat"),out lat);Coordinate(Val(sent,"lon"),out lon);
      AtomicWrite("weather-place.json",Utf8.GetBytes(Serializer().Serialize(Place(TextVal(sent,"name"),lat,lon,false))));
     }
+    placeGeneration++;
     Json(s,"200 OK","{\"ok\":true}");return;
    }
    // Location-only lab probe, never exposed by the production API. Forecast

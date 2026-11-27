@@ -980,6 +980,45 @@ try{
   foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $dataBefore[$file])){throw 'Data UI altered ledger'}}
   Write-Host 'PASS actual WebView2 school/timetable/meal/calendar/weather/air widgets against native server, KST before lunch and reload'
  }finally{if($dataHost -and !$dataHost.HasExited){$dataHost.Kill();$dataHost.WaitForExit()}}
+ # 4D-6b: old school records without address and regional fallback only.
+ $oldSchool=$school.Replace('"address":"시험 주소"','"address":""')
+ Assert-P (Seat-Post 17451 '/api/school' $oldSchool) 200
+ Put-Neis 'schoolInfo' ('SCHUL_NM='+$escaped+'&ATPT_OFCDC_SC_CODE=B10') @(
+  @{ATPT_OFCDC_SC_CODE='B10';SD_SCHUL_CODE='7654321';SCHUL_NM=$name;ORG_RDNMA='잘못된 주소'},
+  @{ATPT_OFCDC_SC_CODE='B10';SD_SCHUL_CODE='1234567';SCHUL_NM=$name;ORG_RDNMA='충청북도 가상군 비공개로 123'}
+ )
+ $regionalQuery='format=json&limit=1&countrycodes=kr&accept-language=ko&q='+[uri]::EscapeDataString('충청북도 가상군')
+ $regionPath=Weather-Fixture 'places' $regionalQuery '[{"display_name":"가상군, 충청북도, 대한민국","lat":"37.5","lon":"127.125"}]'
+ # A successful forecast proves the provider used administrative tokens, not street address.
+ $weather=School-Doc '/api/weather'
+ if($weather.place.name -cne '충청북도 가상군' -or $weather.place.lat -ne 37.5){throw 'Older school regional fallback'}
+ $saved=Get-Content -LiteralPath $weatherFile -Raw -Encoding UTF8|ConvertFrom-Json
+ if(!$saved.auto -or $saved.name -match '비공개로|123'){throw 'Automatic place privacy'}
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ $weatherError=Raw-Request 17451 '/api/weather' GET '' 'same-origin'
+ Assert-P $weatherError 502
+ if((ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($weatherError.body))).code -ne 'WEATHER_PLACE_UNAVAILABLE'){throw 'Automatic location error code'}
+ # Late region resolution cannot overwrite a manually selected place.
+ Assert-P (Seat-Post 17451 '/api/school' $oldSchool) 200
+ $delayedRegion=$regionPath+'.delay';$regionEntered=$regionPath+'.entered'
+ Set-Content -LiteralPath $delayedRegion '4000' -Encoding ASCII
+ $slowWeather=[Net.Sockets.TcpClient]::new()
+ try{
+  $slowWeather.ReceiveTimeout=15000;$slowWeather.Connect('127.0.0.1',17451)
+  $nl=[string][char]13+[char]10
+  $req='GET /api/weather HTTP/1.1'+$nl+'Host: 127.0.0.1:17451'+$nl+'Sec-Fetch-Site: same-origin'+$nl+'Connection: close'+$nl+$nl
+  $bytes=[Text.Encoding]::ASCII.GetBytes($req);$slowWeather.GetStream().Write($bytes,0,$bytes.Length)
+  for($i=0;$i -lt 100 -and !(Test-Path $regionEntered);$i++){Start-Sleep -Milliseconds 30}
+  if(!(Test-Path $regionEntered)){throw 'Regional geocoder not entered'}
+  Assert-P (Seat-Post 17451 '/api/weather/place' '{"name":"새 위치","lat":37.5,"lon":127.125,"auto":false}') 200
+  $reader=[IO.StreamReader]::new($slowWeather.GetStream(),[Text.Encoding]::UTF8)
+  try{$raw=$reader.ReadToEnd();if(!$raw.StartsWith('HTTP/1.1 200 OK')){throw 'Late geocoder response'}}finally{$reader.Dispose()}
+  $saved=Get-Content -LiteralPath $weatherFile -Raw -Encoding UTF8|ConvertFrom-Json
+  if($saved.auto -or $saved.name -cne '새 위치'){throw 'Late geocoder overwrote manual choice'}
+ }finally{$slowWeather.Dispose();Remove-Item -LiteralPath $delayedRegion,$regionEntered -ErrorAction SilentlyContinue}
+ Assert-P (Seat-Post 17451 '/api/school' $school) 200
+ Write-Host 'PASS old school exact-code address lookup, administrative-only geocoder, typed location error and late result protection'
+
 
 
 
