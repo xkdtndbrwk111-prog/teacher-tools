@@ -1334,6 +1334,45 @@ try{
  if(Test-Path (Join-Path $crashStore 'backup-restore-journal.json')){throw 'Committed restore journal remains'}
  Write-Host 'PASS native legacy restore valid bytes, missing file deletion, settings-only empty, token rotation and invalid request preservation'
 
+ # 4E-4c: kill the actual server at each restore transaction checkpoint.
+ # All old files must recover together, not only the last file touched.
+ $crashBody=Backup-Body @{'notice.log'=[Convert]::ToBase64String($noticeBytes)}
+ $journalPath=Join-Path $crashStore 'backup-restore-journal.json'
+ foreach($stage in @('prepared','after-school.json','after-weather-place.json','after-seating.json','after-coins.log','after-notice.log','before-commit')){
+  $token=(School-Doc '/api/backup/token').token
+  Set-Content -LiteralPath $control ('backup-restore:'+$stage) -Encoding ASCII
+  $nl=[string][char]13+[char]10
+  $wire=[Text.Encoding]::ASCII.GetBytes(("POST /api/backup/restore HTTP/1.1"+$nl+"Host: 127.0.0.1:17451"+$nl+"Sec-Fetch-Site: same-origin"+$nl+"Origin: http://127.0.0.1:17451"+$nl+"X-TT-Backup-Token: $token"+$nl+"Content-Type: application/json"+$nl+"Content-Length: "+$crashBody.Length+$nl+"Connection: close"+$nl+$nl+$crashBody))
+  $client=[Net.Sockets.TcpClient]::new()
+  try{
+   $client.Connect('127.0.0.1',17451);$client.GetStream().Write($wire,0,$wire.Length)
+   $hit=$false
+   for($i=0;$i -lt 120;$i++){
+    if($native.HasExited){throw ('Restore server died before checkpoint '+$stage)}
+    if((Test-Path $reached) -and (Get-Content $reached -Raw) -ceq ('backup-restore:'+$stage)){$hit=$true;break}
+    Start-Sleep -Milliseconds 50
+   }
+   if(!$hit -or !(Test-Path -LiteralPath $journalPath -PathType Leaf)){throw ('Restore journal checkpoint missing '+$stage)}
+   # At the final checkpoint the new bytes are already applied; verify this is a real partial/complete write.
+   if($stage -eq 'before-commit'){
+    Assert-BackupSnapshot @{'notice.log'=$noticeBytes}
+   }
+   $native.Kill()
+   if(!$native.WaitForExit(10000)){throw 'Restore kill timeout'}
+  }finally{$client.Dispose()}
+  $native=Start-CrashServer
+  Assert-BackupSnapshot $backupBefore
+  if(Test-Path -LiteralPath $journalPath){throw ('Restore journal survived recovery '+$stage)}
+  $restored=School-Doc '/api/backup/export'
+  foreach($name in $originalEncoded.Keys){
+   if($restored.files.PSObject.Properties[$name].Value -cne $originalEncoded[$name]){throw ('Restore export recovery mismatch '+$stage+' '+$name)}
+  }
+  Assert-P (Backup-Post $originalBody $token) 403
+  Write-Host "PASS native restore kill/restart checkpoint $stage exact original files"
+ }
+ Write-Host 'PASS native multi-file restore crash recovery 7/7'
+
+
 
 
 
