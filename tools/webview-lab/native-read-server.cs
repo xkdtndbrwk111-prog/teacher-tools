@@ -1430,7 +1430,7 @@ internal static class NativeReadServer {
   // Preserve original request.json shape; the fixture uses the syntactically valid
   // LAB URL and a dead loopback proxy, never a real book or account.
   if(TextVal(request,"url")!="https://www.canva.com/design/LAB_ID/LAB_KEY/view?embed")throw new IOException("Offline fixture URL required");
-  BookSessionWrite(b,"request.json",new Dictionary<string,object>{{"url",b.Url},{"title",TextVal(request,"title")},{"pages",b.Pages},{"start",Val(request,"start")},{"saved",Val(request,"saved")},{"interactive",0},{"owner",b.OwnerWindow},{"ownerPid",b.OwnerPid}});
+  BookSessionWrite(b,"request.json",new Dictionary<string,object>{{"url",b.Url},{"title",TextVal(request,"title")},{"pages",b.Pages},{"start",Val(request,"start")},{"saved",Val(request,"saved")},{"interactive",True(Val(request,"interactive"))?1:0},{"owner",b.OwnerWindow},{"ownerPid",b.OwnerPid}});
   BookSessionWrite(b,"layout.json",b.Layout);
   File.WriteAllText(Path.Combine(b.StageDirectory,"lease"),"1",Utf8);
   b.ReaderJob=CreateJobObject(IntPtr.Zero,null);
@@ -1464,7 +1464,10 @@ internal static class NativeReadServer {
  static string StageBookBundle(string token){
   byte[] bundle=Read("asset-book-reader-host.zip");
   if(bundle==null||bundle.Length>3000000||Sha(bundle)!=BookBundleHash||!Environment.Is64BitOperatingSystem)throw new IOException("Bundle mismatch");
-  string dir=Path.Combine(labRoot,"book-stage-"+token);
+  string sessions=Path.Combine(root,"book-reader-sessions");
+  if(File.Exists(sessions)||(Directory.Exists(sessions)&&(File.GetAttributes(sessions)&FileAttributes.ReparsePoint)!=0))throw new IOException("Linked reader sessions");
+  Directory.CreateDirectory(sessions);
+  string dir=Path.Combine(sessions,token);
   if(Directory.Exists(dir)||File.Exists(dir))throw new IOException("Stage collision");
   Directory.CreateDirectory(dir);
   try{
@@ -1523,6 +1526,37 @@ internal static class NativeReadServer {
   if((k=="prev"||k=="next")&&(LongVal(layout,"immersive")!=1||LongVal(c,"page")!=0))throw new FormatException("navigation");
   return c;
  }
+ // 5A-3a: translate only verified original BookReader state, never infer a bookmark.
+ static Dictionary<string,object> BookStatus(BookLabSession b){
+  var result=new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",b.Closed},{"page",0},{"saved",0},{"total",b.Pages},{"status",b.Closed?"격리 세션 종료":"책 재생기 시작 중"},{"navigationMode","pending"},{"ack",0},{"bookmarkValid",false},{"visible",false},{"owned",false},{"immersive",false},{"exitFull",false},{"cleanControls",false},{"seekFailed",false},{"seekPage",0},{"manual",false},{"fixtureSeq",b.Seq},{"fixturePid",b.Reader==null?0:b.Reader.Id}};
+  if(b.Closed||!b.ProcessFixture||b.Reader==null||b.Reader.HasExited)return result;
+  try{
+   string file=Path.Combine(b.StageDirectory,"state.json");
+   if(File.Exists(Path.Combine(labRoot,"book-state-fixture.flag")))file=Path.Combine(labRoot,"book-state-fixture.json");
+   if(!File.Exists(file)||(File.GetAttributes(file)&(FileAttributes.ReparsePoint|FileAttributes.Directory))!=0)return result;
+   var info=new FileInfo(file);if(info.Length==0||info.Length>8192)return result;
+   byte[] bytes=File.ReadAllBytes(file);if(bytes.Length>8192)return result;
+   var x=Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));if(x==null)return result;
+   object total=Val(x,"total");if(!IntValue(total,1,4095))return result;
+   long n=LongVal(x,"total");
+   if(!IntValue(Val(x,"page"),0,n)||!IntValue(Val(x,"saved"),0,n)||!IntValue(Val(x,"ack"),0,1000000))return result;
+   foreach(string k in new[]{"ready","closed","owned","visible","immersive","exitFull","cleanControls","bookmarkValid","seekFailed","manual"}){
+    if(!(Val(x,k) is bool))return result;
+   }
+   object seek=Val(x,"seekPage");if(seek!=null&&!IntValue(seek,0,n))return result;
+   string status=TextVal(x,"status"),navigation=TextVal(x,"navigationMode");
+   if(status.Length>160||Array.IndexOf(new[]{"pending","direct","blocked","not-presentation","fixture","consent","setup"},navigation)<0)return result;
+   bool owned=True(Val(x,"owned")),closed=True(Val(x,"closed"));
+   b.Pages=n;
+   result["total"]=n;result["page"]=LongVal(x,"page");result["saved"]=LongVal(x,"saved");
+   result["ready"]=!closed&&owned&&True(Val(x,"ready"));result["closed"]=closed;
+   result["owned"]=owned;result["visible"]=owned&&True(Val(x,"visible"));
+   result["ack"]=LongVal(x,"ack");result["status"]=status;
+   result["navigationMode"]=navigation;result["seekPage"]=seek??0;
+   foreach(string k in new[]{"immersive","exitFull","cleanControls","bookmarkValid","seekFailed","manual"})result[k]=Val(x,k);
+  }catch(Exception e){if(!(e is IOException||e is UnauthorizedAccessException||e is ArgumentException||e is InvalidOperationException||e is FormatException))throw;}
+  return result;
+ }
  static void BookProtocol(Stream s,string path,string target,string method,string site,string origin,byte[] payload){
   if(site!="same-origin"||(origin!=""&&origin!="http://127.0.0.1:"+Port&&origin!="http://localhost:"+Port)){Json(s,"403 Forbidden","{\"error\":\"forbidden\"}");return;}
   if((path=="/api/book-reader/status"&&method!="GET"&&method!="POST")||(path!="/api/book-reader/status"&&method!="POST")){Json(s,"405 Method Not Allowed","{\"error\":\"method\"}");return;}
@@ -1573,8 +1607,7 @@ internal static class NativeReadServer {
     bookLab.Lease=DateTime.UtcNow;
    }catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid layout or command\"}");return;}
   }
-  // Never claim rendered pages, bookmarks or command acknowledgement from the fixture.
-  Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",bookLab.Closed},{"page",0},{"saved",0},{"total",bookLab.Pages},{"status",bookLab.Closed?"격리 세션 종료":"격리 세션 (실제 재생 없음)"},{"navigationMode","fixture"},{"fixtureSeq",bookLab.Seq},{"fixturePid",bookLab.Reader==null?0:bookLab.Reader.Id}}));
+  Json(s,"200 OK",Serializer().Serialize(BookStatus(bookLab)));
  }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
