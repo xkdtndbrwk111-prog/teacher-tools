@@ -71,6 +71,10 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
     internal static bool Allowed(string raw,string method) {
         if(!Local(raw))return false;
         var p=new Uri(raw).AbsolutePath;
+#if NATIVE_BACKUP_LAB
+        if(p=="/api/backup/export"||p=="/api/backup/token")return method=="GET";
+        if(p=="/api/backup/restore")return method=="POST";
+#endif
 #if NATIVE_SHARE_LAB
         if(p=="/api/share-input")return method=="GET"||method=="POST";
         if(p=="/api/share-input/status")return method=="GET";
@@ -151,6 +155,45 @@ window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.ge
 #endif
         await LoadBoard();
         Require(await core.ExecuteScriptAsync("document.body.innerText.includes('1.66.43') || document.documentElement.outerHTML.includes('1.66.43')")=="true","exact dashboard version");
+#if NATIVE_BACKUP_LAB
+        // Capture the actual download blob at the anchor boundary, without writing to Downloads.
+        // Original dashboard creates/compresses the file and processes its own file-input handler.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const q=id=>document.getElementById(id);
+          const wait=async(fn)=>{for(let i=0;i<150;i++){if(await fn())return;await new Promise(r=>setTimeout(r,80))}throw Error('wait: '+q('ttPrivacyResult').textContent)};
+          window.confirm=()=>true;window.alert=()=>{};
+          const create=URL.createObjectURL.bind(URL),click=HTMLAnchorElement.prototype.click;
+          const blobs=new Map();URL.createObjectURL=b=>{const u=create(b);blobs.set(u,b);return u};
+          HTMLAnchorElement.prototype.click=function(){if(this.download.endsWith('.ttbackup')){window.__labBackup=blobs.get(this.href);return}return click.call(this)};
+          const read=async blob=>{const bytes=new Uint8Array(await blob.arrayBuffer());return JSON.parse(bytes[0]===31&&bytes[1]===139?await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text():await blob.text())};
+          const r=await fetch('/api/backup/export');if(!r.ok)throw Error('export '+r.status);const expected=(await r.json()).files;
+          localStorage.setItem('teacher-note','LAB BACKUP MEMO');
+          localStorage.setItem('class-theme','pink');
+          q('ttBackupStudents').click();
+          await wait(()=>window.__labBackup instanceof Blob&&q('ttPrivacyResult').textContent.includes('다운로드를 요청'));
+          const full=await read(window.__labBackup);
+          if(full.format!=='teacher-tools-transfer'||full.version!==2||full.profile!=='with-students'||full.values['teacher-note']!=='LAB BACKUP MEMO'||full.photosIncluded!==false||Object.keys(expected).some(k=>full.serverFiles[k]!==expected[k]))throw Error('full payload');
+          window.__labFull=window.__labBackup;window.__labBackup=null;
+          q('ttBackupSettings').click();
+          await wait(()=>window.__labBackup instanceof Blob);
+          const settings=await read(window.__labBackup);
+          if(settings.profile!=='settings-only'||Object.keys(settings.serverFiles).length||Object.keys(settings.voiceClips).length||Object.hasOwn(settings.values,'teacher-note')||settings.values['class-theme']!=='pink')throw Error('settings privacy');
+          await wait(()=>!q('ttBackupStudents').disabled);
+          localStorage.setItem('teacher-note','LAB BEFORE RESTORE');
+          sessionStorage.setItem('lab-backup-reload','pending');
+          const dt=new DataTransfer();dt.items.add(new File([window.__labFull],'lab.ttbackup',{type:'application/octet-stream'}));q('ttBackupFile').files=dt.files;q('ttBackupFile').dispatchEvent(new Event('change',{bubbles:true}));
+        }catch(e){document.documentElement.dataset.labBackup='error:'+e.message}})()");
+        string backupResult="";
+        for(int i=0;i<180;i++){
+            backupResult=await core.ExecuteScriptAsync("document.documentElement.dataset.labBackup||((sessionStorage.getItem('lab-backup-reload')==='pending'&&typeof window.__labFull==='undefined'&&localStorage.getItem('teacher-note')==='LAB BACKUP MEMO')?'ok':'')");
+            if(backupResult!="\"\"")break;
+            await Task.Delay(150);
+        }
+        Require(backupResult=="\"ok\"","actual backup/restore UI: "+backupResult);
+        Finish(0,"PASS actual dashboard full/settings backup blobs, private data exclusion, original file-input restore and reload");
+        return;
+#endif
+
 #if NATIVE_DATA_LAB
         await core.ExecuteScriptAsync(@"(async()=>{try{
           const wait=async(fn)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error('wait')};
