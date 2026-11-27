@@ -73,14 +73,22 @@ internal sealed class NativeBoardLaunch : Form {
         modeFile=Path.Combine(runtime,"board-mode.json");
         stopFile=Path.Combine(root,"native-launch.stop");
         resultFile=Path.Combine(root,"native-launch.result");
+#if NATIVE_FIELD_PILOT
+        Text="HOJA WebView2 Field Pilot - isolated data / NOT production";
+#else
         Text="HOJA native launcher lab";
+#endif
         StartPosition=FormStartPosition.Manual;
         Screen screen=TargetScreen();
         Bounds=mode=="wallpaper"?screen.Bounds:new Rectangle(screen.WorkingArea.X+40,screen.WorkingArea.Y+40,Math.Min(1000,screen.WorkingArea.Width-80),Math.Min(700,screen.WorkingArea.Height-80));
         if(mode=="wallpaper"){FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;}
         browser.Dock=DockStyle.Fill;Controls.Add(browser);
         Shown+=async(s,e)=>{try{await StartBoard();}catch(Exception ex){Finish(1,"FAIL "+ex.Message);}};
-        FormClosing+=(s,e)=>NativeShareInput.Stop();
+        FormClosing+=(s,e)=>{NativeShareInput.Stop();
+#if NATIVE_FIELD_PILOT
+            if(!closing&&published)exitCode=0;
+#endif
+        };
         FormClosed+=(s,e)=>{heartbeat.Stop();RemoveOwnedMode();};
         heartbeat.Interval=1000;heartbeat.Tick+=(s,e)=>{try{
             if(File.Exists(stopFile)){Finish(0,"PASS native close "+mode);return;}
@@ -91,6 +99,7 @@ internal sealed class NativeBoardLaunch : Form {
             }
             Publish();
 #if NATIVE_SHARE_LAB
+#if !NATIVE_FIELD_PILOT
             string bookProbe=Path.Combine(root,"book-ui-test.fixture");
             if(mode=="window"&&File.Exists(bookProbe)){File.Delete(bookProbe);VerifyBookUi();}
             string meetingProbe=Path.Combine(root,"meeting-ui-test.fixture");
@@ -105,6 +114,9 @@ internal sealed class NativeBoardLaunch : Form {
                 if(File.Exists(uiProbe)){File.Delete(uiProbe);VerifyShareUi();}
 
             }
+#else
+            if(mode=="wallpaper")ConsumeShareRestart();
+#endif
 #endif
         }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
     }
@@ -645,6 +657,9 @@ internal sealed class NativeBoardLaunch : Form {
         if(!String.Equals(Path.GetFullPath(local),Path.Combine(root,"local"),StringComparison.OrdinalIgnoreCase)||!Path.GetFileName(root).StartsWith("hoja-webview-lab-",StringComparison.Ordinal))return 2;
         string runtime=Path.Combine(local,"TeacherToolsLocal");
         if(!File.Exists(Path.Combine(runtime,"dashboard.html")))return 2;
+#if NATIVE_FIELD_PILOT
+        if(!File.Exists(Path.Combine(root,"field-pilot.flag"))||args[0]!="--lab-launch"||migrate||update)return 2;
+#endif
         FileStream guard;
         try{guard=new FileStream(Path.Combine(runtime,"native-launch.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}catch(IOException){return 3;}
         using(guard){
