@@ -1089,6 +1089,24 @@ try{
  $native=Start-CrashServer
  $volume=School-Doc '/api/volume';$speakers=School-Doc '/api/speakers'
  if($volume.level -ne 100 -or !$volume.muted -or !$speakers.list[1].current){throw 'Audio fixture restart state'}
+ # 4E-2b: existing dashboard UI on the native server; no OS audio mutations.
+ Assert-P (Seat-Post 17451 '/api/speakers/set' '{"id":"lab-a"}') 200
+ Assert-P (Seat-Post 17451 '/api/volume' '{"level":50,"muted":false}') 200
+ $audioExe=Join-Path $Build 'HOJA-Native-Audio-UI-Lab.exe'
+ & $csc /nologo /codepage:65001 /define:NATIVE_STORAGE_LAB,NATIVE_AUDIO_LAB /target:winexe /platform:x64 "/out:$audioExe" "/reference:$Build\Microsoft.Web.WebView2.Core.dll" "/reference:$Build\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'host.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native audio UI compilation'}
+ $audioHost=$null;$result=Join-Path $crashRoot 'audio-ui-result.txt';$profile=Join-Path $crashRoot 'audio-ui-profile'
+ try{
+  $audioHost=Start-Process -FilePath $audioExe -ArgumentList ('--self-test "'+$profile+'" "'+$result+'"') -PassThru
+  $null=$audioHost.Handle
+  if(!$audioHost.WaitForExit(60000)){throw 'Native audio UI timeout'}
+  if(Test-Path $result){Get-Content $result}
+  if($audioHost.ExitCode -ne 0 -or !(Test-Path $result)){throw 'Native audio UI failed'}
+  $volume=School-Doc '/api/volume';$speakers=School-Doc '/api/speakers'
+  if($volume.level -ne 65 -or !$volume.muted -or !$speakers.list[1].current){throw 'Audio UI persisted state mismatch'}
+  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $audioBefore[$file])){throw 'Audio UI altered ledger'}}
+  Write-Host 'PASS actual WebView2 dashboard speaker switch, shared media volume and mute, reload, native fixture only'
+ }finally{if($audioHost -and !$audioHost.HasExited){$audioHost.Kill();$audioHost.WaitForExit()}}
  Remove-Item -LiteralPath $audioFlag -Force
  Assert-P (Seat-Post 17451 '/api/volume' '{"muted":false}') 503
  foreach($file in @('coins.log','seating.json','notice.log')){if((Get-FileHash (Join-Path $crashStore $file)).Hash -cne (Hash-Bytes $audioBefore[$file])){throw 'Audio API altered ledger'}}
