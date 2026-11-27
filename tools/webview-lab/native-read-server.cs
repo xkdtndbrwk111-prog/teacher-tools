@@ -1394,11 +1394,72 @@ internal static class NativeReadServer {
   public string Token,OpenId,Url,OwnerStart;public long OwnerPid,OwnerWindow,Pages,Seq;
   public DateTime Lease;public bool Closed;public Dictionary<string,object> Layout;
   public string StageDirectory;
+  public Process Reader;public IntPtr ReaderJob;public bool ProcessFixture;
  }
  static BookLabSession bookLab;
  // 5A-2b1: exact production bundle, staged only in a disposable lab directory.
  const string BookBundleHash="20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c";
  static readonly string[] BookBundleRequired={"BookReader.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll","LICENSE.txt"};
+ // 5A-2b2: original reader process, isolated offline launch, bounded lifetime.
+ [StructLayout(LayoutKind.Sequential)] struct BookJobBasic{
+  public long PerProcessUserTimeLimit,PerJobUserTimeLimit;public uint LimitFlags;
+  public UIntPtr MinimumWorkingSetSize,MaximumWorkingSetSize;public uint ActiveProcessLimit;
+  public UIntPtr Affinity;public uint PriorityClass,SchedulingClass;
+ }
+ [StructLayout(LayoutKind.Sequential)] struct BookJobIo{public ulong ReadOperationCount,WriteOperationCount,OtherOperationCount,ReadTransferCount,WriteTransferCount,OtherTransferCount;}
+ [StructLayout(LayoutKind.Sequential)] struct BookJobExtended{
+  public BookJobBasic BasicLimitInformation;public BookJobIo IoInfo;
+  public UIntPtr ProcessMemoryLimit,JobMemoryLimit,PeakProcessMemoryUsed,PeakJobMemoryUsed;
+ }
+ [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes,string name);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int infoClass,ref BookJobExtended info,uint length);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+ static bool BookProcessEnabled(){return File.Exists(Path.Combine(labRoot,"book-reader-process-fixture.flag"));}
+ static void BookSessionWrite(BookLabSession b,string name,object value){
+  string p=Path.Combine(b.StageDirectory,name),temp=p+"."+Guid.NewGuid().ToString("N")+".tmp";
+  if((File.GetAttributes(b.StageDirectory)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked book session");
+  try{
+   byte[] bytes=Utf8.GetBytes(Serializer().Serialize(value));
+   using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(bytes,0,bytes.Length);stream.Flush(true);}
+   if(File.Exists(p)){if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)throw new IOException("Linked book file");File.Replace(temp,p,null);}else File.Move(temp,p);
+  }finally{if(File.Exists(temp))File.Delete(temp);}
+ }
+ static void StartBookProcess(BookLabSession b,Dictionary<string,object> request){
+  b.ProcessFixture=true;
+  // Preserve original request.json shape; the fixture uses the syntactically valid
+  // LAB URL and a dead loopback proxy, never a real book or account.
+  if(TextVal(request,"url")!="https://www.canva.com/design/LAB_ID/LAB_KEY/view?embed")throw new IOException("Offline fixture URL required");
+  BookSessionWrite(b,"request.json",new Dictionary<string,object>{{"url",b.Url},{"title",TextVal(request,"title")},{"pages",b.Pages},{"start",Val(request,"start")},{"saved",Val(request,"saved")},{"interactive",0},{"owner",b.OwnerWindow},{"ownerPid",b.OwnerPid}});
+  BookSessionWrite(b,"layout.json",b.Layout);
+  File.WriteAllText(Path.Combine(b.StageDirectory,"lease"),"1",Utf8);
+  b.ReaderJob=CreateJobObject(IntPtr.Zero,null);
+  if(b.ReaderJob==IntPtr.Zero)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"book job");
+  var job=new BookJobExtended();job.BasicLimitInformation.LimitFlags=0x2000;
+  if(!SetInformationJobObject(b.ReaderJob,9,ref job,(uint)Marshal.SizeOf(typeof(BookJobExtended))))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"book job limits");
+  var info=new ProcessStartInfo(Path.Combine(b.StageDirectory,"BookReader.exe"),"--session \""+b.StageDirectory+"\"");
+  info.WorkingDirectory=b.StageDirectory;info.UseShellExecute=false;info.CreateNoWindow=true;
+  info.RedirectStandardOutput=true;info.RedirectStandardError=true;
+  info.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]="--proxy-server=http://127.0.0.1:1 --proxy-bypass-list=<-loopback>";
+  info.EnvironmentVariables["WEBVIEW2_USER_DATA_FOLDER"]=Path.Combine(b.StageDirectory,"offline-profile");
+  b.Reader=Process.Start(info);
+  if(b.Reader==null)throw new IOException("Book process missing");
+  if(!AssignProcessToJobObject(b.ReaderJob,b.Reader.Handle))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"book job assign");
+  b.Reader.BeginOutputReadLine();b.Reader.BeginErrorReadLine();
+ }
+ static void StopBookProcess(BookLabSession b){
+  if(b.Reader!=null){
+   try{
+    if(!b.Reader.HasExited){
+     File.WriteAllText(Path.Combine(b.StageDirectory,"stop"),"1",Utf8);
+     if(!b.Reader.WaitForExit(1500)){b.Reader.Kill();if(!b.Reader.WaitForExit(3000))throw new IOException("Reader stop timeout");}
+    }
+   }finally{
+    if(b.ReaderJob!=IntPtr.Zero){CloseHandle(b.ReaderJob);b.ReaderJob=IntPtr.Zero;}
+    b.Reader.Dispose();b.Reader=null;
+   }
+  }else if(b.ReaderJob!=IntPtr.Zero){CloseHandle(b.ReaderJob);b.ReaderJob=IntPtr.Zero;}
+ }
  static bool BookStageEnabled(){return File.Exists(Path.Combine(labRoot,"book-bundle-fixture.flag"));}
  static string StageBookBundle(string token){
   byte[] bundle=Read("asset-book-reader-host.zip");
@@ -1427,6 +1488,12 @@ internal static class NativeReadServer {
  static void CloseBookStage(BookLabSession session){
   if(session==null)return;
   session.Closed=true;
+  if(session.ProcessFixture){
+   StopBookProcess(session);
+   // WebView2 may retain profile files until its process tree exits. Retain
+   // this uniquely named disposable directory for the lab harness, never reuse it.
+   return;
+  }
   string dir=session.StageDirectory;
   if(dir==null)return;
   // Delete only the exact staged files, never recurse through untrusted paths.
@@ -1445,7 +1512,7 @@ internal static class NativeReadServer {
   return owner!=null&&LongVal(owner,"pid")==b.OwnerPid&&LongVal(owner,"window")==b.OwnerWindow&&TextVal(owner,"startTicks")==b.OwnerStart;
  }
  static void BookExpire(){
-  if(bookLab!=null&&!bookLab.Closed&&(!BookFixture()||(DateTime.UtcNow-bookLab.Lease).TotalSeconds>35||!BookOwnerMatches(bookLab,NativeBoardOwner(false))))CloseBookStage(bookLab);
+  if(bookLab!=null&&!bookLab.Closed&&(!BookFixture()||(bookLab.ProcessFixture&&(!BookProcessEnabled()||bookLab.Reader==null||bookLab.Reader.HasExited))||(DateTime.UtcNow-bookLab.Lease).TotalSeconds>35||!BookOwnerMatches(bookLab,NativeBoardOwner(false))))CloseBookStage(bookLab);
  }
  static Dictionary<string,object> BookCommand(object v,long pages,Dictionary<string,object> layout){
   var c=Obj(v);
@@ -1479,6 +1546,10 @@ internal static class NativeReadServer {
     try{bookLab.StageDirectory=StageBookBundle(bookLab.Token);}
     catch(Exception ex){if(!(ex is IOException||ex is UnauthorizedAccessException||ex is ArgumentException||ex is InvalidOperationException))throw;bookLab=null;Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"BUNDLE_MISMATCH\"}");return;}
    }
+   if(BookProcessEnabled()){
+    try{if(bookLab.StageDirectory==null)throw new IOException("Missing stage");StartBookProcess(bookLab,x);}
+    catch(Exception ex){try{CloseBookStage(bookLab);}catch{}bookLab=null;Console.Error.WriteLine("Reader start rejected: "+ex.GetType().Name);Json(s,"409 Conflict","{\"error\":\"native unavailable\",\"reason\":\"READER_START_ERROR\"}");return;}
+   }
    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"session",bookLab.Token}}));return;
   }
   if(bookLab==null||target!=path+"?session="+bookLab.Token){Json(s,"404 Not Found","{\"error\":\"session\"}");return;}
@@ -1492,12 +1563,17 @@ internal static class NativeReadServer {
      object v=Val(x,"command");
      if(v!=null){var c=BookCommand(v,bookLab.Pages,layout);if(LongVal(c,"seq")>bookLab.Seq)bookLab.Seq=LongVal(c,"seq");}
      bookLab.Layout=layout;
+     if(bookLab.ProcessFixture){
+      BookSessionWrite(bookLab,"layout.json",layout);
+      if(v!=null&&LongVal(Obj(v),"seq")==bookLab.Seq)BookSessionWrite(bookLab,"command.json",Obj(v));
+     }
     }
+    if(bookLab.ProcessFixture)File.SetLastWriteTimeUtc(Path.Combine(bookLab.StageDirectory,"lease"),DateTime.UtcNow);
     bookLab.Lease=DateTime.UtcNow;
    }catch(Exception e){if(!(e is ArgumentException||e is FormatException||e is InvalidOperationException))throw;Json(s,"400 Bad Request","{\"error\":\"invalid layout or command\"}");return;}
   }
   // Never claim rendered pages, bookmarks or command acknowledgement from the fixture.
-  Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",bookLab.Closed},{"page",0},{"saved",0},{"total",bookLab.Pages},{"status",bookLab.Closed?"격리 세션 종료":"격리 세션 (실제 재생 없음)"},{"navigationMode","fixture"},{"fixtureSeq",bookLab.Seq}}));
+  Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"ok",true},{"ready",false},{"closed",bookLab.Closed},{"page",0},{"saved",0},{"total",bookLab.Pages},{"status",bookLab.Closed?"격리 세션 종료":"격리 세션 (실제 재생 없음)"},{"navigationMode","fixture"},{"fixtureSeq",bookLab.Seq},{"fixturePid",bookLab.Reader==null?0:bookLab.Reader.Id}}));
  }
  static void ShareOptionsData(Stream s,string method,string site,string origin,byte[] payload){
   bool read=method=="GET";
@@ -1714,6 +1790,7 @@ internal static class NativeReadServer {
    if(coinWrites){ClearAbandonedWrites();RecoverBackup();}
    File.WriteAllText(Path.Combine(lab,"native-read-server.ready"),Process.GetCurrentProcess().Id.ToString());
    while(!File.Exists(Path.Combine(lab,"native-read-server.stop"))){
+    if(coinWrites&&bookLab!=null){lock(LocalGate){BookExpire();}}
     if(!l.Pending()){Thread.Sleep(20);continue;}
     if(!ClientSlots.Wait(0)){Thread.Sleep(20);continue;}
     TcpClient c;
@@ -1730,7 +1807,7 @@ internal static class NativeReadServer {
    l.Stop();
    // Bounded graceful drain. Never report a clean stop while a writer is active.
    int acquired=0;try{while(acquired<16&&ClientSlots.Wait(10000))acquired++;return acquired==16?0:1;}finally{if(acquired>0)ClientSlots.Release(acquired);}
-  }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();}
+  }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{l.Stop();lock(LocalGate){if(bookLab!=null&&!bookLab.Closed)CloseBookStage(bookLab);}}
  }
 }
 
