@@ -196,3 +196,21 @@ jobs:
       - name: Native installer and launcher lifecycle without PowerShell child
         shell: powershell
         run: tools/webview-lab/online-native-start-test.ps1 -Package (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-NativeStart')
+  phase7d-native-transaction:
+    name: Phase 7D-1 native signed transaction research
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compile native transaction and test signed snapshots
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          $exe=Join-Path $env:RUNNER_TEMP 'HOJA-Native-Update-Transaction-Test.exe'
+          & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll tools/webview-lab/native-update-kernel.cs
+          if($LASTEXITCODE -ne 0){throw 'Native update transaction build failed'}
+          & $exe --ci-selftest
+          if($LASTEXITCODE -ne 0){throw 'Native signed transaction test failed'}
