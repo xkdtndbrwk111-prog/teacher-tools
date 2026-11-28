@@ -19,6 +19,26 @@ Get-ChildItem -LiteralPath $source -File|Where-Object {$_.Name -match '^museum-[
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.IO.Compression
 $utf8=[Text.UTF8Encoding]::new($false)
+# Candidate-only diagnostics, dormant unless the native offline smoke installs a trace sink.
+# Keep the original renderer and its security/acknowledgement gates intact.
+$presentBoard=Join-Path $runtime 'presentation-board.js'
+$pb=[IO.File]::ReadAllText($presentBoard)
+$busy="suppressedId=item.id;void ack(item.id,'failed');return"
+if(([regex]::Matches($pb,[regex]::Escape($busy))).Count -ne 1){throw 'Presentation busy trace anchor mismatch'}
+$pb=$pb.Replace($busy,"window.__fieldPresentationTrace?.('board-busy');"+$busy)
+[IO.File]::WriteAllText($presentBoard,$pb,$utf8)
+$presentZip=[IO.Compression.ZipFile]::Open((Join-Path $runtime 'presentation-assets.zip'),[IO.Compression.ZipArchiveMode]::Update)
+try{
+ $key='classroom/host/board-present.js';$entry=$presentZip.GetEntry($key)
+ if(!$entry){throw 'Offline presentation renderer missing'}
+ $reader=[IO.StreamReader]::new($entry.Open(),[Text.UTF8Encoding]::new($false,$true))
+ try{$bp=$reader.ReadToEnd()}finally{$reader.Dispose()}
+ $anchor="}catch(error){send('tt-present-error'"
+ if(([regex]::Matches($bp,[regex]::Escape($anchor))).Count -ne 1){throw 'Presentation renderer trace anchor mismatch'}
+ $bp=$bp.Replace($anchor,"}catch(error){try{window.parent.__fieldPresentationTrace?.('renderer-error',String(error?.name||'Error')+': '+String(error?.message||'').slice(0,240))}catch{};send('tt-present-error'")
+ $entry.Delete();$entry=$presentZip.CreateEntry($key);$stream=$entry.Open()
+ try{$bytes=$utf8.GetBytes($bp);$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}
+}finally{$presentZip.Dispose()}
 $miniSource=Join-Path $repo 'reviewed-minigames'
 $miniSha=git -C $miniSource rev-parse HEAD
 if($miniSha -cne '51c195b9cd87a63c96944f547ad307e07d7eac40'){throw 'Mini-game pin mismatch'}

@@ -116,6 +116,10 @@ internal sealed class NativeBoardLaunch : Form {
             }
 #else
             if(mode=="wallpaper")ConsumeShareRestart();
+            string presentProbe=Path.Combine(root,"field-presentation-smoke.trigger");
+            if(File.Exists(Path.Combine(root,"field-smoke.flag"))&&File.Exists(presentProbe)){
+                File.Delete(presentProbe);DumpFieldPresentation();
+            }
             string coinProbe=Path.Combine(root,"field-coin-smoke.trigger");
             if(File.Exists(Path.Combine(root,"field-smoke.flag"))&&File.Exists(coinProbe)){File.Delete(coinProbe);VerifyFieldCoins();}
 #endif
@@ -452,6 +456,13 @@ internal sealed class NativeBoardLaunch : Form {
     async Task FieldGameClick(string js){
         Require(fieldGameFrame!=null&&await fieldGameFrame.ExecuteScriptAsync(js)=="true","Field game control");
     }
+    async void DumpFieldPresentation(){
+        string file=Path.Combine(root,"field-presentation-smoke.result");
+        try{
+            string json=await browser.CoreWebView2.ExecuteScriptAsync(@"(()=>({trace:window.__fieldPresentationTraceLog||[],dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.id),layoutEditing:document.body.classList.contains('layout-editing'),house:!!window.ttHouse?.isOpen?.(),open:!!document.getElementById('ttPresentation')?.open,loading:!document.getElementById('ttPresentationLoading')?.hidden}))()");
+            File.WriteAllText(file,json);
+        }catch(Exception ex){File.WriteAllText(file,"TRACE unavailable: "+ex.GetType().Name);}
+    }
     async Task FieldBoardWait(string js,string label,int count){
         for(int i=0;i<count;i++){
             var core=browser.CoreWebView2;
@@ -536,6 +547,17 @@ internal sealed class NativeBoardLaunch : Form {
         await browser.EnsureCoreWebView2Async(env);
         var core=browser.CoreWebView2;
 #if NATIVE_FIELD_PILOT
+        if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(@"(()=>{
+              if(location.origin!=='http://127.0.0.1:17451'||window.parent!==window)return;
+              const log=[];window.__fieldPresentationTraceLog=log;
+              window.__fieldPresentationTrace=(type,detail='')=>{
+                if(log.length>=40)return;
+                log.push({type,detail,dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.id),layoutEditing:!!document.body?.classList.contains('layout-editing'),house:!!window.ttHouse?.isOpen?.()});
+              };
+              addEventListener('message',e=>{if(e.origin===location.origin&&e.source===document.getElementById('ttPresentationFrame')?.contentWindow&&['tt-present-ready','tt-present-rendered','tt-present-error'].includes(e.data?.type))window.__fieldPresentationTrace(e.data.type)});
+            })()");
+        }
         if(File.Exists(Path.Combine(root,"field-smoke.flag")))core.FrameCreated+=(s,e)=>{
             var f=e.Frame;
             f.NavigationStarting+=(x,y)=>{if(FieldGame(y.Uri))fieldGameFrame=f;};

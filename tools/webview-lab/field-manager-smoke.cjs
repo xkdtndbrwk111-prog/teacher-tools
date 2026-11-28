@@ -67,6 +67,15 @@ const manager='http://127.0.0.1:4188',board='http://127.0.0.1:17451';
   assert.equal(second.students.find(s=>s.id===expected.ids[0]).name,'FIELD_TEST_RENAMED');
   await until(()=>ctx.pages().every(p=>p===page||p.isClosed()),'roster inbox closed');
   console.log('PASS installed manager actual seating and roster-only inbox, exact assignments and preserved layout');
+  // The independent coin test can proceed only after the real roster checks passed.
+  fs.writeFileSync(path.join(root,'field-manager-roster.pass'),'synthetic roster verified');
+  const receipts=[];
+  page.on('response',async r=>{
+   const u=new URL(r.url());
+   if(u.origin===board&&u.pathname==='/api/presentation/receipt'&&r.request().method()==='GET'){
+    try{receipts.push(r.status()+':'+(await r.json()).state)}catch{receipts.push(String(r.status()))}
+   }
+  });
   const receipt=page.waitForResponse(r=>new URL(r.url()).origin===board&&new URL(r.url()).pathname==='/api/presentation/receipt'&&r.status()===200&&r.request().method()==='GET'&&r.url().includes('id='),{timeout:12000});
   assert.equal(await page.evaluate(()=>{
    window.__fieldPresentation=[];
@@ -76,12 +85,15 @@ const manager='http://127.0.0.1:4188',board='http://127.0.0.1:17451';
   const receiptId=new URL(firstReceipt.url()).searchParams.get('id');
   await page.waitForFunction(()=>window.__fieldPresentation?.some(s=>s.includes('표시 완료')||s.includes('표시 확인 실패')),null,{timeout:30000});
   const messages=await page.evaluate(()=>window.__fieldPresentation);
-  assert(messages.some(s=>s.includes('표시 완료')),JSON.stringify(messages));
+  assert(messages.some(s=>s.includes('표시 완료')),JSON.stringify({messages,receipts}));
   assert(!messages.includes('FALLBACK'));
   const closed=await page.evaluate(async id=>{
    const r=await fetch('http://127.0.0.1:17451/api/presentation/close',{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:id});return r.ok;
   },receiptId);
   assert.equal(closed,true);
+  await until(()=>page.evaluate(async id=>{
+   const r=await fetch('http://127.0.0.1:17451/api/presentation/receipt?id='+id,{mode:'cors',credentials:'omit',cache:'no-store'});return r.ok&&(await r.json()).state==='closed';
+  },receiptId),'presentation closed receipt');
   console.log('PASS installed manager real seating presentation receipt and close');
   assert.deepEqual(operational,[]);
   assert.deepEqual(errors,[]);
