@@ -116,6 +116,8 @@ internal sealed class NativeBoardLaunch : Form {
             }
 #else
             if(mode=="wallpaper")ConsumeShareRestart();
+            string coinProbe=Path.Combine(root,"field-coin-smoke.trigger");
+            if(File.Exists(Path.Combine(root,"field-smoke.flag"))&&File.Exists(coinProbe)){File.Delete(coinProbe);VerifyFieldCoins();}
 #endif
 #endif
         }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
@@ -438,6 +440,62 @@ internal sealed class NativeBoardLaunch : Form {
         }finally{if(File.Exists(temp))File.Delete(temp);}
     }
 #if NATIVE_FIELD_PILOT
+    CoreWebView2Frame fieldGameFrame;
+    async Task FieldFrameWait(string js,string label,int count){
+        for(int i=0;i<count;i++){
+            var f=fieldGameFrame;
+            if(f!=null)try{if(await f.ExecuteScriptAsync(js)=="true")return;}catch(System.Runtime.InteropServices.COMException){}
+            await Task.Delay(100);
+        }
+        throw new IOException("Field game timeout: "+label);
+    }
+    async Task FieldGameClick(string js){
+        Require(fieldGameFrame!=null&&await fieldGameFrame.ExecuteScriptAsync(js)=="true","Field game control");
+    }
+    async Task FieldBoardWait(string js,string label,int count){
+        for(int i=0;i<count;i++){
+            if(await browser.CoreWebView2.ExecuteScriptAsync(js)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Field ledger timeout: "+label);
+    }
+    async void VerifyFieldCoins(){
+        var core=browser.CoreWebView2;
+        string result=Path.Combine(root,"field-coin-smoke.result");
+        try{
+            // Seed only the manager test's synthetic roster via the original ledger API.
+            string seed=await core.ExecuteScriptAsync(@"(async()=>{try{
+                const s=await TTCoins.snapshot(true),r=s.roster;
+                if(r.className!=='FIELD TEST CLASS'||r.students.length!==2||!r.students.every(p=>/^field-test-[12]$/.test(p.id)))return false;
+                const at=new Date().toISOString(),cls=r.cls;
+                if(s.events.some(e=>e.cls===cls&&e.type==='spend'))return false;
+                await TTCoins.commit(s,[{at,cls,type:'setting',enabled:true,cap:40,weeklyOn:false,weeklyAmount:0,weeklyDay:1},...r.students.map(p=>({at,cls,type:'grant',id:p.id,name:p.name,amount:14,source:'field-test'}))]);
+                return TTCoins.balanceOf(TTCoins.stateOf(s.events,cls),'field-test-1')===14;
+            }catch(e){return false}})()");
+            Require(seed=="true","Field synthetic coin seed");
+            // Capture replies only; no synthetic protocol events or modified game internals.
+            await core.ExecuteScriptAsync(@"(()=>{window.__fieldCoinReplies=[];window.addEventListener('message',e=>{
+              if(e.origin==='http://127.0.0.1:4189'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__fieldCoinReplies.push(e.data.type);
+            });document.getElementById('openMiniGames').click()})()");
+            await FieldFrameWait("!!document.getElementById('menuScreen')&&!!document.getElementById('openStairs')","menu loaded",250);
+            await FieldGameClick("(()=>{document.getElementById('hofFirstLater')?.click();return true})()");
+            await FieldFrameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","menu visible",120);
+            await FieldGameClick("(()=>{document.getElementById('openStairs').click();return true})()");
+            await FieldFrameWait("!document.getElementById('choiceScreen').hidden&&!!document.querySelector('#stageList .stage-card')","stairs choice",120);
+            await FieldGameClick("(()=>{document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click();return true})()");
+            await FieldFrameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=field-test-1]:not([disabled])')","actual roster picker",180);
+            await FieldGameClick("(()=>{document.querySelector('[data-student=field-test-1]').click();return true})()");
+            await FieldFrameWait("!document.getElementById('stairsScreen').hidden","stairs entered",80);
+            await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.type==='spend'&&x.id==='field-test-1');return e.length===1&&e[0].amount===-2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===12})()","exact spend",30);
+            // Exit within the existing refund window, without changing its policy.
+            await FieldGameClick("(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));return true})()");
+            await FieldFrameWait("!document.getElementById('stOverlay').hidden&&[...document.querySelectorAll('#stOverlayActions button')].some(b=>b.textContent.includes('모음집'))","pause menu",20);
+            await FieldGameClick("(()=>{[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click();return true})()");
+            await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.id==='field-test-1'&&['spend','refund'].includes(x.type));return e.length===2&&e[0].charge===e[1].charge&&e[0].amount===-2&&e[1].amount===2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===14})()","matched refund",80);
+            await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+            File.WriteAllText(result,"PASS installed manager roster -> actual packaged game -> exact ledger spend and matched refund");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+    }
     bool FieldGame(string raw){
         Uri u;
         return File.Exists(Path.Combine(root,"game.static.ready"))&&Uri.TryCreate(raw,UriKind.Absolute,out u)&&u.Scheme=="http"&&u.Host=="127.0.0.1"&&u.Port==4189&&u.UserInfo==""&&u.Fragment==""&&u.AbsolutePath=="/hoja-minigames/"&&System.Text.RegularExpressions.Regex.IsMatch(u.Query,@"\A\?mode=board&embed=dashboard&coin=4&fresh=[0-9]+-[0-9]+\z");
@@ -470,6 +528,13 @@ internal sealed class NativeBoardLaunch : Form {
         var env=await CoreWebView2Environment.CreateAsync(null,profile);
         await browser.EnsureCoreWebView2Async(env);
         var core=browser.CoreWebView2;
+#if NATIVE_FIELD_PILOT
+        if(File.Exists(Path.Combine(root,"field-smoke.flag")))core.FrameCreated+=(s,e)=>{
+            var f=e.Frame;
+            f.NavigationStarting+=(x,y)=>{if(FieldGame(y.Uri))fieldGameFrame=f;};
+            f.Destroyed+=(x,y)=>{if(Object.ReferenceEquals(fieldGameFrame,f))fieldGameFrame=null;};
+        };
+#endif
         core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
         core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;
         core.NavigationStarting+=(s,e)=>{if(!Lab.Local(e.Uri))e.Cancel=true;};
