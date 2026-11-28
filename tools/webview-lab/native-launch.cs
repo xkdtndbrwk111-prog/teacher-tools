@@ -502,7 +502,16 @@ internal sealed class NativeBoardLaunch : Form {
             await FieldFrameWait("!!document.getElementById('menuScreen')&&!!document.getElementById('openStairs')","menu loaded",250);
             await FieldGameClick("(()=>{document.getElementById('hofFirstLater')?.click();return true})()");
             await FieldFrameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","menu visible",120);
-            await FieldGameClick("(()=>{document.getElementById('openStairs').click();return true})()");
+            // Observe actual controls, without fabricating protocol events.
+            await FieldFrameWait("document.readyState==='complete'&&!document.getElementById('openStairs').disabled","stairs controls initialized",160);
+            await FieldGameClick(@"(()=>{
+                window.__fieldGameErrors=[];
+                window.addEventListener('error',e=>{if(window.__fieldGameErrors.length<8)window.__fieldGameErrors.push(String(e.message||'error').slice(0,180))});
+                window.addEventListener('unhandledrejection',e=>{if(window.__fieldGameErrors.length<8)window.__fieldGameErrors.push(String(e.reason?.message||e.reason||'rejection').slice(0,180))});
+                const b=document.getElementById('openStairs');
+                if(!b||b.disabled)return false;
+                b.click();return true;
+            })()");
             await FieldFrameWait("!document.getElementById('choiceScreen').hidden&&!!document.querySelector('#stageList .stage-card')","stairs choice",120);
             await FieldGameClick("(()=>{document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click();return true})()");
             await FieldFrameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=field-test-1]:not([disabled])')","actual roster picker",180);
@@ -516,7 +525,14 @@ internal sealed class NativeBoardLaunch : Form {
             await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.id==='field-test-1'&&['spend','refund'].includes(x.type));return e.length===2&&e[0].charge===e[1].charge&&e[0].amount===-2&&e[1].amount===2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===14})()","matched refund",80);
             await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
             File.WriteAllText(result,"PASS installed manager roster -> actual "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" game -> exact ledger spend and matched refund");
-        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        }catch(Exception ex){
+            string trace="";
+            try{
+                if(fieldGameFrame!=null)trace=await fieldGameFrame.ExecuteScriptAsync(@"(()=>({ready:document.readyState,menuHidden:document.getElementById('menuScreen')?.hidden,choiceHidden:document.getElementById('choiceScreen')?.hidden,stageCount:document.querySelectorAll('#stageList .stage-card').length,buttonDisabled:document.getElementById('openStairs')?.disabled,pickerHidden:document.getElementById('hofPicker')?.hidden,errors:window.__fieldGameErrors||[]}))()");
+                trace+=" replies="+await core.ExecuteScriptAsync("(window.__fieldCoinReplies||[]).slice(-20)");
+            }catch{}
+            File.WriteAllText(result,"FAIL "+ex.Message+" trace="+trace);
+        }
     }
     bool FieldGame(string raw){
         Uri u;
