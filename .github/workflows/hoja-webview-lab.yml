@@ -119,6 +119,9 @@ jobs:
           path: ${{ runner.temp }}/HOJA-WebView2-FieldPilot-A1
           if-no-files-found: error
           retention-days: 14
+      - name: Verify packaged native server against actual public HTTPS providers
+        shell: powershell
+        run: tools/webview-lab/field-live-provider-test.ps1 -Package (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1')
   field-release-gate:
     name: Phase 6E candidate readiness (not production approval)
     needs: [phase5-gate, field-pilot]
