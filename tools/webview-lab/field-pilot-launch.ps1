@@ -48,7 +48,7 @@ try{
  if((Get-Content -LiteralPath (Join-Path $root 'field-pilot.flag') -Raw) -cne '1.66.43-field-a1'){throw 'Pilot identity mismatch'}
  Verify-Payload $root
  $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=Join-Path $root 'local'
- foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag','field-manager-live.flag','manager.static.ready','manager.static.stop','game.static.ready','game.static.stop','field-smoke.flag','field-game-smoke.result')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
+ foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag','field-manager-live.flag','manager.static.ready','manager.static.stop','game.static.ready','game.static.stop','field-smoke.flag','field-game-smoke.result','field-coin-smoke.trigger','field-coin-smoke.result')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
  foreach($name in @('coin-write-fixture.flag','media-read-fixture.flag','media-write-fixture.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'isolated-field-data' -Encoding ASCII}
  if($LiveBook){Set-Content -LiteralPath (Join-Path $root 'field-book-live.flag') 'explicit' -Encoding ASCII}
  if($LiveDownload){Set-Content -LiteralPath (Join-Path $root 'media-download-live.flag') 'explicit' -Encoding ASCII}
@@ -121,6 +121,16 @@ try{
   if($env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
    & node $env:HOJA_FIELD_MANAGER_SMOKE
    if($LASTEXITCODE -ne 0){throw 'Packaged manager browser smoke failed'}
+   if($Mode -eq 'window'){
+    $coinTrigger=Join-Path $root 'field-coin-smoke.trigger';$coinResult=Join-Path $root 'field-coin-smoke.result'
+    Remove-Item -LiteralPath $coinResult -Force -ErrorAction SilentlyContinue
+    Set-Content -LiteralPath $coinTrigger 'offline-only' -Encoding ASCII
+    for($i=0;$i -lt 400 -and !(Test-Path -LiteralPath $coinResult);$i++){if($board.HasExited){throw 'Field coin board exited'};Start-Sleep -Milliseconds 200}
+    if(!(Test-Path -LiteralPath $coinResult)){throw 'Field coin test timeout'}
+    $coinText=Get-Content -LiteralPath $coinResult -Raw -Encoding UTF8
+    Write-Host $coinText
+    if(!$coinText.StartsWith('PASS ')){throw 'Field coin regression failed'}
+   }
   }
   Set-Content -LiteralPath (Join-Path $root 'native-launch.stop') 'stop' -Encoding ASCII
  }
