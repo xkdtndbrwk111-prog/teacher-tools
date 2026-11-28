@@ -47,6 +47,7 @@ try{
  try{
   $set=LocalPost '/api/weather/place' @{name='CI public region';lat=37.5665;lon=126.9780;auto=$false}
   if(!$set.ok){throw 'Manual region rejected'}
+  Write-Host 'PASS native public-region setting'
   $forecast=LocalGet '/api/weather?fresh=1'
   if(!$forecast.weather -or $forecast.source -cne 'Open-Meteo' -or $forecast.stale){$errors.Add('native live forecast');Write-Host 'FAIL native live forecast'}
   else{Write-Host 'PASS packaged native actual HTTPS forecast'}

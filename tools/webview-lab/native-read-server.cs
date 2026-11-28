@@ -863,7 +863,7 @@ internal static class NativeReadServer {
   if(!coinWrites||!live)throw new IOException("Weather provider not configured");
   int remaining=upstreamBudget==null?4000:Math.Min(4000,30000-(int)upstreamBudget.ElapsedMilliseconds);
   if(remaining<1)throw new IOException("Weather budget");
-  var req=(HttpWebRequest)WebRequest.Create(uri);req.Method="GET";req.Timeout=remaining;req.ReadWriteTimeout=remaining;req.AllowAutoRedirect=false;req.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;req.KeepAlive=false;req.Credentials=null;req.UseDefaultCredentials=false;
+  var req=(HttpWebRequest)WebRequest.Create(uri);req.Method="GET";req.Timeout=remaining;req.ReadWriteTimeout=remaining;req.AllowAutoRedirect=false;req.AutomaticDecompression=DecompressionMethods.None;req.Headers[HttpRequestHeader.AcceptEncoding]="identity";req.KeepAlive=false;req.Credentials=null;req.UseDefaultCredentials=false;
   req.UserAgent="HOJA-Board/1.66.5 (contact: xkdtndbrwk111@gmail.com)";
   DateTimeOffset since;if(DateTimeOffset.TryParse(modified,CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal,out since))req.IfModifiedSince=since.UtcDateTime;
   using(var abort=new System.Threading.Timer(_=>{try{req.Abort();}catch{}},null,remaining,Timeout.Infinite)){
@@ -872,12 +872,25 @@ internal static class NativeReadServer {
     try{response=(HttpWebResponse)req.GetResponse();}catch(WebException e){response=e.Response as HttpWebResponse;if(response==null)throw new IOException("Weather unavailable",e);}
     var result=new WeatherResponse{Status=(int)response.StatusCode,Modified=response.Headers["Last-Modified"]??"",Retry=HeaderDate(response.Headers["Retry-After"],now,true),Expires=HeaderDate(response.Headers["Expires"],now,false)};
     if(result.Status==200||result.Status==203){
+     // Ask for uncompressed JSON; if a provider ignores identity, decode
+     // only supported encodings with the same bounded decoded-byte limit.
+     string encoding=(response.Headers["Content-Encoding"]??"").Trim().ToLowerInvariant();
+     if(encoding!=""&&encoding!="identity"&&encoding!="gzip"&&encoding!="deflate")throw new IOException("Weather content encoding");
      if(response.ContentLength>2097152)throw new IOException("Weather response limit");
-     using(var input=response.GetResponseStream())using(var output=new MemoryStream()){
+     using(var raw=response.GetResponseStream())
+     using(var input=encoding=="gzip"?(Stream)new GZipStream(raw,CompressionMode.Decompress):encoding=="deflate"?(Stream)new DeflateStream(raw,CompressionMode.Decompress):raw)
+     using(var output=new MemoryStream()){
       byte[] buffer=new byte[8192];int n;while((n=input.Read(buffer,0,buffer.Length))>0){if(output.Length+n>2097152)throw new IOException("Weather response limit");output.Write(buffer,0,n);}
       result.Text=Utf8.GetString(output.ToArray()).TrimStart('\uFEFF');
      }
     }return result;
+   }catch(InvalidDataException e){
+    Console.Error.WriteLine("Weather HTTPS provider="+uri.Host+" invalid compressed response");
+    throw new IOException("Weather response decoding failed",e);
+   }catch(IOException e){
+    var transport=e.InnerException as WebException;
+    Console.Error.WriteLine("Weather HTTPS provider="+uri.Host+" failure="+e.GetType().Name+" transport="+(transport==null?"none":transport.Status.ToString())+" http="+(response==null?"none":((int)response.StatusCode).ToString(CultureInfo.InvariantCulture)));
+    throw;
    }finally{if(response!=null)response.Dispose();}
   }
  }
@@ -945,7 +958,8 @@ internal static class NativeReadServer {
    if(!(part=="weather"?ValidForecast(data):ValidAir(data)))throw new FormatException("Weather schema");
    entry[part]=new Dictionary<string,object>{{"data",data},{"at",now}};entry[nextKey]=0L;
   }catch(Exception e){
-   if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   if(!(e is IOException||e is InvalidDataException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+   Console.Error.WriteLine("Weather refresh part="+part+" failure="+e.GetType().Name);
    if(old!=null)old["attemptFailed"]=true;
   }
   return true;
