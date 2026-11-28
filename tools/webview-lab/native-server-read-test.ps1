@@ -468,7 +468,7 @@ try{
   return $r
  }
  function Assert-P($r,[int]$code,[string]$body=''){
-  if($r.status -notmatch ("^HTTP/1.1 "+$code+" ")){throw "Presentation status expected $code actual $($r.status)"}
+  if($r.status -notmatch ("^HTTP/1.1 "+$code+" ")){throw "HTTP status expected $code actual $($r.status); response=$([Text.Encoding]::UTF8.GetString($r.body)); caller=$((Get-PSCallStack | Select-Object -Skip 1 -First 3 | ForEach-Object {$_.ScriptLineNumber}) -join ',')"}
   if($body -and ([Text.Encoding]::UTF8.GetString($r.body) -cne $body)){throw "Presentation body mismatch $body"}
  }
  function Present-Body([string]$id,[string]$kind){B64 ('{"id":"'+$id+'","kind":"'+$kind+'","payload":{"student":"LAB_PRESENT_PRIVATE"}}')}
@@ -1677,6 +1677,7 @@ try{
   Write-Host 'PASS original reader state page/bookmark/ack/fullscreen/visibility and fail-closed malformed/unowned state'
   Assert-P (Raw-Request 17451 ('/api/book-reader/close?session='+$readerSession.session) POST '' 'same-origin') 200
   if(!$readerProc.WaitForExit(8000)){throw 'Explicit close left actual reader running'}
+  Write-Host 'Original reader explicit close confirmed; opening second independently owned session'
   $readerSession=Book-Doc (Book-Post $other)
   $readerState=Book-Doc (Book-Status $readerSession.session)
   if($readerState.fixturePid -le 0){throw 'Reader re-open failed'}

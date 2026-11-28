@@ -1173,9 +1173,20 @@ internal static class NativeReadServer {
  // 4E-3b1: read only. Status requires fresh helper and matching native launcher ownership.
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
  static Dictionary<string,object> FreshShareDocument(string name){
-  var bytes=Read(name);
-  if(bytes==null||bytes.Length>8192)return null;
-  double age=(DateTime.UtcNow-File.GetLastWriteTimeUtc(Path.Combine(root,name))).TotalSeconds;
+  // The launcher atomically replaces its heartbeat. Permit rename/delete sharing
+  // while reading a bounded snapshot, rather than racing the writer's File.Replace.
+  string path=Path.Combine(root,name);
+  if((File.GetAttributes(root)&FileAttributes.ReparsePoint)!=0||!File.Exists(path))return null;
+  var attr=File.GetAttributes(path);
+  if((attr&(FileAttributes.ReparsePoint|FileAttributes.Directory))!=0)return null;
+  byte[] bytes;
+  using(var input=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete)){
+   if(input.Length<=0||input.Length>8192)return null;
+   bytes=new byte[(int)input.Length];int offset=0,n;
+   while(offset<bytes.Length&&(n=input.Read(bytes,offset,bytes.Length-offset))>0)offset+=n;
+   if(offset!=bytes.Length||input.ReadByte()!=-1)return null;
+  }
+  double age=(DateTime.UtcNow-File.GetLastWriteTimeUtc(path)).TotalSeconds;
   if(age< -2||age>5)return null;
   return Obj(Serializer().DeserializeObject(Utf8.GetString(bytes).TrimStart('\uFEFF')));
  }
