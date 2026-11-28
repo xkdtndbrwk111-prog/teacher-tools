@@ -105,8 +105,17 @@ try{
   Write-Host (Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw)
   $managerPage=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/seating/' -TimeoutSec 3
   $link=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/classroom/host/dashboard-link.js' -TimeoutSec 3
-  $game=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4189/hoja-minigames/?mode=board&embed=dashboard&coin=4&fresh=1-1' -TimeoutSec 10
-  if($managerPage.Content -notmatch '교실 매니저' -or $link.Content -notmatch '127\.0\.0\.1:17451' -or $link.Content -match '127\.0\.0\.1:17439' -or $game.Content -notmatch "DASHBOARD_ORIGIN='http://127.0.0.1:17451'" -or $game.Content -match '127\.0\.0\.1:17439'){throw 'Packaged origins mismatch'}
+  $game=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4189/hoja-minigames/?mode=board&embed=dashboard&coin=4&fresh=1-1' -TimeoutSec 20
+  # Read raw response bytes rather than PowerShell's inferred Content encoding.
+  function Response-Text($response){
+   $response.RawContentStream.Position=0
+   $r=[IO.StreamReader]::new($response.RawContentStream,[Text.UTF8Encoding]::new($false,$true),$true,4096,$true)
+   try{return $r.ReadToEnd()}finally{$r.Dispose()}
+  }
+  $managerText=Response-Text $managerPage;$linkText=Response-Text $link;$gameText=Response-Text $game
+  if(!$managerText.Contains('id="teacherScreen"')){throw 'Packaged manager HTML identity mismatch'}
+  if(!$linkText.Contains('http://127.0.0.1:17451') -or $linkText.Contains('http://127.0.0.1:17439')){throw 'Packaged manager sender origin mismatch'}
+  if(!$gameText.Contains("DASHBOARD_ORIGIN='http://127.0.0.1:17451'") -or $gameText.Contains('http://127.0.0.1:17439')){throw 'Packaged game origin mismatch'}
   if($managerPage.Headers['Content-Security-Policy'] -notmatch 'connect-src.*127\.0\.0\.1:17451' -or $game.Headers['Content-Security-Policy'] -notmatch 'frame-ancestors http://127\.0\.0\.1:17451'){throw 'Static origin isolation policy missing'}
   Write-Host 'PASS packaged local manager/game origins and production manager isolation'
   if($env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
