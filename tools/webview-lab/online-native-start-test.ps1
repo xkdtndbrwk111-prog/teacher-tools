@@ -32,3 +32,12 @@ if((Get-Content -LiteralPath $keep -Raw).Trim() -cne 'preserve'){throw 'Native d
 if((Get-Content -LiteralPath (Join-Path $legacy 'keep.txt') -Raw).Trim() -cne 'untouched' -or @(Get-ChildItem -LiteralPath $legacy -Force).Count -ne 1){throw 'Legacy data changed'}
 foreach($port in @(17439,4188,4189)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw 'Listener survived'}}
 Write-Host 'PASS native startup, port collision refusal, tamper refusal, reopen and legacy data preservation'
+
+# Exercise actual signed runtime replacement with a disposable test key. No release key/feed.
+$p=Start-Process -FilePath $setup -ArgumentList '--ci-update-cycle' -PassThru
+if(!$p.WaitForExit(180000)){$p.Kill();throw 'Native update cycle timed out'}
+if($p.ExitCode -ne 0){$log=Get-Content -LiteralPath (Join-Path $root 'native-start-smoke.result') -Raw -ErrorAction SilentlyContinue;throw "Native update cycle failed: $log"}
+$p.Dispose()
+Get-Content -LiteralPath (Join-Path $root 'native-update-cycle.result')
+if(Test-Path (Join-Path $root 'native-update-transaction')){throw 'Pending update survived successful test'}
+Write-Host 'PASS actual signed update/rollback and WebView2 profile persistence in native setup'

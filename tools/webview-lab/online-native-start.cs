@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Text;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
@@ -49,6 +50,59 @@ internal static class OnlineNativeStart {
   Plain(root);Plain(Path.Combine(root,"bin"));Plain(Path.Combine(root,"local"));Plain(Path.Combine(root,"local","TeacherToolsLocal"));
   foreach(Entry e in m.Files){string f=LocalPath(root,e.Path);Plain(f);Require(new FileInfo(f).Length==e.Size&&Hash(f)==e.Hash,"Package mismatch: "+e.Path);}
   foreach(string name in Forbidden)Require(!File.Exists(LocalPath(root,name))&&!Directory.Exists(LocalPath(root,name)),"Static component present");
+ }
+ // 7D-2: actual new-host readiness test under a disposable runner only.
+ // Ephemeral key, synthetic signed release content, no public feed or release key.
+ static byte[] JsonBytes(object data){return new UTF8Encoding(false).GetBytes(new JavaScriptSerializer().Serialize(data));}
+ static string HashBytes(byte[] bytes){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
+ static void CiUpdateCycle(string root,Manifest original){
+  Require(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true","CI update cycle only");
+  const string releaseRel="local/TeacherToolsLocal/release.json",dashRel="local/TeacherToolsLocal/dashboard.html";
+  var paths=new List<string>();foreach(Entry e in original.Files)paths.Add(e.Path);
+  var kernel=new NativeUpdateKernel(root,paths);
+  string probe=Path.Combine(root,"update-profile-probe"),sentinel=Path.Combine(root,"local","TeacherToolsLocal","native-test-data.keep");
+  string originalRelease=LocalPath(root,releaseRel),originalDash=LocalPath(root,dashRel);
+  var meta=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(originalRelease));
+  string before=(string)meta["version"];Require(before=="1.66.43","Unexpected CI base");
+  string after="1.66.44",oldReleaseHash=Hash(originalRelease);
+  meta["version"]=after;meta["release"]=((string)meta["release"]).Replace("V"+before+"-","V"+after+"-");
+  string dashboard=File.ReadAllText(originalDash);Require(dashboard.Contains(before),"Dashboard version anchor");
+  File.WriteAllText(sentinel,"classroom-sentinel");
+  File.WriteAllText(probe,"seed");
+  Run(root,true,"window");File.WriteAllText(probe,"verify");
+  using(var key=new RSACryptoServiceProvider(2048)){
+   key.PersistKeyInCsp=false;
+   for(int pass=0;pass<2;pass++){
+    bool broken=pass==0;
+    var snapshot=new Manifest{Source=original.Source};var blobs=new Dictionary<string,byte[]>();
+    var entries=new List<object>();
+    foreach(Entry e in original.Files){
+     byte[] bytes=e.Path==releaseRel?JsonBytes(meta):e.Path==dashRel?new UTF8Encoding(false).GetBytes(broken?"<!doctype html><title>broken CI update</title>":dashboard.Replace(before,after)):File.ReadAllBytes(LocalPath(root,e.Path));
+     string hash=HashBytes(bytes);blobs[hash]=bytes;
+     snapshot.Files.Add(new Entry{Path=e.Path,Hash=hash,Size=bytes.Length});
+     entries.Add(new Dictionary<string,object>{{"path",e.Path},{"sha256",hash},{"bytes",bytes.Length}});
+    }
+    byte[] payload=JsonBytes(new Dictionary<string,object>{{"schema","TT-NATIVE-SNAPSHOT-1"},{"channel","online-pilot"},{"kernel",1},{"version",after},{"bases",new[]{oldReleaseHash}},{"files",entries}});
+    byte[] envelope=JsonBytes(new Dictionary<string,object>{{"payload",Convert.ToBase64String(payload)},{"signature",Convert.ToBase64String(key.SignData(payload,"SHA256"))}});
+    string token=kernel.Prepare(envelope,key.ToXmlString(false),before,(sha,length)=>blobs[sha]);
+    kernel.Apply(token);Verify(root,snapshot);
+    Exception launchFailure=null;
+    try{Run(root,true,"window");}catch(Exception e){launchFailure=e;}
+    if(broken){
+     Require(launchFailure!=null,"Broken signed update unexpectedly reached board readiness");
+     Require(kernel.Recover(),"Broken board rollback missing");Verify(root,original);Run(root,true,"window");
+     Require(File.ReadAllText(sentinel)=="classroom-sentinel","Rollback lost classroom data");
+     File.AppendAllText(Path.Combine(root,"native-update-cycle.result"),"PASS actual broken board rollback and reopened original memo\r\n");
+    }else{
+     if(launchFailure!=null){kernel.Recover();throw new IOException("Updated board failed readiness",launchFailure);}
+     kernel.Confirm(token,after);Require(!kernel.Recover(),"Confirmed update rolled back");
+     Verify(root,snapshot);Run(root,true,"wallpaper");
+     Require(File.ReadAllText(sentinel)=="classroom-sentinel","Update lost classroom data");
+     File.AppendAllText(Path.Combine(root,"native-update-cycle.result"),"PASS actual signed updated board readiness, window/wallpaper reopen, persistent WebView2 memo and classroom data\r\n");
+    }
+   }
+  }
+  File.Delete(probe);
  }
  static void PortFree(){foreach(var ep in IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners())Require(ep.Port!=Port,"Port 17439 already in use. No existing process was stopped.");}
  static int ListenerPid(){
@@ -115,8 +169,9 @@ internal static class OnlineNativeStart {
  }
  [STAThread] static int Main(string[] args){
   bool ci=args.Length==2&&args[0]=="--ci-smoke"&&(args[1]=="window"||args[1]=="wallpaper")&&Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true";
+  bool ciUpdate=args.Length==1&&args[0]=="--ci-update-cycle"&&Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true";
   bool installed=args.Length==1&&args[0]=="--start";
-  if(!ci&&!installed&&args.Length!=0)return 2;
+  if(!ci&&!ciUpdate&&!installed&&args.Length!=0)return 2;
   string root=null;
   try{
    string package=Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
@@ -140,12 +195,13 @@ internal static class OnlineNativeStart {
     }
     Verify(root,m);
     Require(Hash(Path.Combine(root,"manifest.json"))==Hash(manifest),"Installed manifest mismatch");
-    Run(root,ci,ci?args[1]:"window");
+    if(ciUpdate)CiUpdateCycle(root,m);
+    else Run(root,ci,ci?args[1]:"window");
     if(ci)File.WriteAllText(Path.Combine(root,"native-start-smoke.result"),"PASS native install/start/close "+args[1]);
    }
    return 0;
   }catch(Exception e){
-   if(ci){if(root!=null&&Directory.Exists(root))try{File.WriteAllText(Path.Combine(root,"native-start-smoke.result"),"FAIL "+e.GetType().Name+": "+e.Message);}catch{}}
+   if(ci||ciUpdate){if(root!=null&&Directory.Exists(root))try{File.WriteAllText(Path.Combine(root,"native-start-smoke.result"),"FAIL "+e.GetType().Name+": "+e.Message);}catch{}}
    else MessageBox.Show(e.Message,"HOJA WebView2 online pilot",MessageBoxButtons.OK,MessageBoxIcon.Error);
    return 1;
   }

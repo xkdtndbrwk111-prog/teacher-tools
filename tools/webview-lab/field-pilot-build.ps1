@@ -12,6 +12,7 @@ if((Get-FileHash (Join-Path $source 'asset-book-reader-host.zip') -Algorithm SHA
 # Include runtime assets and legacy media worker, not installer, startup,
 # privacy-reset, shortcut or updater scripts.
 $names=@('asset-book-reader-host.zip','classkit_QR_LICENSE.txt','coins-ui.js','coins.js','dashboard.html','handmade-paper.png','hoja.ico','podo.js','presentation-assets.zip','presentation-board.css','presentation-board.js','release.json','school.js','seating-inbox.html','server.ps1','update-ui.js')
+if($OnlineCandidate){$names=@($names|Where-Object {$_ -cne 'server.ps1'})}
 foreach($name in $names){Copy-Item -LiteralPath (Join-Path $source $name) -Destination $runtime}
 Get-ChildItem -LiteralPath $source -File|Where-Object {$_.Name -match '^museum-[A-Za-z0-9-]+\.(webp|png)$'}|ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $runtime}
 
@@ -129,7 +130,7 @@ if($LASTEXITCODE -ne 0){throw 'Field policy compile failed'}
 if($LASTEXITCODE -ne 0){throw 'Field policy test failed'}
 
 if($OnlineCandidate){
- & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$Output\Setup.exe" /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'online-native-start.cs')
+ & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$Output\Setup.exe" /reference:System.Windows.Forms.dll /main:OnlineNativeStart /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'online-native-start.cs') (Join-Path $PSScriptRoot 'native-update-kernel.cs')
  if($LASTEXITCODE -ne 0){throw 'Native setup build failed'}
 }
 $payload=Join-Path $Output 'payload'

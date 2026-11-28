@@ -22,7 +22,12 @@ internal sealed class NativeBoardLaunch : Form {
 #else
     const string Origin="http://127.0.0.1:17449";
 #endif
+#if NATIVE_ONLINE_PILOT
+    static string Release,DisplayVersion;
+#else
     const string Release="2026-11-25-V1.66.43-STABLE-PILOT";
+    const string DisplayVersion="1.66.43";
+#endif
     readonly string root,runtime,mode,modeFile,stopFile,resultFile;
     readonly WebView2 browser=new WebView2();
     readonly bool startOwned;
@@ -685,7 +690,7 @@ internal sealed class NativeBoardLaunch : Form {
         core.NavigationCompleted+=(s,e)=>loaded.TrySetResult(e.IsSuccess);
         core.Navigate(url);
         Require(await Task.WhenAny(loaded.Task,Task.Delay(15000))==loaded.Task&&await loaded.Task,"dashboard navigation");
-        Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('1.66.43')")=="true","real dashboard identity");
+        Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('"+DisplayVersion+"')")=="true","real dashboard identity");
         // Explicit isolated update fixture: exercise actual dashboard memo persistence.
         string profileProbe=Path.Combine(root,"update-profile-probe");
         if(File.Exists(profileProbe)){
@@ -842,6 +847,16 @@ internal sealed class NativeBoardLaunch : Form {
         if(!File.Exists(Path.Combine(root,"field-pilot.flag"))||args[0]!="--lab-launch"||migrate||update)return 2;
 #if NATIVE_ONLINE_PILOT
          if(!File.Exists(Path.Combine(root,"field-online.flag")))return 2;
+         // The native installer verifies the program inventory before launching.
+         // The board must identify the actual verified release and match its server.
+         try{
+             string releasePath=Path.Combine(runtime,"release.json");
+             if((File.GetAttributes(releasePath)&FileAttributes.ReparsePoint)!=0||new FileInfo(releasePath).Length>65536)return 2;
+             var meta=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(releasePath));
+             DisplayVersion=(string)meta["version"];Release=(string)meta["release"];
+             if(!System.Text.RegularExpressions.Regex.IsMatch(DisplayVersion,@"\A[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}\z")||
+                !System.Text.RegularExpressions.Regex.IsMatch(Release,@"\A[0-9]{4}-[0-9]{2}-[0-9]{2}-V"+System.Text.RegularExpressions.Regex.Escape(DisplayVersion)+@"-STABLE-PILOT\z"))return 2;
+         }catch{return 2;}
 #endif
 #endif
         FileStream guard;

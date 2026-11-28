@@ -23,7 +23,8 @@ function Verify-Payload([string]$base){
   Plain (Split-Path $p -Parent);Plain $p
   if((Get-Item -LiteralPath $p).Length -ne $entry.bytes -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256){throw "Package file mismatch: $rel"}
  }
- $requiredFiles=@('bin/HOJA-Native-Launch-Lab.exe','bin/HOJA-Native-Server.exe','local/TeacherToolsLocal/dashboard.html','local/TeacherToolsLocal/server.ps1','local/TeacherToolsLocal/asset-book-reader-host.zip')
+ $requiredFiles=@('bin/HOJA-Native-Launch-Lab.exe','bin/HOJA-Native-Server.exe','local/TeacherToolsLocal/dashboard.html','local/TeacherToolsLocal/asset-book-reader-host.zip')
+ if(!$online){$requiredFiles+='local/TeacherToolsLocal/server.ps1'}
  $staticFiles=@('bin/HOJA-Field-Static.exe','bin/field-manager.zip','bin/field-game.zip')
  if($online){foreach($p in $staticFiles){if($seen.ContainsKey($p) -or (Test-Path -LiteralPath (Join-Path $base $p))){throw 'Online package includes static service'}}}else{$requiredFiles+=$staticFiles}
  foreach($required in $requiredFiles){if(!$seen.ContainsKey($required)){throw 'Package incomplete'}}
