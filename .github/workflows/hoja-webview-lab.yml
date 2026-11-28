@@ -210,7 +210,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
           $exe=Join-Path $env:RUNNER_TEMP 'HOJA-Native-Update-Transaction-Test.exe'
-          & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll tools/webview-lab/native-update-kernel.cs
+          & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll (Join-Path $env:GITHUB_WORKSPACE 'tools\webview-lab\native-update-kernel.cs')
           if($LASTEXITCODE -ne 0){throw 'Native update transaction build failed'}
           & $exe --ci-selftest
           if($LASTEXITCODE -ne 0){throw 'Native signed transaction test failed'}
