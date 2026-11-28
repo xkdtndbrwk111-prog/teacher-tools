@@ -176,7 +176,9 @@ internal static class NativeReadServer {
   Reply(s,"200 OK","application/json; charset=utf-8",Utf8.GetBytes("{\"ok\":true}"),"X-TT-Coin-Revision: "+Sha(next)+"\r\n");
  }
  static bool ManagerOrigin(string o){
-#if NATIVE_FIELD_PILOT
+#if NATIVE_ONLINE_PILOT
+  return o=="https://xkdtndbrwk111-prog.github.io";
+#elif NATIVE_FIELD_PILOT
   return o=="http://127.0.0.1:4188";
 #else
   return o=="https://xkdtndbrwk111-prog.github.io"||o=="http://127.0.0.1:4192"||o=="http://localhost:4192"||o=="http://127.0.0.1:4188"||o=="http://localhost:4188";
@@ -1979,14 +1981,20 @@ internal static class NativeReadServer {
 #if NATIVE_FIELD_PILOT
     // Only the packaged local manager, never the public manager or ordinary browser profile.
     if(path=="/api/open-manager"){
-     if(!File.Exists(Path.Combine(labRoot,"field-manager-live.flag"))||!File.Exists(Path.Combine(labRoot,"manager.static.ready"))){Json(s,"409 Conflict","{\"error\":\"pilot manager disabled\"}");return;}
+     #if NATIVE_ONLINE_PILOT
+      if(!File.Exists(Path.Combine(labRoot,"field-manager-live.flag"))||!File.Exists(Path.Combine(labRoot,"field-online.flag"))){Json(s,"409 Conflict","{\"error\":\"pilot manager disabled\"}");return;}
+      const string managerUrl="https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/";
+#else
+      if(!File.Exists(Path.Combine(labRoot,"field-manager-live.flag"))||!File.Exists(Path.Combine(labRoot,"manager.static.ready"))){Json(s,"409 Conflict","{\"error\":\"pilot manager disabled\"}");return;}
+      const string managerUrl="http://127.0.0.1:4188/seating/";
+#endif
      string chrome=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"Google","Chrome","Application","chrome.exe");
      string chrome32=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Google","Chrome","Application","chrome.exe");
      string edge=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Microsoft","Edge","Application","msedge.exe");
      string browser=File.Exists(chrome)?chrome:File.Exists(chrome32)?chrome32:edge;
      if(!File.Exists(browser))throw new IOException("Pilot browser missing");
      string profile=Path.Combine(labRoot,"manager-browser-profile");MediaEnsureDirectory(profile);
-     using(var p=Process.Start(new ProcessStartInfo(browser,"--user-data-dir=\""+profile+"\" --no-first-run --no-default-browser-check --new-window http://127.0.0.1:4188/seating/"){UseShellExecute=false})){}
+     using(var p=Process.Start(new ProcessStartInfo(browser,"--user-data-dir=\""+profile+"\" --no-first-run --no-default-browser-check --new-window "+managerUrl){UseShellExecute=false})){}
      Json(s,"200 OK","{\"ok\":true}");return;
     }
 #endif
@@ -2112,7 +2120,12 @@ internal static class NativeReadServer {
   // compiler target can otherwise inherit old framework protocol defaults.
   // Use the Windows certificate store and retain normal certificate checks.
   ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-  coinWrites=args[0]=="--lab-coin-server";if(coinWrites)Port=17451;
+  coinWrites=args[0]=="--lab-coin-server";
+#if NATIVE_ONLINE_PILOT
+   if(!coinWrites)return 2;Port=17439;
+#else
+   if(coinWrites)Port=17451;
+#endif
   string lab=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
   if(String.IsNullOrEmpty(lab)||String.IsNullOrEmpty(local))return 2;
   lab=Path.GetFullPath(lab);if(!Regex.IsMatch(Path.GetFileName(lab),"^hoja-webview-lab-[a-f0-9]{32}$")||!String.Equals(Path.GetFullPath(local),Path.Combine(lab,"local"),StringComparison.OrdinalIgnoreCase))return 2;
@@ -2120,6 +2133,9 @@ internal static class NativeReadServer {
   if(coinWrites&&!File.Exists(Path.Combine(lab,"coin-write-fixture.flag")))return 2;
 #if NATIVE_FIELD_PILOT
   if(!coinWrites||!File.Exists(Path.Combine(lab,"field-pilot.flag")))return 2;
+#if NATIVE_ONLINE_PILOT
+   if(!File.Exists(Path.Combine(lab,"field-online.flag")))return 2;
+#endif
   foreach(string name in new[]{"book-state-fixture.flag","book-session-fixture.flag","book-bundle-fixture.flag","book-reader-process-fixture.flag","media-download-fixture.flag","neis-fixture.flag","audio-fixture.flag"})if(File.Exists(Path.Combine(lab,name)))return 2;
 #endif
   var j=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"release.json")));

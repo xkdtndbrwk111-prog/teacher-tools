@@ -13,8 +13,12 @@ using Microsoft.Web.WebView2.WinForms;
 // Phase 3A research launcher. This executable accepts only the CI isolation root.
 // The existing server remains a separate process. No production profile or updater access.
 internal sealed class NativeBoardLaunch : Form {
-#if NATIVE_SHARE_LAB
+#if NATIVE_ONLINE_PILOT
+    const string Origin="http://127.0.0.1:17439";
+    const string FieldGameOrigin="https://xkdtndbrwk111-prog.github.io";
+#elif NATIVE_SHARE_LAB
     const string Origin="http://127.0.0.1:17451";
+    const string FieldGameOrigin="http://127.0.0.1:4189";
 #else
     const string Origin="http://127.0.0.1:17449";
 #endif
@@ -131,7 +135,7 @@ internal sealed class NativeBoardLaunch : Form {
     bool AllowedLocalMedia(string raw,string method){
         // Only an active, locally issued playback capability; never permit arbitrary loopback ports.
         if((method!="GET"&&method!="HEAD")||!File.Exists(Path.Combine(root,"media-write-fixture.flag")))return false;
-        Uri u;if(!Uri.TryCreate(raw,UriKind.Absolute,out u)||u.Scheme!="http"||u.Host!="127.0.0.1"||u.Port==17451||u.IsDefaultPort||u.UserInfo!=""||u.Query!=""||u.Fragment!="")return false;
+        Uri u;if(!Uri.TryCreate(raw,UriKind.Absolute,out u)||u.Scheme!="http"||u.Host!="127.0.0.1"||u.Port==new Uri(Origin).Port||u.IsDefaultPort||u.UserInfo!=""||u.Query!=""||u.Fragment!="")return false;
         var m=System.Text.RegularExpressions.Regex.Match(u.AbsolutePath,@"\A/([a-f0-9]{32})/video\.mp4\z");
         if(!m.Success)return false;
         try{
@@ -493,7 +497,7 @@ internal sealed class NativeBoardLaunch : Form {
             await FieldBoardWait("window.__fieldSeed===true","synthetic coin seed",30);
             // Capture replies only; no synthetic protocol events or modified game internals.
             await core.ExecuteScriptAsync(@"(()=>{window.__fieldCoinReplies=[];window.addEventListener('message',e=>{
-              if(e.origin==='http://127.0.0.1:4189'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__fieldCoinReplies.push(e.data.type);
+              if(e.origin==='"+FieldGameOrigin+@"'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__fieldCoinReplies.push(e.data.type);
             });document.getElementById('openMiniGames').click()})()");
             await FieldFrameWait("!!document.getElementById('menuScreen')&&!!document.getElementById('openStairs')","menu loaded",250);
             await FieldGameClick("(()=>{document.getElementById('hofFirstLater')?.click();return true})()");
@@ -511,12 +515,17 @@ internal sealed class NativeBoardLaunch : Form {
             await FieldGameClick("(()=>{[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click();return true})()");
             await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.id==='field-test-1'&&['spend','refund'].includes(x.type));return e.length===2&&e[0].charge===e[1].charge&&e[0].amount===-2&&e[1].amount===2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===14})()","matched refund",80);
             await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
-            File.WriteAllText(result,"PASS installed manager roster -> actual packaged game -> exact ledger spend and matched refund");
+            File.WriteAllText(result,"PASS installed manager roster -> actual "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" game -> exact ledger spend and matched refund");
         }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
     }
     bool FieldGame(string raw){
         Uri u;
-        return File.Exists(Path.Combine(root,"game.static.ready"))&&Uri.TryCreate(raw,UriKind.Absolute,out u)&&u.Scheme=="http"&&u.Host=="127.0.0.1"&&u.Port==4189&&u.UserInfo==""&&u.Fragment==""&&u.AbsolutePath=="/hoja-minigames/"&&System.Text.RegularExpressions.Regex.IsMatch(u.Query,@"\A\?mode=board&embed=dashboard&coin=4&fresh=[0-9]+-[0-9]+\z");
+        #if NATIVE_ONLINE_PILOT
+         if(!File.Exists(Path.Combine(root,"field-online.flag")))return false;
+#else
+         if(!File.Exists(Path.Combine(root,"game.static.ready")))return false;
+#endif
+         return Uri.TryCreate(raw,UriKind.Absolute,out u)&&u.GetLeftPart(UriPartial.Authority)==FieldGameOrigin&&u.UserInfo==""&&u.Fragment==""&&u.AbsolutePath=="/hoja-minigames/"&&System.Text.RegularExpressions.Regex.IsMatch(u.Query,@"\A\?mode=board&embed=dashboard&coin=4&fresh=[0-9]+-[0-9]+\z");
     }
 #endif
     async Task StartBoard(){
@@ -549,7 +558,7 @@ internal sealed class NativeBoardLaunch : Form {
 #if NATIVE_FIELD_PILOT
         if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
             await core.AddScriptToExecuteOnDocumentCreatedAsync(@"(()=>{
-              if(location.origin!=='http://127.0.0.1:17451'||window.parent!==window)return;
+              if(location.origin!=='"+Origin+@"'||window.parent!==window)return;
               const log=[];window.__fieldPresentationTraceLog=log;
               window.__fieldPresentationTrace=(type,detail='')=>{
                 if(log.length>=40)return;
@@ -615,7 +624,14 @@ internal sealed class NativeBoardLaunch : Form {
 #endif
 #if NATIVE_FIELD_PILOT
             if(!allowed&&e.Request.Method=="GET"&&FieldGame(e.Request.Uri)&&e.ResourceContext==CoreWebView2WebResourceContext.Document)allowed=true;
-            if(!allowed&&e.Request.Uri==Origin+"/api/open-manager"&&e.Request.Method=="POST")allowed=true;
+            #if NATIVE_ONLINE_PILOT
+             // Passive assets within the exact public game path, never remote API writes.
+             if(!allowed&&e.Request.Method=="GET"&&e.ResourceContext!=CoreWebView2WebResourceContext.Document){
+                 Uri asset;
+                 if(Uri.TryCreate(e.Request.Uri,UriKind.Absolute,out asset)&&asset.GetLeftPart(UriPartial.Authority)==FieldGameOrigin&&asset.UserInfo==""&&asset.AbsolutePath.StartsWith("/hoja-minigames/",StringComparison.Ordinal)&&System.Text.RegularExpressions.Regex.IsMatch(asset.AbsolutePath,@"\.(js|mjs|css|png|webp|jpg|jpeg|svg|mp3|wav|ogg|woff|woff2|json|ico)$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))allowed=true;
+             }
+#endif
+             if(!allowed&&e.Request.Uri==Origin+"/api/open-manager"&&e.Request.Method=="POST")allowed=true;
             if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Resource(e.Request.Uri,e.Request.Method,e.ResourceContext==CoreWebView2WebResourceContext.Document);
 #endif
             if(!allowed)e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
@@ -695,12 +711,12 @@ internal sealed class NativeBoardLaunch : Form {
             Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('openMiniGames').click();return document.getElementById('miniGames').open})()")=="true","field game menu open");
             bool ready=false;
             for(int i=0;i<250;i++){
-                if(await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame');return f.src.startsWith('http://127.0.0.1:4189/hoja-minigames/')&&document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden})()")=="true"){ready=true;break;}
+                if(await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame');return f.src.startsWith('"+FieldGameOrigin+"/hoja-minigames/')&&document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden})()")=="true"){ready=true;break;}
                 await Task.Delay(100);
             }
             Require(ready,"field game actual protocol 4 ready");
             Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('miniBack').click();return !document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')})()")=="true","field game close");
-            File.WriteAllText(Path.Combine(root,"field-game-smoke.result"),"PASS real packaged mini-game protocol 4 ready and close");
+            File.WriteAllText(Path.Combine(root,"field-game-smoke.result"),"PASS real "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" mini-game protocol 4 ready and close");
         }
 #endif
         PublishUpdateReady();
@@ -805,6 +821,9 @@ internal sealed class NativeBoardLaunch : Form {
         if(!File.Exists(Path.Combine(runtime,"dashboard.html")))return 2;
 #if NATIVE_FIELD_PILOT
         if(!File.Exists(Path.Combine(root,"field-pilot.flag"))||args[0]!="--lab-launch"||migrate||update)return 2;
+#if NATIVE_ONLINE_PILOT
+         if(!File.Exists(Path.Combine(root,"field-online.flag")))return 2;
+#endif
 #endif
         FileStream guard;
         try{guard=new FileStream(Path.Combine(runtime,"native-launch.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}catch(IOException){return 3;}

@@ -8,7 +8,10 @@ using Microsoft.Web.WebView2.WinForms;
 
 // Phase 1 research only. No production directory, updater, host objects or native bridge.
 internal sealed class Lab : Form {
-#if NATIVE_STORAGE_LAB
+#if NATIVE_ONLINE_PILOT
+    const int LabPort=17439;
+    const string Origin="http://127.0.0.1:17439";
+#elif NATIVE_STORAGE_LAB
     const int LabPort=17451;
     const string Origin="http://127.0.0.1:17451";
 #else
