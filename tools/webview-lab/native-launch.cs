@@ -1,0 +1,874 @@
+using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+// Phase 3A research launcher. This executable accepts only the CI isolation root.
+// The existing server remains a separate process. No production profile or updater access.
+internal sealed class NativeBoardLaunch : Form {
+#if NATIVE_ONLINE_PILOT
+    const string Origin="http://127.0.0.1:17439";
+    const string FieldGameOrigin="https://xkdtndbrwk111-prog.github.io";
+#elif NATIVE_SHARE_LAB
+    const string Origin="http://127.0.0.1:17451";
+    const string FieldGameOrigin="http://127.0.0.1:4189";
+#else
+    const string Origin="http://127.0.0.1:17449";
+#endif
+#if NATIVE_ONLINE_PILOT
+    static string Release,DisplayVersion;
+#else
+    const string Release="2026-11-25-V1.66.43-STABLE-PILOT";
+    const string DisplayVersion="1.66.43";
+#endif
+    readonly string root,runtime,mode,modeFile,stopFile,resultFile;
+    readonly WebView2 browser=new WebView2();
+    readonly bool startOwned;
+    readonly string migrationSource,updateToken;
+    string updateJournal;
+    bool migrationFirst,migrationServing;
+    int migrationBinaryRequests;
+    string migrationProfile,migrationMarker;
+    Process ownedServer;
+    IntPtr ownedJob=IntPtr.Zero;
+    readonly object logLock=new object();
+    readonly Timer heartbeat=new Timer();
+    bool published,closing; int exitCode=1; long ownedWindow;
+    Rectangle lastBounds;
+    [DllImport("user32.dll",SetLastError=true)] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
+    [DllImport("user32.dll",EntryPoint="GetWindowLongW")] static extern int GetWindowLong(IntPtr h,int index);
+    [DllImport("user32.dll",EntryPoint="SetWindowLongW")] static extern int SetWindowLong(IntPtr h,int index,int value);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] struct JobBasic {
+        public long PerProcessUserTimeLimit,PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize,MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass,SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct JobIo {
+        public ulong ReadOperationCount,WriteOperationCount,OtherOperationCount,ReadTransferCount,WriteTransferCount,OtherTransferCount;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct JobExtended {
+        public JobBasic BasicLimitInformation;
+        public JobIo IoInfo;
+        public UIntPtr ProcessMemoryLimit,JobMemoryLimit,PeakProcessMemoryUsed,PeakJobMemoryUsed;
+    }
+    [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes,string name);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int infoClass,ref JobExtended info,uint length);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+    void PrepareOwnedJob(){
+        ownedJob=CreateJobObject(IntPtr.Zero,null);
+        if(ownedJob==IntPtr.Zero)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"create owned job");
+        var info=new JobExtended();info.BasicLimitInformation.LimitFlags=0x2000; // KILL_ON_JOB_CLOSE
+        if(!SetInformationJobObject(ownedJob,9,ref info,(uint)Marshal.SizeOf(typeof(JobExtended))))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"configure owned job");
+    }
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    NativeBoardLaunch(string root,string runtime,string mode,bool startOwned,string migrationSource,string updateToken){
+        this.updateToken=updateToken;
+        this.startOwned=startOwned;this.migrationSource=migrationSource;
+        this.root=root;this.runtime=runtime;this.mode=mode;
+        modeFile=Path.Combine(runtime,"board-mode.json");
+        stopFile=Path.Combine(root,"native-launch.stop");
+        resultFile=Path.Combine(root,"native-launch.result");
+#if NATIVE_FIELD_PILOT
+        Text="HOJA WebView2 Field Pilot - isolated data / NOT production";
+#else
+        Text="HOJA native launcher lab";
+#endif
+        StartPosition=FormStartPosition.Manual;
+        Screen screen=TargetScreen();
+        Bounds=mode=="wallpaper"?screen.Bounds:new Rectangle(screen.WorkingArea.X+40,screen.WorkingArea.Y+40,Math.Min(1000,screen.WorkingArea.Width-80),Math.Min(700,screen.WorkingArea.Height-80));
+        if(mode=="wallpaper"){FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;}
+        browser.Dock=DockStyle.Fill;Controls.Add(browser);
+        Shown+=async(s,e)=>{try{await StartBoard();}catch(Exception ex){Finish(1,"FAIL "+ex.Message);}};
+        FormClosing+=(s,e)=>{NativeShareInput.Stop();
+#if NATIVE_FIELD_PILOT
+            if(!closing&&published)exitCode=0;
+#endif
+        };
+        FormClosed+=(s,e)=>{heartbeat.Stop();RemoveOwnedMode();};
+        heartbeat.Interval=1000;heartbeat.Tick+=(s,e)=>{try{
+            if(File.Exists(stopFile)){Finish(0,"PASS native close "+mode);return;}
+            if(startOwned&&ownedServer!=null&&ownedServer.HasExited){Finish(1,"FAIL owned server exited");return;}
+            if(mode=="wallpaper"&&!IsIconic(Handle)){
+                Rectangle next=TargetScreen().Bounds;
+                if(next!=lastBounds){if(!SetWindowPos(Handle,IntPtr.Zero,next.X,next.Y,next.Width,next.Height,0x0014))throw new IOException("display resize");lastBounds=next;}
+            }
+            Publish();
+#if NATIVE_SHARE_LAB
+#if !NATIVE_FIELD_PILOT
+            string bookProbe=Path.Combine(root,"book-ui-test.fixture");
+            if(mode=="window"&&File.Exists(bookProbe)){File.Delete(bookProbe);VerifyBookUi();}
+            string meetingProbe=Path.Combine(root,"meeting-ui-test.fixture");
+            if(mode=="window"&&File.Exists(meetingProbe)){File.Delete(meetingProbe);VerifyMeetingUi();}
+            string mediaProbe=Path.Combine(root,"media-ui-test.fixture");
+            if(mode=="window"&&File.Exists(mediaProbe)){File.Delete(mediaProbe);VerifyMediaUi();}
+            if(mode=="wallpaper"){
+                string pause=Path.Combine(root,"share-helper-stop.fixture");
+                if(File.Exists(pause)){File.Delete(pause);NativeShareInput.Stop();}
+                ConsumeShareRestart();
+                string uiProbe=Path.Combine(root,"share-ui-test.fixture");
+                if(File.Exists(uiProbe)){File.Delete(uiProbe);VerifyShareUi();}
+
+            }
+#else
+            if(mode=="wallpaper")ConsumeShareRestart();
+            string presentProbe=Path.Combine(root,"field-presentation-smoke.trigger");
+            if(File.Exists(Path.Combine(root,"field-smoke.flag"))&&File.Exists(presentProbe)){
+                File.Delete(presentProbe);DumpFieldPresentation();
+            }
+            string coinProbe=Path.Combine(root,"field-coin-smoke.trigger");
+            if(File.Exists(Path.Combine(root,"field-smoke.flag"))&&File.Exists(coinProbe)){File.Delete(coinProbe);VerifyFieldCoins();}
+#endif
+#endif
+        }catch(Exception ex){Finish(1,"FAIL heartbeat "+ex.Message);}};
+    }
+#if NATIVE_SHARE_LAB
+
+    bool AllowedLocalMedia(string raw,string method){
+        // Only an active, locally issued playback capability; never permit arbitrary loopback ports.
+        if((method!="GET"&&method!="HEAD")||!File.Exists(Path.Combine(root,"media-write-fixture.flag")))return false;
+        Uri u;if(!Uri.TryCreate(raw,UriKind.Absolute,out u)||u.Scheme!="http"||u.Host!="127.0.0.1"||u.Port==new Uri(Origin).Port||u.IsDefaultPort||u.UserInfo!=""||u.Query!=""||u.Fragment!="")return false;
+        var m=System.Text.RegularExpressions.Regex.Match(u.AbsolutePath,@"\A/([a-f0-9]{32})/video\.mp4\z");
+        if(!m.Success)return false;
+        try{
+            string media=Path.Combine(root,"local","TeacherToolsMedia"),play=Path.Combine(media,"playback"),dir=Path.Combine(play,m.Groups[1].Value),file=Path.Combine(dir,"port");
+            foreach(string p in new[]{media,play,dir,file})if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)return false;
+            if(File.Exists(Path.Combine(dir,"stop"))||new FileInfo(file).Length>16)return false;
+            int port;return Int32.TryParse(File.ReadAllText(file).Trim(),out port)&&port==u.Port;
+        }catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}
+    }
+    bool bookUiTesting;
+    async Task WaitBookUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<120;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Book UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({open:window.__bookOpen,reply:window.__bookReply,status:window.__bookStatus,dialog:document.getElementById('ttMediaDialog').className})"));
+    }
+    void BookUiState(int page,int saved,int ack,bool valid,bool exit){
+        var state=new System.Collections.Generic.Dictionary<string,object>{{"ready",true},{"closed",false},{"page",page},{"saved",saved},{"total",394},{"status","fixture"},{"manual",false},{"ack",ack},{"owned",true},{"visible",true},{"immersive",!exit},{"exitFull",exit},{"cleanControls",false},{"bookmarkValid",valid},{"seekFailed",false},{"seekPage",0},{"navigationMode","direct"}};
+        string file=Path.Combine(root,"book-state-fixture.json"),tmp=file+".tmp";
+        File.WriteAllText(tmp,new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state),new UTF8Encoding(false));
+        if(File.Exists(file))File.Replace(tmp,file,null);else File.Move(tmp,file);
+    }
+    async void VerifyBookUi(){
+        if(bookUiTesting)return;
+        bookUiTesting=true;
+        string result=Path.Combine(root,"book-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            await core.ExecuteScriptAsync("(()=>{window.__bookFetch=window.fetch;window.__bookOpen=null;window.__bookReply=null;window.__bookStatus=null;window.__bookClose=false;window.fetch=async function(input,init){const p=String(input);if(p.startsWith('/api/book-reader/')&&init?.body){const x=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(init.body),c=>c.charCodeAt(0))));if(p.includes('/open'))window.__bookOpen=x;if(p.includes('/status'))window.__bookStatus=x;}const r=await window.__bookFetch.call(this,input,init);if(p.includes('/api/book-reader/status'))window.__bookReply=await r.clone().json();if(p.includes('/api/book-reader/close')&&r.ok)window.__bookClose=true;return r;};localStorage.setItem('tt-books-v1:mark:DAHbOZ_XOJI',JSON.stringify({page:125,at:1}));localStorage.removeItem('tt-books-v1:total:DAHbOZ_XOJI');document.getElementById('ttMediaOpen').click()})()");
+            await WaitBookUi("!!document.querySelector('[data-media-tool=books]')","media menu");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=books]').click()");
+            await WaitBookUi("!!document.querySelector('[data-book-id=DAHbOZ_XOJI] button')","book list");
+            await core.ExecuteScriptAsync("document.querySelector('[data-book-id=DAHbOZ_XOJI] button').click()");
+            await WaitBookUi("window.__bookOpen?.start===125&&window.__bookOpen.saved===125&&window.__bookOpen.interactive===true&&window.__bookOpen.layout.immersive===1&&window.__bookReply?.ok===true&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-head')).display==='none'&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-foot')).display==='none'","resume and automatic full-screen");
+            BookUiState(2,2,0,false,false);
+            await WaitBookUi("window.__bookReply?.page===2&&window.__bookReply.bookmarkValid===false&&JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===125","unconfirmed bookmark preserved");
+            BookUiState(126,126,0,true,false);
+            await WaitBookUi("JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===126","confirmed bookmark stored");
+            BookUiState(126,126,0,true,true);
+            await WaitBookUi("!document.getElementById('ttMediaDialog').classList.contains('mm-full')&&getComputedStyle(document.querySelector('#ttMediaDialog .mm-foot')).display!=='none'&&window.__bookStatus?.layout.immersive===0","reader Escape restores controls");
+            BookUiState(126,126,0,true,false);
+            await core.ExecuteScriptAsync("(()=>{const p=document.querySelector('#ttMediaDialog .mm-book-page');p.focus();p.value='200';p.dispatchEvent(new Event('input',{bubbles:true}));p.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})()");
+            await WaitBookUi("window.__bookStatus?.command?.kind==='seek'&&window.__bookStatus.command.page===200&&window.__bookReply?.fixtureSeq===1","numeric seek request accepted");
+            BookUiState(200,200,1,true,false);
+            await WaitBookUi("JSON.parse(localStorage.getItem('tt-books-v1:mark:DAHbOZ_XOJI')).page===200&&document.querySelector('#ttMediaDialog .mm-book-page').value==='200'&&window.__bookReply?.ack===1&&window.__bookStatus?.command===null","seek acknowledged and saved");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitBookUi("window.__bookClose===true&&!document.getElementById('ttMediaDialog').open","close session");
+            File.Delete(Path.Combine(root,"book-state-fixture.json"));
+            await core.ExecuteScriptAsync("window.__bookOpen=null;window.__bookReply=null;document.getElementById('ttMediaOpen').click()");
+            await WaitBookUi("!!document.querySelector('[data-media-tool=books]')","reopen media");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=books]').click()");
+            await WaitBookUi("!!document.querySelector('[data-book-id=DAHbOZ_XOJI] button')","reopen book list");
+            await core.ExecuteScriptAsync("document.querySelector('[data-book-id=DAHbOZ_XOJI] button').click()");
+            await WaitBookUi("window.__bookOpen?.start===200&&window.__bookOpen.saved===200&&window.__bookReply?.ok===true","reopen saved page");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitBookUi("!document.getElementById('ttMediaDialog').open","final close");
+            File.WriteAllText(result,"PASS actual native dashboard book UI: resume, hidden controls, unconfirmed/confirmed bookmark, Escape, seek ack, close and reopen (synthetic reader state)");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        // Framework csc uses C# 5; await cannot appear in a finally block.
+        try{await core.ExecuteScriptAsync("if(window.__bookFetch)window.fetch=window.__bookFetch");}catch{}
+        bookUiTesting=false;
+    }
+
+
+    bool mediaUiTesting;
+    async void VerifyMediaUi(){
+        if(mediaUiTesting)return;mediaUiTesting=true;
+        string result=Path.Combine(root,"media-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            // Real locally generated WebM: no network and no downloaded copyrighted content.
+            await core.ExecuteScriptAsync("(()=>{window.__mediaBlob=null;window.__mediaBlobError=null;(async()=>{try{const c=document.createElement('canvas');c.width=64;c.height=64;const x=c.getContext('2d'),s=c.captureStream(10),r=new MediaRecorder(s,{mimeType:'video/webm'}),chunks=[];r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};r.onstop=()=>{s.getTracks().forEach(t=>t.stop());const f=new FileReader();f.onload=()=>window.__mediaBlob=f.result.split(',')[1];f.readAsDataURL(new Blob(chunks,{type:'video/webm'}))};r.start();let n=0;const t=setInterval(()=>{x.fillStyle=n++%2?'#137':'#eac';x.fillRect(0,0,64,64)},80);setTimeout(()=>{clearInterval(t);r.stop()},1200)}catch(e){window.__mediaBlobError=String(e)}})()})()");
+            await WaitMeetingUi("typeof window.__mediaBlob==='string'&&window.__mediaBlob.length>50","generated WebM");
+            string raw=await core.ExecuteScriptAsync("window.__mediaBlob");
+            string encoded=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<string>(raw);
+            byte[] bytes=Convert.FromBase64String(encoded);
+            Require(bytes.Length>50&&bytes.Length<1048576,"WebM fixture bounds");
+            string lib=Path.Combine(root,"local","TeacherToolsMedia","library");
+            File.WriteAllBytes(Path.Combine(lib,"LAB actual playback.webm"),bytes);
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaOpen').click()");
+            await WaitMeetingUi("!!document.querySelector('[data-media-tool=youtube-downloader]')","downloader menu");
+            await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=youtube-downloader]').click()");
+            await WaitMeetingUi("document.querySelector('[data-youtube-state]')?.textContent.includes('다운로드 준비 완료')&&[...document.querySelectorAll('[data-youtube-library] strong')].some(x=>x.textContent==='LAB actual playback')","media list and idle");
+            await core.ExecuteScriptAsync("(()=>{const row=[...document.querySelectorAll('[data-youtube-library] .mm-book-row')].find(r=>r.querySelector('strong')?.textContent==='LAB actual playback');row.querySelector('button:last-child').click()})()");
+            await WaitMeetingUi("(()=>{const v=document.querySelector('#ttMediaStage video');return !!v&&v.readyState>=2&&v.videoWidth===64&&v.videoHeight===64&&!v.error&&v.src.startsWith('http://127.0.0.1:')})()","actual decoded local WebM through private port");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open&&!document.querySelector('#ttMediaStage video')","offline video close");
+            File.WriteAllText(result,"PASS native dashboard offline media library and actual generated WebM decode through original local worker, close");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        mediaUiTesting=false;
+    }
+    bool meetingUiTesting;
+    async Task WaitMeetingUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<100;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Meeting UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({title:document.getElementById('ttMediaHeading').textContent,status:document.getElementById('ttMediaStatus').textContent,actions:document.getElementById('ttMediaActions').textContent})"));
+    }
+    async Task MeetingClick(string text){
+        var js=new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(text);
+        var core=browser.CoreWebView2;
+        Require(await core.ExecuteScriptAsync("(()=>{const b=[...document.querySelectorAll('#ttMediaDialog button')].find(x=>x.textContent.trim()==="+js+"&&!x.hidden&&!x.closest('[inert]'));if(!b)return false;b.click();return true})()")=="true","Meeting button "+text);
+    }
+    async Task OpenMeeting(bool settings){
+        var core=browser.CoreWebView2;
+        await core.ExecuteScriptAsync("document.getElementById('ttMediaOpen').click()");
+        await WaitMeetingUi("!!document.querySelector('[data-media-tool=meeting] .mm-tile')","media home");
+        await core.ExecuteScriptAsync("document.querySelector('[data-media-tool=meeting] .mm-tile').click()");
+        await MeetingClick(settings?"개인화":"실행하기");
+    }
+    async void VerifyMeetingUi(){
+        if(meetingUiTesting)return;meetingUiTesting=true;
+        string result=Path.Combine(root,"meeting-ui-test.result");
+        var core=browser.CoreWebView2;
+        try{
+            // Reset only the isolated test profile's meeting entry. Keep other stores untouched.
+            await core.ExecuteScriptAsync("(()=>{window.__meetingSeed=false;const r=indexedDB.open('tt-multimedia-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('apps');r.onsuccess=()=>{const d=r.result,t=d.transaction('apps','readwrite');t.objectStore('apps').delete('meeting');t.oncomplete=()=>{d.close();window.__meetingSeed=true}}})()");
+            await WaitMeetingUi("window.__meetingSeed===true","empty fixture");
+            await OpenMeeting(false);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('회의 시작')&&[...document.querySelectorAll('#ttMediaActions button')].filter(x=>x.textContent.startsWith('애국가')).length===4&&!!document.querySelector('#ttMediaStage iframe[src*=\"canva.com\"]')","default opening and four anthem options");
+            await MeetingClick("애국가 1절");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage iframe[src*=youtube]')","default anthem iframe");
+            // Simulate provider events, not actual network/media playback.
+            await core.ExecuteScriptAsync("(()=>{const f=document.querySelector('#ttMediaStage iframe');window.__meetingOld=f.contentWindow;const id=new URL(f.src).searchParams.get('widgetid');const emit=(source,origin,n)=>window.dispatchEvent(new MessageEvent('message',{source,origin,data:JSON.stringify({event:'onStateChange',id,info:n})}));emit(window,'https://www.youtube.com',1);emit(window,'https://www.youtube.com',0);emit(f.contentWindow,'https://invalid.example',1);emit(f.contentWindow,'https://invalid.example',0)})()");
+            await Task.Delay(200);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent==='애국가 제창'","forged provider events rejected");
+            await core.ExecuteScriptAsync("(()=>{const f=document.querySelector('#ttMediaStage iframe'),id=new URL(f.src).searchParams.get('widgetid');for(const n of [1,0])window.dispatchEvent(new MessageEvent('message',{source:f.contentWindow,origin:'https://www.youtube.com',data:JSON.stringify({event:'onStateChange',id,info:n})}))})()");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('교가 제외')&&[...document.querySelectorAll('#ttMediaActions button')].some(x=>x.textContent==='회의 종료')","no school song branch");
+            await MeetingClick("회의 종료");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open","default close");
+            await OpenMeeting(true);
+            await WaitMeetingUi("!!document.getElementById('ttMediaSlot2')","personalize");
+            // Register using the unchanged settings UI, not a replacement database implementation.
+            await core.ExecuteScriptAsync("(()=>{const put=(k)=>{const s=document.getElementById('ttMediaSlot'+k);s.closest('details').open=true;s.value='local';s.dispatchEvent(new Event('change'));const f=s.parentElement.querySelector('input[type=file]'),dt=new DataTransfer();dt.items.add(new File([new Uint8Array([1,2,3,4])],k+'-fixture.mp4',{type:'video/mp4'}));f.files=dt.files;f.dispatchEvent(new Event('change'))};put('2');put('song');const c=document.getElementById('ttMediaCanvaA');c.closest('details').open=true;c.value='https://www.canva.com/design/LAB_MEETING/LAB_KEY/view';c.dispatchEvent(new Event('change'))})()");
+            await MeetingClick("저장");
+            await WaitMeetingUi("!!document.querySelector('[data-media-tool=meeting] .mm-tile')","saved settings return");
+            await core.ExecuteScriptAsync("document.getElementById('ttMediaClose').click()");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open","close saved settings");
+            await OpenMeeting(false);
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('회의 시작')&&document.querySelector('#ttMediaStage iframe')?.src==='https://www.canva.com/design/LAB_MEETING/LAB_KEY/view?embed'&&[...document.querySelectorAll('#ttMediaActions button')].map(x=>x.textContent).join(',')==='애국가 2절'","reloaded personal Canva and selected anthem only");
+            await MeetingClick("애국가 2절");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage video[src^=blob]')","stored local anthem blob");
+            await core.ExecuteScriptAsync("window.__oldMeetingVideo=document.querySelector('#ttMediaStage video');window.__oldMeetingVideo.dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('교가 포함')&&[...document.querySelectorAll('#ttMediaActions button')].some(x=>x.textContent==='교가 재생')","registered school song branch");
+            await MeetingClick("교가 재생");
+            await WaitMeetingUi("!!document.querySelector('#ttMediaStage video[src^=blob]')&&document.getElementById('ttMediaHeading').textContent==='교가 제창'","stored school song blob");
+            await core.ExecuteScriptAsync("window.__oldMeetingVideo.dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent==='교가 제창'","stale anthem event ignored");
+            await core.ExecuteScriptAsync("document.querySelector('#ttMediaStage video').dispatchEvent(new Event('ended'))");
+            await WaitMeetingUi("document.getElementById('ttMediaHeading').textContent.includes('폐회사')","school song completion");
+            await MeetingClick("회의 종료");
+            await WaitMeetingUi("!document.getElementById('ttMediaDialog').open&&!document.querySelector('#ttMediaStage video,#ttMediaStage iframe')","meeting cleanup");
+            File.WriteAllText(result,"PASS native dashboard meeting default and personal settings, persisted local blobs, selected anthem, school-song branches, synthetic provider events and cleanup");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        meetingUiTesting=false;
+    }
+    bool shareUiTesting;
+    async Task WaitShareUi(string expression,string label){
+        var core=browser.CoreWebView2;
+        for(int i=0;i<120;i++){
+            if(await core.ExecuteScriptAsync(expression)=="true")return;
+            await Task.Delay(100);
+        }
+        throw new IOException("Share UI timeout: "+label+" "+await core.ExecuteScriptAsync("JSON.stringify({notice:document.getElementById('shareNotice').textContent,helper:document.getElementById('shareHelper').textContent,keyboard:document.getElementById('shareKeyboard').checked,cursor:document.getElementById('shareCursor').checked})"));
+    }
+    async void VerifyShareUi(){
+        if(shareUiTesting)return;
+        shareUiTesting=true;
+        string result=Path.Combine(root,"share-ui-test.result");
+        try{
+            var core=browser.CoreWebView2;
+            await core.ExecuteScriptAsync(@"(()=>{const q=id=>document.getElementById(id);if(!q('settings').open)q('settings').showModal();window.__labShareStatus=null;window.__labSharePoll=setInterval(async()=>{try{const r=await fetch('/api/share-input/status',{cache:'no-store'});window.__labShareStatus=r.ok?await r.json():null}catch{}},150)})()");
+            await WaitShareUi("!document.getElementById('shareKeyboard').checked&&!document.getElementById('shareCursor').checked&&window.__labShareStatus?.running===true&&document.getElementById('shareHelper').textContent.includes('도우미 실행 중')","initial settings");
+            foreach(var pair in new[]{"shareKeyboard:true:false","shareCursor:true:true","shareKeyboard:false:true","shareCursor:false:false"}){
+                var p=pair.Split(':');
+                await core.ExecuteScriptAsync("document.getElementById('"+p[0]+"').click()");
+                await WaitShareUi("window.__labShareStatus?.running===true&&window.__labShareStatus.keyboard==="+p[1]+"&&window.__labShareStatus.cursor==="+p[2]+"&&window.__labShareStatus.hook==="+((p[1]=="true"||p[2]=="true")?"true":"false")+"&&document.getElementById('shareKeyboard').checked==="+p[1]+"&&document.getElementById('shareCursor').checked==="+p[2]+"&&document.getElementById('shareNotice').textContent.includes('저장했습니다')",pair);
+            }
+            // Both switches are off: the dashboard's automatic retry will not race manual restart.
+            NativeShareInput.Stop();
+            await core.ExecuteScriptAsync("document.getElementById('settings').close()");
+            await Task.Delay(200);
+            await core.ExecuteScriptAsync("document.getElementById('settings').showModal()");
+            await WaitShareUi("window.__labShareStatus?.running===false&&document.getElementById('shareHelper').textContent.includes('도우미가 꺼져')","offline notice");
+            await core.ExecuteScriptAsync("document.getElementById('shareRestart').click()");
+            await WaitShareUi("window.__labShareStatus?.running===true&&window.__labShareStatus.hook===false&&document.getElementById('shareHelper').textContent.includes('도우미 실행 중')","manual restart");
+            await core.ExecuteScriptAsync("clearInterval(window.__labSharePoll);document.getElementById('settings').close()");
+            File.WriteAllText(result,"PASS actual dashboard share checkboxes, helper state, offline notice and manual restart");
+        }catch(Exception ex){File.WriteAllText(result,"FAIL "+ex.Message);}
+        finally{shareUiTesting=false;}
+    }
+    void ConsumeShareRestart(){
+        string file=Path.Combine(runtime,"share-input-restart.json");
+        string claimed=file+".claimed";
+        if(!File.Exists(file))return;
+        try{
+            if(File.Exists(claimed))File.Delete(claimed);
+            File.Move(file,claimed);
+            if((File.GetAttributes(claimed)&FileAttributes.ReparsePoint)!=0||new FileInfo(claimed).Length>8192)return;
+            var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(claimed));
+            long issued;
+            using(var self=Process.GetCurrentProcess()){
+                if(Convert.ToInt32(d["pid"])!=self.Id||Convert.ToInt64(d["window"])!=Handle.ToInt64()||(string)d["mode"]!="wallpaper"||(string)d["release"]!=Release||(string)d["startTicks"]!=self.StartTime.ToUniversalTime().Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)||!Int64.TryParse((string)d["issuedTicks"],out issued))return;
+            }
+            long age=DateTime.UtcNow.Ticks-issued;
+            if(age<0||age>TimeSpan.FromSeconds(10).Ticks)return;
+            if(!NativeShareInput.IsActive)NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
+        }catch(Exception ex){ServerLog("share-restart.log","Rejected restart: "+ex.GetType().Name);}
+        finally{try{File.Delete(claimed);}catch{}}
+    }
+#endif
+    Screen TargetScreen(){
+        string path=Path.Combine(runtime,"display.txt");
+        string device=File.Exists(path)?File.ReadAllText(path).Trim():"";
+        foreach(Screen s in Screen.AllScreens)if(s.DeviceName==device)return s;
+        return Screen.PrimaryScreen;
+    }
+    static void Require(bool ok,string msg){if(!ok)throw new InvalidOperationException(msg);}
+    static string Health(){
+        var req=(HttpWebRequest)WebRequest.Create(Origin+"/health");
+        req.Proxy=null;req.AllowAutoRedirect=false;req.Timeout=2000;req.ReadWriteTimeout=2000;
+        using(var res=(HttpWebResponse)req.GetResponse())
+        using(var reader=new StreamReader(res.GetResponseStream()))return reader.ReadToEnd();
+    }
+    static bool PortOccupied(){
+        foreach(var ep in System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners())if(ep.Port==17449)return true;
+        return false;
+    }
+    static int ListenerPid(){
+        var info=new ProcessStartInfo(Path.Combine(Environment.SystemDirectory,"netstat.exe"),"-ano -p TCP");
+        info.UseShellExecute=false;info.CreateNoWindow=true;info.RedirectStandardOutput=true;
+        using(var p=Process.Start(info)){
+            string output=p.StandardOutput.ReadToEnd();p.WaitForExit();
+            Require(p.ExitCode==0,"netstat failed");
+            var matches=System.Text.RegularExpressions.Regex.Matches(output,@"(?m)^\s*TCP\s+127\.0\.0\.1:17449\s+\S+\s+LISTENING\s+(\d+)\s*$");
+            Require(matches.Count<=1,"ambiguous server listener");
+            return matches.Count==0?0:Int32.Parse(matches[0].Groups[1].Value);
+        }
+    }
+    void ServerLog(string filename,string line){
+        if(line==null)return;
+        lock(logLock){try{File.AppendAllText(Path.Combine(root,filename),line+Environment.NewLine,new UTF8Encoding(false));}catch{}}
+    }
+    async Task StartOwnedServer(){
+        Require(!PortOccupied(),"occupied port; no existing process stopped");
+        string script=Path.Combine(runtime,"server.ps1");
+        Require(File.Exists(script),"server script missing");
+        string exe=Path.Combine(Environment.SystemDirectory,@"WindowsPowerShell\v1.0\powershell.exe");
+        var info=new ProcessStartInfo(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" -Port 17449");
+        info.WorkingDirectory=runtime;info.UseShellExecute=false;info.CreateNoWindow=true;
+        info.RedirectStandardOutput=true;info.RedirectStandardError=true;
+        PrepareOwnedJob();
+        ownedServer=new Process();ownedServer.StartInfo=info;
+        ownedServer.OutputDataReceived+=(s,e)=>ServerLog("native-server-out.log",e.Data);
+        ownedServer.ErrorDataReceived+=(s,e)=>ServerLog("native-server-err.log",e.Data);
+        Require(ownedServer.Start(),"server start");
+        // Attach only the process just created, before reporting any readiness.
+        // A non-inherited job handle closes when this launcher crashes.
+        if(!AssignProcessToJobObject(ownedJob,ownedServer.Handle))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"assign owned server to job");
+        ownedServer.BeginOutputReadLine();ownedServer.BeginErrorReadLine();
+        File.WriteAllText(Path.Combine(root,"native-server.pid"),ownedServer.Id.ToString());
+        for(int i=0;i<60;i++){
+            Require(!ownedServer.HasExited,"owned server exited during startup");
+            int pid=await Task.Run(()=>ListenerPid());
+            if(pid!=0){
+                Require(pid==ownedServer.Id,"port acquired by unrelated process");
+                try{await Task.Run(()=>Health());return;}catch(WebException){}
+            }
+            await Task.Delay(250);
+        }
+        throw new IOException("owned server readiness timeout");
+    }
+    void StopOwnedServer(){
+        try{
+            if(ownedServer!=null){
+                if(!ownedServer.HasExited)ownedServer.Kill();
+                Require(ownedServer.WaitForExit(10000),"owned server exit timeout");
+            }
+        }finally{
+            if(ownedServer!=null){ownedServer.Dispose();ownedServer=null;}
+            if(ownedJob!=IntPtr.Zero){CloseHandle(ownedJob);ownedJob=IntPtr.Zero;}
+        }
+    }
+    string ValidateUpdateJournal(){
+        // Lab only: test the existing R8 token/version handshake, not the signature or rollback kernel.
+        string tx=Path.Combine(runtime,"r8-transaction"),pending=Path.Combine(tx,"pending.json"),ready=Path.Combine(tx,"ready.json");
+        Require(Directory.Exists(tx)&&File.Exists(pending)&&!File.Exists(ready),"update journal missing or already ready");
+        Require((File.GetAttributes(tx)&FileAttributes.ReparsePoint)==0&&(File.GetAttributes(pending)&FileAttributes.ReparsePoint)==0,"linked update journal");
+        Require(new FileInfo(pending).Length<=524288,"update journal too large");
+        string raw=File.ReadAllText(pending);
+        var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(raw);
+        Require(Convert.ToInt32(d["schema"])==1&&(string)d["token"]==updateToken&&(string)d["version"]=="1.66.43","update token/version mismatch");
+        return raw;
+    }
+    void PublishUpdateReady(){
+        if(updateToken==null)return;
+        Require(ValidateUpdateJournal()==updateJournal,"update journal changed");
+        string ready=Path.Combine(runtime,"r8-transaction","ready.json"),temp=ready+"."+Guid.NewGuid().ToString("N")+".tmp";
+        byte[] bytes=Encoding.UTF8.GetBytes("{\"token\":\""+updateToken+"\",\"release\":\""+Release+"\"}");
+        try{
+            using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+                stream.Write(bytes,0,bytes.Length);stream.Flush(true);
+            }
+            File.Move(temp,ready);
+        }finally{if(File.Exists(temp))File.Delete(temp);}
+    }
+#if NATIVE_FIELD_PILOT
+    CoreWebView2Frame fieldGameFrame;
+    async Task FieldFrameWait(string js,string label,int count){
+        for(int i=0;i<count;i++){
+            var f=fieldGameFrame;
+            if(f!=null)try{if(await f.ExecuteScriptAsync(js)=="true")return;}catch(System.Runtime.InteropServices.COMException){}
+            await Task.Delay(100);
+        }
+        throw new IOException("Field game timeout: "+label);
+    }
+    async Task FieldGameClick(string js){
+        Require(fieldGameFrame!=null&&await fieldGameFrame.ExecuteScriptAsync(js)=="true","Field game control");
+    }
+    async void DumpFieldPresentation(){
+        string file=Path.Combine(root,"field-presentation-smoke.result");
+        try{
+            string json=await browser.CoreWebView2.ExecuteScriptAsync(@"(()=>({trace:window.__fieldPresentationTraceLog||[],dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.id),layoutEditing:document.body.classList.contains('layout-editing'),house:!!window.ttHouse?.isOpen?.(),open:!!document.getElementById('ttPresentation')?.open,loading:!document.getElementById('ttPresentationLoading')?.hidden}))()");
+            File.WriteAllText(file,json);
+        }catch(Exception ex){File.WriteAllText(file,"TRACE unavailable: "+ex.GetType().Name);}
+    }
+    async Task FieldBoardWait(string js,string label,int count){
+        for(int i=0;i<count;i++){
+            var core=browser.CoreWebView2;
+            await core.ExecuteScriptAsync("window.__fieldLedgerCheck=null;Promise.resolve("+js+").then(v=>window.__fieldLedgerCheck=v===true,()=>window.__fieldLedgerCheck=false)");
+            for(int n=0;n<10;n++){
+                string v=await core.ExecuteScriptAsync("window.__fieldLedgerCheck");
+                if(v=="true")return;
+                if(v=="false")break;
+                await Task.Delay(50);
+            }
+            await Task.Delay(100);
+        }
+        throw new IOException("Field ledger timeout: "+label);
+    }
+    async void VerifyFieldCoins(){
+        var core=browser.CoreWebView2;
+        string result=Path.Combine(root,"field-coin-smoke.result");
+        string failure=null;
+        try{
+            // Seed only the manager test's synthetic roster via the original ledger API.
+            await core.ExecuteScriptAsync(@"window.__fieldSeed=null;(async()=>{try{
+                const s=await TTCoins.snapshot(true),r=s.roster;
+                if(r.className!=='FIELD TEST CLASS'||r.students.length!==2||!r.students.every(p=>/^field-test-[12]$/.test(p.id)))return false;
+                const at=new Date().toISOString(),cls=r.cls;
+                if(s.events.some(e=>e.cls===cls&&e.type==='spend'))return false;
+                await TTCoins.commit(s,[{at,cls,type:'setting',enabled:true,cap:40,weeklyOn:false,weeklyAmount:0,weeklyDay:1},...r.students.map(p=>({at,cls,type:'grant',id:p.id,name:p.name,amount:14,source:'field-test'}))]);
+                return TTCoins.balanceOf(TTCoins.stateOf(s.events,cls),'field-test-1')===14;
+            }catch(e){return false}})().then(v=>window.__fieldSeed=v,()=>window.__fieldSeed=false)");
+            await FieldBoardWait("window.__fieldSeed===true","synthetic coin seed",30);
+            // Capture replies only; no synthetic protocol events or modified game internals.
+            await core.ExecuteScriptAsync(@"(()=>{window.__fieldCoinReplies=[];window.addEventListener('message',e=>{
+              if(e.origin==='"+FieldGameOrigin+@"'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__fieldCoinReplies.push(e.data.type);
+            });document.getElementById('openMiniGames').click()})()");
+            await FieldFrameWait("!!document.getElementById('menuScreen')&&!!document.getElementById('openStairs')","menu loaded",250);
+            await FieldGameClick("(()=>{document.getElementById('hofFirstLater')?.click();return true})()");
+            await FieldFrameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","menu visible",120);
+            // Observe actual controls, without fabricating protocol events.
+            await FieldFrameWait("document.readyState==='complete'&&!document.getElementById('openStairs').disabled","stairs controls initialized",160);
+            await FieldGameClick(@"(()=>{
+                window.__fieldGameErrors=[];
+                window.addEventListener('error',e=>{if(window.__fieldGameErrors.length<8)window.__fieldGameErrors.push(String(e.message||'error').slice(0,180))});
+                window.addEventListener('unhandledrejection',e=>{if(window.__fieldGameErrors.length<8)window.__fieldGameErrors.push(String(e.reason?.message||e.reason||'rejection').slice(0,180))});
+                const b=document.getElementById('openStairs');
+                if(!b||b.disabled)return false;
+                b.click();return true;
+            })()");
+            await FieldFrameWait("!document.getElementById('choiceScreen').hidden&&!!document.querySelector('#stageList .stage-card')","stairs choice",120);
+            await FieldGameClick("(()=>{document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click();return true})()");
+            await FieldFrameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=field-test-1]:not([disabled])')","actual roster picker",180);
+            await FieldGameClick("(()=>{document.querySelector('[data-student=field-test-1]').click();return true})()");
+            await FieldFrameWait("!document.getElementById('stairsScreen').hidden","stairs entered",80);
+            await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.type==='spend'&&x.id==='field-test-1');return e.length===1&&e[0].amount===-2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===12})()","exact spend",30);
+            // Exit within the existing refund window, without changing its policy.
+            await FieldGameClick("(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));return true})()");
+            await FieldFrameWait("!document.getElementById('stOverlay').hidden&&[...document.querySelectorAll('#stOverlayActions button')].some(b=>b.textContent.includes('모음집'))","pause menu",20);
+            await FieldGameClick("(()=>{[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click();return true})()");
+            await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.id==='field-test-1'&&['spend','refund'].includes(x.type));return e.length===2&&e[0].charge===e[1].charge&&e[0].amount===-2&&e[1].amount===2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===14})()","matched refund",80);
+            await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+            File.WriteAllText(result,"PASS installed manager roster -> actual "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" game -> exact ledger spend and matched refund");
+        }catch(Exception ex){failure=ex.Message;}
+        // C# 5 compiler does not permit await inside a catch block.
+        if(failure!=null){
+            string trace="";
+            try{
+                if(fieldGameFrame!=null)trace=await fieldGameFrame.ExecuteScriptAsync(@"(()=>({ready:document.readyState,menuHidden:document.getElementById('menuScreen')?.hidden,choiceHidden:document.getElementById('choiceScreen')?.hidden,stageCount:document.querySelectorAll('#stageList .stage-card').length,buttonDisabled:document.getElementById('openStairs')?.disabled,pickerHidden:document.getElementById('hofPicker')?.hidden,errors:window.__fieldGameErrors||[]}))()");
+                trace+=" replies="+await core.ExecuteScriptAsync("(window.__fieldCoinReplies||[]).slice(-20)");
+            }catch{}
+            File.WriteAllText(result,"FAIL "+failure+" trace="+trace);
+        }
+    }
+    bool FieldGame(string raw){
+        Uri u;
+        #if NATIVE_ONLINE_PILOT
+         if(!File.Exists(Path.Combine(root,"field-online.flag")))return false;
+#else
+         if(!File.Exists(Path.Combine(root,"game.static.ready")))return false;
+#endif
+         return Uri.TryCreate(raw,UriKind.Absolute,out u)&&u.GetLeftPart(UriPartial.Authority)==FieldGameOrigin&&u.UserInfo==""&&u.Fragment==""&&u.AbsolutePath=="/hoja-minigames/"&&System.Text.RegularExpressions.Regex.IsMatch(u.Query,@"\A\?mode=board&embed=dashboard&coin=4&fresh=[0-9]+-[0-9]+\z");
+    }
+#endif
+    async Task StartBoard(){
+        if(updateToken!=null)updateJournal=ValidateUpdateJournal();
+#if NATIVE_SHARE_LAB
+        Require(!startOwned&&migrationSource==null&&updateToken==null,"native share lab external server only");
+#endif
+        if(startOwned)await StartOwnedServer();
+        string health=await Task.Run(()=>Health());
+        var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(health);
+        Require(json.ContainsKey("service")&&(string)json["service"]=="teacher-tools-local"&&json.ContainsKey("release")&&(string)json["release"]==Release,"isolated health mismatch");
+        string profile=Path.Combine(root,"native-profile");
+        if(migrationSource!=null){
+            migrationMarker=Path.Combine(root,"migration-"+migrationSource+".done");
+            migrationFirst=!File.Exists(migrationMarker);
+            string prefix="native-migration-"+migrationSource+"-";
+            if(migrationFirst){
+                migrationProfile=prefix+Guid.NewGuid().ToString("N");
+                Require(!Directory.Exists(Path.Combine(root,migrationProfile)),"staging exists");
+            }else{
+                migrationProfile=File.ReadAllText(migrationMarker).Trim();
+                Require(System.Text.RegularExpressions.Regex.IsMatch(migrationProfile,"^"+prefix+"[a-f0-9]{32}$")&&Directory.Exists(Path.Combine(root,migrationProfile)),"invalid committed migration profile");
+            }
+            profile=Path.Combine(root,migrationProfile);
+            File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".attempt"),migrationProfile);
+        }
+        var env=await CoreWebView2Environment.CreateAsync(null,profile);
+        await browser.EnsureCoreWebView2Async(env);
+        var core=browser.CoreWebView2;
+#if NATIVE_FIELD_PILOT
+        if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(@"(()=>{
+              if(location.origin!=='"+Origin+@"'||window.parent!==window)return;
+              const log=[];window.__fieldPresentationTraceLog=log;
+              window.__fieldPresentationTrace=(type,detail='')=>{
+                if(log.length>=40)return;
+                log.push({type,detail,dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.id),layoutEditing:!!document.body?.classList.contains('layout-editing'),house:!!window.ttHouse?.isOpen?.()});
+              };
+              addEventListener('message',e=>{if(e.origin===location.origin&&e.source===document.getElementById('ttPresentationFrame')?.contentWindow&&['tt-present-ready','tt-present-rendered','tt-present-error'].includes(e.data?.type))window.__fieldPresentationTrace(e.data.type)});
+            })()");
+        }
+        if(File.Exists(Path.Combine(root,"field-smoke.flag")))core.FrameCreated+=(s,e)=>{
+            var f=e.Frame;
+            f.NavigationStarting+=(x,y)=>{if(FieldGame(y.Uri))fieldGameFrame=f;};
+            f.Destroyed+=(x,y)=>{if(Object.ReferenceEquals(fieldGameFrame,f))fieldGameFrame=null;};
+        };
+#endif
+        core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;
+        core.Settings.AreDevToolsEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;
+        core.NavigationStarting+=(s,e)=>{if(!Lab.Local(e.Uri))e.Cancel=true;};
+        core.FrameNavigationStarting+=(s,e)=>{
+            bool allowed=Lab.Local(e.Uri)||e.Uri=="about:blank";
+#if NATIVE_FIELD_PILOT
+            if(!allowed&&FieldGame(e.Uri))allowed=true;
+            if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Frame(e.Uri);
+#endif
+            if(!allowed)e.Cancel=true;
+        };
+        core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
+        core.PermissionRequested+=(s,e)=>{e.State=CoreWebView2PermissionState.Deny;};
+        core.DownloadStarting+=(s,e)=>{
+            e.Cancel=true;
+#if NATIVE_FIELD_PILOT
+            if(File.Exists(Path.Combine(root,"field-transfer-live.flag"))&&FieldProviderPolicy.Backup(e.DownloadOperation.Uri,e.ResultFilePath,Origin)){
+                // Explicit user save dialog, limited to original local backup downloads.
+                using(var picker=new SaveFileDialog()){
+                    picker.Filter="HOJA backup (*.ttbackup)|*.ttbackup";picker.DefaultExt="ttbackup";picker.AddExtension=true;picker.OverwritePrompt=true;
+                    picker.FileName=Path.GetFileName(e.ResultFilePath);
+                    if(picker.ShowDialog(this)==DialogResult.OK&&String.Equals(Path.GetExtension(picker.FileName),".ttbackup",StringComparison.OrdinalIgnoreCase)){
+                        e.ResultFilePath=picker.FileName;e.Cancel=false;e.Handled=true;
+                    }
+                }
+            }
+#endif
+        };
+        core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
+        core.WebResourceRequested+=(s,e)=>{
+            if(migrationSource!=null&&e.Request.Uri==Origin+"/__lab_migration"){
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes("<!doctype html><title>Isolated migration</title>")),200,"OK","Content-Type: text/html; charset=utf-8");return;
+            }
+            if(migrationSource!=null&&e.Request.Uri.StartsWith(Origin+"/__lab_migration/blob/",StringComparison.Ordinal)){
+                string sha=e.Request.Uri.Substring((Origin+"/__lab_migration/blob/").Length);
+                if(migrationServing&&core.Source==Origin+"/__lab_migration"&&e.Request.Method=="GET"&&System.Text.RegularExpressions.Regex.IsMatch(sha,"^[a-f0-9]{64}$")){
+                    string file=Path.Combine(root,"migration-"+migrationSource+"-blobs",sha+".bin");
+                    if(File.Exists(file)&&new FileInfo(file).Length<=4*1024*1024){
+                        byte[] bytes=File.ReadAllBytes(file);
+                        migrationBinaryRequests++;
+                        e.Response=env.CreateWebResourceResponse(new MemoryStream(bytes),200,"OK","Content-Type: application/octet-stream\r\nCache-Control: no-store");return;
+                    }
+                }
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");return;
+            }
+            bool allowed=Lab.Allowed(e.Request.Uri,e.Request.Method);
+#if NATIVE_SHARE_LAB
+            if(!allowed&&e.ResourceContext==CoreWebView2WebResourceContext.Media)allowed=AllowedLocalMedia(e.Request.Uri,e.Request.Method);
+#endif
+#if NATIVE_FIELD_PILOT
+            if(!allowed&&e.Request.Method=="GET"&&FieldGame(e.Request.Uri)&&e.ResourceContext==CoreWebView2WebResourceContext.Document)allowed=true;
+            #if NATIVE_ONLINE_PILOT
+             // Passive assets within the exact public game path, never remote API writes.
+             if(!allowed&&e.Request.Method=="GET"&&e.ResourceContext!=CoreWebView2WebResourceContext.Document){
+                 Uri asset;
+                 if(Uri.TryCreate(e.Request.Uri,UriKind.Absolute,out asset)&&asset.GetLeftPart(UriPartial.Authority)==FieldGameOrigin&&asset.UserInfo==""&&asset.AbsolutePath.StartsWith("/hoja-minigames/",StringComparison.Ordinal)&&System.Text.RegularExpressions.Regex.IsMatch(asset.AbsolutePath,@"\.(js|mjs|css|png|webp|jpg|jpeg|svg|mp3|wav|ogg|woff|woff2|json|ico)$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))allowed=true;
+             }
+#endif
+             if(!allowed&&e.Request.Uri==Origin+"/api/open-manager"&&e.Request.Method=="POST")allowed=true;
+            if(!allowed&&File.Exists(Path.Combine(root,"field-provider-live.flag")))allowed=FieldProviderPolicy.Resource(e.Request.Uri,e.Request.Method,e.ResourceContext==CoreWebView2WebResourceContext.Document);
+#endif
+            if(!allowed)e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
+        };
+        core.ProcessFailed+=(s,e)=>Finish(1,"FAIL renderer "+e.ProcessFailedKind);
+        if(mode=="wallpaper"){
+            var screen=TargetScreen();var area=screen.Bounds;var work=screen.WorkingArea;
+            int ex=GetWindowLong(Handle,-20);
+            SetWindowLong(Handle,-20,(ex|0x00000080)&~0x00040000);
+            Require(SetWindowPos(Handle,new IntPtr(1),area.X,area.Y,area.Width,area.Height,0x0070),"wallpaper position");
+            lastBounds=area;
+        }
+        if(migrationSource!=null){
+            string transfer=Path.Combine(root,"migration-"+migrationSource+".json");
+            if(migrationFirst||File.Exists(transfer))await VerifyMigration(core);
+            else{
+                // A completed profile is self-contained; old export must not be required to launch.
+                Require(File.Exists(migrationMarker),"missing committed profile");
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),"PASS committed profile starts without transfer files");
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".binary-count"),"0");
+            }
+            // Lab fault injection: terminate after complete import but before UI verification/commit.
+            if(migrationFirst&&File.Exists(Path.Combine(root,"migration-"+migrationSource+".interrupt"))){
+                File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".interrupted"),migrationProfile);
+                Process.GetCurrentProcess().Kill();
+                return;
+            }
+        }
+        string url=Origin+"/";
+        if(mode=="wallpaper"){var s=TargetScreen();var a=s.Bounds;var w=s.WorkingArea;url+="?inset="+(w.X-a.X)+","+(w.Y-a.Y)+","+(a.Right-w.Right)+","+(a.Bottom-w.Bottom);}
+        var loaded=new TaskCompletionSource<bool>();
+        core.NavigationCompleted+=(s,e)=>loaded.TrySetResult(e.IsSuccess);
+        core.Navigate(url);
+        Require(await Task.WhenAny(loaded.Task,Task.Delay(15000))==loaded.Task&&await loaded.Task,"dashboard navigation");
+        Require(await core.ExecuteScriptAsync("!!document.getElementById('openMiniGames')&&document.documentElement.outerHTML.includes('"+DisplayVersion+"')")=="true","real dashboard identity");
+        // Explicit isolated update fixture: exercise actual dashboard memo persistence.
+        string profileProbe=Path.Combine(root,"update-profile-probe");
+        if(File.Exists(profileProbe)){
+            string probe=File.ReadAllText(profileProbe).Trim();
+            Require(probe=="seed"||probe=="verify","invalid update profile probe");
+            if(probe=="seed")
+                Require(await core.ExecuteScriptAsync("(()=>{const el=document.getElementById('notes');el.value='LAB update memo';el.dispatchEvent(new Event('input',{bubbles:true}));return localStorage.getItem('teacher-note')===el.value})()")=="true","seed update profile memo");
+            else
+                Require(await core.ExecuteScriptAsync("document.getElementById('notes').value==='LAB update memo'&&localStorage.getItem('teacher-note')==='LAB update memo'")=="true","preserved update profile memo");
+        }
+        if(migrationSource!=null){
+            string note=migrationFirst?"LAB 메모":"LAB updated after migration";
+            string verify="(()=>{const r=window.ttGridDebug?.().items.memo;return document.body.dataset.theme==='pink'&&document.getElementById('classHeading').textContent==='LAB "+migrationSource+" 교실'&&document.getElementById('notes').value==='"+note+"'&&r&&r.x===31&&r.y===20&&r.w===12&&r.h===5&&!r.off&&r.z===4})()";
+            Require(await core.ExecuteScriptAsync(verify)=="true","migrated dashboard UI theme/name/memo/layout");
+            if(note!="LAB updated after migration"){
+                Require(await core.ExecuteScriptAsync("(()=>{const el=document.getElementById('notes');el.value='LAB updated after migration';el.dispatchEvent(new Event('input',{bubbles:true}));return localStorage.getItem('teacher-note')===el.value})()")=="true","actual dashboard memo edit");
+
+            }
+        }
+        if(mode=="wallpaper")Require(FormBorderStyle==FormBorderStyle.None&&Bounds==TargetScreen().Bounds&&!ShowInTaskbar,"wallpaper geometry/frame");
+        else Require(FormBorderStyle==FormBorderStyle.Sizable&&ShowInTaskbar,"windowed geometry/frame");
+        if(mode=="wallpaper")NativeShareInput.Start(Handle,Path.Combine(runtime,"share-input.json"),Release);
+        if(migrationSource!=null&&migrationFirst){
+            // Commit only after exact readback and actual dashboard UI validation, never overwrite a completed choice.
+            string temp=migrationMarker+"."+Guid.NewGuid().ToString("N")+".tmp";
+            using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+                byte[] bytes=Encoding.UTF8.GetBytes(migrationProfile);
+                stream.Write(bytes,0,bytes.Length);stream.Flush(true);
+            }
+            File.Move(temp,migrationMarker);
+        }
+        Publish();heartbeat.Start();
+#if NATIVE_FIELD_PILOT
+        if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
+            // CI first prepares an isolated school through the real server API.
+            // Wait for the original school.js to finish initializing; do not dismiss
+            // the onboarding dialog or bypass the presentation busy protection.
+            if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true"&&!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("HOJA_FIELD_MANAGER_SMOKE"))){
+                await FieldBoardWait("(()=>document.getElementById('schoolNow')?.textContent.startsWith('FIELD TEST SCHOOL ·')&&!document.getElementById('schoolSetup')?.open&&!document.querySelector('dialog[open]'))()","configured school and unobstructed board",100);
+            }
+            // Fresh isolated pilot data only, no clock override or fake game message.
+            Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('openMiniGames').click();return document.getElementById('miniGames').open})()")=="true","field game menu open");
+            bool ready=false;
+            for(int i=0;i<250;i++){
+                if(await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame');return f.src.startsWith('"+FieldGameOrigin+"/hoja-minigames/')&&document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden})()")=="true"){ready=true;break;}
+                await Task.Delay(100);
+            }
+            Require(ready,"field game actual protocol 4 ready");
+            Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('miniBack').click();return !document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')})()")=="true","field game close");
+            File.WriteAllText(Path.Combine(root,"field-game-smoke.result"),"PASS real "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" mini-game protocol 4 ready and close");
+        }
+#endif
+        PublishUpdateReady();
+        File.WriteAllText(Path.Combine(root,"native-launch.ready"),mode+" "+Process.GetCurrentProcess().Id+" "+Handle.ToInt64());
+    }
+    async Task VerifyMigration(CoreWebView2 core){
+        string input=Path.Combine(root,"migration-"+migrationSource+".json");
+        Require(new FileInfo(input).Length<=192L*1024*1024,"transfer too large");
+        string data=File.ReadAllText(input,Encoding.Unicode);
+        Require(data.Length<=96*1024*1024,"transfer too large");
+        var serializer=new System.Web.Script.Serialization.JavaScriptSerializer(){MaxJsonLength=4*1024*1024};
+        var loaded=new TaskCompletionSource<bool>();
+        EventHandler<CoreWebView2NavigationCompletedEventArgs> handler=(s,e)=>loaded.TrySetResult(e.IsSuccess);
+        core.NavigationCompleted+=handler;core.Navigate(Origin+"/__lab_migration");
+        Require(await Task.WhenAny(loaded.Task,Task.Delay(10000))==loaded.Task&&await loaded.Task,"migration neutral page");
+        core.NavigationCompleted-=handler;
+        await core.ExecuteScriptAsync(File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"migration-transfer.js")));
+        Require(await core.ExecuteScriptAsync("globalThis.__migrationParts=[];true")=="true","chunk initialization");
+        int chunks=0;
+        for(int offset=0;offset<data.Length;){
+            int count=Math.Min(512*1024,data.Length-offset);
+            if(offset+count<data.Length&&Char.IsHighSurrogate(data[offset+count-1]))count--;
+            string part=serializer.Serialize(data.Substring(offset,count));
+            chunks++;
+            Require(await core.ExecuteScriptAsync("__migrationParts.push("+part+")")==chunks.ToString(),"chunk delivery");
+            offset+=count;
+        }
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".chunks"),chunks.ToString());
+        bool first=migrationFirst;
+        migrationServing=first;
+        string unpack="let expected=JSON.parse(__migrationParts.join(''));delete globalThis.__migrationParts;";
+        if(first){
+            await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"await ttMigration.restore(expected);document.title='migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
+        }else{
+            await core.ExecuteScriptAsync("(async()=>{try{"+unpack+"let actual=await ttMigration.snapshot();let diff=ttMigration.comparePersisted(expected,actual);document.title=diff.length?'migration-fail: '+diff.join('; '):'migration-ok'}catch(e){document.title='migration-fail: '+e.message}})()");
+        }
+        string title="";
+        for(int i=0;i<1200;i++){title=await core.ExecuteScriptAsync("document.title");if(title.Contains("migration-ok"))break;if(title.Contains("migration-fail"))throw new IOException(title);await Task.Delay(100);}
+        migrationServing=false;
+        Require(title.Contains("migration-ok"),"migration timeout");
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".binary-count"),migrationBinaryRequests.ToString());
+        File.WriteAllText(Path.Combine(root,"migration-"+migrationSource+".result"),first?"PASS exact import and readback":"PASS repeated launch preserves user edit and IndexedDB blobs");
+    }
+    string ModeJson(){return "{\"mode\":\""+mode+"\",\"window\":"+Handle.ToInt64()+",\"pid\":"+Process.GetCurrentProcess().Id+",\"release\":\""+Release+"\"}";}
+    void Publish(){
+        ownedWindow=Handle.ToInt64();
+        string tmp=modeFile+".native-tmp";
+        string json=ModeJson();
+        // Only a heartbeat published by this research launcher has this exact ownership proof.
+        string proof=Path.Combine(runtime,"native-mode-owner.json");
+        if(!published){
+            Require(!File.Exists(modeFile),"unexpected mode file before publish");
+            File.WriteAllText(proof,json,new UTF8Encoding(false));
+        }
+        File.WriteAllText(tmp,json,new UTF8Encoding(false));
+        if(File.Exists(modeFile))File.Replace(tmp,modeFile,null);else File.Move(tmp,modeFile);
+        published=true;
+    }
+    void RemoveOwnedMode(){
+        if(!published)return;
+        try{
+            if(File.Exists(modeFile)){
+                var json=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(modeFile));
+                if(Convert.ToInt64(json["window"])==ownedWindow&&Convert.ToInt32(json["pid"])==Process.GetCurrentProcess().Id){
+                    File.Delete(modeFile);
+                    string proof=Path.Combine(runtime,"native-mode-owner.json");
+                    if(File.Exists(proof)&&File.ReadAllText(proof)==ModeJson())File.Delete(proof);
+                }
+            }
+        }catch{}
+    }
+    void Finish(int code,string message){if(closing)return;closing=true;exitCode=code;heartbeat.Stop();NativeShareInput.Stop();RemoveOwnedMode();File.WriteAllText(resultFile,message);Close();}
+    // Caller holds exclusive launcher lock. Never terminate processes on stale metadata.
+    static bool RecoverStaleMode(string runtime){
+        string mode=Path.Combine(runtime,"board-mode.json"),proof=Path.Combine(runtime,"native-mode-owner.json");
+        if(!File.Exists(mode))return true;
+        try{
+            if(!File.Exists(proof))return false;
+            string raw=File.ReadAllText(mode);
+            if(raw!=File.ReadAllText(proof))return false;
+            var d=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(raw);
+            int pid=Convert.ToInt32(d["pid"]);long hwnd=Convert.ToInt64(d["window"]);
+            if(pid<=0||hwnd<=0||(string)d["release"]!=Release||((string)d["mode"]!="window"&&(string)d["mode"]!="wallpaper"))return false;
+            // A reused PID or HWND is ambiguous: retain metadata and refuse.
+            try{using(var proc=Process.GetProcessById(pid)){if(!proc.HasExited)return false;}}catch(ArgumentException){}
+            uint owner;GetWindowThreadProcessId(new IntPtr(hwnd),out owner);
+            if(owner!=0)return false;
+            if(File.ReadAllText(mode)!=raw||File.ReadAllText(proof)!=raw)return false;
+            File.Delete(mode);File.Delete(proof);
+            return true;
+        }catch{return false;}
+    }
+    [STAThread] static int Main(string[] args){
+        bool migrate=args.Length==3&&args[0]=="--lab-launch-migrate"&&(args[2]=="chrome"||args[2]=="edge");
+        bool update=args.Length==3&&args[0]=="--lab-launch-update"&&System.Text.RegularExpressions.Regex.IsMatch(args[2],"^[a-f0-9]{32}$");
+        if((!migrate&&!update&&(args.Length!=2||(args[0]!="--lab-launch"&&args[0]!="--lab-launch-owned")))||(args[1]!="window"&&args[1]!="wallpaper"))return 2;
+        string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        if(String.IsNullOrEmpty(root)||String.IsNullOrEmpty(local))return 2;
+        root=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+        if(!String.Equals(Path.GetFullPath(local),Path.Combine(root,"local"),StringComparison.OrdinalIgnoreCase)||!Path.GetFileName(root).StartsWith("hoja-webview-lab-",StringComparison.Ordinal))return 2;
+        string runtime=Path.Combine(local,"TeacherToolsLocal");
+        if(!File.Exists(Path.Combine(runtime,"dashboard.html")))return 2;
+#if NATIVE_FIELD_PILOT
+        if(!File.Exists(Path.Combine(root,"field-pilot.flag"))||args[0]!="--lab-launch"||migrate||update)return 2;
+#if NATIVE_ONLINE_PILOT
+         if(!File.Exists(Path.Combine(root,"field-online.flag")))return 2;
+         // The native installer verifies the program inventory before launching.
+         // The board must identify the actual verified release and match its server.
+         try{
+             string releasePath=Path.Combine(runtime,"release.json");
+             if((File.GetAttributes(releasePath)&FileAttributes.ReparsePoint)!=0||new FileInfo(releasePath).Length>65536)return 2;
+             var meta=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(releasePath));
+             DisplayVersion=(string)meta["version"];Release=(string)meta["release"];
+             if(!System.Text.RegularExpressions.Regex.IsMatch(DisplayVersion,@"\A[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}\z")||
+                !System.Text.RegularExpressions.Regex.IsMatch(Release,@"\A[0-9]{4}-[0-9]{2}-[0-9]{2}-V"+System.Text.RegularExpressions.Regex.Escape(DisplayVersion)+@"-STABLE-PILOT\z"))return 2;
+         }catch{return 2;}
+#endif
+#endif
+        FileStream guard;
+        try{guard=new FileStream(Path.Combine(runtime,"native-launch.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}catch(IOException){return 3;}
+        using(guard){
+            if(!RecoverStaleMode(runtime))return 4;
+            try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch(EntryPointNotFoundException){}
+            Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
+            using(var form=new NativeBoardLaunch(root,runtime,args[1],args[0]=="--lab-launch-owned"||update,migrate?args[2]:null,update?args[2]:null)){
+                try{Application.Run(form);return form.exitCode;}
+                finally{form.StopOwnedServer();}
+            }
+        }
+    }
+}

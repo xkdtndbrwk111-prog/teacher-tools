@@ -1,0 +1,12 @@
+"use strict";
+const assert=require("node:assert/strict");
+const p=require("./phase7a-online-profile.json");
+assert.equal(p.schema,"HOJA-WEBVIEW2-ONLINE-PROFILE-1");
+assert.equal(p.mode,"online");
+assert.equal(p.nativeApiOrigin,"http://127.0.0.1:17439");
+assert.equal(p.managerOrigin,"https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/");
+assert.equal(p.gameOrigin,"https://xkdtndbrwk111-prog.github.io/hoja-minigames/");
+assert.deepEqual(p.staticServerExecutables,[]);
+for(const legacy of p.legacyLocalOrigins)for(const key of ["managerOrigin","gameOrigin","nativeApiOrigin"])assert(!p[key].includes(legacy));
+assert.equal(p.contracts.userData,"outside replaceable payload");
+console.log("PASS Phase 7A online profile contract");

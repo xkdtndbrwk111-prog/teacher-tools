@@ -1,0 +1,563 @@
+using System;
+using System.Drawing;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+// Phase 1 research only. No production directory, updater, host objects or native bridge.
+internal sealed class Lab : Form {
+#if NATIVE_ONLINE_PILOT
+    const int LabPort=17439;
+    const string Origin="http://127.0.0.1:17439";
+#elif NATIVE_STORAGE_LAB
+    const int LabPort=17451;
+    const string Origin="http://127.0.0.1:17451";
+#else
+    const int LabPort=17449;
+    const string Origin="http://127.0.0.1:17449";
+#endif
+    readonly WebView2 view = new WebView2();
+    readonly string profile, result;
+    string fixture, realGame;
+    bool useRealGame;
+    CoreWebView2Frame gameFrame;
+    readonly System.Collections.Generic.List<CoreWebView2Frame> liveFrames=new System.Collections.Generic.List<CoreWebView2Frame>();
+    void Trace(string message){File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.trace"),DateTime.UtcNow.ToString("o")+" "+message+Environment.NewLine);}
+    readonly Timer watchdog = new Timer();
+    readonly Timer heartbeat = new Timer();
+    string modeFile;
+    Rectangle previous;
+    bool immersive, finished;
+    int exitCode = 1;
+    internal int ExitCode { get { return exitCode; } }
+    internal Lab(string profile, string result) {
+        this.profile=profile; this.result=result;
+        fixture=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"mini-fixture.html")).Replace("http://127.0.0.1:17449",Origin);
+        realGame=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"real-mini.html"));
+        string original="const DASHBOARD_ORIGIN='http://127.0.0.1:17439';";
+        Require(realGame.IndexOf(original,StringComparison.Ordinal)>=0&&realGame.IndexOf(original,StringComparison.Ordinal)==realGame.LastIndexOf(original,StringComparison.Ordinal),"exact real game origin anchor");
+        realGame=realGame.Replace(original,"const DASHBOARD_ORIGIN='"+Origin+"';");
+        // Only the lesson guard's clock is controllable in this isolated test.
+        string clockAnchor="const now=Date.now(),state=lessonPhase(lessonStart,now);";
+        Require(realGame.IndexOf(clockAnchor,StringComparison.Ordinal)>=0&&realGame.IndexOf(clockAnchor,StringComparison.Ordinal)==realGame.LastIndexOf(clockAnchor,StringComparison.Ordinal),"exact lesson clock anchor");
+        realGame=realGame.Replace(clockAnchor,"const now=window.__labLessonClock??Date.now(),state=lessonPhase(lessonStart,now);");
+        // Actual game state is lexical inside one IIFE. Read-only observation, no game/coin state writes.
+        string start="<script>(() => {";
+        Require(realGame.IndexOf(start,StringComparison.Ordinal)>=0&&realGame.IndexOf(start,StringComparison.Ordinal)==realGame.LastIndexOf(start,StringComparison.Ordinal),"real main script anchor");
+        realGame=realGame.Replace(start,"<script>window.__labErrors=[];addEventListener('error',e=>{if(e.message)__labErrors.push(e.message)});addEventListener('unhandledrejection',e=>__labErrors.push(String(e.reason)));</script>"+start);
+        string end="})();";
+        int tail=realGame.LastIndexOf(end,StringComparison.Ordinal);
+        Require(tail>0&&realGame.Substring(tail+end.Length).TrimStart().StartsWith("</script>",StringComparison.Ordinal),"real main closure end");
+        string probe=@"window.__labInput=[];for(const type of ['keydown','keyup','pointerdown','pointerup','focus','blur'])addEventListener(type,e=>{if(__labInput.length<60)__labInput.push({type,key:e.key,code:e.code,pointer:e.pointerType,pid:e.pointerId,trusted:e.isTrusted,focus:document.hasFocus(),target:e.target?.id})},true);
+window.__labObserve=()=>({lessonStart,lessonRevision,lessonWarning,lessonClosed,lessonOverlay:!!lessonOverlay?.isConnected,focus:document.hasFocus(),active:document.activeElement?.id,input:window.__labInput.slice(-12),ready:COIN.ready,classId:COIN.classId,balance:COIN.students.find(s=>s.id==='lab1')?.balance,balance2:COIN.students.find(s=>s.id==='lab2')?.balance,idx2:ST.players[1]?.idx,refunds:COIN.refunds.size,charged:!!round?.charge,on:ST.on,phase:ST.phase,n:ST.players.length,idx:ST.players[0]?.idx,canvas:stCanvas.width>0&&stCanvas.height>0&&stCanvas.getBoundingClientRect().width>200&&ST.hits.length>2});
+window.__labNext=()=>stNextDir(ST.players[0].idx)===ST.players[0].dir?'d':'a';
+window.__labTouch=(i=0)=>{const p=ST.players[i],h=ST.hits.find(h=>h.key===(stNextDir(p.idx)===p.dir?'c':'t')+i),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};
+window.__labMenuPoint=()=>{const h=ST.hits.find(h=>h.key==='menu'),r=stCanvas.getBoundingClientRect();return [r.left+(h.x+h.w/2)/ST.W*r.width,r.top+(h.y+h.h/2)/ST.H*r.height].join(',')};";
+        realGame=realGame.Insert(tail,probe+Environment.NewLine);
+        Text="HOJA WebView2 Lab - isolated test"; StartPosition=FormStartPosition.CenterScreen;
+        ClientSize=new Size(1280,720); MinimumSize=new Size(800,480);
+        view.Dock=DockStyle.Fill; Controls.Add(view);
+        watchdog.Interval=180000; watchdog.Tick+=(s,e)=>Fail("timeout");
+        Shown+=async (s,e)=>{watchdog.Start();try{await Run();}catch(Exception ex){Fail(ex.GetType().Name+": "+ex.Message);}};
+        KeyPreview=true;
+        KeyDown+=(s,e)=>{if(e.KeyCode==Keys.F11){SetImmersive(!immersive);e.SuppressKeyPress=true;}else if(e.KeyCode==Keys.Escape && immersive){SetImmersive(false);e.SuppressKeyPress=true;}};
+    }
+    internal static bool Local(string raw) {
+        Uri u;
+        return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="http" && u.Host=="127.0.0.1" && u.Port==LabPort && String.IsNullOrEmpty(u.UserInfo);
+    }
+    static bool GameFixture(string raw) {
+        Uri u; return Uri.TryCreate(raw,UriKind.Absolute,out u) && u.Scheme=="https" && u.Host=="xkdtndbrwk111-prog.github.io" && u.Port==443 && String.IsNullOrEmpty(u.UserInfo) && u.AbsolutePath=="/hoja-minigames/" && u.Query.StartsWith("?mode=board&embed=dashboard&coin=4&fresh=",StringComparison.Ordinal);
+    }
+    internal static bool Allowed(string raw,string method) {
+        if(!Local(raw))return false;
+        var p=new Uri(raw).AbsolutePath;
+#if NATIVE_BACKUP_LAB
+        if(p=="/api/backup/export"||p=="/api/backup/token")return method=="GET";
+        if(p=="/api/backup/restore")return method=="POST";
+#endif
+#if NATIVE_SHARE_LAB
+        if(p=="/api/share-input")return method=="GET"||method=="POST";
+        if(p=="/api/share-input/status")return method=="GET";
+        if(p=="/api/share-input/restart")return method=="POST";
+        // Native board lab only. Keep external frame/network restrictions intact.
+        if(p=="/api/book-reader/open"||p=="/api/book-reader/close")return method=="POST";
+        if(p=="/api/book-reader/status")return method=="GET"||method=="POST";
+        if(p=="/api/youtube/status")return method=="GET";
+        if(p=="/api/youtube/start"||p=="/api/youtube/cancel"||p=="/api/youtube/play-start"||p=="/api/youtube/play-status"||p=="/api/youtube/play-stop"||p=="/api/youtube/open-library"||p=="/api/youtube/rename")return method=="POST";
+#endif
+#if NATIVE_AUDIO_LAB
+        if(p=="/api/speakers")return method=="GET";
+        if(p=="/api/speakers/set"||p=="/api/open-sound-settings")return method=="POST";
+        if(p=="/api/volume")return method=="GET"||method=="POST";
+#endif
+#if NATIVE_DATA_LAB
+        if(p=="/api/school")return method=="GET"||method=="POST";
+        if(p=="/api/school/search"||p=="/api/week"||p=="/api/meal"||p=="/api/events"||p=="/api/weather"||p=="/api/weather/places")return method=="GET";
+        if(p=="/api/weather/place")return method=="POST";
+#endif
+#if NATIVE_PHOTO_LAB
+        if(p=="/api/photos"||p=="/api/photos/pick"||p=="/photo")return method=="GET";
+#endif
+#if NATIVE_STORAGE_LAB
+        if(p=="/api/notice")return method=="GET"||method=="POST";
+        if(p=="/api/theme/publish")return method=="POST";
+#endif
+        if(method=="POST")return p=="/api/coins" || p=="/api/seating" || p=="/api/presentation/ack";
+        if(method!="GET" && method!="HEAD")return false;
+        if(p.StartsWith("/api/",StringComparison.Ordinal))return p=="/api/coins"||p=="/api/seating"||p=="/api/board-status"||p=="/api/theme"||p=="/api/presentation/poll";
+        if(p.StartsWith("/presentation/",StringComparison.Ordinal))return !p.Contains("..") && System.Text.RegularExpressions.Regex.IsMatch(p,@"^/presentation/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+\.(?:html|css|js|mjs|png|svg|txt)$");
+        return p=="/"||p=="/index.html"||p=="/health"||
+            p.EndsWith(".js",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".css",StringComparison.OrdinalIgnoreCase)||
+            p.EndsWith(".png",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".webp",StringComparison.OrdinalIgnoreCase)||p.EndsWith(".ico",StringComparison.OrdinalIgnoreCase);
+    }
+    void SetImmersive(bool on) {
+        if(on==immersive)return;
+        if(on){previous=Bounds;FormBorderStyle=FormBorderStyle.None;Bounds=Screen.FromControl(this).Bounds;}
+        else{FormBorderStyle=FormBorderStyle.Sizable;Bounds=previous;}
+        immersive=on;
+    }
+    static void Require(bool ok,string what){if(!ok)throw new InvalidOperationException(what);}
+    async Task LoadBoard() {
+        var t=new TaskCompletionSource<bool>();
+        EventHandler<CoreWebView2NavigationCompletedEventArgs> handler=(s,e)=>t.TrySetResult(e.IsSuccess);
+        view.CoreWebView2.NavigationCompleted+=handler;
+        try{view.CoreWebView2.Navigate(Origin+"/");Require(await t.Task,"dashboard navigation");}
+        finally{view.CoreWebView2.NavigationCompleted-=handler;}
+    }
+    async Task Run() {
+        Require(!Local("http://127.0.0.1:17439/")&&!Allowed(Origin+"/api/update/apply","POST")&&!Allowed("https://example.com","GET"),"isolation rules");
+        var env=await CoreWebView2Environment.CreateAsync(null,profile);
+        await view.EnsureCoreWebView2Async(env);
+        var core=view.CoreWebView2;
+        core.Settings.AreDevToolsEnabled=false;
+        core.Settings.AreDefaultContextMenusEnabled=false;
+        core.Settings.IsWebMessageEnabled=false;
+        core.Settings.AreHostObjectsAllowed=false;
+        core.FrameCreated+=(s,e)=>{
+            var f=e.Frame;liveFrames.Add(f);Trace("frame created count="+liveFrames.Count);
+            f.Destroyed+=(a,b)=>{liveFrames.Remove(f);if(Object.ReferenceEquals(gameFrame,f))gameFrame=null;Trace("frame destroyed count="+liveFrames.Count);};
+            f.NavigationStarting+=(a,b)=>{if(GameFixture(b.Uri)){gameFrame=f;Trace("game frame navigation real="+useRealGame);}};
+        };
+        core.NavigationStarting+=(s,e)=>{if(!Local(e.Uri))e.Cancel=true;};
+        core.FrameNavigationStarting+=(s,e)=>{if(!Local(e.Uri)&&!GameFixture(e.Uri)&&e.Uri!="about:blank")e.Cancel=true;};
+        core.NewWindowRequested+=(s,e)=>{e.Handled=true;};
+        core.PermissionRequested+=(s,e)=>{e.State=CoreWebView2PermissionState.Deny;};
+        core.DownloadStarting+=(s,e)=>{e.Cancel=true;};
+        core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All);
+        core.WebResourceRequested+=(s,e)=>{
+            if(GameFixture(e.Request.Uri)&&e.Request.Method=="GET"){
+                Trace("serve game real="+useRealGame);
+                string csp=useRealGame?"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'":"default-src 'none'; script-src 'unsafe-inline'";
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(useRealGame?realGame:fixture)),200,"OK","Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Security-Policy: "+csp);
+            }else if(!Allowed(e.Request.Uri,e.Request.Method))
+                e.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Lab blocked","Content-Type: text/plain");
+        };
+        core.ProcessFailed+=(s,e)=>Fail("renderer failure: "+e.ProcessFailedKind);
+#if NATIVE_DATA_LAB
+        // Only pin Date's current time; all supplied date arguments and the real
+        // dashboard renderer, fetch, localStorage and school.js remain unmodified.
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(@"(()=>{const RealDate=Date;const fixed=RealDate.parse('2026-11-23T00:00:00Z');class LabDate extends RealDate{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed}}window.Date=LabDate})()");
+#endif
+        await LoadBoard();
+        Require(await core.ExecuteScriptAsync("document.body.innerText.includes('1.66.43') || document.documentElement.outerHTML.includes('1.66.43')")=="true","exact dashboard version");
+#if NATIVE_BACKUP_LAB
+        // Capture the actual download blob at the anchor boundary, without writing to Downloads.
+        // Original dashboard creates/compresses the file and processes its own file-input handler.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const q=id=>document.getElementById(id);
+          const wait=async(fn)=>{for(let i=0;i<150;i++){if(await fn())return;await new Promise(r=>setTimeout(r,80))}throw Error('wait: '+q('ttPrivacyResult').textContent)};
+          window.confirm=()=>true;window.alert=()=>{};
+          const create=URL.createObjectURL.bind(URL),click=HTMLAnchorElement.prototype.click;
+          const blobs=new Map();URL.createObjectURL=b=>{const u=create(b);blobs.set(u,b);return u};
+          HTMLAnchorElement.prototype.click=function(){if(this.download.endsWith('.ttbackup')){window.__labBackup=blobs.get(this.href);return}return click.call(this)};
+          const read=async blob=>{const bytes=new Uint8Array(await blob.arrayBuffer());return JSON.parse(bytes[0]===31&&bytes[1]===139?await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text():await blob.text())};
+          const r=await fetch('/api/backup/export');if(!r.ok)throw Error('export '+r.status);const expected=(await r.json()).files;
+          localStorage.setItem('teacher-note','LAB BACKUP MEMO');
+          localStorage.setItem('class-theme','pink');
+          q('ttBackupStudents').click();
+          await wait(()=>window.__labBackup instanceof Blob&&q('ttPrivacyResult').textContent.includes('다운로드를 요청'));
+          const full=await read(window.__labBackup);
+          if(full.format!=='teacher-tools-transfer'||full.version!==2||full.profile!=='with-students'||full.values['teacher-note']!=='LAB BACKUP MEMO'||full.photosIncluded!==false||Object.keys(expected).some(k=>full.serverFiles[k]!==expected[k]))throw Error('full payload');
+          window.__labFull=window.__labBackup;window.__labBackup=null;
+          q('ttBackupSettings').click();
+          await wait(()=>window.__labBackup instanceof Blob);
+          const settings=await read(window.__labBackup);
+          if(settings.profile!=='settings-only'||Object.keys(settings.serverFiles).length||Object.keys(settings.voiceClips).length||Object.hasOwn(settings.values,'teacher-note')||settings.values['class-theme']!=='pink')throw Error('settings privacy');
+          await wait(()=>!q('ttBackupStudents').disabled);
+          localStorage.setItem('teacher-note','LAB BEFORE RESTORE');
+          sessionStorage.setItem('lab-backup-reload','pending');
+          const dt=new DataTransfer();dt.items.add(new File([window.__labFull],'lab.ttbackup',{type:'application/octet-stream'}));q('ttBackupFile').files=dt.files;q('ttBackupFile').dispatchEvent(new Event('change',{bubbles:true}));
+        }catch(e){document.documentElement.dataset.labBackup='error:'+e.message}})()");
+        string backupResult="";
+        for(int i=0;i<180;i++){
+            backupResult=await core.ExecuteScriptAsync("document.documentElement.dataset.labBackup||((sessionStorage.getItem('lab-backup-reload')==='pending'&&typeof window.__labFull==='undefined'&&localStorage.getItem('teacher-note')==='LAB BACKUP MEMO')?'ok':'')");
+            // ExecuteScriptAsync can return JSON null while the restored page is navigating.
+            // It is neither a failure nor success; wait for the committed reload predicate.
+            if(backupResult=="\"ok\""||backupResult.StartsWith("\"error:",StringComparison.Ordinal))break;
+            await Task.Delay(150);
+        }
+        Require(backupResult=="\"ok\"","actual backup/restore UI: "+backupResult);
+        Finish(0,"PASS actual dashboard full/settings backup blobs, private data exclusion, original file-input restore and reload");
+        return;
+#endif
+
+#if NATIVE_DATA_LAB
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const wait=async(fn)=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error('wait')};
+          await wait(()=>document.getElementById('schoolNow')?.textContent.includes('시험초등학교'));
+          await loadData();
+          await wait(()=>window.ttWeather?.place==='LAB 날씨');
+          const q=id=>document.getElementById(id);
+          const ok=q('week').textContent.includes('국어')&&q('week').textContent.includes('체육')&&q('weekName').textContent.includes('나이스 기본 시간표')&&q('meal').textContent.includes('쌀밥')&&mealSelectedDate==='20261123'&&mealRows[0].date==='20261123'&&q('events').textContent.includes('행사1')&&window.ttWeather.cur.temp===0&&window.ttWeather.pm10===0&&document.querySelector('.wx-temp')?.textContent==='0°';
+          document.documentElement.dataset.labData=ok?'ok':'bad:'+JSON.stringify({week:q('week').textContent,meal:q('meal').textContent,selected:mealSelectedDate,events:q('events').textContent,weather:window.ttWeather?.cur});
+        }catch(e){document.documentElement.dataset.labData='error:'+e.message}})()");
+        string dataResult=await WaitResult(core,"document.documentElement.dataset.labData||''");
+        Require(dataResult=="\"ok\"","actual data widgets: "+dataResult);
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{await loadData();for(let i=0;i<100;i++){if(window.ttWeather?.place==='LAB 날씨')break;await new Promise(r=>setTimeout(r,100))}document.documentElement.dataset.labDataReload=localStorage.getItem('class-cache-week')&&document.getElementById('meal').textContent.includes('쌀밥')&&window.ttWeather?.cur.temp===0?'ok':'bad'}catch(e){document.documentElement.dataset.labDataReload='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labDataReload||''")=="\"ok\"","actual school data widgets reload");
+        Finish(0,"PASS actual dashboard school.js, NEIS timetable, current-day meal, calendar and weather/air widget, reload");
+        return;
+#endif
+#if NATIVE_PHOTO_LAB
+        await core.ExecuteScriptAsync(@"(async()=>{try{await photoRefresh();if(photoCount!==2)throw Error('list');photoShowIndex(0,true);for(let i=0;i<80;i++){if(photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.naturalHeight===1&&img.src.includes('/photo?i=0&t=')))break;await new Promise(r=>setTimeout(r,50))}const denied=await fetch('/photos.txt');document.documentElement.dataset.labPhoto=photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t='))&&document.getElementById('photoFolderStatus').textContent.includes('사진 2장')&&denied.status===403?'ok':'bad'}catch(e){document.documentElement.dataset.labPhoto='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labPhoto||''")=="\"ok\"","actual WebView2 photo list, decoded GIF and blocked raw settings");
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{await photoRefresh();photoShowIndex(0,true);for(let i=0;i<80;i++){if(photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t=')))break;await new Promise(r=>setTimeout(r,50))}document.documentElement.dataset.labPhotoReload=photoCount===2&&photoLayers.some(img=>img.classList.contains('on')&&img.naturalWidth===1&&img.src.includes('/photo?i=0&t='))?'ok':'bad'}catch(e){document.documentElement.dataset.labPhotoReload='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labPhotoReload||''")=="\"ok\"","actual image decode after dashboard reload");
+        Finish(0,"PASS actual dashboard photoRefresh/photoShowIndex, GIF layer and cache-busted URL, reload and raw settings blocked");
+        return;
+#endif
+#if NATIVE_AUDIO_LAB
+        // Drive the existing dashboard handlers; all device state is an isolated fixture.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const q=id=>document.getElementById(id);
+          const wait=async(fn)=>{for(let i=0;i<100;i++){if(await fn())return;await new Promise(r=>setTimeout(r,80))}throw Error('wait')};
+          const get=async(path)=>{const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(path+' '+r.status);return r.json()};
+          await wait(()=>window.ttSystemVolume?.get().ok&&window.ttSystemVolume.get().level===50);
+          if(q('ttMediaVolume').value!=='50')throw Error('initial media volume');
+          q('settings').showModal();
+          q('speakerRefresh').click();
+          await wait(()=>[...q('speakerA').options].some(o=>o.value==='lab-a')&&[...q('speakerB').options].some(o=>o.value==='lab-b'));
+          q('speakerA').value='lab-a';q('speakerB').value='lab-b';q('speakerLabelA').value='LAB A';q('speakerLabelB').value='LAB B';
+          q('speakerSave').click();
+          await wait(()=>JSON.parse(localStorage.getItem('class-speakers')||'null')?.b?.id==='lab-b');
+          q('settings').close();
+          q('toggleSpeaker').click();
+          await wait(async()=> (await get('/api/speakers')).list.some(d=>d.id==='lab-b'&&d.current)&&q('speakerToast').textContent.includes('LAB B'));
+          const slider=q('ttMediaVolume');
+          slider.value='65';slider.dispatchEvent(new Event('input',{bubbles:true}));
+          await wait(async()=>{const v=await get('/api/volume');return v.level===65&&!v.muted});
+          document.querySelector('.spk-mute').click();
+          await wait(async()=>{const v=await get('/api/volume');return v.level===65&&v.muted});
+          if(!document.querySelector('.spk-vol').classList.contains('is-muted')||q('ttMediaMute').getAttribute('aria-pressed')!=='true')throw Error('shared mute state');
+          document.documentElement.dataset.labAudio='ok';
+        }catch(e){document.documentElement.dataset.labAudio='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labAudio||''")=="\"ok\"","actual dashboard audio controls");
+        await LoadBoard();
+        await core.ExecuteScriptAsync(@"(async()=>{try{for(let i=0;i<100;i++){const v=window.ttSystemVolume?.get();if(v?.ok&&v.level===65&&v.muted&&document.getElementById('ttMediaMute')?.getAttribute('aria-pressed')==='true'&&JSON.parse(localStorage.getItem('class-speakers')||'null')?.b?.id==='lab-b'&&document.getElementById('toggleSpeaker').textContent.includes('LAB B')){document.documentElement.dataset.labAudioReload='ok';return}await new Promise(r=>setTimeout(r,80))}document.documentElement.dataset.labAudioReload='bad'}catch(e){document.documentElement.dataset.labAudioReload='error:'+e.message}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labAudioReload||''")=="\"ok\"","audio controls reload");
+        Finish(0,"PASS existing dashboard speaker selector, switch, shared multimedia volume/mute and reload (fixture only)");
+        return;
+#endif
+        // ExecuteScriptAsync does not await a Promise: publish an asynchronous result to DOM state.
+        await core.ExecuteScriptAsync("(async()=>{try{let r=await fetch('/api/coins');let t=await r.text();let s=await fetch('/api/seating');document.documentElement.dataset.hojaLab=(r.ok&&r.headers.has('X-TT-Coin-Revision')&&t.includes('LAB_SENTINEL')&&s.ok&&(await s.text()).includes('LAB_STUDENT'))?'ok':'bad'}catch(e){document.documentElement.dataset.hojaLab='error'}})();");
+        string status="";
+        for(int i=0;i<100;i++){status=await core.ExecuteScriptAsync("document.documentElement.dataset.hojaLab || ''");if(status!="\"\"")break;await Task.Delay(200);}
+        Require(status=="\"ok\"","real coin and seating API reads");
+        Require(await core.ExecuteScriptAsync("localStorage.setItem('hoja-webview-lab','persist');localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage write");
+        await LoadBoard();
+        Require(await core.ExecuteScriptAsync("localStorage.getItem('hoja-webview-lab')")=="\"persist\"","storage reload");
+#if NATIVE_MANAGER_LAB
+        await VerifyManager(core);
+#else
+        await VerifyGame(core);
+        await VerifyRealGame(core);
+#if NATIVE_STORAGE_LAB
+        // 4B-4b: no legacy API fallback. Presentation remains Phase 4C.
+        await core.ExecuteScriptAsync(@"(async()=>{try{const r=await fetch('/api/notice',{method:'POST',headers:{'Content-Type':'text/plain'},body:btoa(unescape(encodeURIComponent(JSON.stringify({id:'lab-ui',text:'LAB_NOTICE',done:false}))))});const text=await (await fetch('/api/notice')).text();document.documentElement.dataset.labNotice=r.ok&&text.includes('LAB_NOTICE')?'ok':'bad'}catch(e){document.documentElement.dataset.labNotice='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labNotice||''")=="\"ok\"","actual WebView2 notice API write/read");
+#else
+        await VerifyManager(core);
+#endif
+#endif
+        Rectangle old=Bounds;SetImmersive(true);Require(FormBorderStyle==FormBorderStyle.None&&Bounds==Screen.FromControl(this).Bounds,"native fullscreen");
+        SetImmersive(false);Require(FormBorderStyle==FormBorderStyle.Sizable&&Bounds==old,"native restore");
+        core.Navigate("http://127.0.0.1:17439/");
+        await Task.Delay(500);
+        Require(Local(core.Source),"production origin rejected");
+#if NATIVE_MANAGER_LAB
+        Finish(0,"PASS: actual Chrome classroom sender and inbox, seating, roster update, confirmation auto-send, seating and PE offline render receipts and close via native C# server");
+#elif NATIVE_STORAGE_LAB
+        Finish(0,"PASS: actual WebView2 dashboard and pinned real mini-game against native C# storage server, solo/duo trusted input, coin grant/spend/refund/revision, lesson deadline/return, notice browser write/read");
+#else
+        Finish(0,"PASS: actual 1.66.43 dashboard, coin and seating API, isolated storage reload, native fullscreen and restore, production-origin block; mini V4 roster, grant, spend, duplicate, refund, stale revision, close/reopen and invalid origin; real stairs solo and duo trusted input and coin spend/refund; real timetable-driven lesson end; Chrome manager seating and offline seating/PE presentation");
+#endif
+    }
+    async Task<string> WaitResult(CoreWebView2 core,string expression) {
+        for(int i=0;i<100;i++){
+            string value=await core.ExecuteScriptAsync(expression);
+            if(value!="\"\""&&value!="null")return value;
+            await Task.Delay(200);
+        }
+        return "timeout";
+    }
+    async Task VerifyGame(CoreWebView2 core) {
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          const C=TTCoins,s=await C.snapshot(true),old=await C.snapshot(true),cls=s.roster.cls,at=new Date().toISOString();
+          if(cls!=='LAB_CLASS'||s.roster.students[0].id!=='lab1')throw Error('roster');
+          const g=C.grant(C.stateOf(s.events,cls),{cls,students:[s.roster.students[0]],amount:4,source:'lab',at});
+          await C.commit(s,g.events);
+          let rejected=false;try{await C.commit(old,g.events)}catch(e){rejected=e.message.includes('다른 코인 작업')}
+          if(!rejected||C.balanceOf(C.stateOf((await C.snapshot()).events,cls),'lab1')!==14)throw Error('grant/revision');
+          document.documentElement.dataset.labGrant='ok';
+        }catch(e){document.documentElement.dataset.labGrant='error:'+e.message}})()");
+        string grant=await WaitResult(core,"document.documentElement.dataset.labGrant||''");
+        Require(grant=="\"ok\"","grant and stale revision: "+grant);
+        await core.ExecuteScriptAsync(@"window.labGameResult='';
+          addEventListener('message',e=>{if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type==='lab-result')window.labGameResult=e.data.result});
+          for(const d of document.querySelectorAll('dialog[open]'))d.close();
+          document.getElementById('openMiniGames').click()");
+        string response=await WaitResult(core,"window.labGameResult||''");
+        Require(response=="\"ok\"","actual board mini protocol: "+response);
+        Require(await core.ExecuteScriptAsync("document.getElementById('miniGames').open&&document.getElementById('miniNotice').hidden")=="true","mini visible and ready");
+        await core.ExecuteScriptAsync(@"window.postMessage({type:'hoja-coin-spend',sessionId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',coinUnit:2,classId:'LAB_CLASS',ids:['lab1'],game:'lab',txId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},location.origin)");
+        await Task.Delay(500);
+        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await TTCoins.snapshot();const e=s.events.filter(x=>x.cls==='LAB_CLASS');const balance=TTCoins.balanceOf(TTCoins.stateOf(e,'LAB_CLASS'),'lab1');document.documentElement.dataset.labLedger=balance===14&&e.filter(x=>x.type==='spend').length===1&&e.filter(x=>x.type==='refund').length===1?'ok':'bad'}catch(e){document.documentElement.dataset.labLedger='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labLedger||''")=="\"ok\"","single spend/refund and forged origin rejection");
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","mini close");
+        await core.ExecuteScriptAsync("window.labGameResult='';document.getElementById('openMiniGames').click()");
+        Require(await WaitResult(core,"window.labGameResult||''")=="\"ok\"","mini reopen");
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+    }
+    async Task GameWait(string expression,string label,int count=120) {
+        string actual="",lastError="";
+        for(int i=0;i<count;i++){
+            foreach(var f in liveFrames.ToArray()){
+                try{
+                    string location=await f.ExecuteScriptAsync("location.href");
+                    if(location==null||!location.Contains("xkdtndbrwk111-prog.github.io/hoja-minigames/"))continue;
+                    gameFrame=f;
+                    actual=await f.ExecuteScriptAsync(expression);
+                    if(actual=="true"){Trace("PASS "+label);return;}
+                }catch(Exception ex){lastError=ex.GetType().Name+": "+ex.Message;}
+            }
+            await Task.Delay(100);
+        }
+        string probe="unavailable";
+        if(gameFrame!=null)try{probe=await gameFrame.ExecuteScriptAsync("JSON.stringify({href:location.href,ready:document.readyState,observe:typeof __labObserve,state:typeof __labObserve==='function'?__labObserve():null,errors:window.__labErrors,menu:!!document.getElementById('menuScreen')})");}catch(Exception ex){probe=ex.Message;}
+        string outer=await view.CoreWebView2.ExecuteScriptAsync("JSON.stringify({src:document.getElementById('miniFrame').getAttribute('src'),open:document.getElementById('miniGames').open,notice:document.getElementById('miniNotice').hidden,msg:window.__labMessages})");
+        Trace("FAIL "+label+" frames="+liveFrames.Count+" last="+actual+" exception="+lastError+" probe="+probe+" board="+outer);
+        throw new InvalidOperationException(label+" last="+actual+" probe="+probe+" frames="+liveFrames.Count+" exception="+lastError);
+    }
+    async Task GameAction(string script) {
+        Require(await gameFrame.ExecuteScriptAsync(script+";true")=="true","real game action "+script);
+    }
+    async Task FocusRealGame(CoreWebView2 core) {
+        Activate();view.Focus();
+        // Focus the real cross-origin document using browser input, not a synthetic DOM key event.
+        await core.ExecuteScriptAsync("document.getElementById('miniFrame').focus()");
+        string raw=await gameFrame.ExecuteScriptAsync("(()=>{const r=document.getElementById('stCanvas').getBoundingClientRect();return [r.left+r.width*.5,r.top+r.height*.16].join(',')})()");
+        string offset=await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame'),r=f.getBoundingClientRect();return [r.left+f.clientLeft,r.top+f.clientTop].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
+        string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        string point=",\"x\":"+x+",\"y\":"+y+",\"button\":\"left\",\"clickCount\":1";
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mousePressed\""+point+"}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseReleased\""+point+"}");
+        Trace("focus board="+await core.ExecuteScriptAsync("JSON.stringify({focused:document.hasFocus(),active:document.activeElement?.id})")+" game="+await gameFrame.ExecuteScriptAsync("JSON.stringify(__labObserve())"));
+        await GameWait("__labObserve().focus&&__labObserve().idx===0","real game focused without advancing",15);
+    }
+    async Task SendKey(CoreWebView2 core,string key,string code) {
+        string p="\"key\":\""+key+"\",\"code\":\""+code+"\",\"windowsVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0])+",\"nativeVirtualKeyCode\":"+(key=="Escape"?27:key.ToUpperInvariant()[0]);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"rawKeyDown\","+p+"}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"keyUp\","+p+"}");
+    }
+    async Task VerifyRealGame(CoreWebView2 core) {
+        // Keep the earlier fixture regression and its exact ledger independent.
+        string ledger=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","coins.log");
+        Require(File.ReadAllLines(ledger).Length==7,"fixture exact seven ledger rows with second student seed");
+        useRealGame=true;
+        await core.ExecuteScriptAsync("window.__labMessages=[];addEventListener('message',e=>{if(e.origin==='https://xkdtndbrwk111-prog.github.io'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__labMessages.push(e.data.type)});document.getElementById('openMiniGames').click()");
+        Trace("requested real game; existing frames="+liveFrames.Count);
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().classId==='LAB_CLASS'&&__labObserve().balance===14","real game coin handshake",200);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&!document.getElementById('openStairs').hidden","real menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","stairs selection");
+        await GameAction("document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","real coin picker");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().n===1&&__labObserve().charged&&__labObserve().balance===12","real stairs start and spend",180);
+        await GameWait("__labObserve().canvas","stairs rendered canvas/hit controls",30);
+        await FocusRealGame(core);
+        string key=await gameFrame.ExecuteScriptAsync("__labNext()");
+        Require(key=="\"a\""||key=="\"d\"","stairs next key");
+        string k=key.Trim('"');await SendKey(core,k,"Key"+k.ToUpperInvariant());
+        await GameWait("__labObserve().idx===1&&__labObserve().input.some(e=>e.type==='keydown'&&e.trusted&&e.code==='Key"+k.ToUpperInvariant()+"')","CDP keyboard actually moves player",20);
+        string raw=await gameFrame.ExecuteScriptAsync("__labTouch()");
+        string offset=await core.ExecuteScriptAsync("(()=>{const r=document.getElementById('miniFrame').getBoundingClientRect();return [r.left,r.top].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] xy=raw.Trim('"').Split(','),off=offset.Trim('"').Split(',');
+        string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+x+",\"y\":"+y+",\"id\":1}]}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        await GameWait("__labObserve().idx===2&&__labObserve().input.some(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted)","CDP touch actually moves player",20);
+        await SendKey(core,"Escape","Escape");
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden&&__labObserve().input.some(e=>e.type==='keydown'&&e.code==='Escape'&&e.trusted)","real keyboard pause",20);
+        await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14","real refund and return",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","real game board return");
+        await VerifyDuo(core);
+        await VerifyLessonEnd(core);
+        useRealGame=false;
+        File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),"real-game.pass"),"PASS pinned real stairs solo and reopened two-player round, simultaneous trusted touch, coin spend/refund, keyboard, pause, return; real lesson warning, timed close, farewell, refund and re-entry lock");
+    }
+    async Task VerifyDuo(CoreWebView2 core) {
+        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14&&__labObserve().balance2===10","real reopened two-player roster",150);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden","real reopened menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","duo selection");
+        await GameAction("[...document.querySelectorAll('#stageList .stage-card')].find(b=>b.textContent.includes('2인 경주')).click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","duo first student");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("!!document.querySelector('[data-student=lab2]:not([disabled])')&&document.querySelector('[data-student=lab1]').disabled","duo distinct second student");
+        await GameAction("document.querySelector('[data-student=lab2]').click()");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().n===2&&__labObserve().charged&&__labObserve().balance===13&&__labObserve().balance2===9","duo actual one coin per player",180);
+        await GameWait("__labObserve().canvas","duo canvas/hit regions");
+        string offset=await core.ExecuteScriptAsync("(()=>{const f=document.getElementById('miniFrame'),r=f.getBoundingClientRect();return [r.left+f.clientLeft,r.top+f.clientTop].join(',')})()");
+        var inv=System.Globalization.CultureInfo.InvariantCulture;string[] off=offset.Trim('"').Split(',');
+        string[] points=new string[2];
+        for(int i=0;i<2;i++){
+            string raw=await gameFrame.ExecuteScriptAsync("__labTouch("+i+")");
+            string[] xy=raw.Trim('"').Split(',');
+            string x=(double.Parse(xy[0],inv)+double.Parse(off[0],inv)).ToString(inv),y=(double.Parse(xy[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+            points[i]="{\"x\":"+x+",\"y\":"+y+",\"id\":"+(i+1)+"}";
+        }
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":["+String.Join(",",points)+"]}");
+        await GameWait("__labObserve().idx===1&&__labObserve().idx2===1&&new Set(__labObserve().input.filter(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted).map(e=>e.pid)).size===2","two simultaneous trusted contacts advance both players",20);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        // A touch-first game need not own keyboard focus; test its actual canvas menu instead.
+        string menuRaw=await gameFrame.ExecuteScriptAsync("__labMenuPoint()");
+        string[] menuXY=menuRaw.Trim('"').Split(',');
+        string mx=(double.Parse(menuXY[0],inv)+double.Parse(off[0],inv)).ToString(inv),my=(double.Parse(menuXY[1],inv)+double.Parse(off[1],inv)).ToString(inv);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":"+mx+",\"y\":"+my+",\"id\":4}]}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}");
+        await GameWait("__labObserve().phase==='paused'&&!document.getElementById('stOverlay').hidden&&__labObserve().idx===1&&__labObserve().idx2===1&&__labObserve().input.filter(e=>e.type==='pointerdown'&&e.pointer==='touch'&&e.trusted).length===3","duo actual touch menu pause",20);
+        await GameAction("[...document.querySelectorAll('#stOverlayActions button')].find(b=>b.textContent.includes('모음집')).click()");
+        await GameWait("!document.getElementById('menuScreen').hidden&&__labObserve().refunds===0&&__labObserve().balance===14&&__labObserve().balance2===10","duo refund restores both balances",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')")=="true","duo return to board");
+    }
+    async Task BoardWait(CoreWebView2 core,string expression,string label,int count=50) {
+        string last="";
+        for(int i=0;i<count;i++){
+            last=await core.ExecuteScriptAsync(expression);
+            if(last=="true"){Trace("PASS "+label);return;}
+            await Task.Delay(100);
+        }
+        Trace("FAIL "+label+" last="+last+" board="+await core.ExecuteScriptAsync("JSON.stringify({lesson:window.__labLessonStatus?.(),messages:window.__labLessonMessages,open:document.getElementById('miniGames').open})"));
+        throw new InvalidOperationException(label+" last="+last);
+    }
+    async Task VerifyLessonEnd(CoreWebView2 core) {
+        // Existing lesson logic, real cross-origin messages, real timers and coin ledger.
+        // Only the confirmed timetable input and lesson-boundary clocks are fixtures.
+        await core.ExecuteScriptAsync(@"window.__labLessonMessages=[];addEventListener('message',e=>{
+          if(e.origin!=='https://xkdtndbrwk111-prog.github.io'||e.source!==document.getElementById('miniFrame').contentWindow||!e.data)return;
+          const d=e.data;if(d.type==='hoja-close'||d.type==='hoja-ready'||d.type==='hoja-coin-refund')window.__labLessonMessages.push({type:d.type,sessionId:d.sessionId,reason:d.reason,start:d.lessonStartMs,id:d.lessonCue?.id,line:d.lessonCue?.line,portrait:typeof d.lessonCue?.portrait==='string'&&d.lessonCue.portrait.startsWith('data:image/webp;base64,')});
+        });document.getElementById('openMiniGames').click()");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14","lesson round reopened",150);
+        await GameAction("if(document.getElementById('hofFirstLater'))document.getElementById('hofFirstLater').click()");
+        await GameWait("!document.getElementById('menuScreen').hidden","lesson round menu");
+        await GameAction("document.getElementById('openStairs').click()");
+        await GameWait("!document.getElementById('choiceScreen').hidden","lesson round selection");
+        await GameAction("document.querySelector('#stageList .stage-card').click();document.getElementById('choiceStart').click()");
+        await GameWait("!document.getElementById('hofPicker').hidden&&!!document.querySelector('[data-student=lab1]:not([disabled])')","lesson round student");
+        await GameAction("document.querySelector('[data-student=lab1]').click()");
+        await GameWait("__labObserve().on&&__labObserve().phase==='run'&&__labObserve().charged&&__labObserve().balance===12","lesson real paid round",180);
+        await GameAction("window.__labLessonClock=Date.parse('2026-11-24T08:59:15+09:00')");
+        Require(await core.ExecuteScriptAsync("window.__labLessonSeed();!!window.__labLessonStatus().plan&&!window.__labLessonStatus().plan.locked")=="true","confirmed timetable fixture before lock");
+        await GameWait("__labObserve().lessonStart===Date.parse('2026-11-24T09:00:00+09:00')&&__labObserve().lessonWarning&&__labObserve().lessonOverlay&&!__labObserve().lessonClosed","actual board schedule produces game fuse warning",25);
+        Require(await core.ExecuteScriptAsync("document.getElementById('miniGames').open")=="true","game remains open at warning");
+        // Advance both guard clocks to the actual 30-second cutoff, never call close directly.
+        await core.ExecuteScriptAsync("window.__labLessonClock=Date.parse('2026-11-24T08:59:30+09:00')");
+        await GameAction("window.__labLessonClock=Date.parse('2026-11-24T08:59:30+09:00')");
+        await BoardWait(core,"!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')&&window.__labLessonStatus().plan.locked","actual deadline closes iframe",35);
+        await BoardWait(core,@"(()=>{const a=window.__labLessonMessages,m=a.find(x=>x.type==='hoja-close'&&x.reason==='lesson-end'),s=window.__labLessonStatus();return !!m&&a.some(x=>x.type==='hoja-ready'&&x.sessionId===m.sessionId)&&m.start===Date.parse('2026-11-24T09:00:00+09:00')&&m.portrait&&!!m.id&&!!m.line&&s.farewell.includes(m.line)&&s.image})()","actual game farewell cue rendered by board",25);
+        // Refund is a real asynchronous revision-checked ledger commit. Reading
+        // once after iframe close may observe the earlier spend-only revision.
+        // Poll fresh durable snapshots; require the exact charge and one refund.
+        await core.ExecuteScriptAsync(@"(async()=>{try{
+          for(let i=0;i<60;i++){
+            const s=await TTCoins.snapshot(true),st=TTCoins.stateOf(s.events,'LAB_CLASS');
+            const paid=s.events.filter(e=>e.cls==='LAB_CLASS'&&e.type==='spend'&&e.id==='lab1').at(-1);
+            const refunds=s.events.filter(e=>e.cls==='LAB_CLASS'&&e.type==='refund'&&e.charge===paid?.charge);
+            const b1=TTCoins.balanceOf(st,'lab1'),b2=TTCoins.balanceOf(st,'lab2');
+            document.documentElement.dataset.labTimedRefundDetail=JSON.stringify({balance1:b1,balance2:b2,charge:paid?.charge,spend:paid?.amount,refunds:refunds.map(e=>({id:e.id,amount:e.amount})),revision:s.revision});
+            if(b1===14&&b2===10&&paid?.amount===-2&&refunds.length===1&&refunds[0].id==='lab1'&&refunds[0].amount===2){document.documentElement.dataset.labTimedRefund='ok';return}
+            await new Promise(r=>setTimeout(r,100))
+          }
+          document.documentElement.dataset.labTimedRefund='bad'
+        }catch(e){document.documentElement.dataset.labTimedRefund='error';document.documentElement.dataset.labTimedRefundDetail=String(e)}})()");
+        string refundResult=await WaitResult(core,"document.documentElement.dataset.labTimedRefund||''");
+        Require(refundResult=="\"ok\"","timed exit refunds eligible round: "+refundResult+" "+await core.ExecuteScriptAsync("document.documentElement.dataset.labTimedRefundDetail||''"));
+        await core.ExecuteScriptAsync("document.getElementById('openMiniGames').click()");
+        await BoardWait(core,"!document.getElementById('miniGames').open&&window.__labLessonStatus().plan.locked&&window.__labLessonStatus().farewell.includes('다음 쉬는 시간에 만나')","re-entry blocked at cutoff");
+        await core.ExecuteScriptAsync("window.__labLessonClock=Date.parse('2026-11-24T09:40:00+09:00');document.getElementById('openMiniGames').click()");
+        await BoardWait(core,"document.getElementById('miniGames').open&&!window.__labLessonStatus().plan?.locked","next break unlocks actual board");
+        await GameWait("typeof __labObserve==='function'&&__labObserve().ready&&__labObserve().balance===14","next break real game reconnect",100);
+        await core.ExecuteScriptAsync("document.getElementById('miniBack').click();window.__labLessonRestore()");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('miniGames').open&&!document.getElementById('miniFrame').hasAttribute('src')&&window.__labLessonClock===undefined")=="true","lesson fixture restored and board returned");
+    }
+    void PublishMode() {
+        string tmp=modeFile+".tmp";
+        string json="{\"mode\":\"window\",\"release\":\"2026-11-25-V1.66.43-STABLE-PILOT\",\"window\":"+Handle.ToInt64()+",\"pid\":"+System.Diagnostics.Process.GetCurrentProcess().Id+"}";
+        File.WriteAllText(tmp,json,new System.Text.UTF8Encoding(false));
+        if(File.Exists(modeFile))File.Replace(tmp,modeFile,null);else File.Move(tmp,modeFile);
+    }
+    async Task VerifyManager(CoreWebView2 core) {
+        string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT");
+        modeFile=Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"),"TeacherToolsLocal","board-mode.json");
+        Require(!File.Exists(modeFile),"unexpected existing board mode");
+        PublishMode();
+        heartbeat.Interval=3000;heartbeat.Tick+=(s,e)=>{try{PublishMode();}catch(Exception ex){Fail("heartbeat: "+ex.Message);}};
+        heartbeat.Start();
+        File.WriteAllText(Path.Combine(root,"manager.ready"),"ready");
+        bool closeObserved=false;
+        for(int i=0;i<480;i++){
+            if(File.Exists(Path.Combine(root,"manager.close"))&&!closeObserved){
+                Require(await core.ExecuteScriptAsync("document.getElementById('ttPresentation').open&&document.getElementById('ttPresentationLoading').hidden&&document.getElementById('ttPresentation').dataset.kind==='pe'")=="true","actual PE dialog ready");
+                await core.ExecuteScriptAsync("document.getElementById('ttPresentationClose').click()");
+                closeObserved=true;
+            }
+            if(File.Exists(Path.Combine(root,"manager.done")))break;
+            await Task.Delay(200);
+        }
+        Require(closeObserved&&File.Exists(Path.Combine(root,"manager.done")),"Chrome manager handshake");
+        await core.ExecuteScriptAsync(@"(async()=>{try{const s=await (await fetch('/api/seating')).json();document.documentElement.dataset.labManager=s.classId==='LAB_CLASS_2'&&s.students.length===2&&s.students.some(x=>x.id==='m2'&&x.name==='LAB_MANAGER_TWO')&&s.assignments.length===2?'ok':'bad'}catch(e){document.documentElement.dataset.labManager='error'}})()");
+        Require(await WaitResult(core,"document.documentElement.dataset.labManager||''")=="\"ok\"","WebView2 reads real manager seating");
+        Require(await core.ExecuteScriptAsync("!document.getElementById('ttPresentation').open")=="true","presentation closed");
+        heartbeat.Stop();File.Delete(modeFile);modeFile=null;
+    }
+    void Fail(string why){Finish(1,"FAIL: "+why);}
+    void Finish(int code,string message){
+        if(finished)return;finished=true;exitCode=code;watchdog.Stop();heartbeat.Stop();if(modeFile!=null&&File.Exists(modeFile))File.Delete(modeFile);
+        File.WriteAllText(result,message);Close();
+    }
+    [STAThread] static int Main(string[] args){
+        if(args.Length!=3||args[0]!="--self-test")return 2;
+        // Only the isolated CI harness is supported in this milestone.
+        string root=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT");
+        if(String.IsNullOrEmpty(root))return 2;
+        root=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+        string p=Path.GetFullPath(args[1]),r=Path.GetFullPath(args[2]);
+        if(!p.StartsWith(root,StringComparison.OrdinalIgnoreCase)||!r.StartsWith(root,StringComparison.OrdinalIgnoreCase))return 2;
+        Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
+        using(var form=new Lab(p,r)){Application.Run(form);return form.ExitCode;}
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "HOJA-WEBVIEW2-ONLINE-PROFILE-1",
+  "mode": "online",
+  "managerOrigin": "https://xkdtndbrwk111-prog.github.io/teacher-tools/seating/",
+  "gameOrigin": "https://xkdtndbrwk111-prog.github.io/hoja-minigames/",
+  "nativeApiOrigin": "http://127.0.0.1:17439",
+  "staticServerExecutables": [],
+  "legacyLocalOrigins": [
+    "http://127.0.0.1:17451",
+    "http://127.0.0.1:4188",
+    "http://127.0.0.1:4189"
+  ],
+  "contracts": {
+    "managerRoster": "read-only online roster projection",
+    "presentation": "WebView2 external display handoff",
+    "coins": "existing Hoja Board protocol only",
+    "userData": "outside replaceable payload"
+  }
+}

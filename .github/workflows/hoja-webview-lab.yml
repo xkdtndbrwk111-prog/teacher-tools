@@ -1,0 +1,242 @@
+name: HOJA WebView2 isolated Windows lab
+on:
+  pull_request:
+    paths: ['tools/webview-lab/**','.github/workflows/hoja-webview-lab.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 734e494fad3c81033a786b4b7a5acc5c3ebcd424
+          path: reviewed-kernel
+          persist-credentials: false
+          sparse-checkout: tools/r8-updater/runtime
+      - name: Install pinned browser test driver
+        shell: powershell
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/hoja-lab-node" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright installation failed'}
+          "NODE_PATH=$env:RUNNER_TEMP/hoja-lab-node/node_modules" >> $env:GITHUB_ENV
+      - name: Compile native WinForms host and verify actual isolated board
+        shell: powershell
+        run: tools/webview-lab/build-test.ps1
+  book-reader:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify pinned original reader in independent clean Windows runner
+        shell: powershell
+        run: tools/webview-lab/book-reader-self-test.ps1
+  phase5-gate:
+    name: Phase 5D integrated regression gate (lab only)
+    needs: [native, book-reader]
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 3
+    env:
+      NATIVE_RESULT: ${{ needs.native.result }}
+      READER_RESULT: ${{ needs.book-reader.result }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify original dashboard, legacy worker and pinned reader unchanged
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $dashboard=git rev-parse HEAD:runtime-src/system/dashboard.html
+          $server=git rev-parse HEAD:runtime-src/system/server.ps1
+          if($dashboard -cne '3c9d702891313920c5fb1fb6e26b97b30a04d2d4'){throw 'Original dashboard drift'}
+          if($server -cne 'aca1c8b88560c51b967134293d9d951c167cf0e0'){throw 'Original worker drift'}
+          if((Get-FileHash runtime-src/system/asset-book-reader-host.zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne '20666e7d2c9fc7e28c89f4827258dbcd145f0f39176ea5d16335db8f4b473f6c'){throw 'Original reader drift'}
+          if($env:NATIVE_RESULT -ne 'success' -or $env:READER_RESULT -ne 'success'){throw "Phase 5D blocked: native=$env:NATIVE_RESULT reader=$env:READER_RESULT"}
+          Write-Host 'PASS Phase 5D isolated regression: native board, manager, ledger, book, meeting, media, rollback and pinned original sources'
+          Write-Host 'FIELD GATES REMAIN: actual Canva/account, actual external video download, physical display/input/audio and installed production candidate'
+  field-pilot:
+    name: Phase 6A isolated installable field pilot
+    needs: [phase5-gate]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: xkdtndbrwk111-prog/hoja-minigames
+          ref: 51c195b9cd87a63c96944f547ad307e07d7eac40
+          path: reviewed-minigames
+          persist-credentials: false
+          sparse-checkout: index.html
+          sparse-checkout-cone-mode: false
+      - name: Install pinned manager smoke browser driver
+        shell: powershell
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/hoja-field-node" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright installation failed'}
+          "NODE_PATH=$env:RUNNER_TEMP/hoja-field-node/node_modules" >> $env:GITHUB_ENV
+          "HOJA_FIELD_MANAGER_SMOKE=$env:GITHUB_WORKSPACE/tools/webview-lab/field-manager-smoke.cjs" >> $env:GITHUB_ENV
+      - name: Build separate field pilot
+        shell: powershell
+        run: tools/webview-lab/field-pilot-build.ps1
+      - name: Install and launch in separate test user data directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $package=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('field-pilot-smoke-'+[guid]::NewGuid().ToString('N'))
+          $legacy=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          New-Item -ItemType Directory -Path $legacy -Force|Out-Null
+          Set-Content -LiteralPath (Join-Path $legacy 'keep.txt') 'untouched' -Encoding ASCII
+          $hash=(Get-FileHash (Join-Path $legacy 'keep.txt')).Hash
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke -Mode wallpaper
+          if((Get-FileHash (Join-Path $legacy 'keep.txt')).Hash -cne $hash -or @(Get-ChildItem $legacy -Force).Count -ne 1){throw 'Existing installation changed'}
+          foreach($port in @(17451,4188,4189)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Pilot listener $port survived close"}}
+          $original=Join-Path $package 'payload/local/TeacherToolsLocal/release.json'
+          $bytes=[IO.File]::ReadAllBytes($original)
+          try{
+            [IO.File]::WriteAllText($original,'tampered')
+            $rejected=$false
+            try{& (Join-Path $package 'Start-Pilot.ps1') -Smoke}catch{if($_.Exception.Message -notmatch 'Package file mismatch'){throw};$rejected=$true}
+            if(!$rejected){throw 'Tampered package accepted'}
+          }finally{[IO.File]::WriteAllBytes($original,$bytes)}
+          Write-Host 'PASS pilot manual installation, window/wallpaper close and reopen, legacy directory untouched, tamper rejection'
+      - name: Upload verified field pilot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-WebView2-FieldPilot-A1
+          path: ${{ runner.temp }}/HOJA-WebView2-FieldPilot-A1
+          if-no-files-found: error
+          retention-days: 14
+      - name: Verify packaged native server against actual public HTTPS providers
+        shell: powershell
+        run: tools/webview-lab/field-live-provider-test.ps1 -Package (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1')
+  field-release-gate:
+    name: Phase 6E candidate readiness (not production approval)
+    needs: [phase5-gate, field-pilot]
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 3
+    env:
+      REGRESSION_RESULT: ${{ needs.phase5-gate.result }}
+      FIELD_PACKAGE_RESULT: ${{ needs.field-pilot.result }}
+    steps:
+      - name: Record automated candidate status without production promotion
+        shell: powershell
+        run: |
+          if($env:REGRESSION_RESULT -ne 'success' -or $env:FIELD_PACKAGE_RESULT -ne 'success'){throw "Candidate blocked: regression=$env:REGRESSION_RESULT package=$env:FIELD_PACKAGE_RESULT"}
+          Write-Host 'PASS automated candidate readiness only'
+          Write-Host 'PRODUCTION RELEASE BLOCKED: provider and device field acceptance, manager/game origin migration, approved data transfer, signed native server update and code-signing trust remain required'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value 'Automated candidate ready. Production release remains blocked pending Phase 6B/6C/6D field acceptance and signed update approval.'
+  phase7a-online:
+    name: Phase 7A actual online candidate (not production)
+    needs: [phase5-gate]
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build online candidate without static services
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          node tools/webview-lab/phase7a-profile.test.cjs
+          if($LASTEXITCODE -ne 0){throw 'Online profile failed'}
+          tools/webview-lab/field-pilot-build.ps1 -OnlineCandidate -Output (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot')
+          $bin=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot/payload/bin'
+          foreach($name in @('HOJA-Field-Static.exe','field-manager.zip','field-game.zip')){if(Test-Path (Join-Path $bin $name)){throw "Unexpected static component $name"}}
+      - name: Test actual public game and manager against isolated local board
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          npm install --prefix "$env:RUNNER_TEMP/hoja-online-node" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright installation failed'}
+          $env:NODE_PATH="$env:RUNNER_TEMP/hoja-online-node/node_modules"
+          $env:HOJA_FIELD_MANAGER_SMOKE="$env:GITHUB_WORKSPACE/tools/webview-lab/field-manager-smoke.cjs"
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('online-pilot-'+[guid]::NewGuid().ToString('N'))
+          $legacy=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          New-Item -ItemType Directory -Path $legacy -Force|Out-Null
+          Set-Content (Join-Path $legacy 'keep.txt') 'untouched'
+          $package=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot'
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke
+          if((Get-Content (Join-Path $legacy 'keep.txt') -Raw).Trim() -cne 'untouched' -or @(Get-ChildItem $legacy -Force).Count -ne 1){throw 'Existing installation changed'}
+          foreach($port in @(17439,4188,4189)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Online pilot listener $port survived close"}}
+          Write-Host 'PASS online candidate close and isolated legacy data'
+      - name: Upload online candidate after integrated test
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-WebView2-OnlinePilot
+          path: ${{ runner.temp }}/HOJA-WebView2-OnlinePilot
+          if-no-files-found: error
+          retention-days: 14
+  phase7b-native-start:
+    name: Phase 7B/C native setup and start research gate
+    needs: [phase5-gate]
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compile native setup candidate
+        shell: powershell
+        run: tools/webview-lab/field-pilot-build.ps1 -OnlineCandidate -Output (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-NativeStart')
+      - name: Native installer and launcher lifecycle without PowerShell child
+        shell: powershell
+        run: tools/webview-lab/online-native-start-test.ps1 -Package (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-NativeStart')
+  phase7d-native-transaction:
+    name: Phase 7D-1 native signed transaction research
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate unsigned native update publisher contract
+        shell: powershell
+        run: |
+          python tools/webview-lab/test_native_update_candidate.py
+          if($LASTEXITCODE -ne 0){throw 'Native update candidate contract failed'}
+      - name: Compile native transaction and test signed snapshots
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          $exe=Join-Path $env:RUNNER_TEMP 'HOJA-Native-Update-Transaction-Test.exe'
+          & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$exe" /reference:System.Web.Extensions.dll (Join-Path $env:GITHUB_WORKSPACE 'tools\webview-lab\native-update-kernel.cs')
+          if($LASTEXITCODE -ne 0){throw 'Native update transaction build failed'}
+          & $exe --ci-selftest
+          if($LASTEXITCODE -ne 0){throw 'Native signed transaction test failed'}
+  phase7e-preliminary:
+    name: Phase 7E preliminary automated integration gate (FIELD HOLD)
+    if: always()
+    needs: [phase5-gate, field-release-gate, phase7a-online, phase7b-native-start, phase7d-native-transaction]
+    runs-on: windows-latest
+    timeout-minutes: 3
+    env:
+      ORIGINAL: ${{ needs.phase5-gate.result }}
+      ISOLATED: ${{ needs.field-release-gate.result }}
+      ONLINE: ${{ needs.phase7a-online.result }}
+      SETUP: ${{ needs.phase7b-native-start.result }}
+      UPDATE_KERNEL: ${{ needs.phase7d-native-transaction.result }}
+    steps:
+      - name: Require all automated research jobs without production promotion
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $states=@{original=$env:ORIGINAL;isolated=$env:ISOLATED;online=$env:ONLINE;setup=$env:SETUP;updateKernel=$env:UPDATE_KERNEL}
+          foreach($name in $states.Keys){Write-Host "$name=$($states[$name])";if($states[$name] -cne 'success'){throw "Preliminary 7E blocked: $name"}}
+          Write-Host 'PASS preliminary automated 7E only'
+          Write-Host 'FIELD HOLD: live native download, native updater launch/readiness, version-independent data, shortcut/autostart, Authenticode and real device acceptance remain open'
