@@ -204,6 +204,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: Validate unsigned native update publisher contract
+        shell: powershell
+        run: |
+          python tools/webview-lab/test_native_update_candidate.py
+          if($LASTEXITCODE -ne 0){throw 'Native update candidate contract failed'}
       - name: Compile native transaction and test signed snapshots
         shell: powershell
         run: |
