@@ -214,3 +214,24 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Native update transaction build failed'}
           & $exe --ci-selftest
           if($LASTEXITCODE -ne 0){throw 'Native signed transaction test failed'}
+  phase7e-preliminary:
+    name: Phase 7E preliminary automated integration gate (FIELD HOLD)
+    if: always()
+    needs: [phase5-gate, field-release-gate, phase7a-online, phase7b-native-start, phase7d-native-transaction]
+    runs-on: windows-latest
+    timeout-minutes: 3
+    env:
+      ORIGINAL: ${{ needs.phase5-gate.result }}
+      ISOLATED: ${{ needs.field-release-gate.result }}
+      ONLINE: ${{ needs.phase7a-online.result }}
+      SETUP: ${{ needs.phase7b-native-start.result }}
+      UPDATE_KERNEL: ${{ needs.phase7d-native-transaction.result }}
+    steps:
+      - name: Require all automated research jobs without production promotion
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $states=@{original=$env:ORIGINAL;isolated=$env:ISOLATED;online=$env:ONLINE;setup=$env:SETUP;updateKernel=$env:UPDATE_KERNEL}
+          foreach($name in $states.Keys){Write-Host "$name=$($states[$name])";if($states[$name] -cne 'success'){throw "Preliminary 7E blocked: $name"}}
+          Write-Host 'PASS preliminary automated 7E only'
+          Write-Host 'FIELD HOLD: live native download, native updater launch/readiness, version-independent data, shortcut/autostart, Authenticode and real device acceptance remain open'

@@ -24,7 +24,7 @@ internal sealed class NativeUpdateKernel {
  static bool HashValid(string s){return Match(s,@"\A[a-f0-9]{64}\z");}
  static bool VersionValid(string s){return Match(s,@"\A[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}\z");}
  static bool ProgramPath(string s){
-  if(s==null||s.Contains(".."))return false;
+  if(s==null||s.Contains("..")||!Match(s,@"\A[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\z"))return false;
   if(Match(s,@"\Abin/(HOJA-Native-(Server|Launch-Lab)\.exe|Microsoft\.Web\.WebView2\.(Core|WinForms)\.dll|WebView2Loader\.dll|LICENSE[^/]*|ThirdPartyNotices[^/]*)\z"))return true;
   const string prefix="local/TeacherToolsLocal/";
   if(!s.StartsWith(prefix,StringComparison.Ordinal))return false;
@@ -191,6 +191,7 @@ internal sealed class NativeUpdateKernel {
    using(var rsa=new RSACryptoServiceProvider(2048)){
     rsa.PersistKeyInCsp=false;
     var k=new NativeUpdateKernel(root,new[]{program,release});
+    Require(!ProgramPath(@"bin/LICENSE\seating.json")&&!ProgramPath("local/TeacherToolsLocal/seating.json"),"Unsafe program path accepted");
     var files=new List<object>{new Dictionary<string,object>{{"path",program},{"sha256",Hash(newProgram)},{"bytes",newProgram.Length}},new Dictionary<string,object>{{"path",release},{"sha256",Hash(newRelease)},{"bytes",newRelease.Length}}};
     var manifest=new Dictionary<string,object>{{"schema","TT-NATIVE-SNAPSHOT-1"},{"channel","online-pilot"},{"kernel",1},{"version","1.66.44"},{"bases",new[]{Hash(oldRelease)}},{"files",files}};
     Func<byte[]> signed=()=>{
@@ -203,6 +204,7 @@ internal sealed class NativeUpdateKernel {
     byte[] good=signed();
     var bad=Json().Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(good));byte[] sig=Convert.FromBase64String((string)bad["signature"]);sig[0]^=1;bad["signature"]=Convert.ToBase64String(sig);
     reject(()=>k.Prepare(Encoding.UTF8.GetBytes(Json().Serialize(bad)),key,"1.66.43",fetch));
+    using(var wrong=new RSACryptoServiceProvider(2048)){wrong.PersistKeyInCsp=false;reject(()=>k.Prepare(good,wrong.ToXmlString(false),"1.66.43",fetch));}
     reject(()=>k.Prepare(good,key,"1.66.44",fetch));
     manifest["bases"]=new[]{new string('0',64)};reject(()=>k.Prepare(signed(),key,"1.66.43",fetch));manifest["bases"]=new[]{Hash(oldRelease)};
     files.Add(new Dictionary<string,object>{{"path","local/TeacherToolsLocal/seating.json"},{"sha256",Hash(newProgram)},{"bytes",newProgram.Length}});
