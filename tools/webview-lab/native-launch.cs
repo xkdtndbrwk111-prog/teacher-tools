@@ -484,6 +484,7 @@ internal sealed class NativeBoardLaunch : Form {
     async void VerifyFieldCoins(){
         var core=browser.CoreWebView2;
         string result=Path.Combine(root,"field-coin-smoke.result");
+        string failure=null;
         try{
             // Seed only the manager test's synthetic roster via the original ledger API.
             await core.ExecuteScriptAsync(@"window.__fieldSeed=null;(async()=>{try{
@@ -525,13 +526,15 @@ internal sealed class NativeBoardLaunch : Form {
             await FieldBoardWait(@"(async()=>{const s=await TTCoins.snapshot(true),c=s.roster.cls,e=s.events.filter(x=>x.cls===c&&x.id==='field-test-1'&&['spend','refund'].includes(x.type));return e.length===2&&e[0].charge===e[1].charge&&e[0].amount===-2&&e[1].amount===2&&TTCoins.balanceOf(TTCoins.stateOf(s.events,c),'field-test-1')===14})()","matched refund",80);
             await core.ExecuteScriptAsync("document.getElementById('miniBack').click()");
             File.WriteAllText(result,"PASS installed manager roster -> actual "+(FieldGameOrigin.StartsWith("https:")?"online":"packaged")+" game -> exact ledger spend and matched refund");
-        }catch(Exception ex){
+        }catch(Exception ex){failure=ex.Message;}
+        // C# 5 compiler does not permit await inside a catch block.
+        if(failure!=null){
             string trace="";
             try{
                 if(fieldGameFrame!=null)trace=await fieldGameFrame.ExecuteScriptAsync(@"(()=>({ready:document.readyState,menuHidden:document.getElementById('menuScreen')?.hidden,choiceHidden:document.getElementById('choiceScreen')?.hidden,stageCount:document.querySelectorAll('#stageList .stage-card').length,buttonDisabled:document.getElementById('openStairs')?.disabled,pickerHidden:document.getElementById('hofPicker')?.hidden,errors:window.__fieldGameErrors||[]}))()");
                 trace+=" replies="+await core.ExecuteScriptAsync("(window.__fieldCoinReplies||[]).slice(-20)");
             }catch{}
-            File.WriteAllText(result,"FAIL "+ex.Message+" trace="+trace);
+            File.WriteAllText(result,"FAIL "+failure+" trace="+trace);
         }
     }
     bool FieldGame(string raw){
