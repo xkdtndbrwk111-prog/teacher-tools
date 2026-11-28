@@ -111,6 +111,10 @@ $serverDefines='NATIVE_FIELD_PILOT';$hostDefines='NATIVE_FIELD_PILOT,NATIVE_STOR
 if($OnlineCandidate){$serverDefines+=',NATIVE_ONLINE_PILOT';$hostDefines+=',NATIVE_ONLINE_PILOT'}
 & $csc /nologo /codepage:65001 "/define:$serverDefines" /target:exe /platform:x64 "/out:$bin\HOJA-Native-Server.exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Field server build failed'}
+if($OnlineCandidate -and $env:GITHUB_ACTIONS -eq 'true'){
+ & (Join-Path $bin 'HOJA-Native-Server.exe') --lab-media-native-selftest
+ if($LASTEXITCODE -ne 0){throw 'Native media helper test failed'}
+}
 if(!$OnlineCandidate){
 & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$bin\HOJA-Field-Static.exe" /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'field-static-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Field static server build failed'}

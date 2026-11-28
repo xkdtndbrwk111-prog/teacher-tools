@@ -1758,8 +1758,8 @@ internal static class NativeReadServer {
    string job=Guid.NewGuid().ToString("N");
    MediaWrite(media,"last-job.json",new Dictionary<string,object>{{"job",job},{"id",id},{"quality",q},{"created",DateTime.UtcNow.ToString("o")}});
    // The live path requires a separate explicit lab flag; CI never creates it.
-   string script=fixture?Path.Combine(labRoot,"media-download-fixture.ps1"):Path.Combine(root,"server.ps1");
-   mediaDownload=MediaLaunch(script,"-YoutubeJob "+job+" -YoutubeVideoId "+id+" -YoutubeQuality "+q,ref mediaDownloadJob);
+   if(fixture)mediaDownload=MediaLaunch(Path.Combine(labRoot,"media-download-fixture.ps1"),"-YoutubeJob "+job+" -YoutubeVideoId "+id+" -YoutubeQuality "+q,ref mediaDownloadJob);
+   else mediaDownload=MediaLaunchProgram(System.Reflection.Assembly.GetExecutingAssembly().Location,"--lab-media-download "+job+" "+id+" "+q+" "+Process.GetCurrentProcess().Id,ref mediaDownloadJob);
    return new Dictionary<string,object>{{"ok",true},{"job",job}};
   }
   if(action=="/api/youtube/cancel"){
@@ -2118,6 +2118,280 @@ internal static class NativeReadServer {
    }
   }
  }
+ // 7B: Native download worker. All engine versions, arguments and output contracts
+ // are fixed by the reviewed original worker; the board passes only a validated ID.
+ sealed class MediaPin {
+  public readonly string Component,Repo,Tag,Name,Hash;
+  public readonly long Max;
+  public readonly string[] Files;
+  public MediaPin(string component,string repo,string tag,string name,string hash,long max,params string[] files){Component=component;Repo=repo;Tag=tag;Name=name;Hash=hash;Max=max;Files=files;}
+ }
+ const string MediaEngineId="yt2026.10.26-deno2.9.4-ffmpeg20261112";
+ static readonly MediaPin[] MediaPins={
+  new MediaPin("yt-dlp","yt-dlp/yt-dlp","2026.10.26","yt-dlp.exe","f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",80L*1024*1024,"yt-dlp.exe"),
+  new MediaPin("Deno","denoland/deno","v2.9.4","deno-x86_64-pc-windows-msvc.zip","68ed08b05c56cf887e9aa509947dc3f468f7e12f47a13e5c1abd51d46d1453ef",150L*1024*1024,"deno.exe"),
+  new MediaPin("FFmpeg","FFmpeg-Builds/FFmpeg-Builds","autobuild-2026-11-12-15-40","ffmpeg-n9.0.2-57-gd838f9f9ae-win64-gpl-9.0.zip","cf43d18e45a1b79a4d74f0e6f94206fe23d82f38de11352e5db9496058dc9c48",400L*1024*1024,"ffmpeg.exe","ffprobe.exe")
+ };
+ static readonly string[] MediaEngineFiles={"yt-dlp.exe","deno.exe","ffmpeg.exe","ffprobe.exe"};
+ static string MediaHashFile(string file){
+  if(!MediaSafeFile(file))throw new IOException("engine integrity file");
+  using(var sha=SHA256.Create())using(var stream=File.OpenRead(file))return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();
+ }
+ static void MediaCancel(string job){if(File.Exists(Path.Combine(job,"cancel")))throw new OperationCanceledException();}
+ static void MediaState(string job,string state,string phase,int pct=-1,object install=null,string code=null){
+  var record=new Dictionary<string,object>{{"state",state},{"phase",phase},{"percent",pct},{"updated",DateTime.UtcNow.ToString("o")}};
+  if(install!=null)record["install"]=install;if(code!=null)record["errorCode"]=code;
+  MediaWrite(job,"state.json",record);
+ }
+ static void MediaInstallState(string job,MediaPin p,int index,string step,long bytes=0,long total=-1){
+  int percent=total>0?(int)Math.Min(100,100.0*bytes/total):-1;
+  MediaState(job,"running","install",percent,new Dictionary<string,object>{{"component",p.Component},{"index",index},{"step",step},{"bytes",bytes},{"total",total}});
+ }
+ static void MediaEngineVerify(string dir){
+  if(!MediaSafeDirectory(dir))throw new IOException("engine integrity directory");
+  var manifest=MediaJson(Path.Combine(dir,"manifest.json"));
+  if(manifest==null||TextVal(manifest,"id")!=MediaEngineId)throw new IOException("engine integrity manifest");
+  var entries=Val(manifest,"files") as System.Collections.IEnumerable;
+  if(entries==null)throw new IOException("engine integrity inventory");
+  var found=new Dictionary<string,string>(StringComparer.Ordinal);
+  foreach(object raw in entries){
+   var e=Obj(raw);string name=TextVal(e,"name"),hash=TextVal(e,"sha");
+   if(Array.IndexOf(MediaEngineFiles,name)<0||!MatchFull(hash,"[a-f0-9]{64}")||found.ContainsKey(name))throw new IOException("engine integrity inventory");
+   found.Add(name,hash);
+  }
+  foreach(string name in MediaEngineFiles){
+   string hash;
+   if(!found.TryGetValue(name,out hash)||MediaHashFile(Path.Combine(dir,name))!=hash)throw new IOException("engine integrity binary");
+  }
+  if(found["yt-dlp.exe"]!=MediaPins[0].Hash)throw new IOException("engine integrity pinned binary");
+ }
+ static bool MediaEngineUrl(Uri uri){
+  return uri!=null&&uri.Scheme=="https"&&uri.Port==443&&uri.UserInfo==""&&
+   (uri.Host=="github.com"||uri.Host=="release-assets.githubusercontent.com"||uri.Host=="objects.githubusercontent.com"||uri.Host=="github-releases.githubusercontent.com");
+ }
+ static void MediaReceivePin(MediaPin pin,string archive,string job,int index){
+  Uri url=new Uri("https://github.com/"+pin.Repo+"/releases/download/"+pin.Tag+"/"+pin.Name);
+  var clock=Stopwatch.StartNew();
+  for(int redirects=0;redirects<=5;redirects++){
+   MediaCancel(job);
+   if(!MediaEngineUrl(url))throw new IOException("engine archive redirect");
+   var request=(HttpWebRequest)WebRequest.Create(url);
+   request.AllowAutoRedirect=false;request.UserAgent="TeacherToolsMedia/1.66.43";request.Timeout=45000;request.ReadWriteTimeout=45000;
+   try{
+    var pending=request.GetResponseAsync();
+    var connect=Stopwatch.StartNew();
+    while(!pending.Wait(250)){MediaCancel(job);if(connect.ElapsedMilliseconds>45000||clock.Elapsed.TotalMinutes>15)throw new IOException("engine connection timeout");}
+    using(var response=(HttpWebResponse)pending.GetAwaiter().GetResult()){
+     int status=(int)response.StatusCode;
+     if(status>=300&&status<400){string location=response.Headers["Location"];if(String.IsNullOrEmpty(location))throw new IOException("engine archive redirect");url=new Uri(url,location);continue;}
+     if(status!=200)throw new IOException("engine archive HTTP");
+     long total=response.ContentLength,count=0;if(total==0||total>pin.Max)throw new IOException("engine archive size");
+     using(var input=response.GetResponseStream())using(var output=new FileStream(archive,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){
+      byte[] buffer=new byte[65536];var report=Stopwatch.StartNew();MediaInstallState(job,pin,index,"transfer",0,total);
+      while(true){
+       MediaCancel(job);var transfer=Stopwatch.StartNew();var read=input.ReadAsync(buffer,0,buffer.Length);
+       while(!read.Wait(250)){MediaCancel(job);if(transfer.ElapsedMilliseconds>45000||clock.Elapsed.TotalMinutes>15)throw new IOException("engine transfer timeout");}
+       int n=read.GetAwaiter().GetResult();if(n==0)break;
+       count+=n;if(count>pin.Max||clock.Elapsed.TotalMinutes>15)throw new IOException("engine archive limit");
+       output.Write(buffer,0,n);
+       if(report.ElapsedMilliseconds>=1000){MediaInstallState(job,pin,index,"transfer",count,total);report.Restart();}
+      }
+      if(count<=0||(total>=0&&count!=total))throw new IOException("engine archive incomplete");
+      output.Flush(true);MediaInstallState(job,pin,index,"transfer",count,total);
+     }
+     return;
+    }
+   }finally{request.Abort();}
+  }
+  throw new IOException("engine archive redirect limit");
+ }
+ static void MediaExtractPin(string archive,string stage,MediaPin pin,string job){
+  using(var zip=ZipFile.OpenRead(archive)){
+   foreach(string name in pin.Files){
+    MediaCancel(job);ZipArchiveEntry found=null;
+    foreach(var entry in zip.Entries)if(entry.Name==name){if(found!=null)throw new IOException("engine archive duplicate");found=entry;}
+    if(found==null||found.Length<=0||found.Length>500L*1024*1024)throw new IOException("engine archive entry");
+    string target=Path.Combine(stage,name);
+    using(var input=found.Open())using(var output=new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.None)){
+     byte[] buffer=new byte[65536];long count=0;
+     while(true){MediaCancel(job);int n=input.Read(buffer,0,buffer.Length);if(n==0)break;count+=n;if(count>found.Length)throw new IOException("engine archive expanded size");output.Write(buffer,0,n);}
+     if(count!=found.Length)throw new IOException("engine archive length");output.Flush(true);
+    }
+   }
+  }
+ }
+ static string MediaInstallEngine(string media,string job){
+  string root=Path.Combine(media,"engines");MediaEnsureDirectory(root);
+  string lockFile=Path.Combine(root,".install.lock");if(File.Exists(lockFile)&&!MediaSafeFile(lockFile))throw new IOException("engine lock integrity");
+  using(var guard=new FileStream(lockFile,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None)){
+   MediaCancel(job);string target=Path.Combine(root,MediaEngineId);
+   if(Directory.Exists(target)||File.Exists(target)){MediaEngineVerify(target);return target;}
+   string stage=Path.Combine(root,"stage-"+Guid.NewGuid().ToString("N"));MediaEnsureDirectory(stage);
+   try{
+    for(int i=0;i<MediaPins.Length;i++){
+     var pin=MediaPins[i];int index=i+1;MediaCancel(job);MediaInstallState(job,pin,index,"connect");
+     string archive=Path.Combine(stage,pin.Name);MediaReceivePin(pin,archive,job,index);
+     MediaCancel(job);MediaInstallState(job,pin,index,"verify");
+     if(MediaHashFile(archive)!=pin.Hash)throw new IOException("engine archive integrity");
+     if(pin.Name.EndsWith(".zip",StringComparison.Ordinal)){MediaInstallState(job,pin,index,"extract");MediaExtractPin(archive,stage,pin,job);File.Delete(archive);}
+    }
+    MediaCancel(job);MediaInstallState(job,MediaPins[2],3,"finalize");
+    var files=new List<object>();foreach(string name in MediaEngineFiles)files.Add(new Dictionary<string,object>{{"name",name},{"sha",MediaHashFile(Path.Combine(stage,name))}});
+    MediaWrite(stage,"manifest.json",new Dictionary<string,object>{{"id",MediaEngineId},{"files",files}});
+    MediaEngineVerify(stage);MediaCancel(job);Directory.Move(stage,target);MediaEngineVerify(target);return target;
+   }finally{
+    if(MediaSafeDirectory(stage)){foreach(string file in Directory.GetFiles(stage))if(MediaSafeFile(file))File.Delete(file);if(Directory.GetFileSystemEntries(stage).Length==0)Directory.Delete(stage);}
+   }
+  }
+ }
+ static string MediaQuote(string value){
+  // CRT command-line escaping for a single argument, not a shell command.
+  var b=new StringBuilder("\"");int slashes=0;
+  foreach(char ch in value){if(ch=='\\'){slashes++;continue;}if(ch=='"')b.Append('\\',slashes*2+1);else b.Append('\\',slashes);slashes=0;b.Append(ch);}
+  b.Append('\\',slashes*2);b.Append('"');return b.ToString();
+ }
+ static string MediaArgs(params string[] args){var values=new List<string>();foreach(string a in args)values.Add(MediaQuote(a));return String.Join(" ",values.ToArray());}
+ static string MediaTail(string file){
+  try{if(!MediaSafeFile(file))return "";using(var s=new FileStream(file,FileMode.Open,FileAccess.Read,FileShare.ReadWrite)){s.Position=Math.Max(0,s.Length-8192);using(var r=new StreamReader(s,Encoding.UTF8))return r.ReadToEnd();}}catch{return "";}
+ }
+ static string MediaInvokeEngine(string engine,string job,string phase,int timeout,params string[] args){
+  MediaCancel(job);if(!MediaSafeFile(engine))throw new IOException("engine missing");
+  string output=Path.Combine(job,phase+".out"),error=Path.Combine(job,phase+".err");
+  IntPtr owned=CreateJobObject(IntPtr.Zero,null);if(owned==IntPtr.Zero)throw new IOException("engine job");
+  Process p=null;
+  try{
+   var limits=new BookJobExtended();limits.BasicLimitInformation.LimitFlags=0x2000;
+   if(!SetInformationJobObject(owned,9,ref limits,(uint)Marshal.SizeOf(typeof(BookJobExtended))))throw new IOException("engine job limits");
+   using(var os=new FileStream(output,FileMode.CreateNew,FileAccess.Write,FileShare.Read))
+   using(var es=new FileStream(error,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){
+    p=Process.Start(new ProcessStartInfo(engine,MediaArgs(args)){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=job,RedirectStandardOutput=true,RedirectStandardError=true});
+    if(p==null||!AssignProcessToJobObject(owned,p.Handle))throw new IOException("engine child");
+    var ot=p.StandardOutput.BaseStream.CopyToAsync(os);var et=p.StandardError.BaseStream.CopyToAsync(es);
+    var clock=Stopwatch.StartNew();int last=-2;
+    while(!p.WaitForExit(400)){
+     MediaCancel(job);if(clock.Elapsed.TotalSeconds>timeout)throw new IOException("engine timeout");
+     if(os.Length>4L*1024*1024||es.Length>4L*1024*1024)throw new IOException("engine log limit");
+     if(phase=="download"){
+      int pct=-1;foreach(Match m in Regex.Matches(MediaTail(output),@"(?m)^TT_PROGRESS:\s*(\d{1,3})(?:\.\d+)?%"))pct=Math.Min(100,Int32.Parse(m.Groups[1].Value));
+      if(pct!=last){MediaState(job,"running","download",pct);last=pct;}
+     }
+    }
+    if(!ot.Wait(5000)||!et.Wait(5000)||p.ExitCode!=0)throw new IOException("engine failed");
+    if(os.Length>4L*1024*1024||es.Length>4L*1024*1024)throw new IOException("engine log limit");
+    MediaCancel(job);
+   }
+   return output;
+  }finally{
+   if(owned!=IntPtr.Zero)CloseHandle(owned);
+   if(p!=null){try{if(!p.HasExited){p.Kill();p.WaitForExit(5000);}}catch{}p.Dispose();}
+  }
+ }
+ static bool MediaAlreadyStored(string lib,string id,string q){
+  if(!Directory.Exists(lib))return false;if(!MediaSafeDirectory(lib))throw new IOException("library integrity");
+  string key=id+"-"+q;
+  if(File.Exists(Path.Combine(lib,key,"video.mp4")))return true;
+  foreach(string file in Directory.GetFiles(lib))if(Path.GetFileName(file).EndsWith(" ["+key+"].mp4",StringComparison.Ordinal))return true;
+  return false;
+ }
+ static string MediaDownloadName(string title,string id,string q){
+  string safe=Regex.Replace(title??"","[<>:\"/\\\\|?*\\x00-\\x1f]","_").Trim().TrimEnd('.');
+  if(safe.Length>80){safe=safe.Substring(0,80);if(Char.IsHighSurrogate(safe[safe.Length-1]))safe=safe.Substring(0,safe.Length-1);}
+  if(safe.Length==0)safe="YouTube";return safe+" ["+id+"-"+q+"].mp4";
+ }
+ static void MediaCompleteNative(string job,string lib,string engine,string id,string q){
+  string file=Path.Combine(job,"video.mp4");if(!MediaSafeFile(file)||new FileInfo(file).Length<=0||new FileInfo(file).Length>2L*1024*1024*1024)throw new IOException("missing or invalid MP4");
+  string probe=MediaInvokeEngine(Path.Combine(engine,"ffprobe.exe"),job,"verify",60,"-v","error","-show_streams","-show_format","-of","json",file);
+  if(new FileInfo(probe).Length>4L*1024*1024)throw new IOException("verify result limit");
+  var info=Obj(Serializer().DeserializeObject(File.ReadAllText(probe,Utf8)));var streams=Val(info,"streams") as System.Collections.IEnumerable;
+  if(streams==null)throw new IOException("verify streams");
+  int video=0,audio=0;foreach(object raw in streams){var x=Obj(raw);string type=TextVal(x,"codec_type");
+   if(type=="video"){video++;if(TextVal(x,"codec_name")!="h264"||!IntValue(Val(x,"height"),1,Int32.Parse(q)))throw new IOException("verify video");}
+   if(type=="audio"){audio++;if(TextVal(x,"codec_name")!="aac")throw new IOException("verify audio");}
+  }
+  string formats=TextVal(Obj(Val(info,"format")),"format_name");
+  if(video!=1||audio!=1||Array.IndexOf(formats.Split(','),"mp4")<0)throw new IOException("verify media");
+  MediaCancel(job);MediaEnsureDirectory(lib);if(MediaAlreadyStored(lib,id,q))throw new IOException("duplicate media");
+  string title="",titlePath=Path.Combine(job,"title.json");
+  try{if(MediaSafeFile(titlePath)&&new FileInfo(titlePath).Length<=65536)title=MediaTitle(Serializer().DeserializeObject(File.ReadAllText(titlePath,Utf8)));}catch{}
+  string target=Path.Combine(lib,MediaDownloadName(title,id,q));
+  MediaCancel(job);File.Move(file,target);
+ }
+ static string MediaNativeError(string job,string phase,Exception e){
+  string msg=e.ToString(),log=MediaTail(Path.Combine(job,"download.err"));
+  if(phase=="download"){
+   if(Regex.IsMatch(log,"CERTIFICATE_VERIFY_FAILED|CertificateVerifyError",RegexOptions.IgnoreCase))return "tls_certificate";
+   if(Regex.IsMatch(log,"HTTP Error (403|429)",RegexOptions.IgnoreCase))return "remote_rejected";
+   if(Regex.IsMatch(log,"Sign in|not a bot|login required",RegexOptions.IgnoreCase))return "remote_auth";
+   if(Regex.IsMatch(msg+" "+log,"timeout|timed out",RegexOptions.IgnoreCase))return "timeout";
+   return "download_failed";
+  }
+  if(phase=="install")return Regex.IsMatch(msg,"timeout",RegexOptions.IgnoreCase)?"timeout":Regex.IsMatch(msg,"integrity|archive",RegexOptions.IgnoreCase)?"engine_integrity":"install_failed";
+  return "verify_failed";
+ }
+ static void MediaRunDownload(string media,string jobId,string id,string q){
+  MediaEnsureDirectory(media);
+  string lockFile=Path.Combine(media,".download.lock");if(File.Exists(lockFile)&&!MediaSafeFile(lockFile))throw new IOException("download lock integrity");
+  using(var guard=new FileStream(lockFile,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None)){
+   string jobs=Path.Combine(media,"jobs");MediaEnsureDirectory(jobs);string job=Path.Combine(jobs,jobId);
+   if(Directory.Exists(job)||File.Exists(job))throw new IOException("job already exists");
+   MediaEnsureDirectory(job);string phase="install";
+   try{
+    MediaState(job,"running",phase);string engine=MediaInstallEngine(media,job);MediaCancel(job);
+    string lib=Path.Combine(media,"library");if(MediaAlreadyStored(lib,id,q))throw new IOException("duplicate media");
+    phase="download";MediaState(job,"running",phase);
+    string format="bv[height<="+q+"][ext=mp4][vcodec^=avc1]+ba[ext=m4a][acodec^=mp4a]/b[height<="+q+"][ext=mp4][vcodec^=avc1][acodec^=mp4a]";
+    MediaInvokeEngine(Path.Combine(engine,"yt-dlp.exe"),job,"download",3600,"--ignore-config","--compat-options","no-certifi","--no-playlist","--no-cache-dir","--no-cookies","--no-cookies-from-browser","--no-js-runtimes","--js-runtimes","deno:"+Path.Combine(engine,"deno.exe"),"--ffmpeg-location",engine,"--socket-timeout","20","--retries","3","--fragment-retries","3","--max-filesize","2G","--newline","--progress","--progress-template","download:TT_PROGRESS:%(progress._percent_str)s","--print-to-file","after_move:%(title)j","title.json","--no-simulate","--format",format,"--merge-output-format","mp4","--no-mtime","-o",Path.Combine(job,"video.%(ext)s"),"--","https://www.youtube.com/watch?v="+id);
+    phase="verify";MediaState(job,"running",phase);MediaCompleteNative(job,lib,engine,id,q);MediaState(job,"complete","saved",100);
+   }catch(Exception e){
+    if(e is OperationCanceledException||File.Exists(Path.Combine(job,"cancel")))MediaState(job,"cancelled","stopped");
+    else MediaState(job,"failed","error",-1,null,MediaNativeError(job,phase,e));
+    throw;
+   }finally{
+    foreach(string file in Directory.GetFiles(job))if(MediaSafeFile(file)&&Array.IndexOf(new[]{"state.json","cancel","download.out","download.err","verify.out","verify.err"},Path.GetFileName(file))<0)File.Delete(file);
+   }
+  }
+ }
+ static int MediaNativeSelfTest(){
+  if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true")return 2;
+  string root=Path.Combine(Path.GetTempPath(),"hoja-native-media-test-"+Guid.NewGuid().ToString("N"));
+  try{
+   MediaEnsureDirectory(root);string job=Path.Combine(root,"job"),stage=Path.Combine(root,"stage");MediaEnsureDirectory(job);MediaEnsureDirectory(stage);
+   string archive=Path.Combine(root,"asset.zip");
+   using(var zip=ZipFile.Open(archive,ZipArchiveMode.Create)){
+    var entry=zip.CreateEntry("sub/deno.exe");using(var stream=entry.Open()){stream.WriteByte(42);}
+    entry=zip.CreateEntry("../unexpected.exe");using(var stream=entry.Open()){stream.WriteByte(1);}
+   }
+   MediaExtractPin(archive,stage,MediaPins[1],job);
+   if(File.ReadAllBytes(Path.Combine(stage,"deno.exe"))[0]!=42||Directory.GetFiles(stage).Length!=1||File.Exists(Path.Combine(root,"unexpected.exe")))throw new IOException("native archive extraction");
+   if(MediaEngineUrl(new Uri("http://github.com/"))||MediaEngineUrl(new Uri("https://github.com.example.invalid/"))||!MediaEngineUrl(new Uri("https://release-assets.githubusercontent.com/test")))throw new IOException("native engine HTTPS policy");
+   File.WriteAllText(Path.Combine(job,"cancel"),"1");bool cancelled=false;
+   try{MediaCancel(job);}catch(OperationCanceledException){cancelled=true;}
+   if(!cancelled)throw new IOException("native cancellation");
+   MediaState(job,"cancelled","stopped");
+   var state=MediaJson(Path.Combine(job,"state.json"));if(TextVal(state,"state")!="cancelled")throw new IOException("native state contract");
+   if(MediaDownloadName("bad: name","abcdefghijk","720")!="bad_ name [abcdefghijk-720].mp4"||MediaQuote("a b")!="\"a b\"")throw new IOException("native argument contract");
+   Console.WriteLine("PASS native media archive selection, HTTPS allowlist, cancellation, state and filename contract");return 0;
+  }catch(Exception e){Console.Error.WriteLine(e);return 1;}finally{if(Directory.Exists(root))Directory.Delete(root,true);}
+ }
+ static int RunNativeDownload(string[] args){
+  try{
+   int parentPid;
+   if(args.Length!=5||!MatchFull(args[1],"[a-f0-9]{32}")||!MatchFull(args[2],"[A-Za-z0-9_-]{11}")||!MediaChoice(args[3],"720","1080")||!Int32.TryParse(args[4],out parentPid)||parentPid<=0)return 2;
+   string lab=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
+   if(String.IsNullOrEmpty(lab)||String.IsNullOrEmpty(local))return 2;
+   lab=Path.GetFullPath(lab);
+   if(!Regex.IsMatch(Path.GetFileName(lab),@"\Ahoja-webview-lab-[a-f0-9]{32}\z")||!String.Equals(Path.GetFullPath(local),Path.Combine(lab,"local"),StringComparison.OrdinalIgnoreCase)||!MediaSafeDirectory(lab)||!MediaSafeDirectory(local)||!MediaSafeFile(Path.Combine(lab,"media-write-fixture.flag"))||!MediaSafeFile(Path.Combine(lab,"media-download-live.flag")))return 2;
+   using(var parent=Process.GetProcessById(parentPid)){
+    if(parent.HasExited||!String.Equals(parent.MainModule.FileName,System.Reflection.Assembly.GetExecutingAssembly().Location,StringComparison.OrdinalIgnoreCase))return 2;
+    string media=Path.Combine(local,"TeacherToolsMedia");
+    if(!MediaSafeDirectory(media))return 2;
+    var last=MediaJson(Path.Combine(media,"last-job.json"));
+    if(last==null||TextVal(last,"job")!=args[1]||TextVal(last,"id")!=args[2]||TextVal(last,"quality")!=args[3])return 2;
+    ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+    MediaRunDownload(media,args[1],args[2],args[3]);return 0;
+   }
+  }catch(Exception e){Console.Error.WriteLine("Native media download ended: "+e.GetType().Name);return 1;}
+ }
  static int RunMediaWorker(string[] args){
   try{
    int boardPort,parentPid;
@@ -2151,6 +2425,8 @@ internal static class NativeReadServer {
   }catch(Exception e){Console.Error.WriteLine("Media worker failed: "+e.GetType().Name);return 1;}
  }
  static int Main(string[] args){
+   if(args.Length==1&&args[0]=="--lab-media-native-selftest")return MediaNativeSelfTest();
+   if(args.Length>0&&args[0]=="--lab-media-download")return RunNativeDownload(args);
    if(args.Length>0&&args[0]=="--lab-media-playback")return RunMediaWorker(args);
   if(args.Length!=1||(args[0]!="--lab-read-server"&&args[0]!="--lab-coin-server"))return 2;
   // Match the reviewed legacy PowerShell server's TLS policy. The .NET 4.x
