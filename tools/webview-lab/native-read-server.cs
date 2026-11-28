@@ -1704,12 +1704,16 @@ internal static class NativeReadServer {
  static Process MediaLaunch(string script,string args,ref IntPtr job){
   if(!MediaSafeFile(script))throw new IOException("Media worker missing");
   string exe=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"System32","WindowsPowerShell","v1.0","powershell.exe");
+  return MediaLaunchProgram(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" "+args,ref job);
+ }
+ static Process MediaLaunchProgram(string exe,string args,ref IntPtr job){
+  if(!MediaSafeFile(exe))throw new IOException("Media executable missing");
   job=CreateJobObject(IntPtr.Zero,null);if(job==IntPtr.Zero)throw new IOException("Media job");
   var limits=new BookJobExtended();limits.BasicLimitInformation.LimitFlags=0x2000;
   Process p=null;
   try{
    if(!SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(typeof(BookJobExtended))))throw new IOException("Media job limits");
-   var info=new ProcessStartInfo(exe,"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\" "+args);
+   var info=new ProcessStartInfo(exe,args);
    info.UseShellExecute=false;info.CreateNoWindow=true;info.WorkingDirectory=labRoot;
    info.RedirectStandardOutput=true;info.RedirectStandardError=true;
    p=Process.Start(info);if(p==null||!AssignProcessToJobObject(job,p.Handle))throw new IOException("Media worker start");
@@ -1791,8 +1795,8 @@ internal static class NativeReadServer {
    string playRoot=Path.Combine(media,"playback");MediaEnsureDirectory(playRoot);
    mediaPlaySession=Guid.NewGuid().ToString("N");mediaPlayDirectory=Path.Combine(playRoot,mediaPlaySession);MediaEnsureDirectory(mediaPlayDirectory);mediaPlayStarted=DateTime.UtcNow;
    try{
-    // Reuse the original offline range server; no remote download or media rewrite.
-    mediaPlayback=MediaLaunch(Path.Combine(root,"server.ps1"),"-Port "+Port+" -YoutubePlayback "+mediaPlaySession+" -YoutubeVideoId "+id+" -YoutubeQuality "+q+" -YoutubeParentPid "+Process.GetCurrentProcess().Id,ref mediaPlaybackJob);
+    // Compile the reviewed range server into this executable; no PowerShell playback worker.
+    mediaPlayback=MediaLaunchProgram(System.Reflection.Assembly.GetExecutingAssembly().Location,"--lab-media-playback "+mediaPlaySession+" "+id+" "+q+" "+Port+" "+Process.GetCurrentProcess().Id,ref mediaPlaybackJob);
    }catch{MediaStopPlay();throw;}
    return new Dictionary<string,object>{{"ok",true},{"session",mediaPlaySession},{"state","starting"}};
   }
@@ -2114,7 +2118,40 @@ internal static class NativeReadServer {
    }
   }
  }
+ static int RunMediaWorker(string[] args){
+  try{
+   int boardPort,parentPid;
+   if(args.Length!=6||!MatchFull(args[1],"[a-f0-9]{32}")||!Int32.TryParse(args[4],out boardPort)||!Int32.TryParse(args[5],out parentPid)||parentPid<=0)return 2;
+#if NATIVE_ONLINE_PILOT
+   if(boardPort!=17439)return 2;
+#else
+   if(boardPort!=17451)return 2;
+#endif
+   string lab=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
+   if(String.IsNullOrEmpty(lab)||String.IsNullOrEmpty(local))return 2;
+   lab=Path.GetFullPath(lab);
+   if(!Regex.IsMatch(Path.GetFileName(lab),@"\Ahoja-webview-lab-[a-f0-9]{32}\z")||!String.Equals(Path.GetFullPath(local),Path.Combine(lab,"local"),StringComparison.OrdinalIgnoreCase)||!MediaSafeDirectory(lab)||!MediaSafeDirectory(local)||!MediaSafeFile(Path.Combine(lab,"media-write-fixture.flag")))return 2;
+   using(var parent=Process.GetProcessById(parentPid)){
+    if(parent.HasExited||!String.Equals(parent.MainModule.FileName,System.Reflection.Assembly.GetExecutingAssembly().Location,StringComparison.OrdinalIgnoreCase))return 2;
+    string media=Path.Combine(local,"TeacherToolsMedia"),lib=Path.Combine(media,"library"),play=Path.Combine(media,"playback"),session=Path.Combine(play,args[1]),id=args[2],q=args[3];
+    if(!MediaSafeDirectory(media)||!MediaSafeDirectory(lib)||!MediaSafeDirectory(play)||!MediaSafeDirectory(session)||!MediaEntry(media,id,q))return 2;
+    string file=null;
+    if(q=="local"){
+     foreach(var f in new DirectoryInfo(lib).GetFiles()){
+      if(MediaSafeFile(f.FullName)&&MediaChoice(f.Extension.ToLowerInvariant(),".mp4",".webm",".ogv",".ogg")&&Sha(Utf8.GetBytes(f.Name.ToUpperInvariant()))==id){file=f.FullName;break;}
+     }
+    }else{
+     string dir=Path.Combine(lib,id+"-"+q);
+     if(!MediaSafeDirectory(dir))return 2;
+     file=Path.Combine(dir,"video.mp4");
+    }
+    if(file==null||!MediaSafeFile(file)||new FileInfo(file).Length<=0)return 2;
+    TTOfflineMediaServer.Run(file,session,args[1],boardPort,14400,parentPid);return 0;
+   }
+  }catch(Exception e){Console.Error.WriteLine("Media worker failed: "+e.GetType().Name);return 1;}
+ }
  static int Main(string[] args){
+   if(args.Length>0&&args[0]=="--lab-media-playback")return RunMediaWorker(args);
   if(args.Length!=1||(args[0]!="--lab-read-server"&&args[0]!="--lab-coin-server"))return 2;
   // Match the reviewed legacy PowerShell server's TLS policy. The .NET 4.x
   // compiler target can otherwise inherit old framework protocol defaults.
@@ -2240,4 +2277,100 @@ public static class TTVolume {
  public static bool Muted() { bool m; Check(Endpoint().GetMute(out m)); return m; }
  public static void SetLevel(float v) { Guid g = Guid.Empty; Check(Endpoint().SetMasterVolumeLevelScalar(Math.Max(0f, Math.Min(1f, v)), ref g)); }
  public static void SetMute(bool m) { Guid g = Guid.Empty; Check(Endpoint().SetMute(m, ref g)); }
+}
+
+// Reviewed offline range worker from pinned original server.ps1, now compiled natively.
+public static class TTOfflineMediaServer {
+ static string ReadLine(Stream s, ref int total) {
+  var line = new StringBuilder();
+  while (true) {
+   int b = s.ReadByte();
+   if (b < 0) throw new EndOfStreamException();
+   if (++total > 8192 || line.Length > 4096) throw new IOException("header limit");
+   if (b == 10) return line.ToString().TrimEnd('\r');
+   if (b > 127 || (b < 32 && b != 13 && b != 9)) throw new IOException("invalid header");
+   line.Append((char)b);
+  }
+ }
+ static void Header(Stream s, string status, long length, string extra, string mime = "video/mp4") {
+  byte[] bytes = Encoding.ASCII.GetBytes("HTTP/1.1 "+status+"\r\nContent-Type: "+mime+"\r\nContent-Length: "+length.ToString(CultureInfo.InvariantCulture)+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nCross-Origin-Resource-Policy: same-site\r\nAccept-Ranges: bytes\r\n"+extra+"\r\n");
+  s.Write(bytes,0,bytes.Length);
+ }
+ static bool ByteRange(string value, long size, out long first, out long last) {
+  first=0;last=size-1;
+  if(String.IsNullOrEmpty(value))return true;
+  if(!value.StartsWith("bytes=",StringComparison.Ordinal)||value.IndexOf(',')>=0)return false;
+  string[] p=value.Substring(6).Split('-');
+  if(p.Length!=2)return false;
+  long a,b;
+  if(p[0].Length==0) {
+   if(!Int64.TryParse(p[1],NumberStyles.None,CultureInfo.InvariantCulture,out b)||b<=0)return false;
+   first=Math.Max(0,size-b);return true;
+  }
+  if(!Int64.TryParse(p[0],NumberStyles.None,CultureInfo.InvariantCulture,out a)||a<0||a>=size)return false;
+  first=a;
+  if(p[1].Length!=0){
+   if(!Int64.TryParse(p[1],NumberStyles.None,CultureInfo.InvariantCulture,out b)||b<a)return false;
+   last=Math.Min(last,b);
+  }
+  return true;
+ }
+ static void Serve(TcpClient client, string path, string token, int port, int boardPort, string stop, DateTime end, Process parent) {
+  client.ReceiveTimeout=5000;client.SendTimeout=5000;
+  using(client)using(var s=client.GetStream()) {
+   int total=0;string[] req=ReadLine(s,ref total).Split(' ');
+   var h=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+   while(true){
+    string line=ReadLine(s,ref total);if(line.Length==0)break;
+    int colon=line.IndexOf(':');if(colon<1)throw new IOException("invalid header");
+    string key=line.Substring(0,colon);
+    if(h.ContainsKey(key))throw new IOException("duplicate header");
+    h.Add(key,line.Substring(colon+1).Trim());
+   }
+   string host, origin, referer, site, range, mode;
+   h.TryGetValue("Host",out host);h.TryGetValue("Origin",out origin);h.TryGetValue("Referer",out referer);h.TryGetValue("Sec-Fetch-Site",out site);h.TryGetValue("Range",out range);h.TryGetValue("Sec-Fetch-Mode",out mode);
+   string board="http://127.0.0.1:"+boardPort.ToString(CultureInfo.InvariantCulture);
+   string local="http://localhost:"+boardPort.ToString(CultureInfo.InvariantCulture);
+   bool boardRef=referer==board+"/" || referer==local+"/" || referer==board+"/index.html" || referer==local+"/index.html";
+   bool boardOrigin=origin==board || origin==local;
+   if(req.Length!=3 || req[2]!="HTTP/1.1" || host!="127.0.0.1:"+port.ToString(CultureInfo.InvariantCulture) || req[1]!="/"+token+"/video.mp4" || (site=="cross-site"&&!boardOrigin) || (origin!=null&&!boardOrigin) || (!boardRef&&!boardOrigin) || mode=="navigate"){
+    Header(s,"403 Forbidden",0,"");return;
+   }
+   if(req[0]!="GET"&&req[0]!="HEAD"){Header(s,"405 Method Not Allowed",0,"Allow: GET, HEAD\r\n");return;}
+   using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+    long first,last,size=f.Length;
+    if(size<=0||!ByteRange(range,size,out first,out last)){Header(s,"416 Range Not Satisfiable",0,"Content-Range: bytes */"+size.ToString(CultureInfo.InvariantCulture)+"\r\n");return;}
+    long length=last-first+1;
+    string extra=String.IsNullOrEmpty(range)?"":"Content-Range: bytes "+first.ToString(CultureInfo.InvariantCulture)+"-"+last.ToString(CultureInfo.InvariantCulture)+"/"+size.ToString(CultureInfo.InvariantCulture)+"\r\n";
+    // Exact validated board origin only; anonymous CORS permits the private port even when Chromium treats loopback ports as different sites.
+    if(boardOrigin)extra+="Access-Control-Allow-Origin: "+origin+"\r\nVary: Origin\r\n";
+    string ext=Path.GetExtension(path).ToLowerInvariant();
+    string mime=ext==".webm"?"video/webm":(ext==".ogv"||ext==".ogg"?"video/ogg":"video/mp4");
+    Header(s,String.IsNullOrEmpty(range)?"200 OK":"206 Partial Content",length,extra,mime);
+    if(req[0]=="HEAD")return;
+    f.Position=first;byte[] buffer=new byte[65536];
+    while(length>0&&!File.Exists(stop)&&DateTime.UtcNow<end&&(parent==null||!parent.HasExited)){
+     int n=f.Read(buffer,0,(int)Math.Min(buffer.Length,length));
+     if(n==0)break;s.Write(buffer,0,n);length-=n;
+    }
+   }
+  }
+ }
+ public static void Run(string path,string session,string token,int boardPort,int maxSeconds,int parentPid) {
+  string stop=Path.Combine(session,"stop");
+  var listener=new TcpListener(IPAddress.Loopback,0);listener.ExclusiveAddressUse=true;
+  Process parent=parentPid==0?null:Process.GetProcessById(parentPid);
+  try {
+   listener.Start(8);
+   int port=((IPEndPoint)listener.LocalEndpoint).Port;
+   DateTime end=DateTime.UtcNow.AddSeconds(maxSeconds);
+   File.WriteAllText(Path.Combine(session,"port.tmp"),port.ToString(CultureInfo.InvariantCulture),Encoding.ASCII);
+   File.Move(Path.Combine(session,"port.tmp"),Path.Combine(session,"port"));
+   while(DateTime.UtcNow<end&&!File.Exists(stop)&&(parent==null||!parent.HasExited)) {
+    if(!listener.Pending()){Thread.Sleep(100);continue;}
+    try{Serve(listener.AcceptTcpClient(),path,token,port,boardPort,stop,end,parent);}
+    catch(IOException){}catch(SocketException){}catch(UnauthorizedAccessException){}
+   }
+  } finally{listener.Stop();if(parent!=null)parent.Dispose();}
+ }
 }
