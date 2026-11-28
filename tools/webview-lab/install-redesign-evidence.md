@@ -1,6 +1,6 @@
 # WebView2 installation redesign: initial evidence
 
-Status: investigation only. This is not an installer, a release, or a field pass.
+Status: Phase 7A online-profile implementation. This is not an installer, a release, or a field pass.
 Baseline: `1d1a1019d235228ac753d40a4c1485d49c4053f2` (PR #166).
 
 ## Artifacts examined
