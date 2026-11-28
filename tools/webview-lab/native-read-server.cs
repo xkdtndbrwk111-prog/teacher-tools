@@ -413,7 +413,12 @@ internal static class NativeReadServer {
       return Utf8.GetString(output.ToArray()).TrimStart('\uFEFF');
      }
     }
-   }catch(WebException e){throw new IOException("Upstream unavailable",e);}
+   }catch(WebException e){
+    var http=e.Response as HttpWebResponse;
+    Console.Error.WriteLine("HTTPS provider="+uri.Host+" transport="+e.Status+" http="+(http==null?"none":((int)http.StatusCode).ToString(CultureInfo.InvariantCulture)));
+    if(http!=null)http.Close();
+    throw new IOException("Upstream unavailable",e);
+   }
   }
  }
  static string ProviderText(string endpoint,string query){
@@ -424,6 +429,7 @@ internal static class NativeReadServer {
   if(fixture&&live)throw new IOException("Ambiguous upstream provider");
   if(fixture)return NeisFixture(endpoint,query);
   if(coinWrites&&live)return HttpsText(uri);
+  Console.Error.WriteLine("HTTPS provider disabled: live opt-in absent");
   throw new IOException("NEIS lab provider not configured");
  }
  static string NeisFixture(string endpoint,string query){
@@ -606,6 +612,7 @@ internal static class NativeReadServer {
    Json(s,"200 OK",Serializer().Serialize(new Dictionary<string,object>{{"rows",output}}));
   }catch(WeekException e){Json(s,"404 Not Found",Serializer().Serialize(new Dictionary<string,object>{{"code","WEEK_NOT_FOUND"},{"error",e.Message}}));}catch(Exception e){
    if(!(e is IOException||e is FormatException||e is ArgumentException||e is InvalidOperationException))throw;
+    Console.Error.WriteLine("School API route="+path+" failure="+e.GetType().Name);
    Json(s,"502 Bad Gateway","{\"code\":\""+(path=="/api/meal"?"MEAL_FETCH_ERROR":"UPSTREAM_ERROR")+"\",\"error\":\"온라인 자료를 가져오지 못했습니다. 인터넷 연결 및 나이스 API 상태를 확인하세요.\"}");
   }
  }
@@ -2087,6 +2094,10 @@ internal static class NativeReadServer {
  }
  static int Main(string[] args){
   if(args.Length!=1||(args[0]!="--lab-read-server"&&args[0]!="--lab-coin-server"))return 2;
+  // Match the reviewed legacy PowerShell server's TLS policy. The .NET 4.x
+  // compiler target can otherwise inherit old framework protocol defaults.
+  // Use the Windows certificate store and retain normal certificate checks.
+  ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
   coinWrites=args[0]=="--lab-coin-server";if(coinWrites)Port=17451;
   string lab=Environment.GetEnvironmentVariable("HOJA_LAB_ROOT"),local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
   if(String.IsNullOrEmpty(lab)||String.IsNullOrEmpty(local))return 2;
