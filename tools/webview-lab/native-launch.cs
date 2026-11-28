@@ -454,7 +454,14 @@ internal sealed class NativeBoardLaunch : Form {
     }
     async Task FieldBoardWait(string js,string label,int count){
         for(int i=0;i<count;i++){
-            if(await browser.CoreWebView2.ExecuteScriptAsync(js)=="true")return;
+            var core=browser.CoreWebView2;
+            await core.ExecuteScriptAsync("window.__fieldLedgerCheck=null;Promise.resolve("+js+").then(v=>window.__fieldLedgerCheck=v===true,()=>window.__fieldLedgerCheck=false)");
+            for(int n=0;n<10;n++){
+                string v=await core.ExecuteScriptAsync("window.__fieldLedgerCheck");
+                if(v=="true")return;
+                if(v=="false")break;
+                await Task.Delay(50);
+            }
             await Task.Delay(100);
         }
         throw new IOException("Field ledger timeout: "+label);
@@ -464,15 +471,15 @@ internal sealed class NativeBoardLaunch : Form {
         string result=Path.Combine(root,"field-coin-smoke.result");
         try{
             // Seed only the manager test's synthetic roster via the original ledger API.
-            string seed=await core.ExecuteScriptAsync(@"(async()=>{try{
+            await core.ExecuteScriptAsync(@"window.__fieldSeed=null;(async()=>{try{
                 const s=await TTCoins.snapshot(true),r=s.roster;
                 if(r.className!=='FIELD TEST CLASS'||r.students.length!==2||!r.students.every(p=>/^field-test-[12]$/.test(p.id)))return false;
                 const at=new Date().toISOString(),cls=r.cls;
                 if(s.events.some(e=>e.cls===cls&&e.type==='spend'))return false;
                 await TTCoins.commit(s,[{at,cls,type:'setting',enabled:true,cap:40,weeklyOn:false,weeklyAmount:0,weeklyDay:1},...r.students.map(p=>({at,cls,type:'grant',id:p.id,name:p.name,amount:14,source:'field-test'}))]);
                 return TTCoins.balanceOf(TTCoins.stateOf(s.events,cls),'field-test-1')===14;
-            }catch(e){return false}})()");
-            Require(seed=="true","Field synthetic coin seed");
+            }catch(e){return false}})().then(v=>window.__fieldSeed=v,()=>window.__fieldSeed=false)");
+            await FieldBoardWait("window.__fieldSeed===true","synthetic coin seed",30);
             // Capture replies only; no synthetic protocol events or modified game internals.
             await core.ExecuteScriptAsync(@"(()=>{window.__fieldCoinReplies=[];window.addEventListener('message',e=>{
               if(e.origin==='http://127.0.0.1:4189'&&e.source===document.getElementById('miniFrame').contentWindow&&e.data?.type)window.__fieldCoinReplies.push(e.data.type);
