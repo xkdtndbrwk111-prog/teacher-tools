@@ -124,6 +124,10 @@ if($LASTEXITCODE -ne 0){throw 'Field policy compile failed'}
 & $policyTest
 if($LASTEXITCODE -ne 0){throw 'Field policy test failed'}
 
+if($OnlineCandidate){
+ & $csc /nologo /codepage:65001 /target:winexe /platform:x64 "/out:$Output\Setup.exe" /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'online-native-start.cs')
+ if($LASTEXITCODE -ne 0){throw 'Native setup build failed'}
+}
 $payload=Join-Path $Output 'payload'
 $inventory=@(Get-ChildItem -LiteralPath $payload -File -Recurse|Sort-Object FullName|ForEach-Object {@{path=$_.FullName.Substring($payload.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
 $profile=if($OnlineCandidate){'online'}else{'isolated'}
