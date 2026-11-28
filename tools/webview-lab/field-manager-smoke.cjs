@@ -6,7 +6,22 @@ const manager=online?'https://xkdtndbrwk111-prog.github.io':'http://127.0.0.1:41
 (async()=>{
  const browser=await chromium.launch({channel:'chrome',headless:true});
  try{
-  const ctx=await browser.newContext(),errors=[],operational=[],localErrors=[];
+  const ctx=await browser.newContext(),errors=[],operational=[],localErrors=[],bridge=[];
+   // The disposable Chrome context models the user's explicit site permission.
+   // Never disable LNA, CORS or the browser's enforcement flags.
+   if(online){
+    const cdp=await browser.newBrowserCDPSession();
+    const {browserContextIds}=await cdp.send('Target.getBrowserContexts');
+    assert.equal(browserContextIds.length,1);
+    let granted=false;
+    for(const permission of ['loopbackNetwork','localNetworkAccess']){
+     try{
+      await cdp.send('Browser.grantPermissions',{origin:manager,permissions:[permission],browserContextId:browserContextIds[0]});
+      console.log('CI scoped browser permission: '+permission);granted=true;break;
+     }catch(e){console.log('CI scoped permission unsupported: '+permission+' '+String(e.message).slice(0,180))}
+    }
+    assert(granted,'Cannot model explicit loopback permission on this Chrome version');
+   }
   await ctx.route('**/*',route=>{
    const u=new URL(route.request().url());
    if(u.origin===board)return route.continue();
@@ -16,12 +31,26 @@ const manager=online?'https://xkdtndbrwk111-prog.github.io':'http://127.0.0.1:41
   });
   const page=await ctx.newPage();
   page.on('pageerror',e=>errors.push(e.message));
-  page.on('response',r=>{if(r.status()>=400&&new URL(r.url()).origin===manager)localErrors.push(r.status()+' '+new URL(r.url()).pathname)});
+  page.on('response',r=>{const u=new URL(r.url());if(r.status()>=400&&u.origin===manager)localErrors.push(r.status()+' '+u.pathname);if(u.origin===board&&bridge.length<30)bridge.push(r.request().method()+' '+u.pathname+' '+r.status())});
+   page.on('requestfailed',r=>{const u=new URL(r.url());if(u.origin===board&&bridge.length<30)bridge.push(r.method()+' '+u.pathname+' '+r.failure()?.errorText)});
+   page.on('console',m=>{if(m.type()==='error'&&/CORS|Local Network|loopback|private network|127\.0\.0\.1/i.test(m.text())&&bridge.length<30)bridge.push(m.text().slice(0,250))});
   await page.goto(manager+(online?'/teacher-tools':'')+'/seating/');
   await page.waitForFunction(()=>!!window.__TT_BOARD_CONNECTION&&!!window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting')||!!document.querySelector('.tt-start-blocked'),null,{timeout:25000});
   const failure=await page.locator('.tt-start-blocked').count();
   if(failure)throw Error(await page.locator('.tt-start-blocked').innerText()+' missing='+localErrors.join(',')+' errors='+errors.join(','));
-  await page.waitForFunction(()=>window.__TT_BOARD_CONNECTION?.rosterReady()&&window.__TT_BOARD_CONNECTION?.presentationReady(),null,{timeout:12000});
+  try{
+    await page.evaluate(()=>window.__TT_BOARD_CONNECTION.check());
+    await page.waitForFunction(()=>window.__TT_BOARD_CONNECTION?.rosterReady()&&window.__TT_BOARD_CONNECTION?.presentationReady(),null,{timeout:20000});
+   }catch(error){
+    const status=await page.evaluate(async ({board,online})=>{
+     let permission='not queried';
+     if(online)try{permission=(await navigator.permissions.query({name:'loopback-network'})).state}catch(e){permission='unsupported'}
+     let probe;
+     try{const r=await fetch(board+'/api/board-status',{mode:'cors',credentials:'omit',cache:'no-store',signal:AbortSignal.timeout(3500)});probe={http:r.status,body:await r.json()}}catch(e){probe=String(e)}
+     return {permission,probe,note:document.getElementById('tt-board-connection-status')?.textContent,roster:window.__TT_BOARD_CONNECTION?.rosterReady(),presentation:window.__TT_BOARD_CONNECTION?.presentationReady()};
+    },{board,online});
+    throw Error('Actual manager capability failed: '+JSON.stringify({status,bridge,localErrors,errors,cause:error.message}));
+   }
   assert.equal(await page.locator('#tt-send-board').count(),1);
   assert.equal(await page.evaluate(()=>typeof window.__TT_SEND_ROSTER),'function');
   // Seed TWO synthetic students in the actual application, not a replacement sender.
