@@ -36,6 +36,12 @@ $dash=Join-Path $runtime 'dashboard.html';$d=[IO.File]::ReadAllText($dash)
 $old="const miniOrigin='https://xkdtndbrwk111-prog.github.io',miniUrl=miniOrigin+'/hoja-minigames/?mode=board&embed=dashboard&coin=4';"
 if(([regex]::Matches($d,[regex]::Escape($old))).Count -ne 1){throw 'Board game origin anchor mismatch'}
 [IO.File]::WriteAllText($dash,$d.Replace($old,$old.Replace('https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4189')),$utf8)
+# The ledger and routine-stop channel must use the same exact game origin
+# as the dashboard ready/close channel. Never loosen event.source checks.
+$coinsUi=Join-Path $runtime 'coins-ui.js';$c=[IO.File]::ReadAllText($coinsUi)
+$gameOrigin='https://xkdtndbrwk111-prog.github.io'
+if(([regex]::Matches($c,[regex]::Escape($gameOrigin))).Count -ne 3){throw 'Coin and routine game origin anchors changed'}
+[IO.File]::WriteAllText($coinsUi,$c.Replace($gameOrigin,'http://127.0.0.1:4189'),$utf8)
 $inbox=Join-Path $runtime 'seating-inbox.html';$d=[IO.File]::ReadAllText($inbox)
 $old="const ALLOWED=['https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4188','http://localhost:4188'];"
 if(([regex]::Matches($d,[regex]::Escape($old))).Count -ne 1){throw 'Inbox origin anchor mismatch'}
