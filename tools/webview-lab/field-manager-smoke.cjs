@@ -1,21 +1,23 @@
 // Actual packaged manager, isolated Chrome context, no cloud or operational board.
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
-const manager='http://127.0.0.1:4188',board='http://127.0.0.1:17451';
+const online=process.env.HOJA_FIELD_ONLINE==='1';
+const manager=online?'https://xkdtndbrwk111-prog.github.io':'http://127.0.0.1:4188',board=online?'http://127.0.0.1:17439':'http://127.0.0.1:17451';
 (async()=>{
  const browser=await chromium.launch({channel:'chrome',headless:true});
  try{
   const ctx=await browser.newContext(),errors=[],operational=[],localErrors=[];
   await ctx.route('**/*',route=>{
    const u=new URL(route.request().url());
-   if(u.origin===manager||u.origin===board)return route.continue();
-   if(u.port==='17439')operational.push(u.href);
+   if(u.origin===board)return route.continue();
+    if(u.origin===manager&&(!online||(route.request().method()==='GET'&&u.pathname.startsWith('/teacher-tools/'))))return route.continue();
+   if(u.port==='17439'||u.port==='17451'||u.port==='4188'||u.port==='4189')operational.push(u.href);
    return route.abort();
   });
   const page=await ctx.newPage();
   page.on('pageerror',e=>errors.push(e.message));
   page.on('response',r=>{if(r.status()>=400&&new URL(r.url()).origin===manager)localErrors.push(r.status()+' '+new URL(r.url()).pathname)});
-  await page.goto(manager+'/seating/');
+  await page.goto(manager+(online?'/teacher-tools':'')+'/seating/');
   await page.waitForFunction(()=>!!window.__TT_BOARD_CONNECTION&&!!window.__TT_MANAGER_HOME&&!document.documentElement.classList.contains('tt-manager-starting')||!!document.querySelector('.tt-start-blocked'),null,{timeout:25000});
   const failure=await page.locator('.tt-start-blocked').count();
   if(failure)throw Error(await page.locator('.tt-start-blocked').innerText()+' missing='+localErrors.join(',')+' errors='+errors.join(','));
@@ -87,16 +89,16 @@ const manager='http://127.0.0.1:4188',board='http://127.0.0.1:17451';
   const messages=await page.evaluate(()=>window.__fieldPresentation);
   assert(messages.some(s=>s.includes('표시 완료')),JSON.stringify({messages,receipts}));
   assert(!messages.includes('FALLBACK'));
-  const closed=await page.evaluate(async id=>{
-   const r=await fetch('http://127.0.0.1:17451/api/presentation/close',{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:id});return r.ok;
-  },receiptId);
+  const closed=await page.evaluate(async ({id,board})=>{
+   const r=await fetch(board+'/api/presentation/close',{method:'POST',mode:'cors',credentials:'omit',headers:{'Content-Type':'text/plain'},body:id});return r.ok;
+  },{id:receiptId,board});
   assert.equal(closed,true);
-  await until(()=>page.evaluate(async id=>{
-   const r=await fetch('http://127.0.0.1:17451/api/presentation/receipt?id='+id,{mode:'cors',credentials:'omit',cache:'no-store'});return r.ok&&(await r.json()).state==='closed';
-  },receiptId),'presentation closed receipt');
+  await until(()=>page.evaluate(async ({id,board})=>{
+   const r=await fetch(board+'/api/presentation/receipt?id='+id,{mode:'cors',credentials:'omit',cache:'no-store'});return r.ok&&(await r.json()).state==='closed';
+  },{id:receiptId,board}),'presentation closed receipt');
   console.log('PASS installed manager real seating presentation receipt and close');
   assert.deepEqual(operational,[]);
   assert.deepEqual(errors,[]);
-  console.log('PASS actual packaged manager bootstrap, roster/presentation capability and no operational origin requests');
+  console.log('PASS actual manager bootstrap, roster/presentation capability and no unintended loopback requests');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -139,3 +139,45 @@ jobs:
           Write-Host 'PASS automated candidate readiness only'
           Write-Host 'PRODUCTION RELEASE BLOCKED: provider and device field acceptance, manager/game origin migration, approved data transfer, signed native server update and code-signing trust remain required'
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value 'Automated candidate ready. Production release remains blocked pending Phase 6B/6C/6D field acceptance and signed update approval.'
+  phase7a-online:
+    name: Phase 7A actual online candidate (not production)
+    needs: [phase5-gate]
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build online candidate without static services
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          node tools/webview-lab/phase7a-profile.test.cjs
+          if($LASTEXITCODE -ne 0){throw 'Online profile failed'}
+          tools/webview-lab/field-pilot-build.ps1 -OnlineCandidate -Output (Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot')
+          $bin=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot/payload/bin'
+          foreach($name in @('HOJA-Field-Static.exe','field-manager.zip','field-game.zip')){if(Test-Path (Join-Path $bin $name)){throw "Unexpected static component $name"}}
+      - name: Test actual public game and manager against isolated local board
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          npm install --prefix "$env:RUNNER_TEMP/hoja-online-node" --no-audit --no-fund --no-package-lock playwright@1.55.0
+          if($LASTEXITCODE -ne 0){throw 'Playwright installation failed'}
+          $env:NODE_PATH="$env:RUNNER_TEMP/hoja-online-node/node_modules"
+          $env:HOJA_FIELD_MANAGER_SMOKE="$env:GITHUB_WORKSPACE/tools/webview-lab/field-manager-smoke.cjs"
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP ('online-pilot-'+[guid]::NewGuid().ToString('N'))
+          $legacy=Join-Path $env:LOCALAPPDATA 'TeacherToolsLocal'
+          New-Item -ItemType Directory -Path $legacy -Force|Out-Null
+          Set-Content (Join-Path $legacy 'keep.txt') 'untouched'
+          $package=Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-OnlinePilot'
+          & (Join-Path $package 'Start-Pilot.ps1') -Smoke
+          if((Get-Content (Join-Path $legacy 'keep.txt') -Raw).Trim() -cne 'untouched' -or @(Get-ChildItem $legacy -Force).Count -ne 1){throw 'Existing installation changed'}
+          foreach($port in @(17439,4188,4189)){if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Online pilot listener $port survived close"}}
+          Write-Host 'PASS online candidate close and isolated legacy data'
+      - name: Upload online candidate after integrated test
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: HOJA-WebView2-OnlinePilot
+          path: ${{ runner.temp }}/HOJA-WebView2-OnlinePilot
+          if-no-files-found: error
+          retention-days: 14

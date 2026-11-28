@@ -5,6 +5,11 @@ if($Smoke -and ($LiveBook -or $LiveDownload -or $LiveProviders -or $LiveAudio -o
 $package=$PSScriptRoot
 $manifest=Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw -Encoding UTF8|ConvertFrom-Json
 if($manifest.schema -cne 'HOJA-FIELD-PILOT-1' -or $manifest.version -cne '1.66.43-field-a1'){throw 'Unexpected package manifest'}
+$online=$manifest.profile -ceq 'online'
+if($manifest.profile -and $manifest.profile -cnotin @('online','isolated')){throw 'Unexpected pilot profile'}
+if($online -and $Smoke -and $env:GITHUB_ACTIONS -ne 'true'){throw 'Online smoke requires isolated CI'}
+$boardPort=if($online){17439}else{17451}
+$boardOrigin="http://127.0.0.1:$boardPort"
 function Plain([string]$p){
  if((Get-Item -LiteralPath $p -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Linked path rejected: $p"}
 }
@@ -18,18 +23,23 @@ function Verify-Payload([string]$base){
   Plain (Split-Path $p -Parent);Plain $p
   if((Get-Item -LiteralPath $p).Length -ne $entry.bytes -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256){throw "Package file mismatch: $rel"}
  }
- foreach($required in @('bin/HOJA-Native-Launch-Lab.exe','bin/HOJA-Native-Server.exe','bin/HOJA-Field-Static.exe','bin/field-manager.zip','bin/field-game.zip','local/TeacherToolsLocal/dashboard.html','local/TeacherToolsLocal/server.ps1','local/TeacherToolsLocal/asset-book-reader-host.zip')){if(!$seen.ContainsKey($required)){throw 'Package incomplete'}}
+ $requiredFiles=@('bin/HOJA-Native-Launch-Lab.exe','bin/HOJA-Native-Server.exe','local/TeacherToolsLocal/dashboard.html','local/TeacherToolsLocal/server.ps1','local/TeacherToolsLocal/asset-book-reader-host.zip')
+ $staticFiles=@('bin/HOJA-Field-Static.exe','bin/field-manager.zip','bin/field-game.zip')
+ if($online){foreach($p in $staticFiles){if($seen.ContainsKey($p) -or (Test-Path -LiteralPath (Join-Path $base $p))){throw 'Online package includes static service'}}}else{$requiredFiles+=$staticFiles}
+ foreach($required in $requiredFiles){if(!$seen.ContainsKey($required)){throw 'Package incomplete'}}
 }
 $payload=Join-Path $package 'payload';Plain $payload;Plain (Join-Path $payload 'local');Verify-Payload $payload
 $realLocal=$env:LOCALAPPDATA;$oldLab=$env:HOJA_LAB_ROOT
 $parent=Join-Path $realLocal 'TeacherToolsWebView2Pilot'
 [void][IO.Directory]::CreateDirectory($parent);Plain $parent
 if($manifest.source -cnotmatch '^[a-f0-9]{40}$'){throw 'Invalid build source'}
+if($online){$parent=Join-Path $realLocal 'TeacherToolsWebView2OnlinePilot';[void][IO.Directory]::CreateDirectory($parent);Plain $parent}
 $root=Join-Path $parent ('hoja-webview-lab-'+$manifest.source.Substring(0,32))
 $lock=[IO.File]::Open((Join-Path $parent 'pilot.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 $server=$null;$board=$null;$static=@{}
 try{
- foreach($port in @(17451,4188,4189)){
+ $ports=if($online){@(17439)}else{@(17451,4188,4189)}
+ foreach($port in $ports){
   if(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue){throw "Pilot port $port already in use. No process was stopped."}
  }
  if(!(Test-Path -LiteralPath $root)){
@@ -49,6 +59,7 @@ try{
  Verify-Payload $root
  $env:HOJA_LAB_ROOT=$root;$env:LOCALAPPDATA=Join-Path $root 'local'
  foreach($name in @('native-launch.ready','native-launch.stop','native-launch.result','native-read-server.ready','native-read-server.stop','field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','photo-picker-live.flag','neis-live.flag','field-manager-live.flag','manager.static.ready','manager.static.stop','game.static.ready','game.static.stop','field-smoke.flag','field-game-smoke.result','field-coin-smoke.trigger','field-coin-smoke.result','field-manager-roster.pass','field-presentation-smoke.trigger','field-presentation-smoke.result')){Remove-Item -LiteralPath (Join-Path $root $name) -Force -ErrorAction SilentlyContinue}
+ if($online){Set-Content -LiteralPath (Join-Path $root 'field-online.flag') 'explicit-online-pilot' -Encoding ASCII}
  foreach($name in @('coin-write-fixture.flag','media-read-fixture.flag','media-write-fixture.flag')){Set-Content -LiteralPath (Join-Path $root $name) 'isolated-field-data' -Encoding ASCII}
  if($LiveBook){Set-Content -LiteralPath (Join-Path $root 'field-book-live.flag') 'explicit' -Encoding ASCII}
  if($LiveDownload){Set-Content -LiteralPath (Join-Path $root 'media-download-live.flag') 'explicit' -Encoding ASCII}
@@ -58,6 +69,7 @@ try{
  if($Transfer){Set-Content -LiteralPath (Join-Path $root 'field-transfer-live.flag') 'explicit' -Encoding ASCII}
  if($LocalManager){Set-Content -LiteralPath (Join-Path $root 'field-manager-live.flag') 'explicit' -Encoding ASCII}
  if($Smoke){Set-Content -LiteralPath (Join-Path $root 'field-smoke.flag') 'offline-smoke-only' -Encoding ASCII}
+ if(!$online){
  foreach($kind in @('manager','game')){
   $port=if($kind -eq 'manager'){4188}else{4189}
   $proc=Start-Process -FilePath (Join-Path $root 'bin/HOJA-Field-Static.exe') -ArgumentList "$kind $PID" -PassThru -WindowStyle Hidden
@@ -67,6 +79,7 @@ try{
   if(!(Test-Path -LiteralPath $readyStatic) -or [int](Get-Content -LiteralPath $readyStatic -Raw) -ne $proc.Id){throw "$kind static readiness mismatch"}
   $listener=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $port -State Listen
   if($listener.OwningProcess -ne $proc.Id){throw "$kind listener ownership mismatch"}
+ }
  }
  if($Display){
   Add-Type -AssemblyName System.Windows.Forms
@@ -81,14 +94,14 @@ try{
  $ready=Join-Path $root 'native-read-server.ready'
  for($i=0;$i -lt 120 -and !(Test-Path -LiteralPath $ready);$i++){if($server.HasExited){throw 'Pilot server failed to start'};Start-Sleep -Milliseconds 250}
  if(!(Test-Path -LiteralPath $ready) -or [int](Get-Content -LiteralPath $ready -Raw) -ne $server.Id){throw 'Pilot server readiness mismatch'}
- $listener=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17451 -State Listen
+ $listener=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $boardPort -State Listen
  if($listener.OwningProcess -ne $server.Id){throw 'Pilot listener ownership mismatch'}
  # An integrated classroom smoke represents a configured board, not first-run setup.
  # Seed via the real school API, only in the disposable CI profile. Never close
  # the mandatory onboarding dialog programmatically or alter a real school's data.
  if($Smoke -and $env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
-  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'='http://127.0.0.1:17451'}
-  $url='http://127.0.0.1:17451/api/school'
+  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'=$boardOrigin}
+  $url=($boardOrigin+'/api/school')
   $configured=Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 3
   $fixture=@{office='B10';code='1234567';name='FIELD TEST SCHOOL';kind='초등학교';address='';grade='';cls='';sheet=''}
   if(!$configured.school){
@@ -109,17 +122,18 @@ try{
   foreach($name in @('field-book-live.flag','media-download-live.flag','field-provider-live.flag','field-audio-live.flag','field-system-live.flag','system-open-live.flag','field-transfer-live.flag','neis-live.flag','book-state-fixture.flag','media-download-fixture.flag','audio-fixture.flag')){
    if(Test-Path -LiteralPath (Join-Path $root $name)){throw ('Unexpected field activation: '+$name)}
   }
-  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'='http://127.0.0.1:17451'}
-  $health=Invoke-RestMethod -Uri 'http://127.0.0.1:17451/health' -TimeoutSec 3
+  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'=$boardOrigin}
+  $health=Invoke-RestMethod -Uri ($boardOrigin+'/health') -TimeoutSec 3
   if($health.service -cne 'teacher-tools-local'){throw 'Field service identity'}
-  $media=Invoke-RestMethod -Uri 'http://127.0.0.1:17451/api/youtube/status' -Headers $headers -TimeoutSec 3
+  $media=Invoke-RestMethod -Uri ($boardOrigin+'/api/youtube/status') -Headers $headers -TimeoutSec 3
   if(!$media.ok -or $media.job.state -ne 'idle' -or $media.token -cnotmatch '^[a-f0-9]{32}$'){throw 'Field default media state'}
   try{
-   Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17451/api/open-manager' -Headers $headers -ContentType 'text/plain' -TimeoutSec 3|Out-Null
+   Invoke-RestMethod -Method Post -Uri ($boardOrigin+'/api/open-manager') -Headers $headers -ContentType 'text/plain' -TimeoutSec 3|Out-Null
    throw 'Published manager unexpectedly accepted'
   }catch{if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 409){throw}}
-  if((Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw) -notmatch '^PASS real packaged mini-game'){throw 'Field game handshake not verified'}
+  if((Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw) -notmatch $(if($online){'^PASS real online mini-game'}else{'^PASS real packaged mini-game'})){throw 'Field game handshake not verified'}
   Write-Host (Get-Content -LiteralPath (Join-Path $root 'field-game-smoke.result') -Raw)
+  if(!$online){
   $managerPage=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/seating/' -TimeoutSec 3
   $link=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4188/classroom/host/dashboard-link.js' -TimeoutSec 3
   $game=Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:4189/hoja-minigames/?mode=board&embed=dashboard&coin=4&fresh=1-1' -TimeoutSec 20
@@ -135,8 +149,10 @@ try{
   if(!$gameText.Contains("DASHBOARD_ORIGIN='http://127.0.0.1:17451'") -or $gameText.Contains('http://127.0.0.1:17439')){throw 'Packaged game origin mismatch'}
   if($managerPage.Headers['Content-Security-Policy'] -notmatch 'connect-src.*127\.0\.0\.1:17451' -or $game.Headers['Content-Security-Policy'] -notmatch 'frame-ancestors http://127\.0\.0\.1:17451'){throw 'Static origin isolation policy missing'}
   Write-Host 'PASS packaged local manager/game origins and production manager isolation'
+  }
   if($env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
-   & node $env:HOJA_FIELD_MANAGER_SMOKE
+   $oldOnline=$env:HOJA_FIELD_ONLINE
+   try{if($online){$env:HOJA_FIELD_ONLINE='1'}else{$env:HOJA_FIELD_ONLINE=$null}; & node $env:HOJA_FIELD_MANAGER_SMOKE}finally{$env:HOJA_FIELD_ONLINE=$oldOnline}
    $managerFailed=$LASTEXITCODE -ne 0
    if($managerFailed){
     $probe=Join-Path $root 'field-presentation-smoke.trigger';$trace=Join-Path $root 'field-presentation-smoke.result'

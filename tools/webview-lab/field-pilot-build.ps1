@@ -1,4 +1,4 @@
-param([string]$Output=(Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1'))
+param([string]$Output=(Join-Path $env:RUNNER_TEMP 'HOJA-WebView2-FieldPilot-A1'),[switch]$OnlineCandidate)
 $ErrorActionPreference='Stop'
 if(Test-Path -LiteralPath $Output){throw 'Output already exists'}
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -39,6 +39,13 @@ try{
  $entry.Delete();$entry=$presentZip.CreateEntry($key);$stream=$entry.Open()
  try{$bytes=$utf8.GetBytes($bp);$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}
 }finally{$presentZip.Dispose()}
+if($OnlineCandidate){
+ $inbox=Join-Path $runtime 'seating-inbox.html';$d=[IO.File]::ReadAllText($inbox)
+ $old="const ALLOWED=['https://xkdtndbrwk111-prog.github.io','http://127.0.0.1:4188','http://localhost:4188'];"
+ if(([regex]::Matches($d,[regex]::Escape($old))).Count -ne 1){throw 'Inbox origin anchor mismatch'}
+ [IO.File]::WriteAllText($inbox,$d.Replace($old,"const ALLOWED=['https://xkdtndbrwk111-prog.github.io'];"),$utf8)
+ Write-Host 'PASS online payload retains original public game and exact public inbox origin'
+}else{
 $miniSource=Join-Path $repo 'reviewed-minigames'
 $miniSha=git -C $miniSource rev-parse HEAD
 if($miniSha -cne '51c195b9cd87a63c96944f547ad307e07d7eac40'){throw 'Mini-game pin mismatch'}
@@ -84,6 +91,7 @@ try{
  }
 }finally{$managerZip.Dispose()}
 Write-Host 'PASS pinned manager/game packaged with separate origins; original repository files unchanged'
+}
 
 $sdkRoot=Join-Path $env:RUNNER_TEMP ('pilot-sdk-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $sdkRoot|Out-Null
@@ -99,12 +107,16 @@ if(!$loader -or !(Test-Path -LiteralPath $win)){throw 'SDK dependencies missing'
 Copy-Item -LiteralPath $core.FullName,$win,$loader.FullName -Destination $bin
 foreach($license in @(Get-ChildItem (Join-Path $sdkRoot 'sdk') -File|Where-Object {$_.Name -match '^(LICENSE|ThirdPartyNotices)'})){Copy-Item -LiteralPath $license.FullName -Destination $bin}
 $csc="$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-& $csc /nologo /codepage:65001 /define:NATIVE_FIELD_PILOT /target:exe /platform:x64 "/out:$bin\HOJA-Native-Server.exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
+$serverDefines='NATIVE_FIELD_PILOT';$hostDefines='NATIVE_FIELD_PILOT,NATIVE_STORAGE_LAB,NATIVE_SHARE_LAB,NATIVE_DATA_LAB,NATIVE_AUDIO_LAB,NATIVE_PHOTO_LAB,NATIVE_BACKUP_LAB'
+if($OnlineCandidate){$serverDefines+=',NATIVE_ONLINE_PILOT';$hostDefines+=',NATIVE_ONLINE_PILOT'}
+& $csc /nologo /codepage:65001 "/define:$serverDefines" /target:exe /platform:x64 "/out:$bin\HOJA-Native-Server.exe" /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'native-read-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Field server build failed'}
+if(!$OnlineCandidate){
 & $csc /nologo /codepage:65001 /target:exe /platform:x64 "/out:$bin\HOJA-Field-Static.exe" /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll (Join-Path $PSScriptRoot 'field-static-server.cs')
 if($LASTEXITCODE -ne 0){throw 'Field static server build failed'}
+}
 
-& $csc /nologo /codepage:65001 /define:NATIVE_FIELD_PILOT,NATIVE_STORAGE_LAB,NATIVE_SHARE_LAB,NATIVE_DATA_LAB,NATIVE_AUDIO_LAB,NATIVE_PHOTO_LAB,NATIVE_BACKUP_LAB /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$bin\HOJA-Native-Launch-Lab.exe" "/reference:$bin\Microsoft.Web.WebView2.Core.dll" "/reference:$bin\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs') (Join-Path $PSScriptRoot 'field-provider-policy.cs')
+& $csc /nologo /codepage:65001 "/define:$hostDefines" /target:winexe /platform:x64 /main:NativeBoardLaunch "/out:$bin\HOJA-Native-Launch-Lab.exe" "/reference:$bin\Microsoft.Web.WebView2.Core.dll" "/reference:$bin\Microsoft.Web.WebView2.WinForms.dll" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll (Join-Path $PSScriptRoot 'host.cs') (Join-Path $PSScriptRoot 'native-launch.cs') (Join-Path $PSScriptRoot 'native-share-input.cs') (Join-Path $PSScriptRoot 'field-provider-policy.cs')
 if($LASTEXITCODE -ne 0){throw 'Field host build failed'}
 $policyTest=Join-Path $sdkRoot 'field-policy-test.exe'
 & $csc /nologo /codepage:65001 /define:FIELD_POLICY_TEST /target:exe "/out:$policyTest" (Join-Path $PSScriptRoot 'field-provider-policy.cs')
@@ -114,7 +126,8 @@ if($LASTEXITCODE -ne 0){throw 'Field policy test failed'}
 
 $payload=Join-Path $Output 'payload'
 $inventory=@(Get-ChildItem -LiteralPath $payload -File -Recurse|Sort-Object FullName|ForEach-Object {@{path=$_.FullName.Substring($payload.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
-@{schema='HOJA-FIELD-PILOT-1';version='1.66.43-field-a1';source=(git -C $repo rev-parse HEAD);files=$inventory}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $Output 'manifest.json') -Encoding UTF8
+$profile=if($OnlineCandidate){'online'}else{'isolated'}
+@{schema='HOJA-FIELD-PILOT-1';version='1.66.43-field-a1';profile=$profile;source=(git -C $repo rev-parse HEAD);files=$inventory}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $Output 'manifest.json') -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-pilot-launch.ps1') -Destination (Join-Path $Output 'Start-Pilot.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-pilot-readme.md') -Destination (Join-Path $Output 'READ-ME.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'field-acceptance.md') -Destination (Join-Path $Output 'FIELD-ACCEPTANCE.md')
