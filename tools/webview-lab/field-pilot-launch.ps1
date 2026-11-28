@@ -83,6 +83,23 @@ try{
  if(!(Test-Path -LiteralPath $ready) -or [int](Get-Content -LiteralPath $ready -Raw) -ne $server.Id){throw 'Pilot server readiness mismatch'}
  $listener=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 17451 -State Listen
  if($listener.OwningProcess -ne $server.Id){throw 'Pilot listener ownership mismatch'}
+ # An integrated classroom smoke represents a configured board, not first-run setup.
+ # Seed via the real school API, only in the disposable CI profile. Never close
+ # the mandatory onboarding dialog programmatically or alter a real school's data.
+ if($Smoke -and $env:GITHUB_ACTIONS -eq 'true' -and $env:HOJA_FIELD_MANAGER_SMOKE){
+  $headers=@{'Sec-Fetch-Site'='same-origin';'Origin'='http://127.0.0.1:17451'}
+  $url='http://127.0.0.1:17451/api/school'
+  $configured=Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 3
+  $fixture=@{office='B10';code='1234567';name='FIELD TEST SCHOOL';kind='초등학교';address='';grade='';cls='';sheet=''}
+  if(!$configured.school){
+   $body=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($fixture|ConvertTo-Json -Compress)))
+   $saved=Invoke-RestMethod -Method Post -Uri $url -Headers $headers -ContentType 'text/plain' -Body $body -TimeoutSec 3
+   if(!$saved.ok){throw 'Synthetic school setup failed'}
+  }
+  $configured=Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 3
+  foreach($key in $fixture.Keys){if([string]$configured.school.$key -cne [string]$fixture[$key]){throw "Non-fixture school configuration: $key"}}
+  Write-Host 'PASS isolated synthetic school setup via real API; first-run modal protection unchanged'
+ }
  $board=Start-Process -FilePath (Join-Path $root 'bin/HOJA-Native-Launch-Lab.exe') -ArgumentList "--lab-launch $Mode" -PassThru
  $null=$board.Handle
  $boardReady=Join-Path $root 'native-launch.ready'

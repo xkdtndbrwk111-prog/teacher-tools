@@ -685,6 +685,12 @@ internal sealed class NativeBoardLaunch : Form {
         Publish();heartbeat.Start();
 #if NATIVE_FIELD_PILOT
         if(File.Exists(Path.Combine(root,"field-smoke.flag"))){
+            // CI first prepares an isolated school through the real server API.
+            // Wait for the original school.js to finish initializing; do not dismiss
+            // the onboarding dialog or bypass the presentation busy protection.
+            if(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")=="true"&&!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("HOJA_FIELD_MANAGER_SMOKE"))){
+                await FieldBoardWait("(()=>document.getElementById('schoolNow')?.textContent.startsWith('FIELD TEST SCHOOL ·')&&!document.getElementById('schoolSetup')?.open&&!document.querySelector('dialog[open]'))()","configured school and unobstructed board",100);
+            }
             // Fresh isolated pilot data only, no clock override or fake game message.
             Require(await core.ExecuteScriptAsync("(()=>{document.getElementById('openMiniGames').click();return document.getElementById('miniGames').open})()")=="true","field game menu open");
             bool ready=false;
